@@ -1,0 +1,390 @@
+syntax = "proto3";
+
+package config;
+
+import "google/protobuf/duration.proto";
+import "logger/logger.proto";
+
+option go_package = "github.com/ohsu-comp-bio/funnel/config";
+
+message GridEngine {
+    string Template = 1;
+    string TemplateFile = 2;
+}
+
+// Config describes configuration for Funnel.
+message Config {
+  // Component selectors
+  repeated string EventWriters = 1;
+  string Database = 2;
+  string Compute = 3;
+  // Funnel components
+  Server Server = 4;
+  RPCClient RPCClient = 5;
+  Scheduler Scheduler = 6;
+  Node Node = 7;
+  Worker Worker = 8;
+  logger.LoggerConfig Logger = 9; // Placeholder for logger.Config
+  // Databases / event handlers
+  BoltDB BoltDB = 10;
+  Badger Badger = 11;
+  DynamoDB DynamoDB = 12;
+  Elastic Elastic = 13;
+  MongoDB MongoDB = 14;
+  Kafka Kafka = 15;
+  PubSub PubSub = 16;
+  Datastore Datastore = 17;
+  Postgres Postgres = 33;
+  // Compute
+  HPCBackend HTCondor = 18;
+  HPCBackend Slurm = 19;
+  HPCBackend PBS = 20;
+  GridEngine GridEngine = 21;
+  AWSBatch AWSBatch = 22;
+  Kubernetes Kubernetes = 23;
+  GCPBatch GCPBatch = 24;
+  // Storage
+  LocalStorage LocalStorage = 25;
+  AmazonS3Storage AmazonS3 = 26;
+  repeated GenericS3Storage GenericS3 = 27;
+  GoogleCloudStorage GoogleStorage = 28;
+  SwiftStorage Swift = 29;
+  HTTPStorage HTTPStorage = 30;
+  FTPStorage FTPStorage = 31;
+  // Plugins
+  Plugins Plugins = 32;
+}
+
+// This config matches the funnel plugins repo protobuf
+message Plugins {
+  string                  Path     = 1;
+  map<string, string>     Params  = 2;
+}
+
+// BasicCredential describes a username and password for use with Funnel's basic auth.
+message BasicCredential {
+  string User = 1;
+  string Password = 2;
+  bool Admin = 3;
+}
+
+// OidcAuth describes OpenID Connect authentication configuration.
+message OidcAuth {
+  string ServiceConfigURL = 1;
+  string ClientId = 2;
+  string ClientSecret = 3;
+  string RedirectURL = 4;
+  string RequireScope = 5;
+  string RequireAudience = 6;
+  repeated string Admins = 7;
+}
+
+message TimeoutConfig {
+  oneof timeout_option {
+    google.protobuf.Duration duration = 1;
+    bool disabled = 2; // Represents an infinite or disabled timeout
+  }
+}
+
+// RPCClient describes configuration for gRPC clients.
+message RPCClient {
+  BasicCredential Credential = 1;
+  string ServerAddress = 2;
+  TimeoutConfig Timeout = 3;
+  uint32 MaxRetries = 4;
+}
+
+// Server describes configuration for the server.
+message Server {
+  string ServiceName = 1;
+  string HostName = 2;
+  string HTTPPort = 3;
+  string RPCPort = 4;
+  repeated BasicCredential BasicAuth = 5;
+  OidcAuth OidcAuth = 6;
+  bool DisableHTTPCache = 7;
+  string TaskAccess = 8;
+}
+
+// Scheduler contains Funnel's basic scheduler configuration.
+message Scheduler {
+  google.protobuf.Duration ScheduleRate = 1;
+  int32 ScheduleChunk = 2;
+  TimeoutConfig NodePingTimeout = 3;
+  TimeoutConfig NodeInitTimeout = 4;
+  TimeoutConfig NodeDeadTimeout = 5;
+}
+
+// Resources describes the CPU, RAM, and disk resources required by a task.
+message Resources {
+    int32 Cpus = 1;
+    double RamGb = 2;
+    double DiskGb = 3;
+}
+
+// Node contains the configuration for a node.
+message Node {
+  string ID = 1;
+  Resources Resources = 2;
+  TimeoutConfig Timeout = 3;
+  google.protobuf.Duration UpdateRate = 4;
+  map<string, string> Metadata = 5;
+}
+
+// Worker contains worker configuration.
+message Worker {
+  string WorkDir = 1;
+  string ScratchPath = 2;
+  google.protobuf.Duration PollingRate = 3;
+  google.protobuf.Duration LogUpdateRate = 4;
+  int64 LogTailSize = 5;
+  bool LeaveWorkDir = 6;
+  int32 MaxParallelTransfers = 7;
+  ContainerConfig Container = 8;
+  string DriverCommand = 9;
+}
+
+// ContainerConfig describes container configuration.
+message ContainerConfig {
+  string Id = 1;
+  string Image = 2;
+  string Name = 3;
+  repeated string Command = 4;
+  string Workdir = 5;
+  bool RemoveContainer = 6;
+  map<string, string> Env = 7;
+  string DriverCommand = 8;
+  string RunCommand = 9;
+  string PullCommand = 10;
+  string StopCommand = 11;
+  bool EnableTags = 12;
+  map<string, string> Tags = 13;
+  // Note: io.Reader and io.Writer (Stdin, Stdout, Stderr) are omitted as they are not serializable in Protobuf
+}
+
+
+
+// HPCBackend describes the configuration for an HPC scheduler backend.
+message HPCBackend {
+  bool DisableReconciler = 1;
+  google.protobuf.Duration ReconcileRate = 2;
+  string Template = 3;
+  string TemplateFile = 4;
+}
+
+// BoltDB describes the configuration for the BoltDB embedded database.
+message BoltDB {
+  string Path = 1;
+}
+
+// Badger describes configuration for the Badger embedded database.
+message Badger {
+  string Path = 1;
+}
+
+// MongoDB configures access to a MongoDB database.
+message MongoDB {
+  repeated string Addrs = 1;
+  string Database = 2;
+  TimeoutConfig Timeout = 3;
+  string Username = 4;
+  string Password = 5;
+}
+
+// Postgres configures access to a PostgreSQL database.
+message Postgres {
+  string Host = 1;
+  string Database = 2;
+  string User = 3;
+  string Password = 4;
+  string AdminUser = 5;
+  string AdminPassword = 6;
+  TimeoutConfig Timeout = 7;
+}
+
+// Elastic configures access to an Elasticsearch database.
+message Elastic {
+  string IndexPrefix = 1;
+  string URL = 2;
+  string Username = 3;
+  string Password = 4;
+  string CloudID = 5;
+  string APIKey = 6;
+  string ServiceToken = 7;
+}
+
+// Kafka configures access to a Kafka topic for task event reading/writing.
+message Kafka {
+  repeated string Servers = 1;
+  string Topic = 2;
+}
+
+// PubSub configures access to Google Cloud Pub/Sub.
+message PubSub {
+  string Topic = 1;
+  string Project = 2;
+  string CredentialsFile = 3;
+}
+
+// AWSConfig describes the configuration for creating AWS Session instances.
+message AWSConfig {
+  string Endpoint = 1;
+  string Region = 2;
+  int32 MaxRetries = 3;
+  string Key = 4;
+  string Secret = 5;
+  bool DisableAutoCredentialLoad = 6;
+}
+
+// AWSBatch describes the configuration for the AWS Batch compute backend.
+message AWSBatch {
+  string JobDefinition = 1;
+  string JobQueue = 2;
+  bool DisableReconciler = 3;
+  google.protobuf.Duration ReconcileRate = 4;
+  AWSConfig AWSConfig = 5;
+}
+
+// GCPBatch describes the configuration for the GCP Batch compute backend.
+message GCPBatch {
+  string Location = 1;
+  string GoogleStorage = 2;
+  string Project = 3;
+  bool DisableReconciler = 4;
+  google.protobuf.Duration ReconcileRate = 5;
+  GCPBatch GCPBatch = 6;
+}
+
+// Datastore configures access to a Google Cloud Datastore database backend.
+message Datastore {
+  string Project = 1;
+  string CredentialsFile = 2;
+}
+
+// DynamoDB describes the configuration for Amazon DynamoDB.
+message DynamoDB {
+  string TableBasename = 1;
+  AWSConfig AWSConfig = 2;
+}
+
+// LocalStorage describes the directories Funnel can read from and write to.
+message LocalStorage {
+  bool Disabled = 1;
+  repeated string AllowedDirs = 2;
+}
+
+// GoogleCloudStorage describes configuration for the Google Cloud storage backend.
+message GoogleCloudStorage {
+  bool Disabled = 1;
+  string CredentialsFile = 2;
+}
+
+message SSE {
+  string CustomerKeyFile = 1;
+  string KMSKey = 2;
+}
+
+// AmazonS3Storage describes the configuration for the Amazon S3 storage backend.
+message AmazonS3Storage {
+  bool Disabled = 1;
+  SSE SSE = 2;
+  AWSConfig AWSConfig = 3;
+}
+
+// GenericS3Storage describes the configuration for the Generic S3 storage backend.
+message GenericS3Storage {
+  bool Disabled = 1;
+  string Endpoint = 2;
+  string Key = 3;
+  string Secret = 4;
+  string Region = 5;
+  string Bucket = 6;
+  string KmsKeyID = 7;
+  // AWS Account ID, needed for S3 CSI Driver
+  // https://github.com/awslabs/mountpoint-s3/blob/v1.20.0/doc/CONFIGURATION.md#data-encryption
+  string AccountID = 8;
+}
+
+// SwiftStorage configures the OpenStack Swift object storage backend.
+message SwiftStorage {
+  bool Disabled = 1;
+  string UserName = 2;
+  string Password = 3;
+  string AuthURL = 4;
+  string TenantName = 5;
+  string TenantID = 6;
+  string RegionName = 7;
+  int64 ChunkSizeBytes = 8;
+  int32 MaxRetries = 9;
+}
+
+// HTTPStorage configures the HTTP storage backend.
+message HTTPStorage {
+  bool Disabled = 1;
+  TimeoutConfig Timeout = 2;
+}
+
+// FTPStorage configures the FTP storage backend.
+message FTPStorage {
+  bool Disabled = 1;
+  TimeoutConfig Timeout = 2;
+  string User = 3;
+  string Password = 4;
+}
+
+// Kubernetes describes the configuration for the Kubernetes compute backend.
+message Kubernetes {
+  string Executor = 1;
+  string WorkerTemplate = 2;
+  string ExecutorTemplate = 3;
+  string PVTemplate = 4;
+  string PVCTemplate = 5;
+  string ConfigMapTemplate = 6;
+  string Namespace = 7;
+  string JobsNamespace = 8;
+  string ServiceAccount = 9;
+  string ServiceAccountTemplate = 10;
+  string RoleTemplate = 11;
+  string RoleBindingTemplate = 12;
+  bool DisableReconciler = 13;
+  google.protobuf.Duration ReconcileRate = 14;
+  bool DisableJobCleanup = 15;
+
+  // NodeSelector + Tolerations for scheduling jobs onto specific nodes
+  // https://kubernetes.io/docs/tasks/configure-pod-container/assign-pods-nodes/#create-a-pod-that-gets-scheduled-to-your-chosen-node
+  map<string, string> NodeSelector = 16;
+  repeated Toleration Tolerations = 17;
+
+  // Optional Kubernetes resource defaults and limits for tasks running on the Kubernetes backend.
+  KubernetesResources Resources = 18;
+}
+
+// KubernetesResources describes default and maximum resource limits for Kubernetes tasks.
+message KubernetesResources {
+  ResourceDefaults Defaults = 1;
+  ResourceLimits Limits = 2;
+}
+
+// ResourceDefaults describes default and maximum resource limits for tasks.
+message ResourceDefaults {
+    string Cpus = 1;
+    string RamGb = 2;
+    string DiskGb = 3;
+}
+
+// ResourceLimits describes maximum resource limits for tasks.
+message ResourceLimits {
+    string Cpus = 1;
+    string RamGb = 2;
+    string DiskGb = 3;
+}
+
+// Kubernetes toleration
+// https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/
+message Toleration {
+  string Key = 1;
+  string Operator = 2; // "Equal" or "Exists"
+  string Value = 3; // Required when operator is "Equal"
+  string Effect = 4; // "NoSchedule", "PreferNoSchedule", or "NoExecute"
+  optional int64 TolerationSeconds = 5;  // Only used with "NoExecute" effect
+}

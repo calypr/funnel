@@ -18,13 +18,13 @@ var (
 type Elastic struct {
 	scheduler.UnimplementedSchedulerServiceServer
 	client    *elasticsearch.TypedClient
-	conf      config.Elastic
+	conf      *config.Elastic
 	taskIndex string
 	nodeIndex string
 }
 
 // NewElastic returns a new Elastic instance.
-func NewElastic(conf config.Elastic) (*Elastic, error) {
+func NewElastic(conf *config.Elastic) (*Elastic, error) {
 	client, err := elasticsearch.NewTypedClient(elasticsearch.Config{
 		Addresses:    []string{conf.URL}, // A list of Elasticsearch nodes to use.
 		Username:     conf.Username,      // Username for HTTP Basic Authentication.

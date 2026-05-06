@@ -114,7 +114,7 @@ func (db *MongoDB) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*t
 		Tasks: tasks,
 	}
 	if len(tasks) == pageSize {
-		out.NextPageToken = &tasks[len(tasks)-1].Id
+		out.NextPageToken = tasks[len(tasks)-1].Id
 	}
 
 	return &out, nil

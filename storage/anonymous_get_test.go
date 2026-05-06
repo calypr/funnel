@@ -14,7 +14,7 @@ import (
 )
 
 func TestGenericS3AnonymousGet(t *testing.T) {
-	store, err := NewGenericS3(config.GenericS3Storage{
+	store, err := NewGenericS3(&config.GenericS3Storage{
 		Endpoint: "https://s3.amazonaws.com/",
 		Key:      "",
 		Secret:   "",

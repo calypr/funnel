@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math"
 
-	uuid "github.com/nu7hatch/gouuid"
+	"github.com/google/uuid"
 	"github.com/ohsu-comp-bio/funnel/config"
 	pscpu "github.com/shirou/gopsutil/cpu"
 	psdisk "github.com/shirou/gopsutil/disk"
@@ -13,7 +13,7 @@ import (
 
 // GenNodeID returns a UUID string.
 func GenNodeID() string {
-	u, _ := uuid.NewV4()
+	u, _ := uuid.NewV7()
 	return u.String()
 }
 
@@ -23,7 +23,7 @@ func GenNodeID() string {
 //
 // Upon error, detectResources will return the resources given by the config
 // with the error.
-func detectResources(conf config.Node, workdir string) (*Resources, error) {
+func detectResources(conf *config.Node, workdir string) (*Resources, error) {
 	res := &Resources{
 		Cpus:   conf.Resources.Cpus,
 		RamGb:  conf.Resources.RamGb,

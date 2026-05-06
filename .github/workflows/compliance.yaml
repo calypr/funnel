@@ -24,12 +24,6 @@ on:
     branches:
       - main
       - master
-  # Run on PR to main/master/develop
-  pull_request:
-    branches:
-      - main
-      - master
-      - develop
 
 # Cancel redundant jobs (if a new job is triggered for the same workflow and ref)
 concurrency:
@@ -38,7 +32,7 @@ concurrency:
 
 jobs:
   build:
-    uses: ./.github/workflows/build.yml
+    uses: ./.github/workflows/build.yaml
 
   compliance:
     strategy:
@@ -96,5 +90,5 @@ jobs:
           python3 -m venv venv
           source venv/bin/activate
           pip install -r requirements.txt
-          python setup.py install  
+          python setup.py install
           openapi-test-runner report --version "${{ matrix.version }}" --server "http://localhost:8000/"

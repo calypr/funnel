@@ -40,11 +40,11 @@ var createCmd = &cobra.Command{
 			return fmt.Errorf("error must provide a region")
 		}
 
-		conf.Funnel.DynamoDB.Region = conf.Region
+		conf.Funnel.DynamoDB.AWSConfig.Region = conf.Region
 
 		if funnelConfigFile != "" {
-			funnelConf := config.Config{}
-			config.ParseFile(funnelConfigFile, &funnelConf)
+			funnelConf := config.EmptyConfig()
+			config.ParseFile(funnelConfigFile, funnelConf)
 			conf.Funnel = funnelConf
 		}
 

@@ -11,6 +11,7 @@ import (
 	"github.com/ohsu-comp-bio/funnel/database/dynamodb"
 	"github.com/ohsu-comp-bio/funnel/database/elastic"
 	"github.com/ohsu-comp-bio/funnel/database/mongodb"
+	"github.com/ohsu-comp-bio/funnel/database/postgres"
 	"github.com/ohsu-comp-bio/funnel/events"
 	"github.com/ohsu-comp-bio/funnel/logger"
 	"github.com/ohsu-comp-bio/funnel/storage"
@@ -20,7 +21,7 @@ import (
 )
 
 // Run runs the "worker run" command.
-func Run(ctx context.Context, conf config.Config, log *logger.Logger, opts *Options) error {
+func Run(ctx context.Context, conf *config.Config, log *logger.Logger, opts *Options) error {
 	w, err := NewWorker(ctx, conf, log, opts)
 	if err != nil {
 		return err
@@ -29,9 +30,7 @@ func Run(ctx context.Context, conf config.Config, log *logger.Logger, opts *Opti
 }
 
 // NewWorker returns a new Funnel worker based on the given config.
-func NewWorker(ctx context.Context, conf config.Config, log *logger.Logger, opts *Options) (*worker.DefaultWorker, error) {
-	log.Debug("NewWorker", "config", conf)
-
+func NewWorker(ctx context.Context, conf *config.Config, log *logger.Logger, opts *Options) (*worker.DefaultWorker, error) {
 	err := validateConfig(conf, opts)
 	if err != nil {
 		return nil, fmt.Errorf("validating config: %v", err)
@@ -71,24 +70,18 @@ func NewWorker(ctx context.Context, conf config.Config, log *logger.Logger, opts
 	}
 	store.AttachLogger(log)
 
-	if conf.Kubernetes.ExecutorTemplateFile != "" {
-		content, err := os.ReadFile(conf.Kubernetes.ExecutorTemplateFile)
-		if err != nil {
-			return nil, fmt.Errorf("reading template: %v", err)
-		}
-		conf.Kubernetes.ExecutorTemplate = string(content)
-	}
-
 	// The executor always defaults to docker, unless explicitly set to kubernetes.
 	var executor = worker.Executor{
 		Backend: "docker",
 	}
 
-	if conf.Kubernetes.Executor == "kubernetes" {
+	if conf.Compute == "kubernetes" {
 		executor.Backend = "kubernetes"
 		executor.Template = conf.Kubernetes.ExecutorTemplate
 		executor.Namespace = conf.Kubernetes.Namespace
+		executor.JobsNamespace = conf.Kubernetes.JobsNamespace
 		executor.ServiceAccount = conf.Kubernetes.ServiceAccount
+		executor.Resources = conf.Kubernetes.Resources
 	}
 
 	return &worker.DefaultWorker{
@@ -102,7 +95,7 @@ func NewWorker(ctx context.Context, conf config.Config, log *logger.Logger, opts
 
 // newTaskReader finds a TaskReader implementation that matches the config
 // and commandline options.
-func newTaskReader(ctx context.Context, conf config.Config, opts *Options) (worker.TaskReader, error) {
+func newTaskReader(ctx context.Context, conf *config.Config, opts *Options) (worker.TaskReader, error) {
 
 	switch {
 	// These readers are used to read a local task from a file, cli arg, etc.
@@ -131,9 +124,14 @@ func newTaskReader(ctx context.Context, conf config.Config, opts *Options) (work
 		db, err := mongodb.NewMongoDB(conf.MongoDB)
 		return newDatabaseTaskReader(opts.TaskID, db, err)
 
-		// These readers connect via RPC (because the database is embedded in the server).
-		// case "boltdb", "badger":
-		// Default to asking the server for the task.
+	case "postgres":
+		db, err := postgres.NewPostgres(conf.Postgres)
+		return newDatabaseTaskReader(opts.TaskID, db, err)
+
+	// These readers connect via RPC (because the database is embedded in the server).
+	// case "boltdb", "badger":
+	// Default to asking the server for the task.
+
 	default:
 		return worker.NewRPCTaskReader(ctx, conf.RPCClient, opts.TaskID)
 	}
@@ -164,7 +162,7 @@ func (e *eventWriterBuilder) Writer() (events.Writer, error) {
 }
 
 // Add creates a new event writer by name and adds it to the builder.
-func (e *eventWriterBuilder) Add(ctx context.Context, name string, conf config.Config, log *logger.Logger) {
+func (e *eventWriterBuilder) Add(ctx context.Context, name string, conf *config.Config, log *logger.Logger) {
 	if name == "" {
 		return
 	}
@@ -199,6 +197,8 @@ func (e *eventWriterBuilder) Add(ctx context.Context, name string, conf config.C
 		writer, err = events.NewPubSubWriter(ctx, conf.PubSub)
 	case "mongodb":
 		writer, err = mongodb.NewMongoDB(conf.MongoDB)
+	case "postgres", "psql":
+		writer, err = postgres.NewPostgres(conf.Postgres)
 	default:
 		err = fmt.Errorf("unknown event writer: %s", name)
 	}
@@ -210,7 +210,7 @@ func (e *eventWriterBuilder) Add(ctx context.Context, name string, conf config.C
 	}
 }
 
-func validateConfig(conf config.Config, opts *Options) error {
+func validateConfig(conf *config.Config, opts *Options) error {
 	// If the task reader is a file or string,
 	// only a subset of event writers are supported.
 	if opts.TaskFile != "" || opts.TaskBase64 != "" {

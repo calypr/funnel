@@ -222,6 +222,7 @@
 
 pre {
   padding: 0;
+  word-break: break-word;
 }
 
 .homepage-demo .section {

@@ -20,7 +20,7 @@ func (e errResourceExists) Error() string {
 	return "resource exists"
 }
 
-func newBatchSvc(conf Config) (*batchsvc, error) {
+func newBatchSvc(conf *Config) (*batchsvc, error) {
 	sess, err := util.NewAWSSession(conf.AWSConfig)
 	if err != nil {
 		return nil, fmt.Errorf("error occurred creating aws session: %v", err)
@@ -33,7 +33,7 @@ func newBatchSvc(conf Config) (*batchsvc, error) {
 
 type batchsvc struct {
 	sess *session.Session
-	conf Config
+	conf *Config
 }
 
 func (b *batchsvc) CreateComputeEnvironment() (*batch.ComputeEnvironmentDetail, error) {
@@ -373,7 +373,7 @@ func (b *batchsvc) CreateJobDefinition(overwrite bool) (*batch.JobDefinition, er
 				aws.String("--Database"),
 				aws.String(b.conf.Funnel.Database),
 				aws.String("--DynamoDB.Region"),
-				aws.String(b.conf.Funnel.DynamoDB.Region),
+				aws.String(b.conf.Funnel.DynamoDB.AWSConfig.Region),
 				aws.String("--DynamoDB.TableBasename"),
 				aws.String(b.conf.Funnel.DynamoDB.TableBasename),
 				aws.String("--taskID"),

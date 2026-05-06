@@ -15,7 +15,7 @@ import (
 )
 
 // Run runs a node with the given config, blocking until the node exits.
-func Run(ctx context.Context, conf config.Config, log *logger.Logger) error {
+func Run(ctx context.Context, conf *config.Config, log *logger.Logger) error {
 	conf.Node.ID = scheduler.GenNodeID()
 
 	factory := func(ctx context.Context, taskID string) error {

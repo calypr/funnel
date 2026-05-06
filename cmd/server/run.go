@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ohsu-comp-bio/funnel/compute/batch"
+	"github.com/ohsu-comp-bio/funnel/compute/aws_batch"
+	"github.com/ohsu-comp-bio/funnel/compute/gcp_batch"
 	"github.com/ohsu-comp-bio/funnel/compute/gridengine"
 	"github.com/ohsu-comp-bio/funnel/compute/htcondor"
 	"github.com/ohsu-comp-bio/funnel/compute/kubernetes"
@@ -21,15 +22,17 @@ import (
 	"github.com/ohsu-comp-bio/funnel/database/dynamodb"
 	"github.com/ohsu-comp-bio/funnel/database/elastic"
 	"github.com/ohsu-comp-bio/funnel/database/mongodb"
+	"github.com/ohsu-comp-bio/funnel/database/postgres"
 	"github.com/ohsu-comp-bio/funnel/events"
 	"github.com/ohsu-comp-bio/funnel/logger"
 	"github.com/ohsu-comp-bio/funnel/metrics"
+	"github.com/ohsu-comp-bio/funnel/plugins/shared"
 	"github.com/ohsu-comp-bio/funnel/server"
 	"github.com/ohsu-comp-bio/funnel/tes"
 )
 
 // Run runs the "server run" command.
-func Run(ctx context.Context, conf config.Config, log *logger.Logger) error {
+func Run(ctx context.Context, conf *config.Config, log *logger.Logger) error {
 	s, err := NewServer(ctx, conf, log)
 	if err != nil {
 		return err
@@ -51,9 +54,7 @@ type Database interface {
 }
 
 // NewServer returns a new Funnel server + scheduler based on the given config.
-func NewServer(ctx context.Context, conf config.Config, log *logger.Logger) (*Server, error) {
-	log.Debug("NewServer", "config", conf)
-
+func NewServer(ctx context.Context, conf *config.Config, log *logger.Logger) (*Server, error) {
 	var database Database
 	var reader tes.ReadOnlyServer
 	var nodes scheduler.SchedulerServiceServer
@@ -124,11 +125,23 @@ func NewServer(ctx context.Context, conf config.Config, log *logger.Logger) (*Se
 		queue = m
 		writers = append(writers, m)
 
+	case "postgres", "psql":
+		p, err := postgres.NewPostgres(conf.Postgres)
+		if err != nil {
+			return nil, dberr(err)
+		}
+		database = p
+		reader = p
+		nodes = p
+		queue = p
+		writers = append(writers, p)
+
 	default:
 		return nil, fmt.Errorf("unknown database: '%s'", conf.Database)
 	}
 
 	// Initialize the Database
+	// Note: This is where Funnel waits until the given database is ready to accept requests.
 	if err := database.Init(); err != nil {
 		return nil, fmt.Errorf("error creating database resources: %v", err)
 	}
@@ -166,6 +179,8 @@ func NewServer(ctx context.Context, conf config.Config, log *logger.Logger) (*Se
 			writer, err = events.NewPubSubWriter(ctx, conf.PubSub)
 		case "mongodb":
 			writer, err = mongodb.NewMongoDB(conf.MongoDB)
+		case "postgres", "psql":
+			writer, err = postgres.NewPostgres(conf.Postgres)
 		default:
 			return nil, fmt.Errorf("unknown event writer: '%s'", e)
 		}
@@ -203,8 +218,14 @@ func NewServer(ctx context.Context, conf config.Config, log *logger.Logger) (*Se
 		}
 		compute = events.Backend{}
 
-	case "aws-batch":
-		compute, err = batch.NewBackend(ctx, conf.AWSBatch, reader, writer, log.Sub("aws-batch"))
+	case "aws-batch", "aws", "amazon":
+		compute, err = aws_batch.NewBackend(ctx, conf.AWSBatch, reader, writer, log.Sub("aws-batch"))
+		if err != nil {
+			return nil, err
+		}
+
+	case "gcp-batch", "gcp", "google":
+		compute, err = gcp_batch.NewBackend(ctx, conf.GCPBatch, reader, writer, log.Sub("gcp-batch"))
 		if err != nil {
 			return nil, err
 		}
@@ -222,7 +243,7 @@ func NewServer(ctx context.Context, conf config.Config, log *logger.Logger) (*Se
 		}
 
 	case "kubernetes":
-		compute, err = kubernetes.NewBackend(ctx, conf.Kubernetes, reader, writer, log.Sub("kubernetes"))
+		compute, err = kubernetes.NewBackend(ctx, conf, reader, writer, log.Sub("kubernetes"))
 		if err != nil {
 			return nil, err
 		}
@@ -262,7 +283,7 @@ func NewServer(ctx context.Context, conf config.Config, log *logger.Logger) (*Se
 		go metrics.WatchNodes(ctx, nodes)
 	}
 
-	return &Server{
+	serverConf := &Server{
 		Server: &server.Server{
 			RPCAddress:       ":" + conf.Server.RPCPort,
 			HTTPPort:         conf.Server.HTTPPort,
@@ -279,11 +300,33 @@ func NewServer(ctx context.Context, conf config.Config, log *logger.Logger) (*Se
 				Log:     log,
 				Config:  conf,
 			},
-			Events: &events.Service{Writer: writer},
-			Nodes:  nodes,
+			Events:  &events.Service{Writer: writer},
+			Nodes:   nodes,
+			Plugins: conf.Plugins,
 		},
 		Scheduler: sched,
-	}, nil
+	}
+
+	if conf.Plugins != nil {
+		if conf.Plugins.Path == "" {
+			return nil, fmt.Errorf("Plugin config is set but required plugin field 'Path' is not found")
+		}
+		serverConf.Server.Tasks.(*server.TaskService).PluginManager = &shared.Manager{}
+		if conf.Plugins == nil {
+			return nil, fmt.Errorf("Plugin config is set but no plugins are defined")
+		}
+		if conf.Plugins.Path == "" {
+			return nil, fmt.Errorf("Plugin config is set but required plugin field 'Path' is not found")
+		}
+		log.Info("getting plugin client", "path", conf.Plugins.Path)
+		plugin, err := serverConf.Server.Tasks.(*server.TaskService).PluginManager.Client(conf.Plugins.Path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get plugin client: %w", err)
+		}
+		serverConf.Server.Tasks.(*server.TaskService).Plugin = plugin
+	}
+
+	return serverConf, nil
 }
 
 // Run runs a default Funnel server.

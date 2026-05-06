@@ -1,0 +1,1359 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "plugins/proto/plugin.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "Authorize"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {},
+  "definitions": {
+    "configAWSBatch": {
+      "type": "object",
+      "properties": {
+        "JobDefinition": {
+          "type": "string"
+        },
+        "JobQueue": {
+          "type": "string"
+        },
+        "DisableReconciler": {
+          "type": "boolean"
+        },
+        "ReconcileRate": {
+          "type": "string"
+        },
+        "AWSConfig": {
+          "$ref": "#/definitions/configAWSConfig"
+        }
+      },
+      "description": "AWSBatch describes the configuration for the AWS Batch compute backend."
+    },
+    "configAWSConfig": {
+      "type": "object",
+      "properties": {
+        "Endpoint": {
+          "type": "string"
+        },
+        "Region": {
+          "type": "string"
+        },
+        "MaxRetries": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "Key": {
+          "type": "string"
+        },
+        "Secret": {
+          "type": "string"
+        },
+        "DisableAutoCredentialLoad": {
+          "type": "boolean"
+        }
+      },
+      "description": "AWSConfig describes the configuration for creating AWS Session instances."
+    },
+    "configAmazonS3Storage": {
+      "type": "object",
+      "properties": {
+        "Disabled": {
+          "type": "boolean"
+        },
+        "SSE": {
+          "$ref": "#/definitions/configSSE"
+        },
+        "AWSConfig": {
+          "$ref": "#/definitions/configAWSConfig"
+        }
+      },
+      "description": "AmazonS3Storage describes the configuration for the Amazon S3 storage backend."
+    },
+    "configBadger": {
+      "type": "object",
+      "properties": {
+        "Path": {
+          "type": "string"
+        }
+      },
+      "description": "Badger describes configuration for the Badger embedded database."
+    },
+    "configBasicCredential": {
+      "type": "object",
+      "properties": {
+        "User": {
+          "type": "string"
+        },
+        "Password": {
+          "type": "string"
+        },
+        "Admin": {
+          "type": "boolean"
+        }
+      },
+      "description": "BasicCredential describes a username and password for use with Funnel's basic auth."
+    },
+    "configBoltDB": {
+      "type": "object",
+      "properties": {
+        "Path": {
+          "type": "string"
+        }
+      },
+      "description": "BoltDB describes the configuration for the BoltDB embedded database."
+    },
+    "configConfig": {
+      "type": "object",
+      "properties": {
+        "EventWriters": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "Component selectors"
+        },
+        "Database": {
+          "type": "string"
+        },
+        "Compute": {
+          "type": "string"
+        },
+        "Server": {
+          "$ref": "#/definitions/configServer",
+          "title": "Funnel components"
+        },
+        "RPCClient": {
+          "$ref": "#/definitions/configRPCClient"
+        },
+        "Scheduler": {
+          "$ref": "#/definitions/configScheduler"
+        },
+        "Node": {
+          "$ref": "#/definitions/configNode"
+        },
+        "Worker": {
+          "$ref": "#/definitions/configWorker"
+        },
+        "Logger": {
+          "$ref": "#/definitions/loggerLoggerConfig",
+          "title": "Placeholder for logger.Config"
+        },
+        "BoltDB": {
+          "$ref": "#/definitions/configBoltDB",
+          "title": "Databases / event handlers"
+        },
+        "Badger": {
+          "$ref": "#/definitions/configBadger"
+        },
+        "DynamoDB": {
+          "$ref": "#/definitions/configDynamoDB"
+        },
+        "Elastic": {
+          "$ref": "#/definitions/configElastic"
+        },
+        "MongoDB": {
+          "$ref": "#/definitions/configMongoDB"
+        },
+        "Kafka": {
+          "$ref": "#/definitions/configKafka"
+        },
+        "PubSub": {
+          "$ref": "#/definitions/configPubSub"
+        },
+        "Datastore": {
+          "$ref": "#/definitions/configDatastore"
+        },
+        "Postgres": {
+          "$ref": "#/definitions/configPostgres"
+        },
+        "HTCondor": {
+          "$ref": "#/definitions/configHPCBackend",
+          "title": "Compute"
+        },
+        "Slurm": {
+          "$ref": "#/definitions/configHPCBackend"
+        },
+        "PBS": {
+          "$ref": "#/definitions/configHPCBackend"
+        },
+        "GridEngine": {
+          "$ref": "#/definitions/configGridEngine"
+        },
+        "AWSBatch": {
+          "$ref": "#/definitions/configAWSBatch"
+        },
+        "Kubernetes": {
+          "$ref": "#/definitions/configKubernetes"
+        },
+        "GCPBatch": {
+          "$ref": "#/definitions/configGCPBatch"
+        },
+        "LocalStorage": {
+          "$ref": "#/definitions/configLocalStorage",
+          "title": "Storage"
+        },
+        "AmazonS3": {
+          "$ref": "#/definitions/configAmazonS3Storage"
+        },
+        "GenericS3": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/configGenericS3Storage"
+          }
+        },
+        "GoogleStorage": {
+          "$ref": "#/definitions/configGoogleCloudStorage"
+        },
+        "Swift": {
+          "$ref": "#/definitions/configSwiftStorage"
+        },
+        "HTTPStorage": {
+          "$ref": "#/definitions/configHTTPStorage"
+        },
+        "FTPStorage": {
+          "$ref": "#/definitions/configFTPStorage"
+        },
+        "Plugins": {
+          "$ref": "#/definitions/configPlugins",
+          "title": "Plugins"
+        }
+      },
+      "description": "Config describes configuration for Funnel."
+    },
+    "configContainerConfig": {
+      "type": "object",
+      "properties": {
+        "Id": {
+          "type": "string"
+        },
+        "Image": {
+          "type": "string"
+        },
+        "Name": {
+          "type": "string"
+        },
+        "Command": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "Workdir": {
+          "type": "string"
+        },
+        "RemoveContainer": {
+          "type": "boolean"
+        },
+        "Env": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "DriverCommand": {
+          "type": "string"
+        },
+        "RunCommand": {
+          "type": "string"
+        },
+        "PullCommand": {
+          "type": "string"
+        },
+        "StopCommand": {
+          "type": "string"
+        },
+        "EnableTags": {
+          "type": "boolean"
+        },
+        "Tags": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Note: io.Reader and io.Writer (Stdin, Stdout, Stderr) are omitted as they are not serializable in Protobuf"
+        }
+      },
+      "description": "ContainerConfig describes container configuration."
+    },
+    "configDatastore": {
+      "type": "object",
+      "properties": {
+        "Project": {
+          "type": "string"
+        },
+        "CredentialsFile": {
+          "type": "string"
+        }
+      },
+      "description": "Datastore configures access to a Google Cloud Datastore database backend."
+    },
+    "configDynamoDB": {
+      "type": "object",
+      "properties": {
+        "TableBasename": {
+          "type": "string"
+        },
+        "AWSConfig": {
+          "$ref": "#/definitions/configAWSConfig"
+        }
+      },
+      "description": "DynamoDB describes the configuration for Amazon DynamoDB."
+    },
+    "configElastic": {
+      "type": "object",
+      "properties": {
+        "IndexPrefix": {
+          "type": "string"
+        },
+        "URL": {
+          "type": "string"
+        },
+        "Username": {
+          "type": "string"
+        },
+        "Password": {
+          "type": "string"
+        },
+        "CloudID": {
+          "type": "string"
+        },
+        "APIKey": {
+          "type": "string"
+        },
+        "ServiceToken": {
+          "type": "string"
+        }
+      },
+      "description": "Elastic configures access to an Elasticsearch database."
+    },
+    "configFTPStorage": {
+      "type": "object",
+      "properties": {
+        "Disabled": {
+          "type": "boolean"
+        },
+        "Timeout": {
+          "$ref": "#/definitions/configTimeoutConfig"
+        },
+        "User": {
+          "type": "string"
+        },
+        "Password": {
+          "type": "string"
+        }
+      },
+      "description": "FTPStorage configures the FTP storage backend."
+    },
+    "configGCPBatch": {
+      "type": "object",
+      "properties": {
+        "Location": {
+          "type": "string"
+        },
+        "GoogleStorage": {
+          "type": "string"
+        },
+        "Project": {
+          "type": "string"
+        },
+        "DisableReconciler": {
+          "type": "boolean"
+        },
+        "ReconcileRate": {
+          "type": "string"
+        },
+        "GCPBatch": {
+          "$ref": "#/definitions/configGCPBatch"
+        }
+      },
+      "description": "GCPBatch describes the configuration for the GCP Batch compute backend."
+    },
+    "configGenericS3Storage": {
+      "type": "object",
+      "properties": {
+        "Disabled": {
+          "type": "boolean"
+        },
+        "Endpoint": {
+          "type": "string"
+        },
+        "Key": {
+          "type": "string"
+        },
+        "Secret": {
+          "type": "string"
+        },
+        "Region": {
+          "type": "string"
+        },
+        "Bucket": {
+          "type": "string"
+        },
+        "KmsKeyID": {
+          "type": "string"
+        },
+        "AccountID": {
+          "type": "string",
+          "title": "AWS Account ID, needed for S3 CSI Driver\nhttps://github.com/awslabs/mountpoint-s3/blob/v1.20.0/doc/CONFIGURATION.md#data-encryption"
+        }
+      },
+      "description": "GenericS3Storage describes the configuration for the Generic S3 storage backend."
+    },
+    "configGoogleCloudStorage": {
+      "type": "object",
+      "properties": {
+        "Disabled": {
+          "type": "boolean"
+        },
+        "CredentialsFile": {
+          "type": "string"
+        }
+      },
+      "description": "GoogleCloudStorage describes configuration for the Google Cloud storage backend."
+    },
+    "configGridEngine": {
+      "type": "object",
+      "properties": {
+        "Template": {
+          "type": "string"
+        },
+        "TemplateFile": {
+          "type": "string"
+        }
+      }
+    },
+    "configHPCBackend": {
+      "type": "object",
+      "properties": {
+        "DisableReconciler": {
+          "type": "boolean"
+        },
+        "ReconcileRate": {
+          "type": "string"
+        },
+        "Template": {
+          "type": "string"
+        },
+        "TemplateFile": {
+          "type": "string"
+        }
+      },
+      "description": "HPCBackend describes the configuration for an HPC scheduler backend."
+    },
+    "configHTTPStorage": {
+      "type": "object",
+      "properties": {
+        "Disabled": {
+          "type": "boolean"
+        },
+        "Timeout": {
+          "$ref": "#/definitions/configTimeoutConfig"
+        }
+      },
+      "description": "HTTPStorage configures the HTTP storage backend."
+    },
+    "configKafka": {
+      "type": "object",
+      "properties": {
+        "Servers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "Topic": {
+          "type": "string"
+        }
+      },
+      "description": "Kafka configures access to a Kafka topic for task event reading/writing."
+    },
+    "configKubernetes": {
+      "type": "object",
+      "properties": {
+        "Executor": {
+          "type": "string"
+        },
+        "WorkerTemplate": {
+          "type": "string"
+        },
+        "ExecutorTemplate": {
+          "type": "string"
+        },
+        "PVTemplate": {
+          "type": "string"
+        },
+        "PVCTemplate": {
+          "type": "string"
+        },
+        "ConfigMapTemplate": {
+          "type": "string"
+        },
+        "Namespace": {
+          "type": "string"
+        },
+        "JobsNamespace": {
+          "type": "string"
+        },
+        "ServiceAccount": {
+          "type": "string"
+        },
+        "ServiceAccountTemplate": {
+          "type": "string"
+        },
+        "RoleTemplate": {
+          "type": "string"
+        },
+        "RoleBindingTemplate": {
+          "type": "string"
+        },
+        "DisableReconciler": {
+          "type": "boolean"
+        },
+        "ReconcileRate": {
+          "type": "string"
+        },
+        "DisableJobCleanup": {
+          "type": "boolean"
+        },
+        "NodeSelector": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "NodeSelector + Tolerations for scheduling jobs onto specific nodes\nhttps://kubernetes.io/docs/tasks/configure-pod-container/assign-pods-nodes/#create-a-pod-that-gets-scheduled-to-your-chosen-node"
+        },
+        "Tolerations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/configToleration"
+          }
+        },
+        "Resources": {
+          "$ref": "#/definitions/configKubernetesResources",
+          "description": "Optional Kubernetes resource defaults and limits for tasks running on the Kubernetes backend."
+        }
+      },
+      "description": "Kubernetes describes the configuration for the Kubernetes compute backend."
+    },
+    "configKubernetesResources": {
+      "type": "object",
+      "properties": {
+        "Defaults": {
+          "$ref": "#/definitions/configResourceDefaults"
+        },
+        "Limits": {
+          "$ref": "#/definitions/configResourceLimits"
+        }
+      },
+      "description": "KubernetesResources describes default and maximum resource limits for Kubernetes tasks."
+    },
+    "configLocalStorage": {
+      "type": "object",
+      "properties": {
+        "Disabled": {
+          "type": "boolean"
+        },
+        "AllowedDirs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "LocalStorage describes the directories Funnel can read from and write to."
+    },
+    "configMongoDB": {
+      "type": "object",
+      "properties": {
+        "Addrs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "Database": {
+          "type": "string"
+        },
+        "Timeout": {
+          "$ref": "#/definitions/configTimeoutConfig"
+        },
+        "Username": {
+          "type": "string"
+        },
+        "Password": {
+          "type": "string"
+        }
+      },
+      "description": "MongoDB configures access to a MongoDB database."
+    },
+    "configNode": {
+      "type": "object",
+      "properties": {
+        "ID": {
+          "type": "string"
+        },
+        "Resources": {
+          "$ref": "#/definitions/configResources"
+        },
+        "Timeout": {
+          "$ref": "#/definitions/configTimeoutConfig"
+        },
+        "UpdateRate": {
+          "type": "string"
+        },
+        "Metadata": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Node contains the configuration for a node."
+    },
+    "configOidcAuth": {
+      "type": "object",
+      "properties": {
+        "ServiceConfigURL": {
+          "type": "string"
+        },
+        "ClientId": {
+          "type": "string"
+        },
+        "ClientSecret": {
+          "type": "string"
+        },
+        "RedirectURL": {
+          "type": "string"
+        },
+        "RequireScope": {
+          "type": "string"
+        },
+        "RequireAudience": {
+          "type": "string"
+        },
+        "Admins": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "OidcAuth describes OpenID Connect authentication configuration."
+    },
+    "configPlugins": {
+      "type": "object",
+      "properties": {
+        "Path": {
+          "type": "string"
+        },
+        "Params": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "title": "This config matches the funnel plugins repo protobuf"
+    },
+    "configPostgres": {
+      "type": "object",
+      "properties": {
+        "Host": {
+          "type": "string"
+        },
+        "Database": {
+          "type": "string"
+        },
+        "User": {
+          "type": "string"
+        },
+        "Password": {
+          "type": "string"
+        },
+        "AdminUser": {
+          "type": "string"
+        },
+        "AdminPassword": {
+          "type": "string"
+        },
+        "Timeout": {
+          "$ref": "#/definitions/configTimeoutConfig"
+        }
+      },
+      "description": "Postgres configures access to a PostgreSQL database."
+    },
+    "configPubSub": {
+      "type": "object",
+      "properties": {
+        "Topic": {
+          "type": "string"
+        },
+        "Project": {
+          "type": "string"
+        },
+        "CredentialsFile": {
+          "type": "string"
+        }
+      },
+      "description": "PubSub configures access to Google Cloud Pub/Sub."
+    },
+    "configRPCClient": {
+      "type": "object",
+      "properties": {
+        "Credential": {
+          "$ref": "#/definitions/configBasicCredential"
+        },
+        "ServerAddress": {
+          "type": "string"
+        },
+        "Timeout": {
+          "$ref": "#/definitions/configTimeoutConfig"
+        },
+        "MaxRetries": {
+          "type": "integer",
+          "format": "int64"
+        }
+      },
+      "description": "RPCClient describes configuration for gRPC clients."
+    },
+    "configResourceDefaults": {
+      "type": "object",
+      "properties": {
+        "Cpus": {
+          "type": "string"
+        },
+        "RamGb": {
+          "type": "string"
+        },
+        "DiskGb": {
+          "type": "string"
+        }
+      },
+      "description": "ResourceDefaults describes default and maximum resource limits for tasks."
+    },
+    "configResourceLimits": {
+      "type": "object",
+      "properties": {
+        "Cpus": {
+          "type": "string"
+        },
+        "RamGb": {
+          "type": "string"
+        },
+        "DiskGb": {
+          "type": "string"
+        }
+      },
+      "description": "ResourceLimits describes maximum resource limits for tasks."
+    },
+    "configResources": {
+      "type": "object",
+      "properties": {
+        "Cpus": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "RamGb": {
+          "type": "number",
+          "format": "double"
+        },
+        "DiskGb": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "description": "Resources describes the CPU, RAM, and disk resources required by a task."
+    },
+    "configSSE": {
+      "type": "object",
+      "properties": {
+        "CustomerKeyFile": {
+          "type": "string"
+        },
+        "KMSKey": {
+          "type": "string"
+        }
+      }
+    },
+    "configScheduler": {
+      "type": "object",
+      "properties": {
+        "ScheduleRate": {
+          "type": "string"
+        },
+        "ScheduleChunk": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "NodePingTimeout": {
+          "$ref": "#/definitions/configTimeoutConfig"
+        },
+        "NodeInitTimeout": {
+          "$ref": "#/definitions/configTimeoutConfig"
+        },
+        "NodeDeadTimeout": {
+          "$ref": "#/definitions/configTimeoutConfig"
+        }
+      },
+      "description": "Scheduler contains Funnel's basic scheduler configuration."
+    },
+    "configServer": {
+      "type": "object",
+      "properties": {
+        "ServiceName": {
+          "type": "string"
+        },
+        "HostName": {
+          "type": "string"
+        },
+        "HTTPPort": {
+          "type": "string"
+        },
+        "RPCPort": {
+          "type": "string"
+        },
+        "BasicAuth": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/configBasicCredential"
+          }
+        },
+        "OidcAuth": {
+          "$ref": "#/definitions/configOidcAuth"
+        },
+        "DisableHTTPCache": {
+          "type": "boolean"
+        },
+        "TaskAccess": {
+          "type": "string"
+        }
+      },
+      "description": "Server describes configuration for the server."
+    },
+    "configSwiftStorage": {
+      "type": "object",
+      "properties": {
+        "Disabled": {
+          "type": "boolean"
+        },
+        "UserName": {
+          "type": "string"
+        },
+        "Password": {
+          "type": "string"
+        },
+        "AuthURL": {
+          "type": "string"
+        },
+        "TenantName": {
+          "type": "string"
+        },
+        "TenantID": {
+          "type": "string"
+        },
+        "RegionName": {
+          "type": "string"
+        },
+        "ChunkSizeBytes": {
+          "type": "string",
+          "format": "int64"
+        },
+        "MaxRetries": {
+          "type": "integer",
+          "format": "int32"
+        }
+      },
+      "description": "SwiftStorage configures the OpenStack Swift object storage backend."
+    },
+    "configTimeoutConfig": {
+      "type": "object",
+      "properties": {
+        "duration": {
+          "type": "string"
+        },
+        "disabled": {
+          "type": "boolean",
+          "title": "Represents an infinite or disabled timeout"
+        }
+      }
+    },
+    "configToleration": {
+      "type": "object",
+      "properties": {
+        "Key": {
+          "type": "string"
+        },
+        "Operator": {
+          "type": "string",
+          "title": "\"Equal\" or \"Exists\""
+        },
+        "Value": {
+          "type": "string",
+          "title": "Required when operator is \"Equal\""
+        },
+        "Effect": {
+          "type": "string",
+          "title": "\"NoSchedule\", \"PreferNoSchedule\", or \"NoExecute\""
+        },
+        "TolerationSeconds": {
+          "type": "string",
+          "format": "int64",
+          "title": "Only used with \"NoExecute\" effect"
+        }
+      },
+      "title": "Kubernetes toleration\nhttps://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/"
+    },
+    "configWorker": {
+      "type": "object",
+      "properties": {
+        "WorkDir": {
+          "type": "string"
+        },
+        "ScratchPath": {
+          "type": "string"
+        },
+        "PollingRate": {
+          "type": "string"
+        },
+        "LogUpdateRate": {
+          "type": "string"
+        },
+        "LogTailSize": {
+          "type": "string",
+          "format": "int64"
+        },
+        "LeaveWorkDir": {
+          "type": "boolean"
+        },
+        "MaxParallelTransfers": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "Container": {
+          "$ref": "#/definitions/configContainerConfig"
+        },
+        "DriverCommand": {
+          "type": "string"
+        }
+      },
+      "description": "Worker contains worker configuration."
+    },
+    "loggerJSONFormatConfig": {
+      "type": "object",
+      "properties": {
+        "disableTimestamp": {
+          "type": "boolean"
+        },
+        "timestampFormat": {
+          "type": "string"
+        }
+      }
+    },
+    "loggerLoggerConfig": {
+      "type": "object",
+      "properties": {
+        "level": {
+          "type": "string"
+        },
+        "formatter": {
+          "type": "string"
+        },
+        "outputFile": {
+          "type": "string"
+        },
+        "jsonFormat": {
+          "$ref": "#/definitions/loggerJSONFormatConfig"
+        },
+        "textFormat": {
+          "$ref": "#/definitions/loggerTextFormatConfig"
+        }
+      }
+    },
+    "loggerTextFormatConfig": {
+      "type": "object",
+      "properties": {
+        "forceColors": {
+          "type": "boolean"
+        },
+        "disableColors": {
+          "type": "boolean"
+        },
+        "disableTimestamp": {
+          "type": "boolean"
+        },
+        "fullTimestamp": {
+          "type": "boolean"
+        },
+        "timestampFormat": {
+          "type": "string"
+        },
+        "disableSorting": {
+          "type": "boolean"
+        },
+        "indent": {
+          "type": "string"
+        }
+      }
+    },
+    "protoJobResponse": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "format": "int64"
+        },
+        "message": {
+          "type": "string"
+        },
+        "config": {
+          "$ref": "#/definitions/configConfig"
+        },
+        "task": {
+          "$ref": "#/definitions/tesTask"
+        },
+        "userId": {
+          "type": "string"
+        }
+      }
+    },
+    "protoStringList": {
+      "type": "object",
+      "properties": {
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "protoType": {
+      "type": "string",
+      "enum": [
+        "CREATE",
+        "GET",
+        "CANCEL"
+      ],
+      "default": "CREATE"
+    },
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "tesExecutor": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "ignoreError": {
+          "type": "boolean"
+        },
+        "image": {
+          "type": "string"
+        },
+        "stderr": {
+          "type": "string"
+        },
+        "stdin": {
+          "type": "string"
+        },
+        "stdout": {
+          "type": "string"
+        },
+        "workdir": {
+          "type": "string"
+        }
+      }
+    },
+    "tesExecutorLog": {
+      "type": "object",
+      "properties": {
+        "endTime": {
+          "type": "string"
+        },
+        "exitCode": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "startTime": {
+          "type": "string"
+        },
+        "stderr": {
+          "type": "string"
+        },
+        "stdout": {
+          "type": "string"
+        }
+      }
+    },
+    "tesFileType": {
+      "type": "string",
+      "enum": [
+        "FILE",
+        "DIRECTORY"
+      ],
+      "default": "FILE"
+    },
+    "tesInput": {
+      "type": "object",
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "streamable": {
+          "type": "boolean"
+        },
+        "type": {
+          "$ref": "#/definitions/tesFileType"
+        },
+        "url": {
+          "type": "string"
+        }
+      }
+    },
+    "tesOutput": {
+      "type": "object",
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "pathPrefix": {
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/definitions/tesFileType"
+        },
+        "url": {
+          "type": "string"
+        }
+      }
+    },
+    "tesOutputFileLog": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "sizeBytes": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      }
+    },
+    "tesResources": {
+      "type": "object",
+      "properties": {
+        "backendParameters": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "backendParametersStrict": {
+          "type": "boolean"
+        },
+        "cpuCores": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "diskGb": {
+          "type": "number",
+          "format": "double"
+        },
+        "preemptible": {
+          "type": "boolean"
+        },
+        "ramGb": {
+          "type": "number",
+          "format": "double"
+        },
+        "zones": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "tesState": {
+      "type": "string",
+      "enum": [
+        "UNKNOWN",
+        "QUEUED",
+        "INITIALIZING",
+        "RUNNING",
+        "PAUSED",
+        "COMPLETE",
+        "EXECUTOR_ERROR",
+        "SYSTEM_ERROR",
+        "CANCELED",
+        "PREEMPTED",
+        "CANCELING"
+      ],
+      "default": "UNKNOWN"
+    },
+    "tesTask": {
+      "type": "object",
+      "properties": {
+        "creationTime": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "executors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/tesExecutor"
+          }
+        },
+        "id": {
+          "type": "string"
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/tesInput"
+          }
+        },
+        "logs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/tesTaskLog"
+          }
+        },
+        "name": {
+          "type": "string"
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/tesOutput"
+          }
+        },
+        "resources": {
+          "$ref": "#/definitions/tesResources"
+        },
+        "state": {
+          "$ref": "#/definitions/tesState"
+        },
+        "tags": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "volumes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "tesTaskLog": {
+      "type": "object",
+      "properties": {
+        "endTime": {
+          "type": "string"
+        },
+        "logs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/tesExecutorLog"
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/tesOutputFileLog"
+          }
+        },
+        "startTime": {
+          "type": "string"
+        },
+        "systemLogs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

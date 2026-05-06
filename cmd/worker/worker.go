@@ -27,7 +27,7 @@ func NewCommand() *cobra.Command {
 }
 
 type hooks struct {
-	Run func(ctx context.Context, conf config.Config, log *logger.Logger, opts *Options) error
+	Run func(ctx context.Context, conf *config.Config, log *logger.Logger, opts *Options) error
 }
 
 func newCommandHooks() (*cobra.Command, *hooks) {
@@ -37,8 +37,8 @@ func newCommandHooks() (*cobra.Command, *hooks) {
 
 	var (
 		configFile string
-		conf       config.Config
-		flagConf   config.Config
+		conf       *config.Config
+		flagConf   *config.Config = config.EmptyConfig()
 	)
 	opts := &Options{}
 
@@ -47,7 +47,6 @@ func newCommandHooks() (*cobra.Command, *hooks) {
 		Short: "Funnel worker commands.",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			var err error
-
 			conf, err = cmdutil.MergeConfigFileWithFlags(configFile, flagConf)
 			if err != nil {
 				return fmt.Errorf("error processing config: %v", err)
@@ -56,7 +55,7 @@ func newCommandHooks() (*cobra.Command, *hooks) {
 			return nil
 		},
 	}
-	workerFlags := cmdutil.WorkerFlags(&flagConf, &configFile)
+	workerFlags := cmdutil.WorkerFlags(flagConf, &configFile)
 	cmd.SetGlobalNormalizationFunc(cmdutil.NormalizeFlags)
 	f := cmd.PersistentFlags()
 	f.AddFlagSet(workerFlags)

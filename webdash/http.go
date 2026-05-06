@@ -26,7 +26,6 @@ func RootHandler() http.Handler {
 	}
 
 	return http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
-		// url := "http://localhost:3000"
 		_, err := resp.Write(index)
 		if err != nil {
 			return

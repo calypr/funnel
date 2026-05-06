@@ -26,9 +26,11 @@ import (
 	"github.com/ohsu-comp-bio/funnel/server"
 	"github.com/ohsu-comp-bio/funnel/tes"
 	"github.com/ohsu-comp-bio/funnel/util/dockerutil"
+	"github.com/ohsu-comp-bio/funnel/util/k8sutil"
 	"github.com/ohsu-comp-bio/funnel/util/rpc"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
+	"k8s.io/client-go/kubernetes"
 )
 
 var log = logger.NewLogger("e2e", LogConfig())
@@ -40,12 +42,13 @@ func init() {
 // Funnel provides a test server and RPC/HTTP clients
 type Funnel struct {
 	// Clients
-	RPC    tes.TaskServiceClient
-	HTTP   *tes.Client
-	Docker *docker.Client
+	RPC        tes.TaskServiceClient
+	HTTP       *tes.Client
+	Docker     *docker.Client
+	Kubernetes *kubernetes.Clientset
 
 	// Config
-	Conf       config.Config
+	Conf       *config.Config
 	StorageDir string
 
 	// Components
@@ -61,7 +64,7 @@ type Funnel struct {
 
 // NewFunnel creates a new funnel test server with some test
 // configuration automatically set: random ports, temp work dir, etc.
-func NewFunnel(conf config.Config) *Funnel {
+func NewFunnel(conf *config.Config) *Funnel {
 	cli, err := tes.NewClient(conf.Server.HTTPAddress())
 	if err != nil {
 		panic(err)
@@ -72,6 +75,15 @@ func NewFunnel(conf config.Config) *Funnel {
 		panic(derr)
 	}
 
+	var kcli *kubernetes.Clientset
+	var kerr error
+	if conf.Compute == "kubernetes" {
+		kcli, kerr = k8sutil.NewK8sClient(conf)
+		if kerr != nil {
+			panic(kerr)
+		}
+	}
+
 	srv, err := servercmd.NewServer(context.Background(), conf, log)
 	if err != nil {
 		panic(err)
@@ -80,6 +92,7 @@ func NewFunnel(conf config.Config) *Funnel {
 	return &Funnel{
 		HTTP:       cli,
 		Docker:     dcli,
+		Kubernetes: kcli,
 		Conf:       conf,
 		StorageDir: conf.LocalStorage.AllowedDirs[0],
 		Server:     srv.Server,
@@ -152,9 +165,9 @@ func (f *Funnel) PollForServerStart() error {
 func (f *Funnel) SwitchUser(username string) {
 	for _, cred := range f.Conf.Server.BasicAuth {
 		if cred.User == username {
-			if f.Conf.RPCClient.User != username {
-				f.Conf.RPCClient.User = cred.User
-				f.Conf.RPCClient.Password = cred.Password
+			if f.Conf.RPCClient.Credential.User != username {
+				f.Conf.RPCClient.Credential.User = cred.User
+				f.Conf.RPCClient.Credential.Password = cred.Password
 				f.addRPCClient()
 			}
 			return

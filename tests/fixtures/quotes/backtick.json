@@ -1,0 +1,6 @@
+{
+  "name": "Backtick substitution",
+  "executors": [
+    { "image": "bash", "command": ["echo `uname -s`"] }
+  ]
+}

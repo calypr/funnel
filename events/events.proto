@@ -4,7 +4,7 @@ option go_package = "github.com/ohsu-comp-bio/funnel/events";
 
 package events;
 
-import "tes.proto";
+import "tes/tes.proto";
 //import "google/api/annotations.proto";
 
 message Metadata {
@@ -24,7 +24,7 @@ message SystemLog {
 enum Type {
   UNKNOWN = 0;
   TASK_STATE = 1;
-  TASK_START_TIME = 2; 
+  TASK_START_TIME = 2;
   TASK_END_TIME = 3;
   TASK_OUTPUTS = 4;
   TASK_METADATA = 5;

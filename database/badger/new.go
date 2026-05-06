@@ -14,7 +14,7 @@ type Badger struct {
 }
 
 // NewBadger creates a new database instance.
-func NewBadger(conf config.Badger) (*Badger, error) {
+func NewBadger(conf *config.Badger) (*Badger, error) {
 	err := fsutil.EnsureDir(conf.Path)
 	if err != nil {
 		return nil, fmt.Errorf("creating database directory: %s", err)

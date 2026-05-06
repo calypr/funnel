@@ -7,54 +7,12 @@ import (
 
 const defaultTimestampFormat = time.RFC3339
 
-// JSONFormatConfig provides configuration for the JSON logger format.
-type JSONFormatConfig struct {
-	DisableTimestamp bool
-	TimestampFormat  string
-}
-
-// TextFormatConfig provides configuration for the text logger format.
-type TextFormatConfig struct {
-	// Set to true to bypass checking for a TTY before outputting colors.
-	ForceColors bool
-
-	// Force disabling colors.
-	DisableColors bool
-
-	// Disable timestamp logging. useful when output is redirected to logging
-	// system that already adds timestamps.
-	DisableTimestamp bool
-
-	// Enable logging the full timestamp when a TTY is attached instead of just
-	// the time passed since beginning of execution.
-	FullTimestamp bool
-
-	// TimestampFormat to use for display when a full timestamp is printed
-	TimestampFormat string
-
-	// The fields are sorted by default for a consistent output. For applications
-	// that log extremely frequently and don't use the JSON formatter this may not
-	// be desired.
-	DisableSorting bool
-
-	Indent string
-}
-
-// Config provides configuration for a logger.
-type Config struct {
-	Level      string
-	Formatter  string
-	OutputFile string
-	JSONFormat JSONFormatConfig
-	TextFormat TextFormatConfig
-}
-
 // DefaultConfig returns a Config instance with default values.
-func DefaultConfig() Config {
-	return Config{
+func DefaultConfig() *LoggerConfig {
+	return &LoggerConfig{
 		Level:     "info",
 		Formatter: "text",
-		TextFormat: TextFormatConfig{
+		TextFormat: &TextFormatConfig{
 			FullTimestamp:   true,
 			TimestampFormat: defaultTimestampFormat,
 		},
@@ -62,13 +20,13 @@ func DefaultConfig() Config {
 }
 
 // Configure configures the logging level and output path.
-func (l *Logger) Configure(conf Config) {
+func (l *Logger) Configure(conf *LoggerConfig) {
 	l.SetLevel(conf.Level)
 
 	switch conf.Formatter {
 	case "json":
 		l.SetFormatter(&jsonFormatter{
-			conf: conf.JSONFormat,
+			conf: conf.JsonFormat,
 		})
 
 	// Default to text
@@ -76,7 +34,7 @@ func (l *Logger) Configure(conf Config) {
 		l.SetFormatter(&textFormatter{
 			conf.TextFormat,
 			jsonFormatter{
-				conf: conf.JSONFormat,
+				conf: conf.JsonFormat,
 			},
 		})
 	}

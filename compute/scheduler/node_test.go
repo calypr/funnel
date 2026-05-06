@@ -8,12 +8,13 @@ import (
 
 	"github.com/ohsu-comp-bio/funnel/config"
 	"github.com/stretchr/testify/mock"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 // Test calling stopping a node by canceling its context
 func TestStopNode(t *testing.T) {
 	conf := config.DefaultConfig()
-	conf.Node.UpdateRate = config.Duration(time.Millisecond * 2)
+	conf.Node.UpdateRate = durationpb.New(time.Millisecond * 2)
 	n := newTestNode(conf, t)
 
 	n.Client.On("GetNode", mock.Anything, mock.Anything, mock.Anything).
@@ -33,7 +34,7 @@ func TestStopNode(t *testing.T) {
 // error from client.GetNode().
 func TestGetNodeFail(t *testing.T) {
 	conf := config.DefaultConfig()
-	conf.Node.UpdateRate = config.Duration(time.Millisecond * 2)
+	conf.Node.UpdateRate = durationpb.New(time.Millisecond * 2)
 	n := newTestNode(conf, t)
 
 	// Set GetNode to return an error
@@ -46,8 +47,13 @@ func TestGetNodeFail(t *testing.T) {
 // Test the flow of a node completing a task then timing out
 func TestNodeTimeout(t *testing.T) {
 	conf := config.DefaultConfig()
-	conf.Node.Timeout = config.Duration(time.Millisecond)
-	conf.Node.UpdateRate = config.Duration(time.Millisecond * 2)
+	conf.Node.Timeout = &config.TimeoutConfig{
+		TimeoutOption: &config.TimeoutConfig_Duration{
+			Duration: durationpb.New(time.Millisecond),
+		},
+	}
+	durationpb.New(time.Millisecond)
+	conf.Node.UpdateRate = durationpb.New(time.Millisecond * 2)
 
 	n := newTestNode(conf, t)
 
@@ -62,7 +68,7 @@ func TestNodeTimeout(t *testing.T) {
 	n.Start()
 
 	// Fail if this test doesn't complete in the given time.
-	cleanup := timeLimit(t, time.Duration(conf.Node.Timeout*500))
+	cleanup := timeLimit(t, conf.Node.Timeout.GetDuration().AsDuration()*500)
 	defer cleanup()
 
 	// Wait for the node to exit
@@ -72,7 +78,7 @@ func TestNodeTimeout(t *testing.T) {
 // Test that a node does nothing where there are no assigned tasks.
 func TestNoTasks(t *testing.T) {
 	conf := config.DefaultConfig()
-	conf.Node.UpdateRate = config.Duration(time.Millisecond * 2)
+	conf.Node.UpdateRate = durationpb.New(time.Millisecond * 2)
 	n := newTestNode(conf, t)
 
 	// Tell the scheduler mock to return nothing
@@ -102,7 +108,7 @@ func TestNoTasks(t *testing.T) {
 // Test that a worker gets created for each task.
 func TestNodeWorkerCreated(t *testing.T) {
 	conf := config.DefaultConfig()
-	conf.Node.UpdateRate = config.Duration(time.Millisecond * 2)
+	conf.Node.UpdateRate = durationpb.New(time.Millisecond * 2)
 	n := newTestNode(conf, t)
 
 	// Count the number of times the worker factory was called
@@ -125,7 +131,7 @@ func TestNodeWorkerCreated(t *testing.T) {
 // Tests a bugfix.
 func TestFinishedTaskNotRerun(t *testing.T) {
 	conf := config.DefaultConfig()
-	conf.Node.UpdateRate = config.Duration(time.Millisecond * 2)
+	conf.Node.UpdateRate = durationpb.New(time.Millisecond * 2)
 	n := newTestNode(conf, t)
 
 	// Set up a test worker which this code can easily control.
@@ -157,7 +163,7 @@ func TestFinishedTaskNotRerun(t *testing.T) {
 // Test that tasks are removed from the node's runset when they finish.
 func TestFinishedTaskRunsetCount(t *testing.T) {
 	conf := config.DefaultConfig()
-	conf.Node.UpdateRate = config.Duration(time.Millisecond * 2)
+	conf.Node.UpdateRate = durationpb.New(time.Millisecond * 2)
 	n := newTestNode(conf, t)
 
 	// Set up a test worker which this code can easily control.

@@ -1,0 +1,13 @@
+{
+  "name": "Hello world",
+  "description": "Demonstrates the most basic echo task.",
+  "executors": [
+    {
+      "image": "alpine",
+      "command": ["echo", "hello world"]
+    }
+  ],
+  "tags": {
+    "user": "example"
+  }
+}

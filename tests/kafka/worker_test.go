@@ -15,7 +15,7 @@ import (
 
 var log = logger.NewLogger("kafka-worker-test", logger.DefaultConfig())
 var fun *tests.Funnel
-var conf config.Config
+var conf *config.Config
 
 func TestMain(m *testing.M) {
 	tests.ParseConfig()

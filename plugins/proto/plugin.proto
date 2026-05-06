@@ -1,0 +1,37 @@
+syntax = "proto3";
+package proto;
+option go_package = "./proto";
+import "config/config.proto";
+import "tes/tes.proto";
+
+message StringList {
+  repeated string values = 1;
+}
+
+enum Type {
+    CREATE = 0;
+    GET    = 1;
+    CANCEL = 2;
+}
+
+message Job {
+    map<string, StringList> headers = 1;
+    map<string, string>     params  = 2;
+    config.Config           config  = 3;
+    tes.Task                task    = 4;
+    Type                    type    = 5;
+}
+
+message JobResponse {
+    int64                 code    = 1;
+    string                message = 2;
+    config.Config         config  = 3;
+    tes.Task              task    = 4;
+    string                userId  = 7;
+}
+
+service Authorize {
+    rpc PluginAction(Job) returns (JobResponse);
+}
+
+message Empty {}

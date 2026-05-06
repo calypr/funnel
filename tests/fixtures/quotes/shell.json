@@ -1,0 +1,6 @@
+{
+  "name": "Wrap in explicit shell",
+  "executors": [
+    { "image": "bash", "command": ["sh", "-c", "echo 'inline shell' && ls -1"] }
+  ]
+}

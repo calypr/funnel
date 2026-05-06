@@ -1,0 +1,39 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: funnel-worker-sa-{{.Namespace}}-{{.TaskId}}-role
+  namespace: {{.Namespace}}
+  labels:
+    app: funnel
+    taskId: {{.TaskId}}
+rules:
+# Job management permissions
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+- apiGroups: ["batch"]
+  resources: ["jobs/status"]
+  verbs: ["get", "update", "patch"]
+
+# Pod management permissions (jobs create pods)
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["create", "get", "list", "watch", "delete"]
+- apiGroups: [""]
+  resources: ["pods/status", "pods/log"]
+  verbs: ["get", "list", "watch"]
+
+# ConfigMap and Secret access (if needed for job configuration)
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list"]
+
+# PVC management (if using persistent volumes)
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims"]
+  verbs: ["create", "get", "list", "watch", "delete"]
+
+# Events (for job status reporting)
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create", "patch"]

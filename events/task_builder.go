@@ -3,6 +3,7 @@ package events
 import (
 	"context"
 
+	"github.com/ohsu-comp-bio/funnel/logger"
 	"github.com/ohsu-comp-bio/funnel/tes"
 )
 
@@ -13,6 +14,7 @@ type TaskBuilder struct {
 
 // WriteEvent updates the Task object.
 func (tb TaskBuilder) WriteEvent(ctx context.Context, ev *Event) error {
+	logger := logger.NewLogger("TaskBuilder", logger.DefaultConfig())
 	t := tb.Task
 	t.Id = ev.Id
 	attempt := int(ev.Attempt)
@@ -22,6 +24,7 @@ func (tb TaskBuilder) WriteEvent(ctx context.Context, ev *Event) error {
 	case Type_TASK_STATE:
 		to := ev.GetState()
 		if err := tes.ValidateTransition(t.GetState(), ev.GetState()); err != nil {
+			logger.Debug("TaskBuilder: invalid state transition", "taskID", t.Id, "from", t.GetState(), "to", ev.GetState(), "error", err)
 			return err
 		}
 		t.State = to

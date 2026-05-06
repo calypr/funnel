@@ -3,15 +3,13 @@ SHELL := /bin/bash
 
 TESTS=$(shell go list ./... | grep -v /vendor/ | grep -v github-release-notes)
 
-PROTO_INC=-I ./ -I $(shell pwd)/util/proto/
-
 git_commit := $(shell git rev-parse --short HEAD)
 git_branch := $(shell git symbolic-ref -q --short HEAD)
 git_upstream := $(shell git remote get-url $(shell git config branch.$(shell git symbolic-ref -q --short HEAD).remote) 2> /dev/null)
 export GIT_BRANCH = $(git_branch)
 export GIT_UPSTREAM = $(git_upstream)
 
-export FUNNEL_VERSION=0.11.1-rc.5
+export FUNNEL_VERSION=$(shell git describe --tags --dirty --always)
 
 # LAST_PR_NUMBER is used by the release notes builder to generate notes
 # based on pull requests (PR) up until the last release.
@@ -19,9 +17,10 @@ export LAST_PR_NUMBER = 716
 
 VERSION_LDFLAGS=\
  -X "github.com/ohsu-comp-bio/funnel/version.BuildDate=$(shell date)" \
- -X "github.com/ohsu-comp-bio/funnel/version.GitCommit= $(git_commit)" \
+ -X "github.com/ohsu-comp-bio/funnel/version.GitCommit=$(git_commit)" \
  -X "github.com/ohsu-comp-bio/funnel/version.GitBranch=$(git_branch)" \
- -X "github.com/ohsu-comp-bio/funnel/version.GitUpstream=$(git_upstream)"
+ -X "github.com/ohsu-comp-bio/funnel/version.GitUpstream=$(git_upstream)" \
+ -X "github.com/ohsu-comp-bio/funnel/version.Version=$(FUNNEL_VERSION)"
 
 export CGO_ENABLED=0
 
@@ -41,57 +40,25 @@ debug: proto
 	@go install -gcflags=all="-N -l"
 	@funnel server run
 
-# Generate the protobuf/gRPC code
-proto: proto-depends
-# TODO: Re-enable this when VIEW differences are resolvedin server/marshal.go (with optional/pointers?)
-#	@go run ./util/openapi2proto/main.go ./tes/task-execution-schemas/openapi/task_execution_service.openapi.yaml > tes/tes.proto
-	@cd tes && protoc \
-		$(PROTO_INC) \
-		--go_out ./ \
-  		--go_opt paths=source_relative \
-		--go-grpc_out ./ \
-		--go-grpc_opt paths=source_relative \
-		--grpc-gateway_out ./ \
-		--grpc-gateway_opt logtostderr=true \
-		--grpc-gateway_opt paths=source_relative \
-		tes.proto
-	@cd compute/scheduler && protoc \
-		$(PROTO_INC) \
-		--go_out ./ \
-  		--go_opt paths=source_relative \
-		--go-grpc_out ./ \
-		--go-grpc_opt paths=source_relative \
-		--grpc-gateway_out ./ \
-		--grpc-gateway_opt logtostderr=true \
-		--grpc-gateway_opt paths=source_relative \
-		scheduler.proto
-	@cd events && protoc \
-		$(PROTO_INC) \
-		-I ../tes \
-		--go_out ./ \
-  		--go_opt paths=source_relative \
-		--go-grpc_out ./ \
-		--go-grpc_opt paths=source_relative \
-		--grpc-gateway_out ./ \
-		--grpc-gateway_opt logtostderr=true \
-		--grpc-gateway_opt paths=source_relative \
-		events.proto
+# Generate the protobuf/gRPC code using Buf
+proto:
+	@go run ./util/openapi2proto/main.go ./tes/task-execution-schemas/openapi/task_execution_service.openapi.yaml > tes/tes.proto
+	@buf generate
 
-
+# Install Buf and dependencies
 proto-depends:
-	@git submodule update --init --recursive
-	@go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest
-	@go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2@latest
-	@go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-	@go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
-	@go install github.com/ckaznocha/protoc-gen-lint@latest
+	@go install github.com/bufbuild/buf/cmd/buf@v1.28.1
+
+# Lint Protobuf files
+proto-lint:
+	@buf lint
 
 # Start API reference doc server
 serve-doc:
 	@go get golang.org/x/tools/cmd/godoc
 	godoc --http=:6060
 
-# Automatially update code formatting
+# Automatically update code formatting
 tidy:
 	@go get golang.org/x/tools/cmd/goimports
 	@find . \( -path ./vendor -o -path ./webdash/node_modules -o -path ./venv -o -path ./.git \) -prune -o -type f -print | grep -v "\.pb\." | grep -v "web.go" | grep -E '.*\.go$$' | xargs goimports -w
@@ -215,10 +182,12 @@ test-ftp:
 	@go test -v ./tests/storage -run TestFTPStorage -funnel-config `pwd`/tests/ftp.config.yml
 
 # Build the web dashboard
-webdash:
-	@go get -u github.com/go-bindata/go-bindata/...
-	@cd webdash && yarn build
+webdash: webdash-deps
+	@cd webdash && npm run build
 	@go-bindata -pkg webdash -prefix "webdash/build" -o webdash/web.go webdash/build/...
+
+webdash-deps:
+	@go install github.com/go-bindata/go-bindata/go-bindata@v3.1.2+incompatible
 
 # Build binaries for all OS/Architectures
 snapshot: release-dep
@@ -226,50 +195,56 @@ snapshot: release-dep
 		--clean \
 		--snapshot
 
-# build a docker container locally
+# Build a docker container locally
 docker:
 	docker build -t quay.io/ohsu-comp-bio/funnel:latest ./
 
 # Create a release on Github using GoReleaser
-release:
-	@go get github.com/buchanae/github-release-notes
-	@goreleaser \
-		--clean \
-		--release-notes <(github-release-notes -org ohsu-comp-bio -repo funnel -stop-at ${LAST_PR_NUMBER})
+release: release-dep
+	@goreleaser --clean
 
 # Install dependencies for release
 release-dep:
-	@go get github.com/goreleaser/goreleaser
-	@go get github.com/buchanae/github-release-notes
+	@go install github.com/goreleaser/goreleaser/v2@latest
 
 # Generate mocks for testing.
-gen-mocks:
-	@go get github.com/vektra/mockery/...
+gen-mocks: gen-mocks-deps
 	@mockery -dir compute/scheduler -name Client -inpkg -output compute/scheduler
 	@mockery -dir compute/scheduler -name SchedulerServiceServer -inpkg -output compute/scheduler
 
+gen-mocks-deps:
+	@go install github.com/vektra/mockery/v2@v2.20.0
+
+
 # Bundle example task messages into Go code.
-bundle-examples:
+bundle-examples: bundle-examples-deps
 	@go-bindata -pkg examples -o examples/internal/bundle.go $(shell find examples/ -name '*.json')
 	@go-bindata -pkg config -o config/internal/bundle.go $(shell find config/ -name '*.txt' -o -name '*.yaml')
 	@gofmt -w -s examples/internal/bundle.go config/internal/bundle.go
 
+bundle-examples-deps:
+	@go install github.com/go-bindata/go-bindata/go-bindata@v3.1.2+incompatible
+
 # Make everything usually needed to prepare for a pull request
 full: proto install tidy lint test website webdash
 
-# Build the website
-website:
-	@cp ./config/*.txt ./website/static/funnel-config-examples/
-	@cp ./config/default-config.yaml ./website/static/funnel-config-examples/
-	hugo --source ./website
-	npx -y pagefind --site docs
+hugo-deps:
+	@cd website && \
+	([ -f go.mod ] || hugo mod init github.com/ohsu-comp-bio/funnel/website) && \
+	hugo mod get -u && \
+	hugo mod tidy
 
-# Serve the Funnel website on localhost:1313
+# Build the website
+website: hugo-deps
+	@hugo --source ./website --minify
+	@npx -y pagefind --site docs
+
+# Serve the Funnel website on http://localhost:1313
 website-dev: website
-	hugo --source ./website --watch server
+	@hugo --source ./website --watch server --baseURL http://localhost:1313/
 
 # Remove build/development files.
 clean:
 	@rm -rf ./bin ./pkg ./test_tmp ./build ./buildtools
 
-.PHONY: proto website docker webdash build debug
+.PHONY: proto proto-lint website docker webdash build debug

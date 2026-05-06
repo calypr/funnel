@@ -139,7 +139,7 @@ func (es *Elastic) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*t
 		}
 
 		if i == pageSize-1 {
-			resp.NextPageToken = &task.Id
+			resp.NextPageToken = task.Id
 		}
 
 		resp.Tasks = append(resp.Tasks, task)

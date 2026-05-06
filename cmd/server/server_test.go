@@ -20,17 +20,17 @@ func TestPersistentPreRun(t *testing.T) {
 	defer cleanup()
 
 	c, h := newCommandHooks()
-	h.Run = func(ctx context.Context, conf config.Config, log *logger.Logger) error {
+	h.Run = func(ctx context.Context, conf *config.Config, log *logger.Logger) error {
 		if conf.Server.RPCAddress() != serverAddress {
 			t.Fatal("unexpected hostname or rpc port in server config")
 		}
 		if conf.Server.HTTPPort != fileConf.Server.HTTPPort {
 			t.Fatal("unexpected http port in server config")
 		}
-		if conf.RPCClient.Timeout != 1000000000 {
+		if conf.RPCClient.Timeout.GetDuration().AsDuration() != 1000000000 {
 			t.Fatal("unexpected rpc client timeout in server config")
 		}
-		if conf.Scheduler.NodePingTimeout != 60000000000 {
+		if conf.Scheduler.NodePingTimeout.GetDuration().AsDuration() != 60000000000 {
 			t.Fatal("unexpected node ping timeout in scheduler config")
 		}
 		if conf.Compute != backend {

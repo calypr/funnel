@@ -11,28 +11,28 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang/protobuf/jsonpb"
-	"github.com/golang/protobuf/proto"
 	"github.com/kr/pretty"
 	"github.com/logrusorgru/aurora"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/crypto/ssh/terminal"
+	"golang.org/x/term"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 )
 
 var baseTimestamp = time.Now()
-var jsonmar = jsonpb.Marshaler{
+var jsonmar = protojson.MarshalOptions{
 	Indent: "  ",
 }
 
 type textFormatter struct {
-	TextFormatConfig
+	*TextFormatConfig
 	json jsonFormatter
 }
 
 func checkIfTerminal(w io.Writer) bool {
 	switch v := w.(type) {
 	case *os.File:
-		return terminal.IsTerminal(int(v.Fd()))
+		return term.IsTerminal(int(v.Fd()))
 	default:
 		return false
 	}
@@ -104,8 +104,8 @@ func (f *textFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 		case proto.Message:
 			if reflect.ValueOf(x).IsNil() {
 				// do nothing
-			} else if s, err := jsonmar.MarshalToString(x); err == nil {
-				v = s
+			} else if b, err := jsonmar.Marshal(x); err == nil {
+				v = string(b)
 			} else {
 				v = pretty.Sprint(x)
 			}
@@ -117,8 +117,12 @@ func (f *textFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 
 		if vString, ok := v.(string); ok {
 			vParts := strings.Split(vString, "\n")
-			padding := 21
-			v = strings.Join(vParts, "\n"+strings.Repeat(" ", padding))
+			// Calculate proper padding based on key length + indent
+			keyPadding := len(f.Indent) + 20 // 20 chars for key alignment + indent
+			if len(k) > 20 {
+				keyPadding = len(f.Indent) + len(k) + 1
+			}
+			v = strings.Join(vParts, "\n"+strings.Repeat(" ", keyPadding))
 		}
 
 		fmt.Fprintf(b, "%s%-20s %v\n", f.Indent, aurora.Colorize(k, levelColor), v)

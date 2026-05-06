@@ -8,7 +8,6 @@ import (
 	urllib "net/url"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/ohsu-comp-bio/funnel/config"
 	"github.com/ohsu-comp-bio/funnel/util/fsutil"
@@ -20,9 +19,9 @@ type HTTP struct {
 }
 
 // NewHTTP creates a new HTTP instance.
-func NewHTTP(conf config.HTTPStorage) (*HTTP, error) {
+func NewHTTP(conf *config.HTTPStorage) (*HTTP, error) {
 	client := &http.Client{
-		Timeout: time.Duration(conf.Timeout),
+		Timeout: conf.Timeout.GetDuration().AsDuration(),
 	}
 	return &HTTP{client}, nil
 }

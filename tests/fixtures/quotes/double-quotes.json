@@ -1,0 +1,6 @@
+{
+  "name": "Double quoted echo",
+  "executors": [
+    { "image": "bash", "command": ["echo \"double quoted value\""] }
+  ]
+}

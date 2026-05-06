@@ -7,7 +7,7 @@ function addCopyButtonToCodeBlocks() {
     // Get all <pre> elements
     const preElements = document.querySelectorAll('pre');
     const copyIcon = '⧉';
-    const copiedIcon = 'copied!';
+    const copiedIcon = 'Copied ✓';
 
     // For each <pre> element, add a copy button inside a header
     preElements.forEach((preElement) => {
@@ -25,6 +25,7 @@ function addCopyButtonToCodeBlocks() {
         const copyButton = document.createElement("button");
         copyButton.classList.add("btn", "copy-code-button");
         copyButton.innerHTML = copyIcon;
+        copyButton.title = "Copy";
 
         // Add a click event listener to the copy button
         copyButton.addEventListener("click", () => {
@@ -42,12 +43,17 @@ function addCopyButtonToCodeBlocks() {
         // Get the language from the class, if present
         const classList = Array.from(codeBlock.classList);
         const languageClass = classList.find((cls) => cls.startsWith("language-"));
-        const language = languageClass ? languageClass.replace("language-", "") : "";
+        let language = languageClass ? languageClass.replace("language-", "") : "";
+        if (language === "sh") {
+            language = "shell";
+        }
 
         // Create the language label
         const languageLabel = document.createElement("span");
         languageLabel.textContent = language ? language.toLowerCase() : "";
         languageLabel.style.marginRight = "10px";
+        languageLabel.style.marginRight = "10px";
+        languageLabel.style.fontStyle = "italic";
 
         // Append the language label and copy button to the header
         header.appendChild(languageLabel);

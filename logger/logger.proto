@@ -1,0 +1,28 @@
+syntax= "proto3";
+
+package logger;
+
+option go_package = "github.com/ohsu-comp-bio/funnel/logger";
+
+message JSONFormatConfig {
+  bool disable_timestamp = 1;
+  string timestamp_format = 2;
+}
+
+message TextFormatConfig {
+  bool force_colors = 1;
+  bool disable_colors = 2;
+  bool disable_timestamp = 3;
+  bool full_timestamp = 4;
+  string timestamp_format = 5;
+  bool disable_sorting = 6;
+  string indent = 7;
+}
+
+message LoggerConfig {
+  string level = 1;
+  string formatter = 2;
+  string output_file = 3;
+  JSONFormatConfig json_format = 4;
+  TextFormatConfig text_format = 5;
+}

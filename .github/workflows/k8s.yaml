@@ -1,0 +1,72 @@
+# Optionally debug via SSH
+# Ref: https://fleetdm.com/engineering/tips-for-github-actions-usability
+#
+# To use this step uncomment and place anywhere in the build steps. The build will pause on this step and
+# output a ssh address associated with the Github action worker. Helpful for debugging build steps and
+# and intermediary files/artifacts.
+#
+# - name: Setup tmate session
+#   uses: mxschmitt/action-tmate@v3
+
+name: K8s Test
+
+on:
+  # Run on push to main/master/develop (e.g. after PR is merged)
+  push:
+    branches:
+      - main
+      - master
+
+# Cancel redundant jobs (if a new job is triggered for the same workflow and ref)
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yaml
+
+  test:
+    needs: build
+
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: funnel
+
+      - name: Create K8s cluster
+        run: |
+          wget -q -O - https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+          k3d cluster create test-cluster
+
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+
+      - name: Deploy Funnel
+        run: |
+          helm repo add ohsu https://ohsu-comp-bio.github.io/helm-charts
+          
+          # 'local-path' is a k3d specific storage class used to automatically create a PersistentVolume
+          # ref: https://k3d.io/v5.7.4/usage/k3s/#local-path-provisioner
+          helm upgrade --install funnel ohsu/funnel --set storage.className=local-path --set storage.provisioner=local-path
+          
+          # Wait for the Deployment to be available
+          kubectl rollout status deployment/funnel-server --timeout=60s
+
+          # Port-forward the service
+          kubectl port-forward svc/funnel 8000:8000 &
+
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+
+      - name: Submit Task
+        run: |
+          export PATH="$PATH:$(pwd)"
+          chmod +x funnel
+          funnel examples hello-world > hello-world.json
+          ID=$(funnel task create hello-world.json)
+          kubectl wait --for=condition=Complete job/$ID --timeout=60s
+          
+          # Exits 0 if the task is complete, otherwise exits 1
+          funnel task get $ID | grep -q COMPLETE

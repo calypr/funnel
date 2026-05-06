@@ -31,7 +31,7 @@ type Mux struct {
 }
 
 // NewMux returns a new Mux instance with the given additional configuration.
-func NewMux(conf config.Config) (*Mux, error) {
+func NewMux(conf *config.Config) (*Mux, error) {
 	mux := &Mux{}
 
 	if conf.LocalStorage.Valid() {
@@ -84,7 +84,7 @@ func NewMux(conf config.Config) (*Mux, error) {
 		mux.Backends = append(mux.Backends, http)
 	}
 
-	if conf.FTPStorage.Valid() {
+	if conf.FTPStorage != nil && conf.FTPStorage.Valid() {
 		ftp, err := NewFTP(conf.FTPStorage)
 		if err != nil {
 			return mux, fmt.Errorf("failed to config ftp storage backend: %s", err)

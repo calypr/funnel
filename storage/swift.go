@@ -26,7 +26,7 @@ type Swift struct {
 
 // NewSwift creates an Swift client instance, give an endpoint URL
 // and a set of authentication credentials.
-func NewSwift(conf config.SwiftStorage) (*Swift, error) {
+func NewSwift(conf *config.SwiftStorage) (*Swift, error) {
 
 	// Create a connection
 	conn := &swift.Connection{
@@ -58,7 +58,7 @@ func NewSwift(conf config.SwiftStorage) (*Swift, error) {
 }
 
 // NewSwiftRetrier returns a Swift storage client that retries operations on error.
-func NewSwiftRetrier(conf config.SwiftStorage) (*Retrier, error) {
+func NewSwiftRetrier(conf *config.SwiftStorage) (*Retrier, error) {
 	b, err := NewSwift(conf)
 	if err != nil {
 		return nil, err
@@ -66,7 +66,7 @@ func NewSwiftRetrier(conf config.SwiftStorage) (*Retrier, error) {
 	return &Retrier{
 		Backend: b,
 		Retrier: &util.Retrier{
-			MaxTries:            conf.MaxRetries,
+			MaxTries:            int(conf.MaxRetries),
 			InitialInterval:     500 * time.Millisecond,
 			MaxInterval:         5 * time.Minute,
 			Multiplier:          2.0,

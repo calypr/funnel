@@ -6,9 +6,9 @@ import (
 	"io"
 	"os"
 
-	"github.com/golang/protobuf/jsonpb"
 	"github.com/ohsu-comp-bio/funnel/tes"
 	"golang.org/x/net/context"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 // Create runs the "task create" CLI command, connecting to the server,
@@ -32,14 +32,18 @@ func Create(server string, files []string, reader io.Reader, writer io.Writer) e
 	dec := json.NewDecoder(reader)
 	for {
 		var task tes.Task
-		err := jsonpb.UnmarshalNext(dec, &task)
+		var jsonData json.RawMessage
+		err := dec.Decode(&jsonData)
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
 			return fmt.Errorf("can't load task: %s", err)
 		}
-
+		err = protojson.Unmarshal(jsonData, &task)
+		if err != nil {
+			return fmt.Errorf("can't unmarshal task: %s", err)
+		}
 		r, err := cli.CreateTask(context.Background(), &task)
 		if err != nil {
 			return err

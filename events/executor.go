@@ -4,11 +4,26 @@ import (
 	"context"
 	"io"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ohsu-comp-bio/funnel/util/ring"
 	"golang.org/x/time/rate"
 )
+
+// Global counters for tracking log event drops (for debugging/metrics)
+var (
+	stdoutEventsDropped int64
+	stderrEventsDropped int64
+	logEventsTotal      int64
+)
+
+// GetLogEventStats returns current log event statistics
+func GetLogEventStats() (stdoutDropped, stderrDropped, total int64) {
+	return atomic.LoadInt64(&stdoutEventsDropped),
+		atomic.LoadInt64(&stderrEventsDropped),
+		atomic.LoadInt64(&logEventsTotal)
+}
 
 // ExecutorGenerator is a type that generates Events for an Executor
 // of a Task
@@ -184,7 +199,8 @@ func StreamLogTail(ctx context.Context, taskID string, attempt, index uint32, si
 	stderrbuf := ring.NewBuffer(size)
 	stdoutch := make(chan []byte)
 	stderrch := make(chan []byte)
-	eventch := make(chan *Event)
+	// Buffer event channel to handle bursts and prevent silent drops
+	eventch := make(chan *Event, 100)
 	// Used as an immediate timeout for flush()
 	immediate := make(chan time.Time)
 	close(immediate)
@@ -206,14 +222,20 @@ func StreamLogTail(ctx context.Context, taskID string, attempt, index uint32, si
 		}
 
 		// Send the event to the routine which is writing out events.
-		// If it's busy, don't wait because it will block the stdout/err streams
-		// writing into the logs. The logs will be flushed again soon anyway.
+		// With buffered channel, we should rarely encounter busy writer now.
 		select {
 		case eventch <- e:
 			// The writer routine accepted the event, so reset the buffer byte count.
 			buf.ResetNewBytesWritten()
 		case <-timeout:
-			// The writer was busy, do nothing.
+			// The writer was busy - increment counter to track this
+			switch t {
+			case Type_EXECUTOR_STDOUT:
+				atomic.AddInt64(&stdoutEventsDropped, 1)
+			case Type_EXECUTOR_STDERR:
+				atomic.AddInt64(&stderrEventsDropped, 1)
+			}
+			atomic.AddInt64(&logEventsTotal, 1)
 		}
 	}
 
@@ -236,8 +258,18 @@ func StreamLogTail(ctx context.Context, taskID string, attempt, index uint32, si
 
 		for e := range eventch {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-			out.WriteEvent(ctx, e)
+			err := out.WriteEvent(ctx, e)
 			cancel()
+
+			// Track successful events
+			if err == nil {
+				switch e.Type {
+				case Type_EXECUTOR_STDOUT:
+					atomic.AddInt64(&logEventsTotal, 1)
+				case Type_EXECUTOR_STDERR:
+					atomic.AddInt64(&logEventsTotal, 1)
+				}
+			}
 		}
 	}()
 

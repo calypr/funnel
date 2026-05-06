@@ -14,6 +14,7 @@ import (
 	"github.com/ohsu-comp-bio/funnel/config"
 	"github.com/ohsu-comp-bio/funnel/logger"
 	"github.com/ohsu-comp-bio/funnel/util/fsutil"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 var configFile string
@@ -21,14 +22,14 @@ var configFile string
 func ParseConfig() {
 	// nanoseconds are important because the tests run faster than a millisecond
 	// which can cause port conflicts
-	rand.Seed(time.Now().UTC().UnixNano())
+	rand.New(rand.NewSource(time.Now().UTC().UnixNano()))
 	flag.StringVar(&configFile, "funnel-config", configFile, "Funnel config file. Must be an absolute path.")
 	flag.Parse()
 }
 
 // DefaultConfig returns a default configuration useful for testing,
 // including temp storage dirs, random ports, S3 + minio config, etc.
-func DefaultConfig() config.Config {
+func DefaultConfig() *config.Config {
 	conf := config.DefaultConfig()
 	conf.AmazonS3.Disabled = true
 	conf.GoogleStorage.Disabled = true
@@ -37,7 +38,7 @@ func DefaultConfig() config.Config {
 
 	// Get config from test command line flag, if present.
 	if configFile != "" {
-		err := config.ParseFile(configFile, &conf)
+		err := config.ParseFile(configFile, conf)
 		if err != nil {
 			panic(err)
 		}
@@ -48,14 +49,14 @@ func DefaultConfig() config.Config {
 
 // TestifyConfig modifies a ports, directory paths, etc. to avoid
 // conflicts between tests.
-func TestifyConfig(conf config.Config) config.Config {
+func TestifyConfig(conf *config.Config) *config.Config {
 	conf = TempDirConfig(conf)
 	conf = RandomPortConfig(conf)
 
-	conf.Scheduler.ScheduleRate = config.Duration(time.Millisecond * 500)
-	conf.Node.UpdateRate = config.Duration(time.Millisecond * 1300)
-	conf.Worker.LogUpdateRate = config.Duration(time.Millisecond * 500)
-	conf.Worker.PollingRate = config.Duration(time.Millisecond * 100)
+	conf.Scheduler.ScheduleRate = durationpb.New(time.Millisecond * 500)
+	conf.Node.UpdateRate = durationpb.New(time.Millisecond * 1300)
+	conf.Worker.LogUpdateRate = durationpb.New(time.Millisecond * 500)
+	conf.Worker.PollingRate = durationpb.New(time.Millisecond * 100)
 
 	prefix := "funnel-e2e-tests-" + RandomString(6)
 	conf.Elastic.IndexPrefix = prefix
@@ -63,7 +64,7 @@ func TestifyConfig(conf config.Config) config.Config {
 	conf.DynamoDB.TableBasename = prefix
 	conf.Datastore.Project = prefix
 
-	reconcile := config.Duration(time.Second * 5)
+	reconcile := durationpb.New(time.Second * 5)
 	conf.HTCondor.ReconcileRate = reconcile
 	conf.Slurm.ReconcileRate = reconcile
 	conf.PBS.ReconcileRate = reconcile
@@ -73,7 +74,7 @@ func TestifyConfig(conf config.Config) config.Config {
 	wd, _ := os.Getwd()
 	fsutil.EnsureDir(storageDir)
 
-	conf.LocalStorage = config.LocalStorage{
+	conf.LocalStorage = &config.LocalStorage{
 		AllowedDirs: []string{storageDir, wd},
 	}
 
@@ -89,7 +90,7 @@ func RandomPort() string {
 }
 
 // RandomPortConfig returns a modified config with random HTTP and RPC ports.
-func RandomPortConfig(conf config.Config) config.Config {
+func RandomPortConfig(conf *config.Config) *config.Config {
 	conf.Server.RPCPort = RandomPort()
 	conf.Server.HTTPPort = RandomPort()
 	conf.RPCClient.ServerAddress = conf.Server.RPCAddress()
@@ -97,7 +98,7 @@ func RandomPortConfig(conf config.Config) config.Config {
 }
 
 // TempDirConfig returns a modified config with workdir and db path set to a temp. directory.
-func TempDirConfig(conf config.Config) config.Config {
+func TempDirConfig(conf *config.Config) *config.Config {
 	os.MkdirAll("./test_tmp", os.ModePerm)
 	f, _ := os.MkdirTemp("./test_tmp", "funnel-test-")
 	conf.Worker.WorkDir = f
@@ -142,7 +143,7 @@ func TestingWriter(t *testing.T) io.Writer {
 }
 
 // LogConfig returns logger configuration useful for tests, which has a text indent.
-func LogConfig() logger.Config {
+func LogConfig() *logger.LoggerConfig {
 	conf := logger.DefaultConfig()
 	conf.TextFormat.ForceColors = true
 	conf.TextFormat.Indent = "        "

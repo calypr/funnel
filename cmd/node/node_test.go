@@ -18,12 +18,12 @@ func TestPersistentPreRun(t *testing.T) {
 	cwd, _ := os.Getwd()
 	workDir := path.Join(cwd, "funnel-work-dir")
 
-	fileConf := config.DefaultConfig()
+	fileConf := config.EmptyConfig()
 	tmp, cleanup := util.TempConfigFile(fileConf, "testconfig.yaml")
 	defer cleanup()
 
 	c, h := newCommandHooks()
-	h.Run = func(ctx context.Context, conf config.Config, log *logger.Logger) error {
+	h.Run = func(ctx context.Context, conf *config.Config, log *logger.Logger) error {
 		if conf.Server.HostName != host {
 			t.Fatal("unexpected Server.HostName in config", conf.Server.HostName)
 		}

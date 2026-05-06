@@ -14,7 +14,7 @@ import (
 )
 
 // NewBackend returns a new Grid Engine HPCBackend instance.
-func NewBackend(conf config.Config, reader tes.ReadOnlyServer, writer events.Writer, log *logger.Logger) (*compute.HPCBackend, error) {
+func NewBackend(conf *config.Config, reader tes.ReadOnlyServer, writer events.Writer, log *logger.Logger) (*compute.HPCBackend, error) {
 	if conf.GridEngine.TemplateFile != "" {
 		content, err := os.ReadFile(conf.GridEngine.TemplateFile)
 		if err != nil {

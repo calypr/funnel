@@ -12,6 +12,7 @@ import (
 	"github.com/ohsu-comp-bio/funnel/logger"
 	"github.com/ohsu-comp-bio/funnel/tes"
 	"github.com/ohsu-comp-bio/funnel/tests"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 // When the node's context is canceled (e.g. because the process
@@ -20,9 +21,21 @@ import (
 func TestNodeGoneOnCanceledContext(t *testing.T) {
 	conf := tests.DefaultConfig()
 	conf.Compute = "manual"
-	conf.Scheduler.NodeInitTimeout = config.Duration(time.Second * 10)
-	conf.Scheduler.NodePingTimeout = config.Duration(time.Second * 10)
-	conf.Scheduler.NodeDeadTimeout = config.Duration(time.Second * 10)
+	conf.Scheduler.NodeInitTimeout = &config.TimeoutConfig{
+		TimeoutOption: &config.TimeoutConfig_Duration{
+			Duration: durationpb.New(time.Second * 10),
+		},
+	}
+	conf.Scheduler.NodePingTimeout = &config.TimeoutConfig{
+		TimeoutOption: &config.TimeoutConfig_Duration{
+			Duration: durationpb.New(time.Second * 10),
+		},
+	}
+	conf.Scheduler.NodeDeadTimeout = &config.TimeoutConfig{
+		TimeoutOption: &config.TimeoutConfig_Duration{
+			Duration: durationpb.New(time.Second * 10),
+		},
+	}
 
 	bg := context.Background()
 	log := logger.NewLogger("node", tests.LogConfig())
@@ -40,7 +53,7 @@ func TestNodeGoneOnCanceledContext(t *testing.T) {
 	go n.Run(ctx)
 
 	srv.Scheduler.CheckNodes()
-	time.Sleep(time.Duration(conf.Node.UpdateRate * 2))
+	time.Sleep(conf.Node.UpdateRate.AsDuration() * 2)
 
 	resp, err := srv.Scheduler.Nodes.ListNodes(bg, &scheduler.ListNodesRequest{})
 	if err != nil {
@@ -53,7 +66,7 @@ func TestNodeGoneOnCanceledContext(t *testing.T) {
 	}
 
 	cancel()
-	time.Sleep(time.Duration(conf.Node.UpdateRate * 2))
+	time.Sleep(conf.Node.UpdateRate.AsDuration() * 2)
 	srv.Scheduler.CheckNodes()
 
 	resp, err = srv.Scheduler.Nodes.ListNodes(bg, &scheduler.ListNodesRequest{})
@@ -71,9 +84,21 @@ func TestNodeGoneOnCanceledContext(t *testing.T) {
 func TestManualBackend(t *testing.T) {
 	conf := tests.DefaultConfig()
 	conf.Compute = "manual"
-	conf.Scheduler.NodeInitTimeout = config.Duration(time.Second * 10)
-	conf.Scheduler.NodePingTimeout = config.Duration(time.Second * 10)
-	conf.Scheduler.NodeDeadTimeout = config.Duration(time.Second * 10)
+	conf.Scheduler.NodeInitTimeout = &config.TimeoutConfig{
+		TimeoutOption: &config.TimeoutConfig_Duration{
+			Duration: durationpb.New(time.Second * 10),
+		},
+	}
+	conf.Scheduler.NodePingTimeout = &config.TimeoutConfig{
+		TimeoutOption: &config.TimeoutConfig_Duration{
+			Duration: durationpb.New(time.Second * 10),
+		},
+	}
+	conf.Scheduler.NodeDeadTimeout = &config.TimeoutConfig{
+		TimeoutOption: &config.TimeoutConfig_Duration{
+			Duration: durationpb.New(time.Second * 10),
+		},
+	}
 
 	log := logger.NewLogger("node", tests.LogConfig())
 	tests.SetLogOutput(log, t)
@@ -126,9 +151,21 @@ func TestManualBackend(t *testing.T) {
 func TestDeadNodeTaskCleanup(t *testing.T) {
 	conf := tests.DefaultConfig()
 	conf.Compute = "manual"
-	conf.Scheduler.NodeInitTimeout = config.Duration(time.Second * 10)
-	conf.Scheduler.NodePingTimeout = config.Duration(time.Second * 10)
-	conf.Scheduler.NodeDeadTimeout = config.Duration(time.Second * 10)
+	conf.Scheduler.NodeInitTimeout = &config.TimeoutConfig{
+		TimeoutOption: &config.TimeoutConfig_Duration{
+			Duration: durationpb.New(time.Second * 10),
+		},
+	}
+	conf.Scheduler.NodePingTimeout = &config.TimeoutConfig{
+		TimeoutOption: &config.TimeoutConfig_Duration{
+			Duration: durationpb.New(time.Second * 10),
+		},
+	}
+	conf.Scheduler.NodeDeadTimeout = &config.TimeoutConfig{
+		TimeoutOption: &config.TimeoutConfig_Duration{
+			Duration: durationpb.New(time.Second * 10),
+		},
+	}
 
 	log := logger.NewLogger("node", tests.LogConfig())
 	tests.SetLogOutput(log, t)
@@ -262,9 +299,21 @@ func TestNodeCleanup(t *testing.T) {
 func TestNodeDrain(t *testing.T) {
 	conf := tests.DefaultConfig()
 	conf.Compute = "manual"
-	conf.Scheduler.NodeInitTimeout = config.Duration(time.Second * 10)
-	conf.Scheduler.NodePingTimeout = config.Duration(time.Second * 10)
-	conf.Scheduler.NodeDeadTimeout = config.Duration(time.Second * 10)
+	conf.Scheduler.NodeInitTimeout = &config.TimeoutConfig{
+		TimeoutOption: &config.TimeoutConfig_Duration{
+			Duration: durationpb.New(time.Second * 10),
+		},
+	}
+	conf.Scheduler.NodePingTimeout = &config.TimeoutConfig{
+		TimeoutOption: &config.TimeoutConfig_Duration{
+			Duration: durationpb.New(time.Second * 10),
+		},
+	}
+	conf.Scheduler.NodeDeadTimeout = &config.TimeoutConfig{
+		TimeoutOption: &config.TimeoutConfig_Duration{
+			Duration: durationpb.New(time.Second * 10),
+		},
+	}
 
 	bg := context.Background()
 	log := logger.NewLogger("node", tests.LogConfig())
@@ -289,7 +338,7 @@ func TestNodeDrain(t *testing.T) {
 	go n.Run(ctx)
 
 	srv.Scheduler.CheckNodes()
-	time.Sleep(time.Duration(conf.Node.UpdateRate * 10))
+	time.Sleep(conf.Node.UpdateRate.AsDuration() * 10)
 
 	resp, err := srv.Scheduler.Nodes.ListNodes(bg, &scheduler.ListNodesRequest{})
 	if err != nil {
@@ -305,7 +354,7 @@ func TestNodeDrain(t *testing.T) {
 	// Start a task, which is expected to be scheduled to the node.
 	first := srv.Run("echo")
 
-	time.Sleep(time.Duration(conf.Node.UpdateRate * 10))
+	time.Sleep(conf.Node.UpdateRate.AsDuration() * 10)
 	srv.Scheduler.CheckNodes()
 	resp, err = srv.Scheduler.Nodes.ListNodes(bg, &scheduler.ListNodesRequest{})
 	if err != nil {
@@ -320,13 +369,13 @@ func TestNodeDrain(t *testing.T) {
 
 	// Drain the node.
 	n.Drain()
-	time.Sleep(time.Duration(conf.Node.UpdateRate * 10))
+	time.Sleep(conf.Node.UpdateRate.AsDuration() * 10)
 
 	// Start a second task, which is expected NOT to be scheduled,
 	// since the node is now draining.
 	second := srv.Run("echo")
 
-	time.Sleep(time.Duration(conf.Node.UpdateRate * 10))
+	time.Sleep(conf.Node.UpdateRate.AsDuration() * 10)
 
 	resp, err = srv.Scheduler.Nodes.ListNodes(bg, &scheduler.ListNodesRequest{})
 	if err != nil {
@@ -342,7 +391,7 @@ func TestNodeDrain(t *testing.T) {
 	log.Info("NODE", nodes[0])
 
 	close(block)
-	time.Sleep(time.Duration(conf.Node.UpdateRate * 10))
+	time.Sleep(conf.Node.UpdateRate.AsDuration() * 10)
 
 	resp, err = srv.Scheduler.Nodes.ListNodes(bg, &scheduler.ListNodesRequest{})
 	if err != nil {

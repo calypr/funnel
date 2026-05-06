@@ -6,10 +6,10 @@ import (
 	"strings"
 
 	"github.com/boltdb/bolt"
-	proto "github.com/golang/protobuf/proto"
 	"github.com/ohsu-comp-bio/funnel/server"
 	"github.com/ohsu-comp-bio/funnel/tes"
 	"golang.org/x/net/context"
+	"google.golang.org/protobuf/proto"
 )
 
 func getTaskState(tx *bolt.Tx, id string) tes.State {

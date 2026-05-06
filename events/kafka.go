@@ -9,12 +9,12 @@ import (
 
 // KafkaWriter writes events to a Kafka topic.
 type KafkaWriter struct {
-	conf     config.Kafka
+	conf     *config.Kafka
 	producer sarama.SyncProducer
 }
 
 // NewKafkaWriter creates a new event writer for writing events to a Kafka topic.
-func NewKafkaWriter(ctx context.Context, conf config.Kafka) (*KafkaWriter, error) {
+func NewKafkaWriter(ctx context.Context, conf *config.Kafka) (*KafkaWriter, error) {
 	producer, err := sarama.NewSyncProducer(conf.Servers, nil)
 	if err != nil {
 		return nil, err
@@ -56,13 +56,13 @@ func (k *KafkaWriter) Close() {
 // KafkaReader reads events to a Kafka topic and writes them
 // to a Writer.
 type KafkaReader struct {
-	conf config.Kafka
+	conf *config.Kafka
 	con  sarama.Consumer
 	pcon sarama.PartitionConsumer
 }
 
 // NewKafkaReader creates a new event reader for reading events from a Kafka topic and writing them to the given Writer.
-func NewKafkaReader(ctx context.Context, conf config.Kafka, w Writer) (*KafkaReader, error) {
+func NewKafkaReader(ctx context.Context, conf *config.Kafka, w Writer) (*KafkaReader, error) {
 	con, err := sarama.NewConsumer(conf.Servers, nil)
 	if err != nil {
 		return nil, err

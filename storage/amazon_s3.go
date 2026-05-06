@@ -16,9 +16,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/ohsu-comp-bio/funnel/config"
 	util "github.com/ohsu-comp-bio/funnel/util/aws"
+	s3util "github.com/ohsu-comp-bio/funnel/util/s3"
 )
-
-var endpointRE = regexp.MustCompile("^(http[s]?://)?(.[^/]+)(.+)?$")
 
 // s3Protocol defines the s3 URL protocol
 const s3Protocol = "s3://"
@@ -35,15 +34,15 @@ type AmazonS3 struct {
 }
 
 // NewAmazonS3 creates an AmazonS3 session instance
-func NewAmazonS3(conf config.AmazonS3Storage) (*AmazonS3, error) {
+func NewAmazonS3(conf *config.AmazonS3Storage) (*AmazonS3, error) {
 	sess, err := util.NewAWSSession(conf.AWSConfig)
 	if err != nil {
 		return nil, fmt.Errorf("error creating amazon s3 backend: %v", err)
 	}
 
 	var endpoint string
-	if conf.Endpoint != "" {
-		endpoint = endpointRE.ReplaceAllString(conf.Endpoint, "$2/")
+	if conf.AWSConfig.Endpoint != "" {
+		endpoint = s3util.ParseEndpoint(conf.AWSConfig.Endpoint)
 	}
 
 	// handle SSE config
@@ -53,11 +52,11 @@ func NewAmazonS3(conf config.AmazonS3Storage) (*AmazonS3, error) {
 	var kmsKeyID *string
 	var serverSideEncryption *string
 
-	if conf.SSE.CustomerKeyFile != "" && conf.SSE.KMSKey != "" {
+	if conf.SSE != nil && conf.SSE.CustomerKeyFile != "" && conf.SSE.KMSKey != "" {
 		return nil, fmt.Errorf("invalid SSE config: can't provide both Customer and KMS keys")
 	}
 
-	if conf.SSE.CustomerKeyFile != "" {
+	if conf.SSE != nil && conf.SSE.CustomerKeyFile != "" {
 		key, err := os.ReadFile(conf.SSE.CustomerKeyFile)
 		if err != nil {
 			return nil, fmt.Errorf("error reading sse-c file: %v", err)
@@ -69,7 +68,7 @@ func NewAmazonS3(conf config.AmazonS3Storage) (*AmazonS3, error) {
 		customerKeyMD5 = aws.String(base64.StdEncoding.EncodeToString(b[:]))
 	}
 
-	if conf.SSE.KMSKey != "" {
+	if conf.SSE != nil && conf.SSE.KMSKey != "" {
 		serverSideEncryption = aws.String(s3.ServerSideEncryptionAwsKms)
 		kmsKeyID = aws.String(conf.SSE.KMSKey)
 	}

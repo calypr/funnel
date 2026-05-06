@@ -40,19 +40,19 @@ func (c *loginCreds) RequireTransportSecurity() bool {
 }
 
 // Dial returns a new gRPC ClientConn with some default dial and call options set
-func Dial(pctx context.Context, conf config.RPCClient, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
-	ctx, cancel := context.WithTimeout(pctx, time.Duration(conf.Timeout))
+func Dial(pctx context.Context, conf *config.RPCClient, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
+	ctx, cancel := context.WithTimeout(pctx, conf.Timeout.GetDuration().AsDuration())
 	defer cancel()
 
 	defaultOpts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		PerRPCPassword(conf.User, conf.Password),
+		PerRPCPassword(conf.Credential.User, conf.Credential.Password),
 	}
 	opts = append(opts, defaultOpts...)
 	opts = append(
 		opts,
 		grpc.WithUnaryInterceptor(grpc_retry.UnaryClientInterceptor(
-			grpc_retry.WithMax(conf.MaxRetries),
+			grpc_retry.WithMax(uint(conf.MaxRetries)),
 			grpc_retry.WithBackoff(newExponentialBackoff().BackoffWithJitter),
 		)),
 	)

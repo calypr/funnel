@@ -55,7 +55,7 @@ type BoltDB struct {
 
 // NewBoltDB returns a new instance of BoltDB, accessing the database at
 // the given path, and including the given ServerConfig.
-func NewBoltDB(conf config.BoltDB) (*BoltDB, error) {
+func NewBoltDB(conf *config.BoltDB) (*BoltDB, error) {
 	fsutil.EnsurePath(conf.Path)
 	db, err := bolt.Open(conf.Path, 0600, &bolt.Options{
 		Timeout: time.Second * 5,

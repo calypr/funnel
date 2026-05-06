@@ -1,3 +1,5 @@
+version: 2
+
 builds:
   - binary: funnel
     goos:
@@ -11,31 +13,33 @@ builds:
     ldflags: >
       -X github.com/ohsu-comp-bio/funnel/version.BuildDate={{.Date}}
       -X github.com/ohsu-comp-bio/funnel/version.GitCommit={{.ShortCommit}}
-      -X github.com/ohsu-comp-bio/funnel/version.GitBranch={{.Env.GIT_BRANCH}}
-      -X github.com/ohsu-comp-bio/funnel/version.GitUpstream={{.Env.GIT_UPSTREAM}}
+      -X github.com/ohsu-comp-bio/funnel/version.GitBranch={{.Branch}}
+      -X github.com/ohsu-comp-bio/funnel/version.GitUpstream={{.GitURL}}
       -X github.com/ohsu-comp-bio/funnel/version.Version={{.Version}}
 
 dist: build/release
 
 release:
-  draft: true
+  draft: false
+  prerelease: auto
 
-env_files:
-  github_token: .github_token
+checksum:
+  name_template: "funnel-{{.Tag}}-checksums.txt"
 
 archives:
-  - format: tar.gz
-    name_template: "{{.ProjectName}}-{{.Os}}-{{.Arch}}-{{.Version}}"
+  - formats:
+      - tar.gz
+    name_template: "{{.ProjectName}}-{{.Os}}-{{.Arch}}-{{.Tag}}"
+    files:
+      - LICENSE*
+      - README*
+      - CHANGELOG*
 
-brews:
-  - repository:
-      owner: ohsu-comp-bio
-      name: homebrew-formula
-    directory: Formula
-    skip_upload: true
-    description: "distributed task execution toolkit"
-    homepage: "https://ohsu-comp-bio.github.io/funnel/"
-    install: |
-      bin.install "funnel"
-    test: |
-      system "#{bin}/funnel", "version"
+# Add changelog generation
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^ci:'

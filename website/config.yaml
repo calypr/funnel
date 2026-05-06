@@ -1,11 +1,12 @@
-baseURL: https://ohsu-comp-bio.github.io/funnel/
+baseURL: https://ohsu-comp-bio.github.io/funnel
 canonifyURLs: true
 languageCode: en-us
 title: Funnel
 publishDir: ../docs
+assetDir: assets
 menu:
   main:
-    - name: Reference
+    - name: Reference ↗
       parent: Development
       url: https://godoc.org/github.com/ohsu-comp-bio/funnel
       weight: 30
@@ -13,8 +14,10 @@ security:
   funcs:
     getenv:
       - ^FUNNEL_
-
 markup:
   goldmark:
     renderer:
       unsafe: true
+module:
+  imports:
+    - path: github.com/KKKZOZ/hugo-admonitions

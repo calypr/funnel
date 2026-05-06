@@ -1,6 +1,7 @@
 package aws
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 
@@ -11,7 +12,10 @@ import (
 )
 
 // NewAWSSession returns a new session.Session instance.
-func NewAWSSession(conf config.AWSConfig) (*session.Session, error) {
+func NewAWSSession(conf *config.AWSConfig) (*session.Session, error) {
+	if conf == nil {
+		return nil, fmt.Errorf("Config provided is nil")
+	}
 	awsConf := aws.NewConfig()
 
 	if conf.DisableAutoCredentialLoad {
@@ -34,7 +38,7 @@ func NewAWSSession(conf config.AWSConfig) (*session.Session, error) {
 	}
 
 	if conf.MaxRetries > 0 {
-		awsConf.WithMaxRetries(conf.MaxRetries)
+		awsConf.WithMaxRetries(int(conf.MaxRetries))
 	}
 
 	if conf.Key != "" && conf.Secret != "" {

@@ -1,0 +1,125 @@
+EventWriters:
+- log
+Database: boltdb
+Compute: local
+Server:
+  ServiceName: Funnel
+  HostName: localhost
+  HTTPPort: "8000"
+  RPCPort: "9090"
+  DisableHTTPCache: true
+  TaskAccess: All
+RPCClient:
+  Credential: {}
+  ServerAddress: localhost:9090
+  Timeout:
+    seconds: 60
+  MaxRetries: 10
+Scheduler:
+  ScheduleRate:
+    seconds: 1
+  ScheduleChunk: 10
+  NodePingTimeout:
+    seconds: 60
+  NodeInitTimeout:
+    seconds: 300
+  NodeDeadTimeout:
+    seconds: 300
+Node:
+  Resources: {}
+  Timeout:
+    nanos: -1
+  UpdateRate:
+    seconds: 5
+Worker:
+  WorkDir: /Users/peterkor/Desktop/BMEG/funnel/cmd/node/funnel-work-dir
+  PollingRate:
+    seconds: 5
+  LogUpdateRate:
+    seconds: 5
+  LogTailSize: 10000
+  MaxParallelTransfers: 10
+  Container:
+    DriverCommand: docker
+    RunCommand: run -i --read-only {{if .RemoveContainer}}--rm{{end}} {{.GetEnvArgs}} {{range $k, $v := .Tags}}--label {{$k}}={{$v}} {{end}} {{if .Name}}--name {{.Name}}{{end}} {{if .Workdir}}--workdir {{.Workdir}}{{end}} {{range .Volumes}}--volume {{.HostPath}}:{{.ContainerPath}}:{{if .Readonly}}ro{{else}}rw{{end}} {{end}} {{.Image}} {{.Command}}
+    PullCommand: pull {{.Image}}
+    StopCommand: rm -f {{.Name}}
+Logger:
+  level: info
+  formatter: text
+  text_format:
+    full_timestamp: true
+    timestamp_format: 2006-01-02T15:04:05Z07:00
+BoltDB:
+  Path: /Users/peterkor/Desktop/BMEG/funnel/cmd/node/funnel-work-dir/funnel.db
+Badger:
+  Path: /Users/peterkor/Desktop/BMEG/funnel/cmd/node/funnel-work-dir/funnel.badger.db
+DynamoDB:
+  TableBasename: funnel
+  AWSConfig: {}
+Elastic:
+  IndexPrefix: funnel
+  URL: http://localhost:9200
+MongoDB:
+  Addrs:
+  - localhost
+  Database: funnel
+  Timeout:
+    seconds: 300
+Kafka:
+  Topic: funnel
+PubSub: {}
+Datastore: {}
+HTCondor:
+  DisableReconciler: true
+  ReconcileRate:
+    seconds: 600
+  Template: "universe = vanilla\ngetenv = True\nexecutable = funnel\narguments = worker run --taskID {{.TaskId}}\nlog = {{.WorkDir}}/condor-event-log\nerror = {{.WorkDir}}/funnel-stderr\noutput = {{.WorkDir}}/funnel-stdout\nshould_transfer_files = YES\nwhen_to_transfer_output = ON_EXIT_OR_EVICT\n{{if ne .Cpus 0 -}}\n{{printf \"request_cpus = %d\" .Cpus}}\n{{- end}}\n{{if ne .RamGb 0.0 -}}\n{{printf \"request_memory = %.0f GB\" .RamGb}}\n{{- end}}\n{{if ne .DiskGb 0.0 -}}\n{{printf \"request_disk = %.0f GB\" .DiskGb}}\n{{- end}}\n\nqueue\n"
+Slurm:
+  DisableReconciler: true
+  ReconcileRate:
+    seconds: 600
+  Template: "#!/bin/bash\n#SBATCH --job-name {{.TaskId}}\n#SBATCH --ntasks 1\n#SBATCH --error {{.WorkDir}}/funnel-stderr\n#SBATCH --output {{.WorkDir}}/funnel-stdout\n{{if ne .Cpus 0 -}}\n{{printf \"#SBATCH --cpus-per-task %d\" .Cpus}}\n{{- end}}\n{{if ne .RamGb 0.0 -}}\n{{printf \"#SBATCH --mem %.0fGB\" .RamGb}}\n{{- end}}\n{{if ne .DiskGb 0.0 -}}\n{{printf \"#SBATCH --tmp %.0fGB\" .DiskGb}}\n{{- end}}\n\nfunnel worker run --taskID {{.TaskId}}\n"
+PBS:
+  DisableReconciler: true
+  ReconcileRate:
+    seconds: 600
+  Template: "#!/bin/bash\n#PBS -N {{.TaskId}}\n#PBS -o {{.WorkDir}}/funnel-stdout\n#PBS -e {{.WorkDir}}/funnel-stderr\n{{if ne .Cpus 0 -}}\n{{printf \"#PBS -l nodes=1:ppn=%d\" .Cpus}}\n{{- end}}\n{{if ne .RamGb 0.0 -}}\n{{printf \"#PBS -l mem=%.0fgb\" .RamGb}}\n{{- end}}\n{{if ne .DiskGb 0.0 -}}\n{{printf \"#PBS -l file=%.0fgb\" .DiskGb}}\n{{- end}}\n\nfunnel worker run --taskID {{.TaskId}}\n"
+GridEngine:
+  Template: "#!/bin/bash\n#$ -N {{.TaskId}}\n#$ -o {{.WorkDir}}/funnel-stdout\n#$ -e {{.WorkDir}}/funnel-stderr\n{{if ne .Cpus 0 -}}\n{{printf \"#$ -pe mpi %d\" .Cpus}}\n{{- end}}\n{{if ne .RamGb 0.0 -}}\n{{printf \"#$ -l h_vmem=%.0fG\" .RamGb}}\n{{- end}}\n{{if ne .DiskGb 0.0 -}}\n{{printf \"#$ -l h_fsize=%.0fG\" .DiskGb}}\n{{- end}}\n\nfunnel worker run --taskID {{.TaskId}}\n"
+AWSBatch:
+  JobDefinition: funnel-job-def
+  JobQueue: funnel-job-queue
+  DisableReconciler: true
+  ReconcileRate:
+    seconds: 600
+  AWSConfig: {}
+Kubernetes:
+  Executor: docker
+  ReconcileRate:
+    seconds: 600
+  Template: /etc/funnel/templates/worker-job.yaml
+  ExecutorTemplate: /etc/funnel/templates/executor-job.yaml
+  PVTemplate: /etc/funnel/templates/worker-pv.yaml
+  PVCTemplate: /etc/funnel/templates/worker-pvc.yaml
+LocalStorage:
+  AllowedDirs:
+  - /Users/peterkor/Desktop/BMEG/funnel/cmd/node
+  - /Users/peterkor
+  - /var/folders/v_/j3zplgbs155cgwtqjftj377nd_4gyt/T/
+AmazonS3:
+  SSE: {}
+  AWSConfig:
+    MaxRetries: 10
+GoogleStorage: {}
+Swift:
+  ChunkSizeBytes: 500000000
+  MaxRetries: 20
+HTTPStorage:
+  Timeout:
+    seconds: 60
+FTPStorage:
+  Timeout:
+    seconds: 10
+  User: anonymous
+  Password: anonymous

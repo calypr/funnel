@@ -1,0 +1,1070 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "tes/tes.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "TaskService"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/ga4gh/tes/v1/service-info": {
+      "get": {
+        "operationId": "TaskService_GetServiceInfo3",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/tesServiceInfo"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "TaskService"
+        ]
+      }
+    },
+    "/ga4gh/tes/v1/tasks": {
+      "get": {
+        "operationId": "TaskService_ListTasks3",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/tesListTasksResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "namePrefix",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "UNKNOWN",
+              "QUEUED",
+              "INITIALIZING",
+              "RUNNING",
+              "PAUSED",
+              "COMPLETE",
+              "EXECUTOR_ERROR",
+              "SYSTEM_ERROR",
+              "CANCELED",
+              "PREEMPTED",
+              "CANCELING"
+            ],
+            "default": "UNKNOWN"
+          },
+          {
+            "name": "tagKey",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "tagValue",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "pageToken",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "TaskService"
+        ]
+      },
+      "post": {
+        "operationId": "TaskService_CreateTask3",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/tesCreateTaskResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/tesTask"
+            }
+          }
+        ],
+        "tags": [
+          "TaskService"
+        ]
+      }
+    },
+    "/ga4gh/tes/v1/tasks/{id}": {
+      "get": {
+        "operationId": "TaskService_GetTask3",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/tesTask"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "TaskService"
+        ]
+      }
+    },
+    "/ga4gh/tes/v1/tasks/{id}:cancel": {
+      "post": {
+        "operationId": "TaskService_CancelTask3",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/tesCancelTaskResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/TaskServiceCancelTaskBody"
+            }
+          }
+        ],
+        "tags": [
+          "TaskService"
+        ]
+      }
+    },
+    "/service-info": {
+      "get": {
+        "operationId": "TaskService_GetServiceInfo",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/tesServiceInfo"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "TaskService"
+        ]
+      }
+    },
+    "/tasks": {
+      "get": {
+        "operationId": "TaskService_ListTasks",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/tesListTasksResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "namePrefix",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "UNKNOWN",
+              "QUEUED",
+              "INITIALIZING",
+              "RUNNING",
+              "PAUSED",
+              "COMPLETE",
+              "EXECUTOR_ERROR",
+              "SYSTEM_ERROR",
+              "CANCELED",
+              "PREEMPTED",
+              "CANCELING"
+            ],
+            "default": "UNKNOWN"
+          },
+          {
+            "name": "tagKey",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "tagValue",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "pageToken",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "TaskService"
+        ]
+      },
+      "post": {
+        "operationId": "TaskService_CreateTask",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/tesCreateTaskResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/tesTask"
+            }
+          }
+        ],
+        "tags": [
+          "TaskService"
+        ]
+      }
+    },
+    "/tasks/{id}": {
+      "get": {
+        "operationId": "TaskService_GetTask",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/tesTask"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "TaskService"
+        ]
+      }
+    },
+    "/tasks/{id}:cancel": {
+      "post": {
+        "operationId": "TaskService_CancelTask",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/tesCancelTaskResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/TaskServiceCancelTaskBody"
+            }
+          }
+        ],
+        "tags": [
+          "TaskService"
+        ]
+      }
+    },
+    "/v1/service-info": {
+      "get": {
+        "operationId": "TaskService_GetServiceInfo2",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/tesServiceInfo"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "TaskService"
+        ]
+      }
+    },
+    "/v1/tasks": {
+      "get": {
+        "operationId": "TaskService_ListTasks2",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/tesListTasksResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "namePrefix",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "UNKNOWN",
+              "QUEUED",
+              "INITIALIZING",
+              "RUNNING",
+              "PAUSED",
+              "COMPLETE",
+              "EXECUTOR_ERROR",
+              "SYSTEM_ERROR",
+              "CANCELED",
+              "PREEMPTED",
+              "CANCELING"
+            ],
+            "default": "UNKNOWN"
+          },
+          {
+            "name": "tagKey",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "tagValue",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "pageToken",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "TaskService"
+        ]
+      },
+      "post": {
+        "operationId": "TaskService_CreateTask2",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/tesCreateTaskResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/tesTask"
+            }
+          }
+        ],
+        "tags": [
+          "TaskService"
+        ]
+      }
+    },
+    "/v1/tasks/{id}": {
+      "get": {
+        "operationId": "TaskService_GetTask2",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/tesTask"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "TaskService"
+        ]
+      }
+    },
+    "/v1/tasks/{id}:cancel": {
+      "post": {
+        "operationId": "TaskService_CancelTask2",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/tesCancelTaskResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/TaskServiceCancelTaskBody"
+            }
+          }
+        ],
+        "tags": [
+          "TaskService"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "TaskServiceCancelTaskBody": {
+      "type": "object"
+    },
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "tesCancelTaskResponse": {
+      "type": "object"
+    },
+    "tesCreateTaskResponse": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      }
+    },
+    "tesExecutor": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "ignoreError": {
+          "type": "boolean"
+        },
+        "image": {
+          "type": "string"
+        },
+        "stderr": {
+          "type": "string"
+        },
+        "stdin": {
+          "type": "string"
+        },
+        "stdout": {
+          "type": "string"
+        },
+        "workdir": {
+          "type": "string"
+        }
+      }
+    },
+    "tesExecutorLog": {
+      "type": "object",
+      "properties": {
+        "endTime": {
+          "type": "string"
+        },
+        "exitCode": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "startTime": {
+          "type": "string"
+        },
+        "stderr": {
+          "type": "string"
+        },
+        "stdout": {
+          "type": "string"
+        }
+      }
+    },
+    "tesFileType": {
+      "type": "string",
+      "enum": [
+        "FILE",
+        "DIRECTORY"
+      ],
+      "default": "FILE"
+    },
+    "tesInput": {
+      "type": "object",
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "streamable": {
+          "type": "boolean"
+        },
+        "type": {
+          "$ref": "#/definitions/tesFileType"
+        },
+        "url": {
+          "type": "string"
+        }
+      }
+    },
+    "tesListTasksResponse": {
+      "type": "object",
+      "properties": {
+        "nextPageToken": {
+          "type": "string"
+        },
+        "tasks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/tesTask"
+          }
+        }
+      }
+    },
+    "tesOutput": {
+      "type": "object",
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "pathPrefix": {
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/definitions/tesFileType"
+        },
+        "url": {
+          "type": "string"
+        }
+      }
+    },
+    "tesOutputFileLog": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "sizeBytes": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      }
+    },
+    "tesResources": {
+      "type": "object",
+      "properties": {
+        "backendParameters": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "backendParametersStrict": {
+          "type": "boolean"
+        },
+        "cpuCores": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "diskGb": {
+          "type": "number",
+          "format": "double"
+        },
+        "preemptible": {
+          "type": "boolean"
+        },
+        "ramGb": {
+          "type": "number",
+          "format": "double"
+        },
+        "zones": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "tesServiceInfo": {
+      "type": "object",
+      "properties": {
+        "contactUrl": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "documentationUrl": {
+          "type": "string"
+        },
+        "environment": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "organization": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "storage": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tesResourcesBackendParameters": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "type": {
+          "$ref": "#/definitions/tesServiceType"
+        },
+        "updatedAt": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "tesServiceType": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "string"
+        },
+        "group": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "tesState": {
+      "type": "string",
+      "enum": [
+        "UNKNOWN",
+        "QUEUED",
+        "INITIALIZING",
+        "RUNNING",
+        "PAUSED",
+        "COMPLETE",
+        "EXECUTOR_ERROR",
+        "SYSTEM_ERROR",
+        "CANCELED",
+        "PREEMPTED",
+        "CANCELING"
+      ],
+      "default": "UNKNOWN"
+    },
+    "tesTask": {
+      "type": "object",
+      "properties": {
+        "creationTime": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "executors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/tesExecutor"
+          }
+        },
+        "id": {
+          "type": "string"
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/tesInput"
+          }
+        },
+        "logs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/tesTaskLog"
+          }
+        },
+        "name": {
+          "type": "string"
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/tesOutput"
+          }
+        },
+        "resources": {
+          "$ref": "#/definitions/tesResources"
+        },
+        "state": {
+          "$ref": "#/definitions/tesState"
+        },
+        "tags": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "volumes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "tesTaskLog": {
+      "type": "object",
+      "properties": {
+        "endTime": {
+          "type": "string"
+        },
+        "logs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/tesExecutorLog"
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/tesOutputFileLog"
+          }
+        },
+        "startTime": {
+          "type": "string"
+        },
+        "systemLogs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

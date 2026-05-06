@@ -3,10 +3,11 @@ package worker
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 
-	"github.com/golang/protobuf/jsonpb"
 	"github.com/ohsu-comp-bio/funnel/tes"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 // FileTaskReader provides a TaskReader implementation from a task file.
@@ -24,10 +25,14 @@ func NewFileTaskReader(path string) (*FileTaskReader, error) {
 	}
 	defer fh.Close()
 
-	task := &tes.Task{}
-	err = jsonpb.Unmarshal(fh, task)
+	jsonData, err := io.ReadAll(fh)
 	if err != nil {
-		return nil, fmt.Errorf("unmarshaling task file: %v", err)
+		return nil, fmt.Errorf("reading task file: %v", err)
+	}
+
+	task := &tes.Task{}
+	if err := protojson.Unmarshal(jsonData, task); err != nil {
+		return nil, fmt.Errorf("unmarshaling task from JSON: %v", err)
 	}
 
 	err = tes.InitTask(task, false)

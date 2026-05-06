@@ -38,12 +38,33 @@ message CancelTaskRequest {
 	string id = 1;
 }
 
+message ExecutorBasic { 
+	repeated string command = 1;
+	map<string,string> env = 2;
+	bool ignore_error = 3;
+	string image = 4;
+	string stderr = 5;
+	string stdin = 6;
+	string stdout = 7;
+	string workdir = 8;
+}
+
 message GetServiceInfoRequest { 
 }
 
 message GetTaskRequest { 
 	string id = 1;
 	string view = 2;
+}
+
+message InputBasic { 
+	string content = 1;
+	string description = 2;
+	string name = 3;
+	string path = 4;
+	bool streamable = 5;
+	FileType type = 6;
+	string url = 7;
 }
 
 message ListTasksRequest { 
@@ -54,6 +75,55 @@ message ListTasksRequest {
 	int32 page_size = 5;
 	string page_token = 6;
 	string view = 7;
+}
+
+message ListTasksResponseBasic { 
+	string next_page_token = 1;
+	repeated TaskBasic tasks = 2;
+}
+
+message ListTasksResponseMin { 
+	string next_page_token = 1;
+	repeated TaskMin tasks = 2;
+}
+
+message TaskBasic { 
+	string creation_time = 1;
+	string description = 2;
+	repeated ExecutorBasic executors = 3;
+	string id = 4;
+	repeated InputBasic inputs = 5;
+	repeated TaskLogBasic logs = 6;
+	string name = 7;
+	repeated Output outputs = 8;
+	Resources resources = 9;
+	State state = 10;
+	map<string,string> tags = 11;
+	repeated string volumes = 12;
+}
+
+message TaskLogBasic { 
+	string end_time = 1;
+	repeated ExecutorLog logs = 2;
+	map<string,string> metadata = 3;
+	repeated OutputFileLog outputs = 4;
+	string start_time = 5;
+	repeated string system_logs = 6;
+}
+
+message TaskMin { 
+	string creation_time = 1;
+	string description = 2;
+	repeated Executor executors = 3;
+	string id = 4;
+	repeated Input inputs = 5;
+	repeated TaskLog logs = 6;
+	string name = 7;
+	repeated Output outputs = 8;
+	Resources resources = 9;
+	State state = 10;
+	map<string,string> tags = 11;
+	repeated string volumes = 12;
 }
 
 message CancelTaskResponse { 
@@ -74,15 +144,6 @@ message Executor {
 	string workdir = 8;
 }
 
-message ExecutorBasic { 
-	repeated string command = 1;
-	map<string,string> env = 2;
-	bool ignore_error = 3;
-	string image = 4;
-	string stdin = 5;
-	string workdir = 6;
-}
-
 message ExecutorLog { 
 	string end_time = 1;
 	int32 exit_code = 2;
@@ -101,29 +162,9 @@ message Input {
 	string url = 7;
 }
 
-message InputBasic { 
-	string description = 1;
-	string name = 2;
-	string path = 3;
-	bool streamable = 4;
-	FileType type = 5;
-	string url = 6;
-}
-
-
 message ListTasksResponse { 
 	optional string next_page_token = 1;
 	repeated Task tasks = 2;
-}
-
-message ListTasksResponseMin { 
-	optional string next_page_token = 1;
-	repeated TaskMin tasks = 2;
-}
-
-message ListTasksResponseBasic { 
-	optional string next_page_token = 1;
-	repeated TaskBasic tasks = 2;
 }
 
 message Output { 
@@ -188,26 +229,6 @@ message Task {
 	repeated string volumes = 12;
 }
 
-message TaskMin { 
-	string id = 4;
-	State state = 10;
-}
-
-message TaskBasic { 
-	string creation_time = 1;
-	string description = 2;
-	repeated ExecutorBasic executors = 3;
-	string id = 4;
-	repeated InputBasic inputs = 5;
-	repeated TaskLogBasic logs = 6;
-	string name = 7;
-	repeated Output outputs = 8;
-	Resources resources = 9;
-	State state = 10;
-	map<string,string> tags = 11;
-	repeated string volumes = 12;
-}
-
 message TaskLog { 
 	string end_time = 1;
 	repeated ExecutorLog logs = 2;
@@ -217,15 +238,35 @@ message TaskLog {
 	repeated string system_logs = 6;
 }
 
-message TaskLogBasic { 
-	string end_time = 1;
-	repeated ExecutorLog logs = 2;
-	map<string,string> metadata = 3;
-	repeated OutputFileLog outputs = 4;
-	string start_time = 5;
-}
 
 service TaskService {
+
+    rpc CancelTask(CancelTaskRequest) returns (CancelTaskResponse) {
+      option (google.api.http) = {
+        post: "/tasks/{id}:cancel"
+		additional_bindings {
+			post: "/v1/tasks/{id}:cancel"
+			body: "*"
+		}
+		additional_bindings {
+			post: "/ga4gh/tes/v1/tasks/{id}:cancel"
+			body: "*"
+		}
+		body: "*"
+      };
+    }
+
+    rpc GetServiceInfo(GetServiceInfoRequest) returns (ServiceInfo) {
+      option (google.api.http) = {
+        get: "/service-info"
+		additional_bindings {
+			get: "/v1/service-info"
+		}
+		additional_bindings {
+			get: "/ga4gh/tes/v1/service-info"
+		}
+      };
+    }
 
     rpc ListTasks(ListTasksRequest) returns (ListTasksResponse) {
       option (google.api.http) = {
@@ -262,33 +303,6 @@ service TaskService {
 		}
 		additional_bindings {
 			get: "/ga4gh/tes/v1/tasks/{id}"
-		}
-      };
-    }
-
-    rpc CancelTask(CancelTaskRequest) returns (CancelTaskResponse) {
-      option (google.api.http) = {
-        post: "/tasks/{id}:cancel"
-		additional_bindings {
-			post: "/v1/tasks/{id}:cancel"
-			body: "*"
-		}
-		additional_bindings {
-			post: "/ga4gh/tes/v1/tasks/{id}:cancel"
-			body: "*"
-		}
-		body: "*"
-      };
-    }
-
-    rpc GetServiceInfo(GetServiceInfoRequest) returns (ServiceInfo) {
-      option (google.api.http) = {
-        get: "/service-info"
-		additional_bindings {
-			get: "/v1/service-info"
-		}
-		additional_bindings {
-			get: "/ga4gh/tes/v1/service-info"
 		}
       };
     }

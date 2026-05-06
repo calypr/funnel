@@ -1,0 +1,390 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "events/events.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "EventService"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {},
+  "definitions": {
+    "eventsMetadata": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "eventsOutputs": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/tesOutputFileLog"
+          }
+        }
+      }
+    },
+    "eventsSystemLog": {
+      "type": "object",
+      "properties": {
+        "msg": {
+          "type": "string"
+        },
+        "level": {
+          "type": "string"
+        },
+        "fields": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "eventsType": {
+      "type": "string",
+      "enum": [
+        "UNKNOWN",
+        "TASK_STATE",
+        "TASK_START_TIME",
+        "TASK_END_TIME",
+        "TASK_OUTPUTS",
+        "TASK_METADATA",
+        "EXECUTOR_START_TIME",
+        "EXECUTOR_END_TIME",
+        "EXECUTOR_EXIT_CODE",
+        "EXECUTOR_STDOUT",
+        "EXECUTOR_STDERR",
+        "SYSTEM_LOG",
+        "TASK_CREATED"
+      ],
+      "default": "UNKNOWN"
+    },
+    "eventsWriteEventResponse": {
+      "type": "object"
+    },
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "tesExecutor": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "ignoreError": {
+          "type": "boolean"
+        },
+        "image": {
+          "type": "string"
+        },
+        "stderr": {
+          "type": "string"
+        },
+        "stdin": {
+          "type": "string"
+        },
+        "stdout": {
+          "type": "string"
+        },
+        "workdir": {
+          "type": "string"
+        }
+      }
+    },
+    "tesExecutorLog": {
+      "type": "object",
+      "properties": {
+        "endTime": {
+          "type": "string"
+        },
+        "exitCode": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "startTime": {
+          "type": "string"
+        },
+        "stderr": {
+          "type": "string"
+        },
+        "stdout": {
+          "type": "string"
+        }
+      }
+    },
+    "tesFileType": {
+      "type": "string",
+      "enum": [
+        "FILE",
+        "DIRECTORY"
+      ],
+      "default": "FILE"
+    },
+    "tesInput": {
+      "type": "object",
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "streamable": {
+          "type": "boolean"
+        },
+        "type": {
+          "$ref": "#/definitions/tesFileType"
+        },
+        "url": {
+          "type": "string"
+        }
+      }
+    },
+    "tesOutput": {
+      "type": "object",
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "pathPrefix": {
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/definitions/tesFileType"
+        },
+        "url": {
+          "type": "string"
+        }
+      }
+    },
+    "tesOutputFileLog": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "sizeBytes": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      }
+    },
+    "tesResources": {
+      "type": "object",
+      "properties": {
+        "backendParameters": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "backendParametersStrict": {
+          "type": "boolean"
+        },
+        "cpuCores": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "diskGb": {
+          "type": "number",
+          "format": "double"
+        },
+        "preemptible": {
+          "type": "boolean"
+        },
+        "ramGb": {
+          "type": "number",
+          "format": "double"
+        },
+        "zones": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "tesState": {
+      "type": "string",
+      "enum": [
+        "UNKNOWN",
+        "QUEUED",
+        "INITIALIZING",
+        "RUNNING",
+        "PAUSED",
+        "COMPLETE",
+        "EXECUTOR_ERROR",
+        "SYSTEM_ERROR",
+        "CANCELED",
+        "PREEMPTED",
+        "CANCELING"
+      ],
+      "default": "UNKNOWN"
+    },
+    "tesTask": {
+      "type": "object",
+      "properties": {
+        "creationTime": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "executors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/tesExecutor"
+          }
+        },
+        "id": {
+          "type": "string"
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/tesInput"
+          }
+        },
+        "logs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/tesTaskLog"
+          }
+        },
+        "name": {
+          "type": "string"
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/tesOutput"
+          }
+        },
+        "resources": {
+          "$ref": "#/definitions/tesResources"
+        },
+        "state": {
+          "$ref": "#/definitions/tesState"
+        },
+        "tags": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "volumes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "tesTaskLog": {
+      "type": "object",
+      "properties": {
+        "endTime": {
+          "type": "string"
+        },
+        "logs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/tesExecutorLog"
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/tesOutputFileLog"
+          }
+        },
+        "startTime": {
+          "type": "string"
+        },
+        "systemLogs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

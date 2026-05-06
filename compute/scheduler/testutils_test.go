@@ -20,7 +20,7 @@ type testNode struct {
 	done   chan struct{}
 }
 
-func newTestNode(conf config.Config, t *testing.T) testNode {
+func newTestNode(conf *config.Config, t *testing.T) testNode {
 	workDir, _ := os.MkdirTemp("", "funnel-test-storage-")
 	conf.Worker.WorkDir = workDir
 	log := logger.NewLogger("test-node", logger.DebugConfig())
@@ -36,7 +36,7 @@ func newTestNode(conf config.Config, t *testing.T) testNode {
 		resources: res,
 		workerRun: NoopWorker,
 		workers:   newRunSet(),
-		timeout:   util.NewIdleTimeout(time.Duration(conf.Node.Timeout)),
+		timeout:   util.NewIdleTimeout(conf.Node.Timeout.GetDuration().AsDuration()),
 		state:     NodeState_ALIVE,
 	}
 

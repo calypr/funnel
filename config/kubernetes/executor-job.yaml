@@ -1,0 +1,77 @@
+# Task Executor
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{.TaskId}}-{{.JobId}}
+  namespace: {{.JobsNamespace}}
+  labels:
+    app: funnel-executor
+    job-name: {{.TaskId}}-{{.JobId}}
+spec:
+  backoffLimit: 1
+  completions: 1
+  template:
+    spec:
+      # NodeSelectors
+      # https://kubernetes.io/docs/tasks/configure-pod-container/assign-pods-nodes/#create-a-pod-that-gets-scheduled-to-your-chosen-node
+      {{- if .NodeSelector }}
+      nodeSelector:
+        {{- range $key, $value := .NodeSelector }}
+        {{ $key }}: {{ $value }}
+        {{- end }}
+      {{- end }}
+
+      # Tolerations
+      # https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/
+      {{- if .Tolerations }}
+      tolerations:
+        {{- range .Tolerations }}
+        - key: {{ .Key }}
+          operator: {{ .Operator }}
+          effect: {{ .Effect }}
+          {{if .Value}}value: {{ .Value }}{{end}}
+          {{if .TolerationSeconds}}tolerationSeconds: {{ .TolerationSeconds }}{{end}}
+        {{- end }}
+      {{- end }}
+
+      # SecurityContext
+      # https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-pod
+      {{- if .securityContext }}
+      securityContext:
+        fsGroup: {{ .securityContext.fsGroup }}
+        runAsUser: {{ .securityContext.runAsUser }}
+        runAsGroup: {{ .securityContext.runAsGroup }}
+        supplementalGroups: {{ .securityContext.supplementalGroups }}
+      {{- end }}
+
+      restartPolicy: OnFailure
+      serviceAccountName: funnel-sa-{{.Namespace}}
+      containers:
+      - name: funnel-worker-{{.TaskId}}
+        image: {{.Image}}
+        imagePullPolicy: Always
+        command: ["/bin/sh", "-c"]
+        args: {{.Command}}
+        workingDir: {{.Workdir}}
+        resources:
+          requests:
+            cpu: {{.Cpus}}
+            memory: {{.RamGb}}
+            ephemeral-storage: {{.DiskGb}}
+
+        volumeMounts:
+        ### DO NOT CHANGE THIS
+        {{- if .NeedsPVC }}
+          {{range $idx, $item := .Volumes}}
+          - name: funnel-storage-{{$.TaskId}}
+            mountPath: {{$item.ContainerPath}}
+            subPath: {{$.TaskId}}{{$item.ContainerPath}}
+          {{end}}
+        {{- end }}
+
+      volumes:
+      {{- if .NeedsPVC }}
+      - name: funnel-storage-{{.TaskId}}
+        persistentVolumeClaim:
+          claimName: funnel-worker-pvc-{{.TaskId}}
+      {{- end }}

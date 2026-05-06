@@ -4,17 +4,18 @@ import (
 	"time"
 
 	"github.com/ohsu-comp-bio/funnel/config"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 // Config represents configuration of the AWS proxy, including
 // the compute environment, job queue, and base job definition.
 type Config struct {
-	config.AWSConfig
-	ComputeEnv ComputeEnvConfig
-	JobQueue   JobQueueConfig
-	JobDef     JobDefinitionConfig
-	JobRole    JobRoleConfig
-	Funnel     config.Config
+	*config.AWSConfig
+	ComputeEnv *ComputeEnvConfig
+	JobQueue   *JobQueueConfig
+	JobDef     *JobDefinitionConfig
+	JobRole    *JobRoleConfig
+	Funnel     *config.Config
 }
 
 // ComputeEnvConfig represents configuration of the AWS Batch
@@ -90,10 +91,11 @@ type JobRoleConfig struct {
 }
 
 // DefaultConfig returns default configuration of for AWS Batch resource creation.
-func DefaultConfig() Config {
-	c := Config{
-		AWSConfig: config.AWSConfig{},
-		ComputeEnv: ComputeEnvConfig{
+func DefaultConfig() *Config {
+	c := &Config{
+		Funnel:    config.DefaultConfig(),
+		AWSConfig: &config.AWSConfig{},
+		ComputeEnv: &ComputeEnvConfig{
 			Name:          "funnel-compute-environment",
 			InstanceTypes: []string{"optimal"},
 			MinVCPUs:      0,
@@ -102,19 +104,19 @@ func DefaultConfig() Config {
 				"Name": "Funnel",
 			},
 		},
-		JobQueue: JobQueueConfig{
+		JobQueue: &JobQueueConfig{
 			Name:     "funnel-job-queue",
 			Priority: 1,
 			ComputeEnvs: []string{
 				"funnel-compute-environment",
 			},
 		},
-		JobRole: JobRoleConfig{
+		JobRole: &JobRoleConfig{
 			RoleName:           "FunnelEcsTaskRole",
 			DynamoDBPolicyName: "FunnelDynamoDB",
 			S3PolicyName:       "FunnelS3",
 		},
-		JobDef: JobDefinitionConfig{
+		JobDef: &JobDefinitionConfig{
 			Name:      "funnel-job-def",
 			Image:     "quay.io/ohsu-comp-bio/funnel:latest",
 			VCPUs:     1,
@@ -168,9 +170,9 @@ func DefaultConfig() Config {
 	c.Funnel.Database = "dynamodb"
 	c.Funnel.EventWriters = []string{"dynamodb", "log"}
 	c.Funnel.DynamoDB.TableBasename = "funnel"
-	c.Funnel.DynamoDB.Region = ""
+	c.Funnel.DynamoDB.AWSConfig.Region = ""
 	c.Funnel.Worker.WorkDir = "/opt/funnel-work-dir"
-	c.Funnel.Worker.LogUpdateRate = config.Duration(time.Minute * 5)
+	c.Funnel.Worker.LogUpdateRate = durationpb.New(time.Minute * 5)
 	c.Funnel.Worker.LogTailSize = 10000
 
 	return c

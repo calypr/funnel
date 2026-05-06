@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ohsu-comp-bio/funnel/events"
+	"github.com/ohsu-comp-bio/funnel/logger"
 	"github.com/ohsu-comp-bio/funnel/server"
 	"github.com/ohsu-comp-bio/funnel/tes"
 	"github.com/ohsu-comp-bio/funnel/util"
@@ -16,6 +17,7 @@ import (
 
 // WriteEvent creates an event for the server to handle.
 func (db *MongoDB) WriteEvent(ctx context.Context, req *events.Event) error {
+	logger := logger.NewLogger("mongodb", logger.DefaultConfig())
 	tasks := db.tasks()
 
 	update := bson.M{}
@@ -50,6 +52,7 @@ func (db *MongoDB) WriteEvent(ctx context.Context, req *events.Event) error {
 			// validate state transition
 			to := req.GetState()
 			if err = tes.ValidateTransition(state, to); err != nil {
+				logger.Debug("mongodb: invalid state transition", "taskID", req.Id, "from", state, "to", to, "error", err)
 				return err
 			}
 
@@ -179,9 +182,19 @@ func (db *MongoDB) findTaskStateAndVersion(ctx context.Context, taskId string) (
 		return tes.State_UNKNOWN, nil, err
 	}
 
+	// Check if "owner" is nil
+	if props["owner"] == nil {
+		return tes.State_UNKNOWN, nil, fmt.Errorf("owner field is missing in task properties")
+	}
+
 	taskOwner := props["owner"].(string)
 	if !server.GetUser(ctx).IsAccessible(taskOwner) {
 		return tes.State_UNKNOWN, nil, tes.ErrNotPermitted
+	}
+
+	// Check if "state" is nil
+	if props["state"] == nil {
+		return tes.State_UNKNOWN, nil, fmt.Errorf("state field is missing in task properties")
 	}
 
 	state := tes.State(props["state"].(int32))

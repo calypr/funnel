@@ -1,6 +1,6 @@
 {
   "name": "S3 Storage example",
-  "description": "Task inputs and outputs can be Cloud Storage URLs.",
+  "description": "Task inputs and outputs can be Cloud Storage URLs",
   "executors": [
     {
       "image": "ubuntu",
@@ -10,7 +10,7 @@
   "inputs": [
     {
       "name": "input",
-      "description": "Download a public file from S3 Storage (CZ CELLxGENE Discover Census Data: https://registry.opendata.aws/tag/bioinformatics/)",
+      "description": "Download a public file from S3 Storage (e.g. CZ CELLxGENE Discover Census Data → https://registry.opendata.aws/czi-cellxgene-census)",
       "url": "s3://cellxgene-census-public-us-west-2/cell-census/release.json",
       "path": "/tmp/release.json"
     }

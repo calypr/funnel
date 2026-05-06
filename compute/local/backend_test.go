@@ -13,9 +13,8 @@ func createBackend(p map[string]string) *Backend {
 	conf := config.DefaultConfig()
 	log := logger.NewLogger("test", logger.DefaultConfig())
 	b := &Backend{
-		conf:              conf,
-		log:               log,
-		backendParameters: p,
+		conf: conf,
+		log:  log,
 	}
 	return b
 }

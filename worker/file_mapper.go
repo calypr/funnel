@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	proto "github.com/golang/protobuf/proto"
 	"github.com/ohsu-comp-bio/funnel/tes"
 	"github.com/ohsu-comp-bio/funnel/util/fsutil"
+	proto "google.golang.org/protobuf/proto"
 )
 
 // FileMapper is responsible for mapping paths into a working directory on the

@@ -1,0 +1,9 @@
+{
+   "name": "Tes task with Quotes in command",
+   "executors": [
+     {
+       "image": "bash",
+       "command": ["echo 'Hello Nextflow!'"]
+     }
+   ]
+}

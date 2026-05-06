@@ -9,7 +9,6 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/ohsu-comp-bio/funnel/compute"
 	"github.com/ohsu-comp-bio/funnel/config"
@@ -19,7 +18,7 @@ import (
 )
 
 // NewBackend returns a new HTCondor backend instance.
-func NewBackend(ctx context.Context, conf config.Config, reader tes.ReadOnlyServer, writer events.Writer, log *logger.Logger) (*compute.HPCBackend, error) {
+func NewBackend(ctx context.Context, conf *config.Config, reader tes.ReadOnlyServer, writer events.Writer, log *logger.Logger) (*compute.HPCBackend, error) {
 	if conf.HTCondor.TemplateFile != "" {
 		content, err := os.ReadFile(conf.HTCondor.TemplateFile)
 		if err != nil {
@@ -39,7 +38,7 @@ func NewBackend(ctx context.Context, conf config.Config, reader tes.ReadOnlyServ
 		Log:           log,
 		ExtractID:     extractID,
 		MapStates:     mapStates,
-		ReconcileRate: time.Duration(conf.HTCondor.ReconcileRate),
+		ReconcileRate: conf.HTCondor.ReconcileRate.AsDuration(),
 	}
 
 	if !conf.HTCondor.DisableReconciler {

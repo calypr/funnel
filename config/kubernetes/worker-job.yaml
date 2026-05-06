@@ -1,0 +1,95 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{.TaskId}}
+  namespace: {{.JobsNamespace}}
+  labels:
+    app: funnel-worker
+    task-id: {{.TaskId}}
+    # Custom Labels support
+    {{- range $key, $value := .ExtraLabels }}
+    {{ $key }}: {{ $value }}
+    {{- end }}
+    {{- range $key, $value := .NodeSelector }}
+    {{ $key }}: {{ $value }}
+    {{- end }}
+    foo: bar
+spec:
+  backoffLimit: 1
+  completions: 1
+  template:
+    metadata:
+      labels:
+        app: funnel-worker
+        task-id: {{.TaskId}}
+    spec:
+      # NodeSelectors
+      # https://kubernetes.io/docs/tasks/configure-pod-container/assign-pods-nodes/#create-a-pod-that-gets-scheduled-to-your-chosen-node
+      {{- if .NodeSelector }}
+      nodeSelector:
+        {{- range $key, $value := .NodeSelector }}
+        {{ $key }}: {{ $value }}
+        {{- end }}
+      {{- end }}
+
+      # Tolerations
+      # https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/
+      {{- if .Tolerations }}
+      tolerations:
+        {{- range .Tolerations }}
+        - key: {{ .Key }}
+          operator: {{ .Operator }}
+          effect: {{ .Effect }}
+          {{if .Value}}value: {{ .Value }}{{end}}
+          {{if .TolerationSeconds}}tolerationSeconds: {{ .TolerationSeconds }}{{end}}
+        {{- end }}
+      {{- end }}
+
+      # SecurityContext
+      # https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-pod
+      {{- if .securityContext }}
+      securityContext:
+        fsGroup: {{ .securityContext.fsGroup }}
+        runAsUser: {{ .securityContext.runAsUser }}
+        runAsGroup: {{ .securityContext.runAsGroup }}
+        supplementalGroups: {{ .securityContext.supplementalGroups }}
+      {{- end }}
+
+      serviceAccountName: funnel-sa-{{.Namespace}}
+      restartPolicy: OnFailure
+      containers:
+        - name: funnel-worker-{{.TaskId}}
+          # TODO: Make the image + tag configurable
+          image: {{.Image}}
+          imagePullPolicy: Always
+          args:
+            - "worker"
+            - "run"
+            - "--config"
+            - "/etc/config/funnel-worker.yaml"
+            - "--taskID"
+            - {{.TaskId}}
+          resources:
+            requests:
+              # TODO: Move all hard-coded values here to be configurable via Helm values
+              # Anything else to move from here to values.yaml?
+              cpu: {{if ne .Cpus 0 -}}{{.Cpus}}{{ else }}{{"100m"}}{{end}}
+              memory: {{if ne .RamGb 0.0 -}}{{printf "%.0fG" .RamGb}}{{else}}{{"16M"}}{{end}}
+              ephemeral-storage: {{if ne .DiskGb 0.0 -}}{{printf "%.0fG" .DiskGb}}{{else}}{{"100M"}}{{end}}
+          volumeMounts:
+          - name: config-volume
+            mountPath: /etc/config
+          {{- if .NeedsPVC }} # Start: Conditional PVC Mount
+          - name: funnel-storage-{{.TaskId}}
+            mountPath: /opt/funnel/funnel-work-dir/{{.TaskId}}
+            subPath: {{.TaskId}}
+          {{- end }} # End: Conditional PVC Mount
+      volumes:
+      - name: config-volume
+        configMap:
+          name: funnel-worker-config-{{.TaskId}}
+      {{- if .NeedsPVC }} # Start: Conditional PVC Volume Definition
+      - name: funnel-storage-{{.TaskId}}
+        persistentVolumeClaim:
+          claimName: funnel-worker-pvc-{{.TaskId}}
+      {{- end }} # End: Conditional PVC Volume Definition

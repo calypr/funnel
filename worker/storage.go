@@ -14,6 +14,7 @@ import (
 	"github.com/ohsu-comp-bio/funnel/tes"
 	"github.com/ohsu-comp-bio/funnel/util"
 	"github.com/ohsu-comp-bio/funnel/util/fsutil"
+	"google.golang.org/protobuf/proto"
 )
 
 // FlattenInputs flattens any directory inputs into a list of file inputs.

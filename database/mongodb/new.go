@@ -17,11 +17,11 @@ type MongoDB struct {
 	scheduler.UnimplementedSchedulerServiceServer
 	client   *mongo.Client
 	database *mongo.Database
-	conf     config.MongoDB
+	conf     *config.MongoDB
 	active   bool
 }
 
-func NewMongoDB(conf config.MongoDB) (*MongoDB, error) {
+func NewMongoDB(conf *config.MongoDB) (*MongoDB, error) {
 	opts := options.Client().
 		SetHosts(conf.Addrs).
 		SetAppName("funnel")
@@ -52,7 +52,7 @@ func (db *MongoDB) context() (context.Context, context.CancelFunc) {
 }
 
 func (db *MongoDB) wrap(ctx context.Context) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(ctx, time.Duration(db.conf.Timeout))
+	return context.WithTimeout(ctx, db.conf.Timeout.GetDuration().AsDuration())
 }
 
 func (db *MongoDB) collection(name string) *mongo.Collection {

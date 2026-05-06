@@ -2,12 +2,14 @@
 package server
 
 import (
+	"encoding/json"
 	"net"
 	"net/http"
 	"strings"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	"github.com/golang/gddo/httputil"
@@ -19,6 +21,7 @@ import (
 	"github.com/ohsu-comp-bio/funnel/logger"
 	"github.com/ohsu-comp-bio/funnel/tes"
 	"github.com/ohsu-comp-bio/funnel/webdash"
+
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
@@ -30,14 +33,15 @@ import (
 type Server struct {
 	RPCAddress       string
 	HTTPPort         string
-	BasicAuth        []config.BasicCredential
-	OidcAuth         config.OidcAuth
+	BasicAuth        []*config.BasicCredential
+	OidcAuth         *config.OidcAuth
 	TaskAccess       string
 	Tasks            tes.TaskServiceServer
 	Events           events.EventServiceServer
 	Nodes            scheduler.SchedulerServiceServer
 	DisableHTTPCache bool
 	Log              *logger.Logger
+	Plugins          *config.Plugins
 }
 
 // Return a new interceptor function that logs all requests at the Debug level
@@ -73,19 +77,21 @@ func customErrorHandler(ctx context.Context, mux *runtime.ServeMux, marshaler ru
 		return
 	}
 
-	// Map specific gRPC error codes to HTTP status codes
 	switch st.Code() {
+	case codes.InvalidArgument, codes.FailedPrecondition, codes.OutOfRange: // 400
+		w.WriteHeader(http.StatusBadRequest)
 	case codes.Unauthenticated:
 		w.WriteHeader(http.StatusUnauthorized) // 401
 	case codes.PermissionDenied:
 		w.WriteHeader(http.StatusForbidden) // 403
 	case codes.NotFound:
-		// Special case for missing tasks (TES Compliance Suite)
-		if strings.Contains(st.Message(), "task not found") {
-			w.WriteHeader(http.StatusInternalServerError) // 500
-		} else {
-			w.WriteHeader(http.StatusNotFound) // 404
-		}
+		w.WriteHeader(http.StatusNotFound) // 404
+	case codes.AlreadyExists, codes.Aborted: // 409
+		w.WriteHeader(http.StatusConflict)
+	case codes.Canceled:
+		w.WriteHeader(499)
+	case codes.DeadlineExceeded: // 504
+		w.WriteHeader(http.StatusGatewayTimeout)
 	default:
 		if strings.Contains(st.Message(), "backend parameters not supported") {
 			w.WriteHeader(http.StatusBadRequest) // 400
@@ -105,8 +111,21 @@ func customErrorHandler(ctx context.Context, mux *runtime.ServeMux, marshaler ru
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
+	// Include logging metrics in health check
+	stdoutDropped, stderrDropped, total := events.GetLogEventStats()
+
+	health := map[string]interface{}{
+		"status": "OK",
+		"log_metrics": map[string]int64{
+			"stdout_events_dropped": stdoutDropped,
+			"stderr_events_dropped": stderrDropped,
+			"total_events":          total,
+		},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("OK"))
+	json.NewEncoder(w).Encode(health)
 }
 
 type JSONError struct {
@@ -118,6 +137,9 @@ type JSONError struct {
 func (s *Server) Serve(pctx context.Context) error {
 	ctx, cancel := context.WithCancel(pctx)
 	defer cancel()
+	if s.Tasks.(*TaskService).PluginManager != nil {
+		defer s.Tasks.(*TaskService).PluginManager.Close()
+	}
 
 	// Open TCP connection for RPC
 	lis, err := net.Listen("tcp", s.RPCAddress)
@@ -161,11 +183,14 @@ func (s *Server) Serve(pctx context.Context) error {
 
 	//runtime.OtherErrorHandler = s.handleError //TODO: Review effects
 
+	// Web dashboard
 	dashmux := http.NewServeMux()
 	dashmux.Handle("/", webdash.RootHandler())
 	dashfs := webdash.FileServer()
 	mux.Handle("/favicon.ico", dashfs)
 	mux.Handle("/manifest.json", dashfs)
+
+	// Health and metrics
 	mux.Handle("/health.html", dashfs)
 	mux.HandleFunc("/healthz", healthHandler)
 	mux.Handle("/static/", dashfs)
@@ -173,9 +198,19 @@ func (s *Server) Serve(pctx context.Context) error {
 	mux.HandleFunc("/login", auth.LoginHandler)
 	mux.HandleFunc("/login/token", auth.EchoTokenHandler)
 
+	// Login
+	mux.HandleFunc("/login", auth.LoginHandler)
+	mux.HandleFunc("/login/token", auth.EchoTokenHandler)
+
+	// Root
 	mux.HandleFunc("/", func(resp http.ResponseWriter, req *http.Request) {
+
+		// Pass header to plugin if plugin is enabled
+		if s.Plugins != nil {
+			s.addHeadertoCtx(req)
+		}
 		// TODO this doesnt handle all routes
-		if s.OidcAuth.ServiceConfigURL == "" && len(s.BasicAuth) > 0 {
+		if s.OidcAuth != nil && s.OidcAuth.ServiceConfigURL == "" && len(s.BasicAuth) > 0 {
 			resp.Header().Set("WWW-Authenticate", "Basic")
 		}
 		switch negotiate(req) {
@@ -246,6 +281,20 @@ func (s *Server) Serve(pctx context.Context) error {
 	httpServer.Shutdown(context.TODO())
 
 	return srverr
+}
+
+func (s *Server) addHeadertoCtx(req *http.Request) *http.Request {
+	md := metadata.New(nil)
+	ctxWithMetadata := req.Context() // Start with the request's context
+	for key, values := range req.Header {
+		for _, value := range values {
+			md.Append(key, value)
+		}
+		ctxWithMetadata = context.WithValue(ctxWithMetadata, key, values)
+
+	}
+	ctxWithMetadata = metadata.NewOutgoingContext(ctxWithMetadata, md) // Create context with metadata
+	return req.WithContext(ctxWithMetadata)
 }
 
 // handleError handles errors in the HTTP stack, logging errors, stack traces,

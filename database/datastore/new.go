@@ -14,7 +14,7 @@ type Datastore struct {
 }
 
 // NewDatastore returns a new Datastore instance with the given config.
-func NewDatastore(conf config.Datastore) (*Datastore, error) {
+func NewDatastore(conf *config.Datastore) (*Datastore, error) {
 	ctx := context.Background()
 
 	opts := []option.ClientOption{}

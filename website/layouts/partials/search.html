@@ -1,0 +1,262 @@
+<!-- Component -->
+<dialog aria-label="Search">
+  <div class="dialog-frame">
+    <div class="search-container">
+      <div id="search"></div>
+    </div>
+
+    <div class="search-quick-links">
+      <div class="search-quick-links-title">Quick Links</div>
+      <ul class="quick-links-list">
+        <!-- Download -->
+        <li>
+          <a href="{{ .Site.BaseURL }}download/">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="icon icon-tabler icons-tabler-outline icon-tabler-download"
+            >
+              <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+              <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2" />
+              <path d="M7 11l5 5l5 -5" />
+              <path d="M12 4l0 12" />
+            </svg>
+            <span>Download</span>
+          </a>
+        </li>
+
+        <!-- Docs -->
+        <li>
+          <a href="{{ .Site.BaseURL }}docs/">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="icon icon-tabler icons-tabler-outline icon-tabler-file-description"
+            >
+              <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+              <path d="M14 3v4a1 1 0 0 0 1 1h4" />
+              <path
+                d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2z"
+              />
+              <path d="M9 17h6" />
+              <path d="M9 13h6" />
+            </svg>
+            <span>Docs</span>
+          </a>
+        </li>
+
+        <!-- GitHub -->
+        <li>
+          <a href="https://github.com/ohsu-comp-bio/funnel">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="icon icon-tabler icons-tabler-outline icon-tabler-brand-github"
+            >
+              <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+              <path
+                d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5"
+              />
+            </svg>
+            <span>GitHub</span>
+          </a>
+        </li>
+
+        <!-- Compliance -->
+        <li>
+          <a href="https://ohsu-comp-bio.github.io/funnel-compliance/">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="icon icon-tabler icons-tabler-outline icon-tabler-shield-check"
+            >
+              <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+              <path
+                d="M11.46 20.846a12 12 0 0 1 -7.96 -14.846a12 12 0 0 0 8.5 -3a12 12 0 0 0 8.5 3a12 12 0 0 1 -.09 7.06"
+              />
+              <path d="M15 19l2 2l4 -4" />
+            </svg>
+            <span>Compliance</span>
+          </a>
+        </li>
+      </ul>
+    </div>
+  </div>
+</dialog>
+
+<!-- Scripts -->
+<script src="/pagefind/pagefind-ui.js"></script>
+<script>
+  window.addEventListener("DOMContentLoaded", (event) => {
+    const dialog = document.querySelector("dialog");
+    const openBtn = document.querySelector("button[data-open-modal]");
+
+    const openModal = (event) => {
+      dialog.showModal();
+      document.body.toggleAttribute("data-search-modal-open", true);
+      event?.stopPropagation();
+      setTimeout(() => {
+        window.addEventListener("click", onClick);
+      }, 0);
+      // Since autofocus: true is set on PagefindUI, focus is often automatic.
+      // A short delay can ensure the input is ready to be focused.
+      setTimeout(() => {
+        const searchInput = dialog.querySelector("input");
+        if (searchInput) {
+          searchInput.focus();
+        }
+      }, 100);
+    };
+
+    const closeModal = () => dialog.close();
+
+    const onClick = (event) => {
+      // Close the modal if the click is on the backdrop
+      const dialogFrame = dialog.querySelector(".dialog-frame");
+      if (
+        dialogFrame &&
+        document.body.contains(event.target) &&
+        !dialogFrame.contains(event.target)
+      ) {
+        closeModal();
+      }
+    };
+
+    // --- Event Listeners and Setup ---
+    if (openBtn && dialog) {
+      openBtn.addEventListener("click", openModal);
+      openBtn.disabled = false;
+
+      dialog.addEventListener("close", () => {
+        document.body.toggleAttribute("data-search-modal-open", false);
+        window.removeEventListener("click", onClick);
+      });
+
+      // Keyboard shortcuts: Ctrl+K or Cmd+K
+      window.addEventListener("keydown", (e) => {
+        if ((e.metaKey === true || e.ctrlKey === true) && e.key === "k") {
+          dialog.hasAttribute("open") ? closeModal() : openModal();
+          e.preventDefault();
+        }
+      });
+
+      new PagefindUI({
+        element: "#search",
+        showSubResults: true,
+        autofocus: true,
+      });
+    }
+  });
+</script>
+
+<!-- Styles -->
+<link href="/pagefind/pagefind-ui.css" rel="stylesheet" />
+<style>
+  dialog {
+    margin: 4rem auto auto;
+    border-radius: 0.5rem;
+    width: 90%;
+    max-width: 40rem;
+    min-height: 10rem;
+    max-height: calc(100% - 8rem);
+    border: 2px solid black;
+  }
+
+  dialog::backdrop {
+    background-color: hsla(223, 13%, 10%, 0.66);
+    -webkit-backdrop-filter: blur(0.25rem);
+    backdrop-filter: blur(0.25rem);
+  }
+
+  .search-btn-container {
+    flex-grow: 1;
+    margin-left: 1em;
+    margin-right: 1em;
+    width: 30%;
+  }
+
+  .search-btn {
+    width: 100%;
+    background: transparent;
+    border: none;
+    border-radius: 0.3em;
+    color: white;
+    height: 2em;
+    text-align: left;
+    font-size: smaller;
+    font-family: inherit;
+  }
+
+  .search-btn:hover {
+    outline: 2px solid #268bd2;
+    cursor: pointer;
+  }
+
+  .search-text {
+    margin-left: 0.5em;
+  }
+
+  #search {
+    padding: 0em 2em 0em 2em;
+  }
+
+  .search-quick-links {
+    margin-top: 2rem;
+    padding: 1rem 1.5rem;
+  }
+
+  .search-quick-links-title {
+    font-weight: bold;
+    color: #333;
+    margin-bottom: 0.5rem;
+  }
+
+  .quick-links-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  .quick-links-list li {
+    padding: 0.25rem 0;
+  }
+
+  .quick-links-list a {
+    display: block;
+    padding: 0.5rem;
+    border-radius: 0.25rem;
+    color: #333;
+  }
+
+  .quick-links-list a:hover {
+    outline: 2px solid #034ad8;
+  }
+</style>

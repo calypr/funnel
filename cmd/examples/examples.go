@@ -2,6 +2,7 @@ package examples
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/ohsu-comp-bio/funnel/config"
 	ex "github.com/ohsu-comp-bio/funnel/examples"
@@ -28,9 +29,15 @@ var Cmd = &cobra.Command{
 			byShortName[n] = v
 		}
 
+		keys := make([]string, 0, len(byShortName))
+		for k := range byShortName {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+
 		// Print a list of example names and exit
 		if len(args) == 0 || args[0] == "list" {
-			for sn := range byShortName {
+			for _, sn := range keys {
 				fmt.Println(sn)
 			}
 			return nil

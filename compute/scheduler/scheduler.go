@@ -19,7 +19,7 @@ type TaskQueue interface {
 
 // Scheduler handles scheduling tasks to nodes and support many backends.
 type Scheduler struct {
-	Conf  config.Scheduler
+	Conf  *config.Scheduler
 	Log   *logger.Logger
 	Nodes SchedulerServiceServer
 	Queue TaskQueue
@@ -32,7 +32,7 @@ type Scheduler struct {
 // request the the configured backend schedule them, and
 // act on offers made by the backend.
 func (s *Scheduler) Run(ctx context.Context) error {
-	ticker := time.NewTicker(time.Duration(s.Conf.ScheduleRate))
+	ticker := time.NewTicker(time.Duration(s.Conf.ScheduleRate.AsDuration()))
 	for {
 		select {
 		case <-ctx.Done():
@@ -92,7 +92,7 @@ func (s *Scheduler) Schedule(ctx context.Context) error {
 		s.Log.Error("Error checking nodes", err)
 	}
 
-	for _, task := range s.Queue.ReadQueue(s.Conf.ScheduleChunk) {
+	for _, task := range s.Queue.ReadQueue(int(s.Conf.ScheduleChunk)) {
 		offer := s.GetOffer(task)
 		if offer != nil {
 			s.Log.Info("Assigning task to node",

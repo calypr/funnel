@@ -3,7 +3,6 @@ package compute
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -25,7 +24,7 @@ type HPCBackend struct {
 	SubmitCmd string
 	CancelCmd string
 	Template  string
-	Conf      config.Config
+	Conf      *config.Config
 	Event     events.Writer
 	Database  tes.ReadOnlyServer
 	// ExtractID is responsible for extracting the task id from the response
@@ -36,11 +35,10 @@ type HPCBackend struct {
 	// are mapped to TES states along with an optional reason for this mapping.
 	// The Reconcile function can then use the response to update the task states
 	// and system logs to report errors reported by the backend.
-	MapStates         func([]string) ([]*HPCTaskState, error)
-	ReconcileRate     time.Duration
-	Log               *logger.Logger
-	backendParameters map[string]string
-	events.Computer
+	MapStates     func([]string) ([]*HPCTaskState, error)
+	ReconcileRate time.Duration
+	Log           *logger.Logger
+	events.Backend
 }
 
 // WriteEvent writes an event to the compute backend.
@@ -261,7 +259,7 @@ func (b *HPCBackend) setupTemplatedHPCSubmit(ctx context.Context, task *tes.Task
 
 	var args string
 	if ctx.Value("Config") != nil {
-		conf := ctx.Value("Config").(config.Config)
+		conf := ctx.Value("Config").(*config.Config)
 		configFile := filepath.Join(workdir, "config.yaml")
 		err = config.ToYamlFile(conf, configFile)
 		if err != nil {
@@ -303,20 +301,4 @@ type HPCTaskState struct {
 	State    string
 	Reason   string
 	Remove   bool
-}
-
-func (b *HPCBackend) CheckBackendParameterSupport(task *tes.Task) error {
-	if !task.Resources.GetBackendParametersStrict() {
-		return nil
-	}
-
-	taskBackendParameters := task.Resources.GetBackendParameters()
-	for k := range taskBackendParameters {
-		_, ok := b.backendParameters[k]
-		if !ok {
-			return errors.New("backend parameters not supported")
-		}
-	}
-
-	return nil
 }

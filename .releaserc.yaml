@@ -1,0 +1,17 @@
+preset: angular
+plugins:
+  - "@semantic-release/commit-analyzer"
+  - "@semantic-release/release-notes-generator"
+  - "@semantic-release/changelog"
+  - "@semantic-release/git"
+  - - "@semantic-release/exec"
+    - publishCmd: |
+        goreleaser release --clean
+branches:
+  - "main"
+  - "master"
+  - "feature/plugins"
+  - "feature/semver-release"
+# Remove 'v' prefix from tags (to match existing releases)
+# e.g. v0.1.0 → 0.1.0
+tagFormat: ${version}

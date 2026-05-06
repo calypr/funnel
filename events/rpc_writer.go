@@ -15,7 +15,7 @@ type RPCWriter struct {
 }
 
 // NewRPCWriter returns a new RPCWriter instance.
-func NewRPCWriter(ctx context.Context, conf config.RPCClient) (*RPCWriter, error) {
+func NewRPCWriter(ctx context.Context, conf *config.RPCClient) (*RPCWriter, error) {
 	conn, err := util.Dial(ctx, conf)
 	if err != nil {
 		return nil, err

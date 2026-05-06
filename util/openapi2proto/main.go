@@ -75,24 +75,19 @@ func getType(p *openapi3.SchemaRef) (bool, string) {
 }
 
 func getParamType(param *openapi3.Parameter) (bool, string) {
-	//log.Printf("Param %#v\n", param)
-
 	if param.Schema.Ref != "" {
 		t := strings.Split(param.Schema.Ref, "/")
 		return false, t[len(t)-1]
 	}
-
 	if param.Schema.Value.Type != nil && param.Schema.Value.Type.Includes("") == false {
 		return getType(param.Schema)
 	}
 	return false, ""
-
 }
 
 func getFields(schema *openapi3.SchemaRef) []Field {
 	fields := []Field{}
 	for pname, pschema := range schema.Value.Properties {
-		//	fmt.Printf("\t%s %#v\n", pname, pschema)
 		repeated, fType := getType(pschema)
 		f := Field{Name: pname, Repeated: repeated, Type: fType, Source: schema}
 		fields = append(fields, f)
@@ -104,23 +99,60 @@ func getFields(schema *openapi3.SchemaRef) []Field {
 	return fields
 }
 
-func parseMessageSchema(name string, schema *openapi3.SchemaRef) (Message, error) {
+func getFieldsWithView(schema *openapi3.SchemaRef, view string) []Field {
+	fields := getFields(schema)
+	if view == "MINIMAL" && schema.Ref != "" && strings.HasSuffix(schema.Ref, "tesTask") {
+		minFields := []Field{}
+		for _, f := range fields {
+			if f.Name == "id" || f.Name == "state" {
+				minFields = append(minFields, f)
+			}
+		}
+		return minFields
+	}
+	if view == "BASIC" {
+		basicFields := []Field{}
+		for _, f := range fields {
+			if schema.Ref != "" && strings.HasSuffix(schema.Ref, "tesExecutorLog") {
+				if f.Name == "stdout" || f.Name == "stderr" {
+					continue
+				}
+			}
+			if schema.Ref != "" && strings.HasSuffix(schema.Ref, "tesInput") {
+				if f.Name == "content" {
+					continue
+				}
+			}
+			if schema.Ref != "" && strings.HasSuffix(schema.Ref, "tesTaskLog") {
+				if f.Name == "system_logs" {
+					continue
+				}
+			}
+			if schema.Ref != "" && strings.HasSuffix(schema.Ref, "tesExecutor") {
+				if f.Name == "stdout" || f.Name == "stderr" {
+					continue
+				}
+			}
+			basicFields = append(basicFields, f)
+		}
+		return basicFields
+	}
+	return fields
+}
+
+func parseMessageSchema(name string, schema *openapi3.SchemaRef, view string) (Message, error) {
 	if schema.Value.Properties != nil {
-		//fmt.Printf("%s %#v\n", name, schema.Value.Properties)
-		fields := getFields(schema)
+		fields := getFieldsWithView(schema, view)
 		m := Message{Name: name, Fields: fields}
 		return m, nil
 	} else if schema.Value.AllOf != nil {
-		//fmt.Printf("All of %s %#v\n", name, schema.Value.AllOf)
 		fieldMap := map[string]Field{}
 		for i := range schema.Value.AllOf {
-			newFields := getFields(schema.Value.AllOf[i])
-			//fmt.Printf("\t%#v\n", newFields)
+			newFields := getFieldsWithView(schema.Value.AllOf[i], view)
 			for _, f := range newFields {
 				if x, ok := fieldMap[f.Name]; !ok {
 					fieldMap[f.Name] = f
 				} else {
-					//if same field from two sources, pick local one
 					if x.Source.Ref != "" && f.Source.Ref == "" {
 						fieldMap[f.Name] = f
 					}
@@ -131,7 +163,6 @@ func parseMessageSchema(name string, schema *openapi3.SchemaRef) (Message, error
 		for _, v := range fieldMap {
 			fields = append(fields, v)
 		}
-		//fmt.Printf("Fields: %#vs\n", fields)
 		sort.SliceStable(fields, func(i, j int) bool { return fields[i].Name < fields[j].Name })
 		for i := range fields {
 			fields[i].ID = i + 1
@@ -178,6 +209,17 @@ func getResponseMessage(resp *openapi3.Responses) string {
 	return s[len(s)-1]
 }
 
+func adjustListTasksResponseFields(fields []Field, taskType string) []Field {
+	adjusted := []Field{}
+	for _, f := range fields {
+		if f.Name == "tasks" {
+			f.Type = taskType
+		}
+		adjusted = append(adjusted, f)
+	}
+	return adjusted
+}
+
 func main() {
 	flag.Parse()
 
@@ -187,102 +229,135 @@ func main() {
 	loader.IsExternalRefsAllowed = true
 
 	doc, err := loader.LoadFromFile(input)
+	if err != nil {
+		log.Fatalf("Parsing Error: %s\n", err)
+	}
 
 	messages := []Message{}
 	enums := []Enum{}
+	services := []ServicePath{}
 
-	service := []ServicePath{}
-
-	if err != nil {
-		log.Printf("Parsing Error: %s\n", err)
-	} else {
-		//fmt.Printf("%#v\n", doc.Components.Parameters)
-		for name, schema := range doc.Components.Schemas {
-			if schema.Value.Enum != nil {
-				if e, err := parseMessageEnum(name, schema); err == nil {
-					enums = append(enums, e)
-				}
-			} else {
-				if e, err := parseMessageSchema(name, schema); err == nil {
-					messages = append(messages, e)
-				}
+	for name, schema := range doc.Components.Schemas {
+		if schema.Value.Enum != nil {
+			if e, err := parseMessageEnum(name, schema); err == nil {
+				enums = append(enums, e)
 			}
-		}
-
-		for name, param := range doc.Components.Parameters {
-			//fmt.Printf("component params: %s %#v\n", name, param.Value.Schema.Value)
-			if param.Value.Schema.Value.Enum != nil {
-				if e, err := parseMessageEnum(name, param.Value.Schema); err == nil {
-					//fmt.Printf("param %s %#v\n", name, e)
-					enums = append(enums, e)
-				}
-			}
-		}
-
-		for path, req := range doc.Paths.Map() {
-			if req.Get != nil {
-				//log.Printf("Get: %s %s\n", path, req.Get.OperationID)
-				reqFields := []Field{}
-				for _, param := range req.Get.Parameters {
-					r, t := getParamType(param.Value)
-					reqFields = append(reqFields, Field{Name: param.Value.Name, Type: t, Repeated: r})
-				}
-				for i := range reqFields {
-					reqFields[i].ID = i + 1
-				}
-				m := Message{Name: req.Get.OperationID + "Request", Fields: reqFields}
+		} else {
+			if m, err := parseMessageSchema(name, schema, "FULL"); err == nil {
 				messages = append(messages, m)
-
 			}
-			if req.Post != nil {
-				log.Printf("Post: %s %s\n", path, req.Post.OperationID)
-				reqFields := []Field{}
-				for _, param := range req.Post.Parameters {
-					r, t := getParamType(param.Value)
-					reqFields = append(reqFields, Field{Name: param.Value.Name, Type: t, Repeated: r})
+			if strings.HasSuffix(name, "tesTask") {
+				if m, err := parseMessageSchema("TaskMin", schema, "MINIMAL"); err == nil {
+					messages = append(messages, m)
 				}
-				for i := range reqFields {
-					reqFields[i].ID = i + 1
+				if m, err := parseMessageSchema("TaskBasic", schema, "BASIC"); err == nil {
+					for i, f := range m.Fields {
+						if f.Name == "executors" {
+							m.Fields[i].Type = "ExecutorBasic"
+						}
+						if f.Name == "inputs" {
+							m.Fields[i].Type = "InputBasic"
+						}
+						if f.Name == "logs" {
+							m.Fields[i].Type = "TaskLogBasic"
+						}
+					}
+					messages = append(messages, m)
 				}
-				if req.Post.RequestBody != nil {
-					//if not a reference to schema, build it
-				} else {
-					m := Message{Name: req.Post.OperationID + "Request", Fields: reqFields}
+			}
+			if strings.HasSuffix(name, "tesExecutor") {
+				if m, err := parseMessageSchema("ExecutorBasic", schema, "BASIC"); err == nil {
+					messages = append(messages, m)
+				}
+			}
+			if strings.HasSuffix(name, "tesInput") {
+				if m, err := parseMessageSchema("InputBasic", schema, "BASIC"); err == nil {
+					messages = append(messages, m)
+				}
+			}
+			if strings.HasSuffix(name, "tesTaskLog") {
+				if m, err := parseMessageSchema("TaskLogBasic", schema, "BASIC"); err == nil {
+					messages = append(messages, m)
+				}
+			}
+			if strings.HasSuffix(name, "tesListTasksResponse") {
+				if m, err := parseMessageSchema("ListTasksResponseMin", schema, "MINIMAL"); err == nil {
+					m.Fields = adjustListTasksResponseFields(m.Fields, "TaskMin")
+					messages = append(messages, m)
+				}
+				if m, err := parseMessageSchema("ListTasksResponseBasic", schema, "BASIC"); err == nil {
+					m.Fields = adjustListTasksResponseFields(m.Fields, "TaskBasic")
 					messages = append(messages, m)
 				}
 			}
 		}
-
-		for path, req := range doc.Paths.Map() {
-			p := ServicePath{}
-			if req.Get != nil {
-				p.Name = req.Get.OperationID
-				p.Path = path
-				p.Mode = "get"
-				p.InputType = req.Get.OperationID + "Request"
-				p.OutputType = getResponseMessage(req.Get.Responses)
-				service = append(service, p)
-			}
-			if req.Post != nil {
-				p.Name = req.Post.OperationID
-				p.Path = path
-				p.Mode = "post"
-				if req.Post.RequestBody != nil {
-					s := req.Post.RequestBody.Value.Content.Get("application/json").Schema.Ref
-					sL := strings.Split(s, "/")
-					p.InputType = sL[len(sL)-1]
-					log.Printf("post %s ref %s", path, p.InputType)
-				} else {
-					p.InputType = req.Post.OperationID + "Request"
-				}
-				p.OutputType = getResponseMessage(req.Post.Responses)
-				service = append(service, p)
-			}
-		}
-
 	}
 
-	cleanSchema(messages, enums, service)
+	for name, param := range doc.Components.Parameters {
+		if param.Value.Schema.Value.Enum != nil {
+			if e, err := parseMessageEnum(name, param.Value.Schema); err == nil {
+				enums = append(enums, e)
+			}
+		}
+	}
+
+	for _, req := range doc.Paths.Map() {
+		if req.Get != nil {
+			reqFields := []Field{}
+			for _, param := range req.Get.Parameters {
+				r, t := getParamType(param.Value)
+				reqFields = append(reqFields, Field{Name: param.Value.Name, Type: t, Repeated: r})
+			}
+			for i := range reqFields {
+				reqFields[i].ID = i + 1
+			}
+			m := Message{Name: req.Get.OperationID + "Request", Fields: reqFields}
+			messages = append(messages, m)
+		}
+		if req.Post != nil {
+			reqFields := []Field{}
+			for _, param := range req.Post.Parameters {
+				r, t := getParamType(param.Value)
+				reqFields = append(reqFields, Field{Name: param.Value.Name, Type: t, Repeated: r})
+			}
+			for i := range reqFields {
+				reqFields[i].ID = i + 1
+			}
+			if req.Post.RequestBody != nil {
+			} else {
+				m := Message{Name: req.Post.OperationID + "Request", Fields: reqFields}
+				messages = append(messages, m)
+			}
+		}
+	}
+
+	for path, req := range doc.Paths.Map() {
+		p := ServicePath{}
+		if req.Get != nil {
+			p.Name = req.Get.OperationID
+			p.Path = path
+			p.Mode = "get"
+			p.InputType = req.Get.OperationID + "Request"
+			p.OutputType = getResponseMessage(req.Get.Responses)
+			services = append(services, p)
+		}
+		if req.Post != nil {
+			p.Name = req.Post.OperationID
+			p.Path = path
+			p.Mode = "post"
+			if req.Post.RequestBody != nil {
+				s := req.Post.RequestBody.Value.Content.Get("application/json").Schema.Ref
+				sL := strings.Split(s, "/")
+				p.InputType = sL[len(sL)-1]
+			} else {
+				p.InputType = req.Post.OperationID + "Request"
+			}
+			p.OutputType = getResponseMessage(req.Post.Responses)
+			services = append(services, p)
+		}
+	}
+
+	cleanSchema(messages, enums, services)
 
 	tmpl, err := template.New("proto").Parse(`
 syntax = "proto3";
@@ -327,14 +402,12 @@ service TaskService {
 }
 
 `)
-
-	_ = tmpl
 	if err != nil {
-		fmt.Printf("Template Error: %s\n", err)
-	} else {
-		err := tmpl.Execute(os.Stdout, map[string]interface{}{"messages": messages, "enums": enums, "services": service})
-		if err != nil {
-			log.Fatalf("Template Error: %s", err)
-		}
+		log.Fatalf("Template Error: %s\n", err)
+	}
+
+	err = tmpl.Execute(os.Stdout, map[string]interface{}{"messages": messages, "enums": enums, "services": services})
+	if err != nil {
+		log.Fatalf("Template Execution Error: %s", err)
 	}
 }

@@ -1,5 +1,6 @@
 # The name of the active server database backend
 # Available backends: boltdb, badger, datastore, dynamodb, elastic, mongodb
+---
 Database: boltdb
 
 # The name of the active compute backend
@@ -14,19 +15,19 @@ EventWriters:
 
 Logger:
   # Logging levels: debug, info, error
-  Level: info
+  level: info
   # Write logs to this path. If empty, logs are written to stderr.
-  OutputFile: ""
+  outputFile: ""
 
 Server:
   # Hostname of the Funnel server.
   HostName: localhost
 
   # Port used for HTTP communication and the web dashboard.
-  HTTPPort: 8000
+  HTTPPort: "8000"
 
   # Port used for RPC communication.
-  RPCPort: 9090
+  RPCPort: "9090"
 
   # Require basic authentication for the server APIs using a password.
   # If used, make sure to properly restrict access to the config file
@@ -83,8 +84,8 @@ RPCClient:
   # Password: abc123
 
   # connection timeout.
-  Timeout: 60s
-
+  Timeout:
+    duration: 60s
   # The maximum number of times that a request will be retried for failures.
   # Time between retries follows an exponential backoff starting at 5 seconds
   # up to 1 minute
@@ -97,29 +98,32 @@ Scheduler:
   # How many tasks to schedule in one iteration.
   ScheduleChunk: 10
   # How long to wait between updates before marking a node dead.
-  NodePingTimeout: 1m
+  NodePingTimeout:
+    duration: 60s
   # How long to wait for a node to start, before marking the node dead.
-  NodeInitTimeout: 5m
+  NodeInitTimeout:
+    duration: 300s
 
 Node:
   # If empty, a node ID will be automatically generated.
   ID: ""
 
   # If the node has been idle for longer than the timeout, it will shut down.
-  # -1 means there is no timeout. 0 means timeout immediately after the first task.
-  Timeout: -1s
+  # disabled: true means there is no timeout. 0 means timeout immediately after the first task.
+  Timeout:
+    disabled: true
 
   # A Node will automatically try to detect what resources are available to it.
   # Defining Resources in the Node configuration overrides this behavior.
   Resources:
-    # CPUs available.
-    # Cpus: 0
+  # CPUs available.
+  # Cpus: 0
 
-    # RAM available, in GB.
-    # RamGb: 0.0
+  # RAM available, in GB.
+  # RamGb: 0.0
 
-    # Disk space available, in GB.
-    # DiskGb: 0.0
+  # Disk space available, in GB.
+  # DiskGb: 0.0
 
   # For low-level tuning.
   # How often to sync with the Funnel server.
@@ -140,7 +144,7 @@ Worker:
   LogUpdateRate: 5s
 
   # Max bytes to store for stdout/err in the task log.
-  LogTailSize: 10000 # 10 KB
+  LogTailSize: 10000  # 10 KB
 
   # Normally the worker deletes its working directory after executing.
   # This option disables that behavior.
@@ -149,9 +153,10 @@ Worker:
   # Limit the number of concurrent downloads/uploads
   MaxParallelTransfers: 10
 
-#-------------------------------------------------------------------------------
+
+# -------------------------------------------------------------------------------
 # Databases and/or Event Writers/Handlers
-#-------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------
 
 BoltDB:
   # Path to the database file
@@ -160,12 +165,13 @@ BoltDB:
 DynamoDB:
   # Basename to use for dynamodb tables
   TableBasename: funnel
-  # AWS region
-  Region: ""
-  # AWS Access key ID
-  Key: ""
-  # AWS Secret Access Key
-  Secret: ""
+  AWSConfig:
+    # AWS region
+    Region: ""
+    # AWS Access key ID
+    Key: ""
+    # AWS Secret Access Key
+    Secret: ""
 
 Elastic:
   # Prefix to use for indexes (task, events, nodes)
@@ -201,7 +207,8 @@ MongoDB:
   # first connecting and on follow up operations in the session. If
   # timeout is zero, the call may block forever waiting for a connection
   # to be established.
-  Timeout: 5m
+  Timeout:
+    duration: 300s
   # Username and Password inform the credentials for the initial authentication
   # done on the database defined by the Database field.
   Username: ""
@@ -212,9 +219,9 @@ Kafka:
     - ""
   Topic: funnel
 
-#-------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------
 # Compute Backends
-#-------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------
 
 HTCondor:
   # Turn off task state reconciler. When enabled, Funnel communicates with the HPC
@@ -223,7 +230,7 @@ HTCondor:
   DisableReconciler: true
   # ReconcileRate is how often the compute backend compares states in Funnel's backend
   # to those reported by the backend
-  ReconcileRate: 10m
+  ReconcileRate: 600s
   TemplateFile: ""
   Template: |
     universe = vanilla
@@ -254,7 +261,7 @@ PBS:
   DisableReconciler: true
   # ReconcileRate is how often the compute backend compares states in Funnel's backend
   # to those reported by the backend
-  ReconcileRate: 10m
+  ReconcileRate: 600s
   TemplateFile: ""
   Template: |
     #!bin/bash
@@ -300,7 +307,7 @@ Slurm:
   DisableReconciler: true
   # ReconcileRate is how often the compute backend compares states in Funnel's backend
   # to those reported by the backend
-  ReconcileRate: 10m
+  ReconcileRate: 600s
   TemplateFile: ""
   Template: |
     #!/bin/bash
@@ -327,46 +334,20 @@ AWSBatch:
   DisableReconciler: true
   # ReconcileRate is how often the compute backend compares states in Funnel's backend
   # to those reported by AWS Batch
-  ReconcileRate: 10m
+  ReconcileRate: 600s
   # JobDefinition can be either a name or the Amazon Resource Name (ARN).
   JobDefinition: "funnel-job-def"
   # JobQueue can be either a name or the Amazon Resource Name (ARN).
   JobQueue: "funnel-job-queue"
   # AWS region of the specified job queue and to create the job definition in
-  Region: ""
-  Key: ""
-  Secret: ""
+  AWSConfig:
+    Region: ""
+    Key: ""
+    Secret: ""
 
-# Kubernetes describes the configuration for the Kubernetes compute backend.
-Kubernetes:
-  # The executor used to execute tasks. Available executors: docker, kubernetes
-  Executor: "kubernetes"
-  # Turn off task state reconciler. When enabled, Funnel communicates with Kubernetes
-  # to find tasks that are stuck in a queued state or errored and
-  # updates the task state accordingly.
-  DisableReconciler: true
-  # ReconcileRate is how often the compute backend compares states in Funnel's backend
-  # to those reported by the backend
-  ReconcileRate: 10m
-  # Kubernetes Namespace to spawn jobs within
-  Namespace: "default"
-  # Kubernetes ServiceAccount to use for the job
-  ServiceAccount: "funnel-sa"
-  # Master batch job template. See: https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.17/#job-v1-batch
-  Template: ""
-  # TemplateFile is the path to the master job template.
-  TemplateFile: ""
-
-  # Configuration of the Kubernetes executor.
-
-  # Job template used for executing the tasks.
-  ExecutorTemplate: ""
-  # ExecutorTemplateFile is the path to the executor template.
-  ExecutorTemplateFile: ""
-
-#-------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------
 # Storage
-#-------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------
 
 # If possible, credentials will be automatically discovered
 # from the environment.
@@ -380,16 +361,26 @@ LocalStorage:
 # HTTPStorage is used to download public files on the web via a GET request.
 HTTPStorage:
   # Timeout for http(s) GET requests.
-  Timeout: 30s
+  Timeout:
+    duration: 30s
 
 AmazonS3:
   Disabled: false
   # The maximum number of times that a request will be retried for failures.
-  MaxRetries: 10
-  # AWS Access key ID
-  Key: ""
-  # AWS Secret Access Key
-  Secret: ""
+  AWSConfig:
+    MaxRetries: 10
+    # AWS Access key ID
+    Key: ""
+    # AWS Secret Access Key
+    Secret: ""
+  # Server Side Encryption (SSE) settings
+  SSE:
+    # Customer Provided Key
+    # ref: https://docs.aws.amazon.com/AmazonS3/latest/userguide/ServerSideEncryptionCustomerKeys.html
+    CustomerKeyFile: ""
+    # KMS Key
+    # ref: https://docs.aws.amazon.com/AmazonS3/latest/userguide/UsingKMSEncryption.html
+    KMSKey: ""
 
 # Configure storage backends for S3 providers such as Minio and/or Ceph
 # GenericS3:
@@ -418,6 +409,7 @@ Swift:
 
 FTPStorage:
   Disabled: false
-  Timeout: 10s
+  Timeout:
+    duration: 10s
   User: "anonymous"
   Password: "anonymous"

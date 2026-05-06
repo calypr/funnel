@@ -3,6 +3,7 @@ package fsutil
 import (
 	"os"
 	"path"
+	"path/filepath"
 	"syscall"
 )
 
@@ -39,4 +40,22 @@ func EnsureDir(p string) error {
 func EnsurePath(p string) error {
 	dir := path.Dir(p)
 	return EnsureDir(dir)
+}
+
+func FindRepoRoot() string {
+	currentDir, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+
+	for {
+		if _, err := os.Stat(filepath.Join(currentDir, ".git")); err == nil {
+			return currentDir
+		}
+		parentDir := filepath.Dir(currentDir)
+		if parentDir == currentDir {
+			return ""
+		}
+		currentDir = parentDir
+	}
 }

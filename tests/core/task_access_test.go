@@ -139,7 +139,7 @@ func initServer(t *testing.T, taskAccess string) *tests.Funnel {
 	c.Compute = "noop"
 	c.Server.TaskAccess = taskAccess
 
-	c.Server.BasicAuth = []config.BasicCredential{
+	c.Server.BasicAuth = []*config.BasicCredential{
 		{User: "User1", Password: "user1-password"},
 		{User: "User2", Password: "user2-password"},
 		{User: "Admin", Password: "admin-password", Admin: true},

@@ -1,0 +1,11 @@
+{
+  "name": "Error Example",
+  "description": "Example of a a task that errors (exit 1)",
+  "executors": [
+    {
+      "image": "alpine",
+      "command": ["echo", "error!", "&&", "exit", "1"]
+    }
+  ]
+}
+

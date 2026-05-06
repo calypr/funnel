@@ -11,16 +11,16 @@ import (
 
 func TestStorageWithConfig(t *testing.T) {
 	// Single valid config
-	c := config.Config{
-		LocalStorage: config.LocalStorage{
+	c := &config.Config{
+		LocalStorage: &config.LocalStorage{
 			AllowedDirs: []string{"/tmp"},
 		},
-		GoogleStorage: config.GoogleCloudStorage{Disabled: true},
-		AmazonS3:      config.AmazonS3Storage{Disabled: true},
-		GenericS3:     []config.GenericS3Storage{},
-		Swift:         config.SwiftStorage{Disabled: true},
-		HTTPStorage:   config.HTTPStorage{Disabled: true},
-		FTPStorage:    config.FTPStorage{Disabled: true},
+		GoogleStorage: &config.GoogleCloudStorage{Disabled: true},
+		AmazonS3:      &config.AmazonS3Storage{Disabled: true},
+		GenericS3:     []*config.GenericS3Storage{},
+		Swift:         &config.SwiftStorage{Disabled: true},
+		HTTPStorage:   &config.HTTPStorage{Disabled: true},
+		FTPStorage:    &config.FTPStorage{Disabled: true},
 	}
 
 	sc, err := NewMux(c)
@@ -32,22 +32,22 @@ func TestStorageWithConfig(t *testing.T) {
 	}
 
 	// multiple valid configs
-	c = config.Config{
-		LocalStorage: config.LocalStorage{
+	c = &config.Config{
+		LocalStorage: &config.LocalStorage{
 			AllowedDirs: []string{"/tmp"},
 		},
-		GoogleStorage: config.GoogleCloudStorage{
+		GoogleStorage: &config.GoogleCloudStorage{
 			Disabled:        false,
 			CredentialsFile: "",
 		},
-		AmazonS3: config.AmazonS3Storage{
+		AmazonS3: &config.AmazonS3Storage{
 			Disabled: false,
-			AWSConfig: config.AWSConfig{
+			AWSConfig: &config.AWSConfig{
 				Key:    "testkey",
 				Secret: "testsecret",
 			},
 		},
-		GenericS3: []config.GenericS3Storage{
+		GenericS3: []*config.GenericS3Storage{
 			{
 				Disabled: false,
 				Endpoint: "http://testendpoint:8080",
@@ -55,7 +55,7 @@ func TestStorageWithConfig(t *testing.T) {
 				Secret:   "testsecret",
 			},
 		},
-		Swift: config.SwiftStorage{
+		Swift: &config.SwiftStorage{
 			Disabled:   false,
 			UserName:   "fakeuser",
 			Password:   "fakepassword",
@@ -64,12 +64,14 @@ func TestStorageWithConfig(t *testing.T) {
 			TenantID:   "faketenantid",
 			RegionName: "fakeregion",
 		},
-		HTTPStorage: config.HTTPStorage{Disabled: false},
+		HTTPStorage: &config.HTTPStorage{Disabled: false},
+		FTPStorage:  &config.FTPStorage{Disabled: false},
 	}
 	sc, err = NewMux(c)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if len(sc.Backends) != 7 {
 		t.Fatal("unexpected number of Storage backends")
 	}
@@ -80,7 +82,7 @@ func TestUrlParsing(t *testing.T) {
 	expectedKey := "README.analysis_history"
 
 	// Generic S3
-	b, err := NewGenericS3(config.GenericS3Storage{
+	b, err := NewGenericS3(&config.GenericS3Storage{
 		Endpoint: "s3.amazonaws.com",
 	})
 	if err != nil {
@@ -128,7 +130,7 @@ func TestUrlParsing(t *testing.T) {
 	}
 
 	// Amazon S3
-	ab, err := NewAmazonS3(config.AmazonS3Storage{})
+	ab, err := NewAmazonS3(&config.AmazonS3Storage{AWSConfig: &config.AWSConfig{}})
 	if err != nil {
 		t.Error("Error creating amazon S3 backend:", err)
 	}
@@ -189,7 +191,7 @@ func TestUrlParsing(t *testing.T) {
 	}
 
 	// Google Storage
-	gb, err := NewGoogleCloud(config.GoogleCloudStorage{})
+	gb, err := NewGoogleCloud(&config.GoogleCloudStorage{})
 	if err != nil {
 		t.Error("Error creating google storage backend:", err)
 	}

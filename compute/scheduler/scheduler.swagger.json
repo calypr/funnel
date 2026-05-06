@@ -1,0 +1,198 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "compute/scheduler/scheduler.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "SchedulerService"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/v1/nodes": {
+      "get": {
+        "operationId": "SchedulerService_ListNodes",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/schedulerListNodesResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "SchedulerService"
+        ]
+      }
+    },
+    "/v1/nodes/{id}": {
+      "get": {
+        "operationId": "SchedulerService_GetNode",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/schedulerNode"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "SchedulerService"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "schedulerDeleteNodeResponse": {
+      "type": "object"
+    },
+    "schedulerListNodesResponse": {
+      "type": "object",
+      "properties": {
+        "nodes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/schedulerNode"
+          }
+        }
+      }
+    },
+    "schedulerNode": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "resources": {
+          "$ref": "#/definitions/schedulerResources"
+        },
+        "available": {
+          "$ref": "#/definitions/schedulerResources"
+        },
+        "state": {
+          "$ref": "#/definitions/schedulerNodeState"
+        },
+        "preemptible": {
+          "type": "boolean"
+        },
+        "zone": {
+          "type": "string"
+        },
+        "hostname": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string",
+          "format": "int64",
+          "description": "Timestamp version of the record in the database. Used to prevent write conflicts and as the last ping time."
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "taskIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "lastPing": {
+          "type": "string",
+          "format": "int64"
+        }
+      }
+    },
+    "schedulerNodeState": {
+      "type": "string",
+      "enum": [
+        "UNINITIALIZED",
+        "ALIVE",
+        "DEAD",
+        "GONE",
+        "INITIALIZING",
+        "DRAIN"
+      ],
+      "default": "UNINITIALIZED"
+    },
+    "schedulerPutNodeResponse": {
+      "type": "object"
+    },
+    "schedulerResources": {
+      "type": "object",
+      "properties": {
+        "cpus": {
+          "type": "number",
+          "format": "double"
+        },
+        "ramGb": {
+          "type": "number",
+          "format": "double",
+          "title": "In GB"
+        },
+        "diskGb": {
+          "type": "number",
+          "format": "double",
+          "title": "In GB"
+        }
+      }
+    }
+  }
+}

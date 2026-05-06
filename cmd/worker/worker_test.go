@@ -6,6 +6,7 @@ import (
 	"path"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ohsu-comp-bio/funnel/cmd/util"
 	"github.com/ohsu-comp-bio/funnel/config"
@@ -24,15 +25,15 @@ func TestPersistentPreRun(t *testing.T) {
 	defer cleanup()
 
 	c, h := newCommandHooks()
-	h.Run = func(ctx context.Context, conf config.Config, log *logger.Logger, opts *Options) error {
+	h.Run = func(ctx context.Context, conf *config.Config, log *logger.Logger, opts *Options) error {
 		if conf.Server.HostName != host {
 			t.Fatal("unexpected Server.HostName in config", conf.Server.HostName)
 		}
 		if conf.Server.RPCPort != rpcport {
 			t.Fatal("unexpected Server.RPCAddress in config", conf.Server.RPCPort)
 		}
-		if conf.RPCClient.Timeout != 10000000 {
-			t.Fatal("unexpected rpc client timeout in config")
+		if duration := conf.RPCClient.Timeout.GetDuration(); duration == nil || duration.AsDuration() != 10*time.Millisecond {
+			t.Fatalf("unexpected rpc client timeout in server config: got %v, want 10ms", duration)
 		}
 		if conf.Worker.WorkDir != workDir {
 			t.Fatal("unexpected Worker.WorkDir in config", conf.Worker.WorkDir)
@@ -57,7 +58,7 @@ func TestPersistentPreRun(t *testing.T) {
 
 func TestTaskFileOption(t *testing.T) {
 	c, h := newCommandHooks()
-	h.Run = func(ctx context.Context, conf config.Config, log *logger.Logger, opts *Options) error {
+	h.Run = func(ctx context.Context, conf *config.Config, log *logger.Logger, opts *Options) error {
 		if opts.TaskFile != "test.task.json" {
 			t.Fatal("unexpected task file option", opts.TaskFile)
 		}
@@ -67,7 +68,7 @@ func TestTaskFileOption(t *testing.T) {
 	c.SetArgs([]string{"run", "--taskFile", "test.task.json"})
 	c.Execute()
 
-	h.Run = func(ctx context.Context, conf config.Config, log *logger.Logger, opts *Options) error {
+	h.Run = func(ctx context.Context, conf *config.Config, log *logger.Logger, opts *Options) error {
 		if opts.TaskFile != "test.task.json" {
 			t.Fatal("unexpected task file option", opts.TaskFile)
 		}
@@ -77,7 +78,7 @@ func TestTaskFileOption(t *testing.T) {
 	c.SetArgs([]string{"run", "-f", "test.task.json"})
 	c.Execute()
 
-	h.Run = func(ctx context.Context, conf config.Config, log *logger.Logger, opts *Options) error {
+	h.Run = func(ctx context.Context, conf *config.Config, log *logger.Logger, opts *Options) error {
 		if opts.TaskBase64 != "abcd" {
 			t.Fatal("unexpected task base64 option", opts.TaskBase64)
 		}
@@ -87,7 +88,7 @@ func TestTaskFileOption(t *testing.T) {
 	c.SetArgs([]string{"run", "--taskBase64", "abcd"})
 	c.Execute()
 
-	h.Run = func(ctx context.Context, conf config.Config, log *logger.Logger, opts *Options) error {
+	h.Run = func(ctx context.Context, conf *config.Config, log *logger.Logger, opts *Options) error {
 		if opts.TaskBase64 != "abcd" {
 			t.Fatal("unexpected task base64 option", opts.TaskBase64)
 		}

@@ -17,11 +17,11 @@ import (
 
 // FTP provides read access to public URLs.
 type FTP struct {
-	conf config.FTPStorage
+	conf *config.FTPStorage
 }
 
 // NewFTP creates a new FTP instance.
-func NewFTP(conf config.FTPStorage) (*FTP, error) {
+func NewFTP(conf *config.FTPStorage) (*FTP, error) {
 	return &FTP{conf: conf}, nil
 }
 
@@ -92,7 +92,7 @@ type ftpclient struct {
 	client *ftp.ServerConn
 }
 
-func connect(url string, conf config.FTPStorage) (*ftpclient, error) {
+func connect(url string, conf *config.FTPStorage) (*ftpclient, error) {
 	u, err := urllib.Parse(url)
 	if err != nil {
 		return nil, fmt.Errorf("ftpStorage: parsing URL: %s", err)

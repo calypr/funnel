@@ -1,4 +1,5 @@
 // Package version reports the Funnel version.
+// Important: these fields are populated in the Makefile when running `make install`
 package version
 
 import "fmt"
@@ -12,11 +13,11 @@ var (
 	Version     = "unknown"
 )
 
-var tpl = `git commit: %s
-git branch: %s
+var tpl = `git commit:   %s
+git branch:   %s
 git upstream: %s
-build date: %s
-version: %s`
+build date:   %s
+version:      %s`
 
 // String formats a string with version details.
 func String() string {

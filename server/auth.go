@@ -70,8 +70,8 @@ func GetUsername(ctx context.Context) string {
 }
 
 func NewAuthentication(
-	creds []config.BasicCredential,
-	oidc config.OidcAuth,
+	creds []*config.BasicCredential,
+	oidc *config.OidcAuth,
 	taskAccess string,
 ) *Authentication {
 	basicCreds := make(map[string]string)

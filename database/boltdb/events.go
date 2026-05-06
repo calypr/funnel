@@ -6,10 +6,10 @@ import (
 	"fmt"
 
 	"github.com/boltdb/bolt"
-	proto "github.com/golang/protobuf/proto"
 	"github.com/ohsu-comp-bio/funnel/events"
 	"github.com/ohsu-comp-bio/funnel/server"
 	"github.com/ohsu-comp-bio/funnel/tes"
+	"google.golang.org/protobuf/proto"
 )
 
 // State variables for convenience

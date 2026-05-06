@@ -1,0 +1,31 @@
+{
+  "inputs": [
+    {
+      "url": "gs://tes-batch-integration/input-data/sample.txt",
+      "path": "/input/sample.txt",
+      "type": "FILE"
+    }
+  ],
+  "outputs": [
+    {
+      "url": "gs://tes-batch-integration/output/funnel-test-output.txt",
+      "path": "/output/result.txt",
+      "type": "FILE"
+    }
+  ],
+  "executors": [
+    {
+      "image": "gcr.io/google.com/cloudsdktool/google-cloud-cli:latest",
+      "command": [
+        "/bin/bash",
+        "-c",
+        "echo 'Reading input file:' && cat /input/sample.txt && echo 'Processing...' && cat /input/sample.txt | tr '[:lower:]' '[:upper:]' > /output/result.txt && echo 'Output written to /output/result.txt' && cat /output/result.txt"
+      ]
+    }
+  ],
+  "resources": {
+    "cpu_cores": 1,
+    "ram_gb": 1,
+    "disk_gb": 10
+  }
+}

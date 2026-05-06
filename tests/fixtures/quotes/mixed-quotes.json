@@ -1,0 +1,6 @@
+{
+  "name": "Mixed quotes",
+  "executors": [
+    { "image": "bash", "command": ["echo \"mix 'of' \\\"quotes\\\"\""] }
+  ]
+}

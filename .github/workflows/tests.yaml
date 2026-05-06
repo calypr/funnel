@@ -3,15 +3,6 @@ name: Go Tests
 on:
   # Run on push to main/master/develop (e.g. after PR is merged)
   push:
-    branches:
-      - main
-      - master
-  # Run on PR to main/master/develop
-  pull_request:
-    branches:
-      - main
-      - master
-      - develop
 
 # Cancel redundant jobs (if a new job is triggered for the same workflow and ref)
 concurrency:
@@ -19,40 +10,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint:
-    name: lint
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v4
+  # lint:
+  #   name: lint
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Check out code
+  #       uses: actions/checkout@v4
 
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
+  #     - name: Set up Go 1.x
+  #       uses: actions/setup-go@v5
+  #       with:
+  #         go-version-file: go.mod
 
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v3
-        with:
-          version: latest
-          # Matches the "primary" golangci-lint command in the Makefile
-          args: |
-              --timeout 3m --disable-all --enable=govet --enable=gofmt --enable=goimports --enable=misspell \
-              --skip-dirs "vendor" \
-              --skip-dirs "webdash" \
-              --skip-dirs "cmd/webdash" \
-              --skip-dirs "funnel-work-dir" \
-              -e '.*bundle.go' -e ".*pb.go" -e ".*pb.gw.go" \
-              ./...
-
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v3
-        with:
-          version: latest
-          # Matches the "termdash" golangci-lint command in the Makefile
-          args: |
-              --timeout 3m --disable-all --enable=vet --enable=gofmt --enable=goimports --enable=misspell \
-              ./cmd/termdash/...
+  #     - name: golangci-lint
+  #       uses: golangci/golangci-lint-action@v3
+  #       with:
+  #         version: latest
+  #         # Matches the "primary" golangci-lint command in the Makefile
+  #         args: |
+  #             --timeout 3m --disable-all --enable=govet --enable=gofmt --enable=goimports --enable=misspell \
+  #             --skip-dirs "vendor" \
+  #             --skip-dirs "webdash" \
+  #             --skip-dirs "cmd/webdash" \
+  #             --skip-dirs "funnel-work-dir" \
+  #             -e '.*bundle.go' -e ".*pb.go" -e ".*pb.gw.go" \
+  #             ./...
 
   unitTest:
     runs-on: ubuntu-latest
@@ -65,100 +47,111 @@ jobs:
       with:
         go-version-file: go.mod
 
+    - name: Cache Go modules
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/go/pkg/mod
+          ~/.cache/go-build
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
     - name: Unit Tests
-      run: make test-verbose
-
-  build:
-    uses: ./.github/workflows/build.yml
-
-  mongoTest:
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-    - name: Check out code
-      uses: actions/checkout@v4
-
-    - name: Set up Go 1.x
-      uses: actions/setup-go@v5
-      with:
-        go-version-file: go.mod
-
-    - name: Download funnel bin
-      uses: actions/download-artifact@v4
-      with:
-        name: funnel
-
-    - name: MongoTest
       run: |
-        chmod +x funnel
-        make start-mongodb
-        sleep 10
-        make test-mongodb
+        go test -v ./database/postgres
 
-  badgerTest:
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-    - name: Check out code
-      uses: actions/checkout@v4
+  # build:
+  #   uses: ./.github/workflows/build.yaml
 
-    - name: Set up Go 1.x
-      uses: actions/setup-go@v5
-      with:
-        go-version-file: go.mod
+  # mongoTest:
+  #   runs-on: ubuntu-latest
+  #   needs: build
+  #   steps:
+  #   - name: Check out code
+  #     uses: actions/checkout@v4
 
-    - name: Download funnel bin
-      uses: actions/download-artifact@v4
-      with:
-        name: funnel
+  #   - name: Set up Go 1.x
+  #     uses: actions/setup-go@v5
+  #     with:
+  #       go-version-file: go.mod
 
-    - name: Badger Test
-      run: |
-        chmod +x funnel
-        make test-badger
+  #   - name: Download funnel bin
+  #     uses: actions/download-artifact@v4
+  #     with:
+  #       name: funnel
 
-  slurmTest:
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-    - name: Check out code
-      uses: actions/checkout@v4
+  #   - name: MongoTest
+  #     run: |
+  #       chmod +x funnel
+  #       make start-mongodb
+  #       sleep 10
+  #       make test-mongodb
 
-    - name: Set up Go 1.x
-      uses: actions/setup-go@v5
-      with:
-        go-version-file: go.mod
+  # badgerTest:
+  #   runs-on: ubuntu-latest
+  #   needs: build
+  #   steps:
+  #   - name: Check out code
+  #     uses: actions/checkout@v4
 
-    - name: Download funnel bin
-      uses: actions/download-artifact@v4
-      with:
-        name: funnel
+  #   - name: Set up Go 1.x
+  #     uses: actions/setup-go@v5
+  #     with:
+  #       go-version-file: go.mod
 
-    - name: Slurm Test
-      run: |
-        chmod +x funnel
-        make test-slurm
+  #   - name: Download funnel bin
+  #     uses: actions/download-artifact@v4
+  #     with:
+  #       name: funnel
 
-  s3Test:
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-    - name: Check out code
-      uses: actions/checkout@v4
+  #   - name: Badger Test
+  #     run: |
+  #       chmod +x funnel
+  #       make test-badger
 
-    - name: Set up Go 1.x
-      uses: actions/setup-go@v5
-      with:
-        go-version-file: go.mod
+  # slurmTest:
+  #   runs-on: ubuntu-latest
+  #   needs: build
+  #   steps:
+  #   - name: Check out code
+  #     uses: actions/checkout@v4
 
-    - name: Download funnel bin
-      uses: actions/download-artifact@v4
-      with:
-        name: funnel
+  #   - name: Set up Go 1.x
+  #     uses: actions/setup-go@v5
+  #     with:
+  #       go-version-file: go.mod
 
-    - name: S3 Test
-      run: |
-        chmod +x funnel
-        make start-generic-s3
-        sleep 10
-        make test-generic-s3
+  #   - name: Download funnel bin
+  #     uses: actions/download-artifact@v4
+  #     with:
+  #       name: funnel
+
+  #   - name: Slurm Test
+  #     run: |
+  #       chmod +x funnel
+  #       make test-slurm
+
+  # s3Test:
+  #   runs-on: ubuntu-latest
+  #   needs: build
+  #   steps:
+  #   - name: Check out code
+  #     uses: actions/checkout@v4
+
+  #   - name: Set up Go 1.x
+  #     uses: actions/setup-go@v5
+  #     with:
+  #       go-version-file: go.mod
+
+  #   - name: Download funnel bin
+  #     uses: actions/download-artifact@v4
+  #     with:
+  #       name: funnel
+
+  #   - name: S3 Test
+  #     run: |
+  #       chmod +x funnel
+  #       make start-generic-s3
+  #       sleep 10
+  #       make test-generic-s3

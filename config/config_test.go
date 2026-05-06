@@ -1,6 +1,8 @@
 package config
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestNodeResourceConfigParsing(t *testing.T) {
 	yaml := `
@@ -25,7 +27,7 @@ Node:
 }
 
 func TestConfigParsing(t *testing.T) {
-	conf := &Config{}
+	conf := EmptyConfig()
 	err := ParseFile("./default-config.yaml", conf)
 	if err != nil {
 		t.Error("unexpected error:", err)

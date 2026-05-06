@@ -6,11 +6,16 @@ import (
 	"time"
 
 	"github.com/ohsu-comp-bio/funnel/config"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 func TestHTTP(t *testing.T) {
-	store, err := NewHTTP(config.HTTPStorage{
-		Timeout: config.Duration(2 * time.Second),
+	store, err := NewHTTP(&config.HTTPStorage{
+		Timeout: &config.TimeoutConfig{
+			TimeoutOption: &config.TimeoutConfig_Duration{
+				Duration: durationpb.New(time.Second * 2),
+			},
+		},
 	})
 	if err != nil {
 		t.Fatal("Error creating HTTP backend:", err)

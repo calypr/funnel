@@ -217,7 +217,7 @@ type s3Test struct {
 	client *s3.S3
 }
 
-func newS3Test(conf config.AmazonS3Storage) (*s3Test, error) {
+func newS3Test(conf *config.AmazonS3Storage) (*s3Test, error) {
 	sess, err := util.NewAWSSession(conf.AWSConfig)
 	if err != nil {
 		return nil, err

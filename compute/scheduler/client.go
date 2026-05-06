@@ -25,7 +25,7 @@ type client struct {
 // NewClient returns a new Client instance connected to the
 // scheduler and task logger services at a given address
 // (e.g. "localhost:9090")
-func NewClient(ctx context.Context, conf config.RPCClient) (Client, error) {
+func NewClient(ctx context.Context, conf *config.RPCClient) (Client, error) {
 	conn, err := util.Dial(ctx, conf)
 	if err != nil {
 		return nil, err

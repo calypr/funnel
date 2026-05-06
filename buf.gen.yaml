@@ -1,0 +1,27 @@
+version: v1
+plugins:
+  - plugin: buf.build/protocolbuffers/go
+    out: .
+    opt: paths=source_relative
+  - plugin: buf.build/grpc/go:v1.3.0
+    out: .
+    opt:
+      - paths=source_relative
+      - require_unimplemented_servers=false
+
+  - plugin: buf.build/grpc-ecosystem/gateway
+    out: .
+    opt: logtostderr=true,paths=source_relative
+  - plugin: buf.build/grpc-ecosystem/openapiv2:v2.26.3
+    out: .
+    # Remove paths=source_relative; add any valid openapiv2 options if needed
+    opt: logtostderr=true
+
+
+  # Python (Protobuf)
+  - plugin: buf.build/protocolbuffers/python:v24.4
+    out: plugins/plugin-python
+
+  # Python (gRPC)
+  - plugin: buf.build/grpc/python:v1.58.1
+    out: plugins/plugin-python

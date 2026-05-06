@@ -3,14 +3,14 @@ package examples
 import (
 	"testing"
 
-	"github.com/golang/protobuf/jsonpb"
 	"github.com/ohsu-comp-bio/funnel/tes"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 func TestExamplesAreValid(t *testing.T) {
 	for en, tb := range Examples() {
 		var task tes.Task
-		err := jsonpb.UnmarshalString(tb, &task)
+		err := protojson.Unmarshal([]byte(tb), &task)
 		if err != nil {
 			t.Fatal("unmarshal failed", en, err)
 		}

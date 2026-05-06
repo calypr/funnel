@@ -108,7 +108,7 @@ type tasklog struct {
 }
 
 type resources struct {
-	CpuCores      int64    `datastore:",noindex,omitempty"` // nolint
+	CpuCores      int32    `datastore:",noindex,omitempty"` // nolint
 	RamGb, DiskGb float64  `datastore:",noindex,omitempty"` // nolint
 	Preemptible   bool     `datastore:",noindex,omitempty"`
 	Zones         []string `datastore:",noindex,omitempty"`
@@ -139,7 +139,7 @@ func marshalTask(t *tes.Task, ctx context.Context) ([]*datastore.Key, []interfac
 	}
 	if t.Resources != nil {
 		z.Resources = &resources{
-			CpuCores:    int64(t.Resources.CpuCores),
+			CpuCores:    t.Resources.CpuCores,
 			RamGb:       t.Resources.RamGb,
 			DiskGb:      t.Resources.DiskGb,
 			Preemptible: t.Resources.Preemptible,
@@ -214,7 +214,7 @@ func (c *task) unmarshal() *tes.Task {
 
 	if c.Resources != nil {
 		z.Resources = &tes.Resources{
-			CpuCores:    int32(c.Resources.CpuCores),
+			CpuCores:    c.Resources.CpuCores,
 			RamGb:       c.Resources.RamGb,
 			DiskGb:      c.Resources.DiskGb,
 			Preemptible: c.Resources.Preemptible,

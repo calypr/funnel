@@ -5,12 +5,16 @@ import (
 )
 
 type jsonFormatter struct {
-	conf JSONFormatConfig
+	conf *JSONFormatConfig
 	fmt  *logrus.JSONFormatter
 }
 
 func (f *jsonFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 	if f.fmt == nil {
+		if f.conf == nil {
+			f.conf = &JSONFormatConfig{}
+		}
+
 		f.fmt = &logrus.JSONFormatter{
 			DisableHTMLEscape: true,
 			DisableTimestamp:  f.conf.DisableTimestamp,

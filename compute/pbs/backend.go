@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"time"
 
 	"github.com/ohsu-comp-bio/funnel/compute"
 	"github.com/ohsu-comp-bio/funnel/config"
@@ -17,7 +16,7 @@ import (
 )
 
 // NewBackend returns a new PBS (Portable Batch System) HPCBackend instance.
-func NewBackend(ctx context.Context, conf config.Config, reader tes.ReadOnlyServer, writer events.Writer, log *logger.Logger) (*compute.HPCBackend, error) {
+func NewBackend(ctx context.Context, conf *config.Config, reader tes.ReadOnlyServer, writer events.Writer, log *logger.Logger) (*compute.HPCBackend, error) {
 	if conf.PBS.TemplateFile != "" {
 		content, err := os.ReadFile(conf.PBS.TemplateFile)
 		if err != nil {
@@ -37,7 +36,7 @@ func NewBackend(ctx context.Context, conf config.Config, reader tes.ReadOnlyServ
 		Log:           log,
 		ExtractID:     extractID,
 		MapStates:     mapStates,
-		ReconcileRate: time.Duration(conf.PBS.ReconcileRate),
+		ReconcileRate: conf.PBS.ReconcileRate.AsDuration(),
 	}
 
 	if !conf.PBS.DisableReconciler {

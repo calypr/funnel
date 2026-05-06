@@ -14,19 +14,19 @@ import (
 // WithMetadataConfig loads config from a GCE VM environment, in particular
 // loading metadata from GCE's instance metadata.
 // https://cloud.google.com/compute/docs/storing-retrieving-metadata
-func WithMetadataConfig(conf config.Config, meta *Metadata) (config.Config, error) {
+func WithMetadataConfig(conf *config.Config, meta *Metadata) (*config.Config, error) {
 	defaultHostName := conf.Server.HostName
 
 	// Load full config doc from metadata
 	if meta.Instance.Attributes.FunnelConfig != "" {
-		mconf := config.Config{}
+		mconf := &config.Config{}
 		var err error
 		b := []byte(meta.Instance.Attributes.FunnelConfig)
-		err = config.Parse(b, &mconf)
+		err = config.Parse(b, mconf)
 		if err != nil {
 			return conf, err
 		}
-		err = mergo.MergeWithOverwrite(&conf, mconf)
+		err = mergo.MergeWithOverwrite(conf, mconf)
 		if err != nil {
 			return conf, err
 		}
@@ -47,7 +47,7 @@ func WithMetadataConfig(conf config.Config, meta *Metadata) (config.Config, erro
 	// If the configuration contains a node ID, assume that a node
 	// process should be started (instead of a server).
 	if conf.Node.ID != "" {
-		conf.GoogleStorage = config.GoogleCloudStorage{}
+		conf.GoogleStorage = &config.GoogleCloudStorage{}
 	}
 
 	// Auto detect the server's host name when it's not already set.

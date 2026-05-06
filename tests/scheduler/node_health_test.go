@@ -8,6 +8,7 @@ import (
 	"github.com/ohsu-comp-bio/funnel/compute/scheduler"
 	"github.com/ohsu-comp-bio/funnel/config"
 	"github.com/ohsu-comp-bio/funnel/tests"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 // Test the simple case of a node that is alive,
@@ -28,7 +29,7 @@ func TestNodeDead(t *testing.T) {
 	// Some databases need time to sync the PutNode.
 	time.Sleep(time.Millisecond * 100)
 	// Wait for node to ping timeout.
-	time.Sleep(time.Duration(conf.Scheduler.NodePingTimeout))
+	time.Sleep(conf.Scheduler.NodePingTimeout.GetDuration().AsDuration())
 	// Should mark node as dead.
 	err = srv.Scheduler.CheckNodes()
 	if err != nil {
@@ -66,7 +67,7 @@ func TestNodeInitFail(t *testing.T) {
 		t.Error(err)
 	}
 
-	time.Sleep(time.Duration(conf.Scheduler.NodeInitTimeout))
+	time.Sleep(conf.Scheduler.NodeInitTimeout.GetDuration().AsDuration())
 	srv.Scheduler.CheckNodes()
 
 	resp, err := srv.Scheduler.Nodes.ListNodes(ctx, &scheduler.ListNodesRequest{})
@@ -101,7 +102,7 @@ func TestNodeDeadTimeout(t *testing.T) {
 
 	srv.Scheduler.CheckNodes()
 
-	time.Sleep(time.Duration(conf.Scheduler.NodeDeadTimeout))
+	time.Sleep(conf.Scheduler.NodeDeadTimeout.GetDuration().AsDuration())
 	srv.Scheduler.CheckNodes()
 
 	resp, err := srv.Scheduler.Nodes.ListNodes(ctx, &scheduler.ListNodesRequest{})
@@ -116,10 +117,22 @@ func TestNodeDeadTimeout(t *testing.T) {
 	}
 }
 
-func nodeTestConfig(conf config.Config) config.Config {
+func nodeTestConfig(conf *config.Config) *config.Config {
 	conf.Compute = "manual"
-	conf.Scheduler.NodePingTimeout = config.Duration(time.Millisecond * 300)
-	conf.Scheduler.NodeInitTimeout = config.Duration(time.Millisecond * 300)
-	conf.Scheduler.NodeDeadTimeout = config.Duration(time.Millisecond * 300)
+	conf.Scheduler.NodePingTimeout = &config.TimeoutConfig{
+		TimeoutOption: &config.TimeoutConfig_Duration{
+			Duration: durationpb.New(time.Millisecond * 300),
+		},
+	}
+	conf.Scheduler.NodeInitTimeout = &config.TimeoutConfig{
+		TimeoutOption: &config.TimeoutConfig_Duration{
+			Duration: durationpb.New(time.Millisecond * 300),
+		},
+	}
+	conf.Scheduler.NodeDeadTimeout = &config.TimeoutConfig{
+		TimeoutOption: &config.TimeoutConfig_Duration{
+			Duration: durationpb.New(time.Millisecond * 300),
+		},
+	}
 	return conf
 }

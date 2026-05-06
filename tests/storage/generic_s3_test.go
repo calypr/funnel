@@ -213,7 +213,7 @@ type minioTest struct {
 	fcli   *storage.GenericS3
 }
 
-func newMinioTest(conf config.GenericS3Storage) (*minioTest, error) {
+func newMinioTest(conf *config.GenericS3Storage) (*minioTest, error) {
 	ssl := strings.HasPrefix(conf.Endpoint, "https")
 	client, err := minio.NewV2(conf.Endpoint, conf.Key, conf.Secret, ssl)
 	if err != nil {

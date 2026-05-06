@@ -4,12 +4,12 @@ import (
 	"fmt"
 
 	"github.com/boltdb/bolt"
-	proto "github.com/golang/protobuf/proto"
 	"github.com/ohsu-comp-bio/funnel/compute/scheduler"
 	"github.com/ohsu-comp-bio/funnel/tes"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 // queueTask adds a task to the scheduler queue.

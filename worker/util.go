@@ -10,18 +10,24 @@ import (
 
 // getExitCode gets the exit status (i.e. exit code) from the result of an executed command.
 // The exit code is zero if the command completed without error.
-func getExitCode(err error) int {
-	if err != nil {
-		if exiterr, exitOk := err.(*exec.ExitError); exitOk {
-			if status, statusOk := exiterr.Sys().(syscall.WaitStatus); statusOk {
-				return status.ExitStatus()
-			}
-		} else {
-			return -999
+func getExitCode(err error) (int, error) {
+	// The error is nil, the command returned successfully, so exit status is 0.
+	if err == nil {
+		return 0, nil
+	}
+
+	// Check for Kubernetes error first
+	if k8sErr, ok := err.(*K8sExecutorErr); ok {
+		return k8sErr.ExitCode, nil
+	}
+
+	if exiterr, exitOk := err.(*exec.ExitError); exitOk {
+		if status, statusOk := exiterr.Sys().(syscall.WaitStatus); statusOk {
+			return status.ExitStatus(), nil
 		}
 	}
-	// The error is nil, the command returned successfully, so exit status is 0.
-	return 0
+
+	return -1, fmt.Errorf("failed to get exit code: %w", err)
 }
 
 // recover from panic and call "cb" with an error value.

@@ -137,7 +137,7 @@ func (db *DynamoDB) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*
 	}
 
 	if len(tasks) > 0 && response.LastEvaluatedKey != nil {
-		out.NextPageToken = response.LastEvaluatedKey["id"].S
+		out.NextPageToken = *response.LastEvaluatedKey["id"].S
 	}
 
 	return &out, nil

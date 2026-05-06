@@ -20,7 +20,7 @@ type PubSubWriter struct {
 // any buffered messages.
 //
 // Stdout, stderr, and system log events are not sent.
-func NewPubSubWriter(ctx context.Context, conf config.PubSub) (*PubSubWriter, error) {
+func NewPubSubWriter(ctx context.Context, conf *config.PubSub) (*PubSubWriter, error) {
 	opts := []option.ClientOption{}
 	if conf.CredentialsFile != "" {
 		opts = append(opts, option.WithCredentialsFile(conf.CredentialsFile))
@@ -75,7 +75,7 @@ func (p *PubSubWriter) Close() {}
 // ReadPubSub reads events from the topic configured by "conf".
 // The subscription "subname" will be created if it doesn't exist.
 // This blocks until the context is canceled.
-func ReadPubSub(ctx context.Context, conf config.PubSub, subname string, w Writer) error {
+func ReadPubSub(ctx context.Context, conf *config.PubSub, subname string, w Writer) error {
 	cl, err := pubsub.NewClient(ctx, conf.Project)
 	if err != nil {
 		return err

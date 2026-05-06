@@ -20,7 +20,7 @@ type Local struct {
 
 // NewLocal returns a Local instance, configured to limit
 // file system access to the given allowed directories.
-func NewLocal(conf config.LocalStorage) (*Local, error) {
+func NewLocal(conf *config.LocalStorage) (*Local, error) {
 	allowed := []string{}
 	for _, d := range conf.AllowedDirs {
 		a, err := filepath.Abs(d)

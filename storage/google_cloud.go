@@ -26,7 +26,7 @@ type GoogleCloud struct {
 
 // NewGoogleCloud creates an GoogleCloud client instance, give an endpoint URL
 // and a set of authentication credentials.
-func NewGoogleCloud(conf config.GoogleCloudStorage) (*GoogleCloud, error) {
+func NewGoogleCloud(conf *config.GoogleCloudStorage) (*GoogleCloud, error) {
 	ctx := context.Background()
 	client := &http.Client{}
 

@@ -4,7 +4,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/imdario/mergo"
+	"dario.cat/mergo"
 	"github.com/ohsu-comp-bio/funnel/config"
 )
 
@@ -12,16 +12,16 @@ import (
 // Funnel config values. These commands can also take in the path to a Funnel config file.
 // This function ensures that the config gets set up properly. Flag values override values in
 // the provided config file.
-func MergeConfigFileWithFlags(file string, flagConf config.Config) (config.Config, error) {
+func MergeConfigFileWithFlags(file string, flagConf *config.Config) (*config.Config, error) {
 	// parse config file if it exists
-	conf := config.DefaultConfig()
-	err := config.ParseFile(file, &conf)
+	conf := config.EmptyConfig()
+	err := config.ParseFile(file, conf)
 	if err != nil {
 		return conf, err
 	}
 
 	// file vals <- cli val
-	err = mergo.MergeWithOverwrite(&conf, flagConf)
+	err = mergo.MergeWithOverwrite(conf, flagConf)
 	if err != nil {
 		return conf, err
 	}
@@ -33,6 +33,7 @@ func MergeConfigFileWithFlags(file string, flagConf config.Config) (config.Confi
 		}
 	}
 
+
 	return conf, nil
 }
 
@@ -40,7 +41,7 @@ func MergeConfigFileWithFlags(file string, flagConf config.Config) (config.Confi
 // Returns:
 // - "path" is the path of the file.
 // - "cleanup" can be called to remove the temporary file.
-func TempConfigFile(c config.Config, name string) (path string, cleanup func()) {
+func TempConfigFile(c *config.Config, name string) (path string, cleanup func()) {
 	tmpdir, err := os.MkdirTemp("", "")
 	if err != nil {
 		panic(err)

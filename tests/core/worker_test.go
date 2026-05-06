@@ -9,13 +9,14 @@ import (
 	"time"
 
 	workerCmd "github.com/ohsu-comp-bio/funnel/cmd/worker"
-	"github.com/ohsu-comp-bio/funnel/config"
+
 	"github.com/ohsu-comp-bio/funnel/events"
 	"github.com/ohsu-comp-bio/funnel/storage"
 	"github.com/ohsu-comp-bio/funnel/tes"
 	"github.com/ohsu-comp-bio/funnel/tests"
 	"github.com/ohsu-comp-bio/funnel/worker"
 	gcontext "golang.org/x/net/context"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 func TestWorkerRun(t *testing.T) {
@@ -159,7 +160,7 @@ func (r taskReader) Close() {}
 func TestLargeLogRate(t *testing.T) {
 	tests.SetLogOutput(log, t)
 	conf := tests.DefaultConfig()
-	conf.Worker.LogUpdateRate = config.Duration(time.Millisecond * 500)
+	conf.Worker.LogUpdateRate = durationpb.New(time.Millisecond * 500)
 	conf.Worker.LogTailSize = 1000
 	task := tes.Task{
 		Id: "test-task-" + tes.GenerateID(),
@@ -200,7 +201,7 @@ func TestLargeLogRate(t *testing.T) {
 func TestZeroLogRate(t *testing.T) {
 	tests.SetLogOutput(log, t)
 	conf := tests.DefaultConfig()
-	conf.Worker.LogUpdateRate = 0
+	conf.Worker.LogUpdateRate = durationpb.New(0)
 	conf.Worker.LogTailSize = 1000
 	task := tes.Task{
 		Id: "test-task-" + tes.GenerateID(),
@@ -239,7 +240,7 @@ func TestZeroLogRate(t *testing.T) {
 func TestZeroLogTailSize(t *testing.T) {
 	tests.SetLogOutput(log, t)
 	conf := tests.DefaultConfig()
-	conf.Worker.LogUpdateRate = config.Duration(time.Millisecond * 500)
+	conf.Worker.LogUpdateRate = durationpb.New(time.Millisecond * 500)
 	conf.Worker.LogTailSize = 0
 	task := tes.Task{
 		Id: "test-task-" + tes.GenerateID(),
@@ -279,7 +280,7 @@ func TestZeroLogTailSize(t *testing.T) {
 func TestLogTailContent(t *testing.T) {
 	tests.SetLogOutput(log, t)
 	conf := tests.DefaultConfig()
-	conf.Worker.LogUpdateRate = config.Duration(time.Millisecond * 10)
+	conf.Worker.LogUpdateRate = durationpb.New(time.Millisecond * 10)
 	conf.Worker.LogTailSize = 10
 	task := tes.Task{
 		Id: "test-task-" + tes.GenerateID(),
@@ -323,7 +324,7 @@ func TestLogTailContent(t *testing.T) {
 func TestDockerContainerMetadata(t *testing.T) {
 	tests.SetLogOutput(log, t)
 	conf := tests.DefaultConfig()
-	conf.Worker.LogUpdateRate = config.Duration(time.Millisecond * 10)
+	conf.Worker.LogUpdateRate = durationpb.New(time.Millisecond * 10)
 	conf.Worker.LogTailSize = 10
 	task := tes.Task{
 		Id: "test-task-" + tes.GenerateID(),
