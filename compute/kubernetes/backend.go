@@ -260,7 +260,7 @@ func (b *Backend) createResources(ctx context.Context, task *tes.Task, config *c
 		b.log.Debug("creating Worker PV", "taskID", task.Id)
 
 		// Check to make sure required configs are present
-		if config.GenericS3 == nil || len(config.GenericS3) == 0 ||
+		if len(config.GenericS3) == 0 ||
 			config.GenericS3[0].Bucket == "" || config.GenericS3[0].Region == "" {
 			return fmt.Errorf("Bucket or Region not found in GenericS3 config when attempting to create resources for task: %#v", task)
 		}
@@ -385,21 +385,9 @@ func (b *Backend) isJobSchedulingTimedOut(ctx context.Context, jobName string, t
 }
 
 /***********[WIP] Attempt to refactor reconcile loop into smaller functions for better readability and testability ***********/
-// cleanResourcesIfEnabled deletes resources for a job unless cleanup has been
-// disabled (e.g. for debugging or dry-run modes). Always clears the job from
-// failedJobEvents regardless, since the job has reached a terminal state.
-func (b *Backend) cleanResourcesIfEnabled(ctx context.Context, jobName string, disableCleanup bool, failedJobEvents map[string]int) {
-	delete(failedJobEvents, jobName)
-	if disableCleanup {
-		return
-	}
-	if err := b.cleanResources(ctx, jobName); err != nil {
-		b.log.Error("reconcile: failed to clean resources", "taskID", jobName, "error", err)
-	}
-}
 
-// listActiveK8sJobs returns a map of taskID -> Job for all funnel-worker jobs.
-func (b *Backend) listActiveK8sJobs(ctx context.Context) (map[string]*v1.Job, error) {
+// listAllWorkerJobs returns a map of taskID -> Job for all funnel-worker jobs.
+func (b *Backend) listAllWorkerJobs(ctx context.Context) (map[string]*v1.Job, error) {
 	jobs, err := b.client.BatchV1().Jobs(b.conf.Kubernetes.JobsNamespace).List(ctx, metav1.ListOptions{
 		LabelSelector: "app=funnel-worker",
 	})
@@ -413,21 +401,17 @@ func (b *Backend) listActiveK8sJobs(ctx context.Context) (map[string]*v1.Job, er
 	return k8sJobs, nil
 }
 
-// cleanBacklog clears completed and orphaned jobs left over from a previous
-// server run. Called once at startup.
 func (b *Backend) cleanBacklog(ctx context.Context) {
-	k8sJobs, err := b.listActiveK8sJobs(ctx)
+	k8sJobs, err := b.listAllWorkerJobs(ctx)
 	if err != nil {
 		b.log.Error("backlog cleanup: listing jobs", err)
 		return
 	}
 
-	// Determine stale jobs and clean up resources. Stale jobs include:
-	//   1. Completed jobs (Succeeded/Failed) that were not cleaned up before the server restarted.
-	//   2. Orphaned jobs (Active) whose task no longer exists in the Funnel DB — left over from a previous deployment or server crash.
 	for taskID, j := range k8sJobs {
 		s := j.Status
 
+		// Completed jobs (Succeeded/Failed) that were not cleaned up before the server restarted.
 		if s.Succeeded > 0 || s.Failed > 0 {
 			b.log.Debug("backlog cleanup: deleting completed job", "taskID", taskID)
 			if err := b.cleanResources(ctx, taskID); err != nil {
@@ -436,6 +420,7 @@ func (b *Backend) cleanBacklog(ctx context.Context) {
 			continue
 		}
 
+		// Orphaned jobs (Active) whose task no longer exists in the Funnel DB — left over from a previous deployment or server crash.
 		if s.Active > 0 {
 			_, err := b.database.GetTask(ctx, &tes.GetTaskRequest{Id: taskID, View: tes.View_MINIMAL.String()})
 			if err != nil {
@@ -452,117 +437,104 @@ func (b *Backend) cleanBacklog(ctx context.Context) {
 	b.CleanOrphanedResources(ctx)
 }
 
-// reconcileOnce performs a single reconciliation pass.
-func (b *Backend) reconcileOnce(ctx context.Context, disableCleanup bool, failedJobEvents map[string]int) {
-	if failedJobEvents == nil {
-		failedJobEvents = make(map[string]int)
+func (b *Backend) reconcileJob(ctx context.Context, j *v1.Job, disableCleanup bool) {
+	jobName := j.Name
+	status := j.Status
+	schedulingTimeout := b.conf.Kubernetes.Timeout.GetDuration()
+
+	writeSystemError := func(reason string) {
+		b.event.WriteEvent(ctx, events.NewState(jobName, tes.SystemError))
+		b.event.WriteEvent(ctx, events.NewSystemLog(
+			jobName, 0, 0, "error",
+			"Kubernetes job in FAILED state",
+			map[string]string{"error": reason},
+		))
 	}
 
-	k8sJobs, err := b.listActiveK8sJobs(ctx)
+	cleanResourcesIfEnabled := func() {
+		if !disableCleanup {
+			b.log.Debug("reconcile: cleaning up job", "taskID", jobName)
+			if err := b.cleanResources(ctx, jobName); err != nil {
+				b.log.Error("reconcile: failed to clean resources", "taskID", jobName, "error", err)
+			}
+		}
+	}
+
+	switch {
+	case status.Active > 0:
+		if schedulingTimeout != nil && b.isJobSchedulingTimedOut(ctx, jobName, schedulingTimeout.AsDuration()) {
+			b.log.Debug("reconcile: worker pod scheduling timed out.", "taskID", jobName)
+			writeSystemError("worker pod scheduling timed out")
+			cleanResourcesIfEnabled()
+		}
+
+	case status.Succeeded > 0:
+		b.log.Debug("reconcile: reconciled successful job", "taskID", jobName)
+		cleanResourcesIfEnabled()
+
+	case status.Failed > 0:
+		task, err := b.database.GetTask(ctx, &tes.GetTaskRequest{Id: jobName, View: tes.View_MINIMAL.String()})
+		if err != nil || task.State != tes.State_SYSTEM_ERROR {
+			b.log.Debug("reconcile: writing system error event for failed job", "taskID", jobName)
+			conds, err := json.Marshal(status.Conditions)
+			if err != nil {
+				b.log.Error("reconcile: marshaling failed job conditions", "taskID", jobName, "error", err)
+			}
+			writeSystemError(string(conds))
+		}
+		b.log.Debug("reconcile: reconciled failed job", "taskID", jobName)
+		cleanResourcesIfEnabled()
+	}
+}
+
+// reconcileOnce performs a single reconciliation pass.
+func (b *Backend) reconcileOnce(ctx context.Context, disableCleanup bool) {
+	k8sJobs, err := b.listAllWorkerJobs(ctx)
 	if err != nil {
 		b.log.Error("reconcile: listing jobs", err)
 		return
 	}
 
+	// Page through all non-terminal Funnel tasks and reconcile against K8s Jobs.
+	// Matched jobs are removed from k8sJobs so any remainder can be identified as orphaned.
 	nonTerminalStates := []tes.State{tes.State_QUEUED, tes.State_INITIALIZING, tes.State_RUNNING}
 	for _, state := range nonTerminalStates {
-		if err := b.reconcileTasksForState(ctx, state, k8sJobs, disableCleanup, failedJobEvents); err != nil {
-			b.log.Error("reconcile: error reconciling tasks", "state", state, "error", err)
+		pageToken := ""
+		for {
+			lresp, err := b.database.ListTasks(ctx, &tes.ListTasksRequest{
+				State:     state,
+				PageSize:  100,
+				PageToken: pageToken,
+			})
+			if err != nil {
+				b.log.Error("reconcile: listing tasks", "state", state, "error", err)
+				break
+			}
+			for _, task := range lresp.Tasks {
+				j, exists := k8sJobs[task.Id]
+				delete(k8sJobs, task.Id) // matched — remove so it isn't treated as orphaned
+				if exists {
+					b.reconcileJob(ctx, j, disableCleanup)
+				}
+			}
+			pageToken = lresp.NextPageToken
+			if pageToken == "" {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
 		}
 	}
 
 	// Any jobs still in k8sJobs were not matched to any Funnel task — orphaned.
 	if !disableCleanup {
 		for taskID := range k8sJobs {
-			b.log.Info("reconcile: cleaning up orphaned job with no matching Funnel task", "taskID", taskID)
+			b.log.Info("reconcile: cleaning up job for terminal or missing Funnel task", "taskID", taskID)
 			if err := b.cleanResources(ctx, taskID); err != nil {
 				b.log.Error("reconcile: failed to clean orphaned resources", "taskID", taskID, "error", err)
 			}
-			delete(failedJobEvents, taskID)
 		}
 	}
 
-}
-
-// reconcileTasksForState pages through all Funnel tasks in a given state and
-// reconciles each against its corresponding K8s Job, removing matched jobs
-// from k8sJobs so that any remainder can be identified as orphaned.
-func (b *Backend) reconcileTasksForState(ctx context.Context, state tes.State, k8sJobs map[string]*v1.Job, disableCleanup bool, failedJobEvents map[string]int) error {
-	pageToken := ""
-	for {
-		lresp, err := b.database.ListTasks(ctx, &tes.ListTasksRequest{
-			State:     state,
-			PageSize:  100,
-			PageToken: pageToken,
-		})
-		if err != nil {
-			return fmt.Errorf("listing tasks (state=%s): %w", state, err)
-		}
-
-		for _, task := range lresp.Tasks {
-			j, exists := k8sJobs[task.Id]
-			delete(k8sJobs, task.Id) // matched — remove so it isn't treated as orphaned
-			if exists {
-				b.reconcileJob(ctx, j, disableCleanup, failedJobEvents)
-			}
-		}
-
-		pageToken = lresp.NextPageToken
-		if pageToken == "" {
-			return nil
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-}
-
-// reconcileJob reconciles a single K8s Job against its Funnel task state.
-func (b *Backend) reconcileJob(ctx context.Context, j *v1.Job, disableCleanup bool, failedJobEvents map[string]int) {
-	jobName := j.Name
-	status := j.Status
-	const maxErrEventWrites = 2
-
-	switch {
-	case status.Active > 0:
-		// If any pod is stuck in active state for longer than the scheduling timeout,
-		// write a SystemError event and clean up resources if enabled.
-		if b.conf.Kubernetes.Timeout.GetDuration() == nil {
-			return
-		}
-		timeout := b.conf.Kubernetes.Timeout.GetDuration().AsDuration()
-		if !b.isJobSchedulingTimedOut(ctx, jobName, timeout) {
-			return
-		}
-		b.log.Debug("reconcile: worker pod scheduling timed out", "taskID", jobName)
-		b.event.WriteEvent(ctx, events.NewState(jobName, tes.SystemError))
-		b.event.WriteEvent(ctx, events.NewSystemLog(
-			jobName, 0, 0, "error",
-			"Kubernetes job in FAILED state",
-			map[string]string{"error": "worker pod scheduling timed out"},
-		))
-		b.cleanResourcesIfEnabled(ctx, jobName, disableCleanup, failedJobEvents)
-
-	case status.Succeeded > 0:
-		b.log.Debug("reconcile: cleaning up successful job", "taskID", jobName)
-		b.cleanResourcesIfEnabled(ctx, jobName, disableCleanup, failedJobEvents)
-
-	case status.Failed > 0:
-		if failedJobEvents[jobName] >= maxErrEventWrites {
-			return
-		}
-		b.log.Debug("reconcile: writing system error event for failed job", "taskID", jobName)
-		conds, err := json.Marshal(status.Conditions)
-		if err != nil {
-			b.log.Error("reconcile: marshal failed job conditions", "taskID", jobName, "error", err)
-		}
-		b.event.WriteEvent(ctx, events.NewState(jobName, tes.SystemError))
-		b.event.WriteEvent(ctx, events.NewSystemLog(
-			jobName, 0, 0, "error",
-			"Kubernetes job in FAILED state",
-			map[string]string{"error": string(conds)},
-		))
-		failedJobEvents[jobName]++
-		b.cleanResourcesIfEnabled(ctx, jobName, disableCleanup, failedJobEvents)
-	}
 }
 
 // reconcile is the ticker-based loop used when ExternalReconciler is false.
@@ -574,16 +546,12 @@ func (b *Backend) reconcile_modular(ctx context.Context, rate time.Duration, dis
 	ticker := time.NewTicker(rate)
 	defer ticker.Stop()
 
-	// failedJobEvents tracks how many times we've written a SystemError event
-	// for a given job, so we don't spam events on every tick.
-	failedJobEvents := make(map[string]int)
-
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			b.reconcileOnce(ctx, disableCleanup, failedJobEvents)
+			b.reconcileOnce(ctx, disableCleanup)
 		}
 	}
 }
@@ -832,23 +800,23 @@ func (b *Backend) CleanOrphanedResources(ctx context.Context) {
 	namespace := b.conf.Kubernetes.JobsNamespace
 	taskIDs := make(map[string]struct{})
 
-	// Collect task IDs from each resource type
-	if pvcs, err := b.client.CoreV1().PersistentVolumeClaims(namespace).List(ctx, metav1.ListOptions{LabelSelector: "app=funnel"}); err == nil {
-		if err != nil {
-			b.log.Error("backlog cleanup: listing PVCs", err)
-		}
+	pvcs, err := b.client.CoreV1().PersistentVolumeClaims(namespace).List(ctx, metav1.ListOptions{LabelSelector: "app=funnel"})
+	if err != nil {
+		b.log.Error("CleanOrphanedResources: listing PVCs", "error", err)
+	} else {
 		for _, r := range pvcs.Items {
-			if id, ok := r.Labels["taskId"]; ok {
+			if id, ok := r.Labels["taskId"]; ok && id != "" {
 				taskIDs[id] = struct{}{}
 			}
 		}
 	}
 
-	// PVs
-	if pvs, err := b.client.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{LabelSelector: fmt.Sprintf("app=funnel,namespace=%s", namespace)}); err == nil {
-		if err != nil {
-			b.log.Error("backlog cleanup: listing PVs", err)
-		}
+	pvs, err := b.client.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{
+		LabelSelector: fmt.Sprintf("app=funnel,namespace=%s", namespace),
+	})
+	if err != nil {
+		b.log.Error("CleanOrphanedResources: listing PVs", "error", err)
+	} else {
 		for _, r := range pvs.Items {
 			if id, ok := r.Labels["taskId"]; ok {
 				taskIDs[id] = struct{}{}
@@ -856,12 +824,13 @@ func (b *Backend) CleanOrphanedResources(ctx context.Context) {
 		}
 	}
 
-	// ConfigMaps
-	if cms, err := b.client.CoreV1().ConfigMaps(namespace).List(ctx, metav1.ListOptions{LabelSelector: "app=funnel"}); err == nil {
-		if err != nil {
-			b.log.Error("backlog cleanup: listing ConfigMaps", err)
-		}
+	// ConfigMaps: label-first, name-based fallback for resources missing the taskId label
+	cms, err := b.client.CoreV1().ConfigMaps(namespace).List(ctx, metav1.ListOptions{LabelSelector: "app=funnel"})
+	if err != nil {
+		b.log.Error("CleanOrphanedResources: listing ConfigMaps", "error", err)
+	} else {
 		const cmPrefix = "funnel-worker-config-"
+		//TODO: Deprecate the name-based fallback in favor of enforcing the presence of the taskId label on all resources
 		for _, r := range cms.Items {
 			if id, ok := r.Labels["taskId"]; ok {
 				taskIDs[id] = struct{}{}
@@ -871,11 +840,10 @@ func (b *Backend) CleanOrphanedResources(ctx context.Context) {
 		}
 	}
 
-	// ServiceAccounts
-	if sas, err := b.client.CoreV1().ServiceAccounts(namespace).List(ctx, metav1.ListOptions{LabelSelector: "app=funnel"}); err == nil {
-		if err != nil {
-			b.log.Error("backlog cleanup: listing ServiceAccounts", err)
-		}
+	sas, err := b.client.CoreV1().ServiceAccounts(namespace).List(ctx, metav1.ListOptions{LabelSelector: "app=funnel"})
+	if err != nil {
+		b.log.Error("CleanOrphanedResources: listing ServiceAccounts", "error", err)
+	} else {
 		for _, r := range sas.Items {
 			if id, ok := r.Labels["taskId"]; ok {
 				taskIDs[id] = struct{}{}
@@ -883,11 +851,10 @@ func (b *Backend) CleanOrphanedResources(ctx context.Context) {
 		}
 	}
 
-	// Roles
-	if roles, err := b.client.RbacV1().Roles(namespace).List(ctx, metav1.ListOptions{LabelSelector: "app=funnel"}); err == nil {
-		if err != nil {
-			b.log.Error("backlog cleanup: listing Roles", err)
-		}
+	roles, err := b.client.RbacV1().Roles(namespace).List(ctx, metav1.ListOptions{LabelSelector: "app=funnel"})
+	if err != nil {
+		b.log.Error("CleanOrphanedResources: listing Roles", "error", err)
+	} else {
 		for _, r := range roles.Items {
 			if id, ok := r.Labels["taskId"]; ok {
 				taskIDs[id] = struct{}{}
@@ -895,11 +862,10 @@ func (b *Backend) CleanOrphanedResources(ctx context.Context) {
 		}
 	}
 
-	// RoleBindings
-	if rbs, err := b.client.RbacV1().RoleBindings(namespace).List(ctx, metav1.ListOptions{LabelSelector: "app=funnel"}); err == nil {
-		if err != nil {
-			b.log.Error("backlog cleanup: listing RoleBindings", err)
-		}
+	rbs, err := b.client.RbacV1().RoleBindings(namespace).List(ctx, metav1.ListOptions{LabelSelector: "app=funnel"})
+	if err != nil {
+		b.log.Error("CleanOrphanedResources: listing RoleBindings", "error", err)
+	} else {
 		for _, r := range rbs.Items {
 			if id, ok := r.Labels["taskId"]; ok {
 				taskIDs[id] = struct{}{}
@@ -908,21 +874,21 @@ func (b *Backend) CleanOrphanedResources(ctx context.Context) {
 	}
 
 	for taskID := range taskIDs {
-		clean, err := b.isResourceCleanupNeeded(ctx, taskID)
+		needsCleanup, err := b.isResourceCleanupNeeded(ctx, taskID)
 		if err != nil {
-			b.log.Error("backlog cleanup: checking task state", "taskID", taskID, "error", err)
+			b.log.Error("CleanOrphanedResources: checking task state", "taskID", taskID, "error", err)
 			continue
 		}
-		if !clean {
+		if !needsCleanup {
 			continue
 		}
-		b.log.Info("backlog cleanup: cleaning up resources for task", "taskID", taskID)
+		b.log.Info("CleanOrphanedResources: cleaning up resources for task", "taskID", taskID)
 		if err := b.cleanResources(ctx, taskID); err != nil {
-			b.log.Error("backlog cleanup: failed to clean resources", "taskID", taskID, "error", err)
+			b.log.Error("CleanOrphanedResources: failed to clean resources", "taskID", taskID, "error", err)
 		}
 
-		// Sleep briefly between deletions to avoid overwhelming the API server if there are many orphaned resources.
-		// Test this + see if better to sleep ~1 second for every 10 tasks...
+		// Brief pause between deletions to avoid hammering the K8s API server under high orphan counts.
+		// TODO: consider batching (e.g. 1s per 10 tasks if any performance delays are observed).
 		time.Sleep(500 * time.Millisecond)
 	}
 }
