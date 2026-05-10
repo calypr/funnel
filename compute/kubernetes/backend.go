@@ -538,7 +538,7 @@ func (b *Backend) reconcileOnce(ctx context.Context, disableCleanup bool) {
 }
 
 // reconcile is the ticker-based loop used when ExternalReconciler is false.
-func (b *Backend) reconcile_modular(ctx context.Context, rate time.Duration, disableCleanup bool) {
+func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableCleanup bool) {
 	if !disableCleanup {
 		b.cleanBacklog(ctx)
 	}
@@ -575,7 +575,7 @@ func (b *Backend) reconcile_modular(ctx context.Context, rate time.Duration, dis
 // one or more terminal states for the backend.
 //
 // This loop is also used to cleanup successful jobs.
-func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableCleanup bool) {
+func (b *Backend) reconcile_monolith(ctx context.Context, rate time.Duration, disableCleanup bool) {
 	// Clears all resources that still exist from jobs that have run before this server started.
 	// This handles two cases:
 	//   1. Completed jobs (Succeeded/Failed) that were not cleaned up before the server restarted.
