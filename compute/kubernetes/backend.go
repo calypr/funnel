@@ -473,6 +473,22 @@ func (b *Backend) reconcileJob(ctx context.Context, j *v1.Job, disableCleanup bo
 		cleanResourcesIfEnabled()
 
 	case status.Failed > 0:
+		// Only act if K8s has marked the Job as permanently failed (backoffLimit exhausted).
+		// If Active > 0 is also set, K8s is still retrying — don't intervene.
+		if status.Active > 0 {
+			return
+		}
+		jobFailed := false
+		for _, cond := range status.Conditions {
+			if cond.Type == v1.JobFailed && cond.Status == corev1.ConditionTrue {
+				jobFailed = true
+				break
+			}
+		}
+		if !jobFailed {
+			// K8s hasn't given up yet — still within backoffLimit, retrying.
+			return
+		}
 		task, err := b.database.GetTask(ctx, &tes.GetTaskRequest{Id: jobName, View: tes.View_MINIMAL.String()})
 		if err != nil || task.State != tes.State_SYSTEM_ERROR {
 			b.log.Debug("reconcile: writing system error event for failed job", "taskID", jobName)
