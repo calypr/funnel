@@ -237,11 +237,17 @@ func (kcmd KubernetesCommand) Run(ctx context.Context) error {
 	logger.Debug("Streaming pod logs", "podName", pod.Name)
 	err = streamPodLogs(ctx, kcmd.JobsNamespace, pod.Name, kcmd.Stdout, kcmd.Stderr)
 	if err != nil {
-		return &K8sSystemErr{
-			Reason:  "LogStreamingFailed",
-			Message: fmt.Sprintf("Failed to stream logs from pod %s", pod.Name),
-			Err:     err,
+		lastAttempt, checkErr := isWorkerLastAttempt(ctx, taskId, kcmd.JobsNamespace)
+		if checkErr != nil || lastAttempt {
+			logger.Debug("Error checking if worker attempt is last attempt", "error", checkErr)
+			return &K8sSystemErr{
+				Reason:  "LogStreamingFailed",
+				Message: fmt.Sprintf("Failed to stream logs from pod %s", pod.Name),
+				Err:     err,
+			}
 		}
+		logger.Debug("Log streaming error not marked as SYSTEM_ERROR because this is not the last worker attempt", "podName", pod.Name, "error", err)
+		return fmt.Errorf("Transient system error, will retry. error: failed to stream logs from pod %s: %v", pod.Name, err)
 	}
 
 	if len(pod.Status.ContainerStatuses) == 0 {
@@ -283,6 +289,23 @@ func (kcmd KubernetesCommand) Run(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func isWorkerLastAttempt(ctx context.Context, taskID, namespace string) (bool, error) {
+
+	clientset, err := getKubernetesClientset()
+	job, err := clientset.BatchV1().Jobs(namespace).Get(ctx, taskID, metav1.GetOptions{})
+	if err != nil {
+		return true, err
+	}
+	limit := int32(0)
+	if job.Spec.BackoffLimit != nil {
+		limit = *job.Spec.BackoffLimit
+	}
+	// failed count includes this attempt only after the pod exits,
+	// so while we're still running, status.Failed reflects *completed* failed attempts.
+	// If failed >= backoffLimit, the Job controller won't retry us.
+	return job.Status.Failed >= limit, nil
 }
 
 // streamPodLogs streams logs from a pod regardless of its state
