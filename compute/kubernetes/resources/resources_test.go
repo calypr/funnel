@@ -250,6 +250,11 @@ func TestDeletePV(t *testing.T) {
 	pv := &corev1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "funnel-worker-pv-" + testTaskID,
+			Labels: map[string]string{
+				"app":       "funnel",
+				"taskId":    testTaskID,
+				"namespace": jobsNamespace,
+			},
 		},
 	}
 	_, err := fakeClient.CoreV1().PersistentVolumes().Create(context.Background(), pv, metav1.CreateOptions{})
@@ -257,7 +262,7 @@ func TestDeletePV(t *testing.T) {
 		t.Fatalf("Failed to create test PV: %v", err)
 	}
 
-	err = DeletePV(context.Background(), testTaskID, fakeClient, l)
+	err = DeletePV(context.Background(), testTaskID, jobsNamespace, fakeClient, l)
 	if err != nil {
 		t.Errorf("DeletePV failed: %v", err)
 	}
@@ -335,7 +340,7 @@ func TestDeleteNonExistentResources(t *testing.T) {
 
 	// DeletePV and DeletePVC are no-ops when the resource doesn't exist.
 	t.Run("PV", func(t *testing.T) {
-		err := DeletePV(context.Background(), nonExistentID, fakeClient, l)
+		err := DeletePV(context.Background(), nonExistentID, jobsNamespace, fakeClient, l)
 		if err != nil {
 			t.Errorf("DeletePV returned unexpected error for non-existent resource: %v", err)
 		}
@@ -381,7 +386,7 @@ func TestDeleteServiceAccount(t *testing.T) {
 		t.Fatalf("Failed to create test ServiceAccount: %v", err)
 	}
 
-	err = DeleteServiceAccount(context.Background(), testTaskID, namespace, fakeClient, l, false)
+	err = DeleteServiceAccount(context.Background(), testTaskID, namespace, fakeClient, l, nil)
 	if err != nil {
 		t.Errorf("DeleteServiceAccount failed: %v", err)
 	}
@@ -419,7 +424,7 @@ func TestDeleteServiceAccountInUse(t *testing.T) {
 		t.Fatalf("Failed to create test Pod: %v", err)
 	}
 
-	err = DeleteServiceAccount(context.Background(), testTaskID, namespace, fakeClient, l, false)
+	err = DeleteServiceAccount(context.Background(), testTaskID, namespace, fakeClient, l, nil)
 	if err != nil {
 		t.Fatalf("expected DeleteServiceAccount to succeed (skip) when ServiceAccount is in use, got error: %v", err)
 	}

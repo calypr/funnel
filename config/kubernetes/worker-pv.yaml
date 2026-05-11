@@ -5,6 +5,7 @@ metadata:
   labels:
     app: funnel
     taskId: {{.TaskId}}
+    namespace: {{.Namespace}}
 spec:
   storageClassName: "" # Required for static provisioning
   capacity:

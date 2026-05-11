@@ -11,6 +11,7 @@ import (
 	"github.com/ohsu-comp-bio/funnel/tes"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -72,6 +73,8 @@ func CreateServiceAccount(ctx context.Context, task *tes.Task, conf *config.Conf
 	return nil
 }
 
+// isServiceAccountAttachedToPods returns true as soon as it finds one active
+// (non-terminating) pod using the given ServiceAccount.
 func isServiceAccountAttachedToPods(ctx context.Context, saName, namespace string, client kubernetes.Interface) (bool, error) {
 	pods, err := client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
 		FieldSelector: fmt.Sprintf("spec.serviceAccountName=%s", saName),
@@ -79,35 +82,57 @@ func isServiceAccountAttachedToPods(ctx context.Context, saName, namespace strin
 	if err != nil {
 		return false, fmt.Errorf("listing pods using ServiceAccount %s: %v", saName, err)
 	}
-	return len(pods.Items) > 0, nil
+	for _, pod := range pods.Items {
+		if pod.DeletionTimestamp == nil {
+			return true, nil // early return on first active pod
+		}
+	}
+	return false, nil
 }
 
-// DeleteServiceAccount deletes the ServiceAccount created for a task.
-// If externalSA is true the ServiceAccount is externally managed (e.g. a
-// Gen3Workflow per-user SA supplied via the _WORKER_SA task tag) and must not
-// be deleted by Funnel.
-func DeleteServiceAccount(ctx context.Context, taskID string, namespace string, client kubernetes.Interface, log *logger.Logger, externalSA bool) error {
-	// ServiceAccount names are not available here without config, so we list by label.
-	sas, err := client.CoreV1().ServiceAccounts(namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("app=funnel,taskId=%s", taskID),
-	})
-	if err != nil {
-		return fmt.Errorf("listing ServiceAccounts for task %s: %v", taskID, err)
+type DeleteServiceAccountOptions struct {
+	// ServiceAccountName overrides the default derived SA name (funnel-worker-$namespace-$taskID).
+	// Required when the SA is externally managed (e.g. a Gen3Workflow per-user SA).
+	ServiceAccountName string
+
+	// SharedSA indicates the SA is shared across tasks. When true, deletion is
+	// skipped if any other active pods are still using it.
+	SharedSA bool
+}
+
+// DeleteServiceAccount deletes the ServiceAccount for a task.
+//
+// By default (no options), it targets the conventional SA name
+// funnel-worker-$namespace-$taskID and deletes it unconditionally.
+//
+// If opts.SharedSA is true, the SA is treated as shared — deletion is skipped
+// if any active pod is still using it, and the reconciler will retry on the
+// next pass when the last pod finishes.
+func DeleteServiceAccount(ctx context.Context, taskID, namespace string, client kubernetes.Interface, log *logger.Logger, opts *DeleteServiceAccountOptions) error {
+	saName := fmt.Sprintf("funnel-worker-%s-%s", namespace, taskID)
+	sharedSA := false
+
+	if opts != nil {
+		if opts.ServiceAccountName != "" {
+			saName = opts.ServiceAccountName
+		}
+		sharedSA = opts.SharedSA
 	}
-	for _, sa := range sas.Items {
-		inUse, err := isServiceAccountAttachedToPods(ctx, sa.Name, namespace, client)
+
+	if sharedSA {
+		inUse, err := isServiceAccountAttachedToPods(ctx, saName, namespace, client)
 		if err != nil {
-			return err
+			return fmt.Errorf("checking pod attachment for ServiceAccount %s: %v", saName, err)
 		}
 		if inUse {
-			log.Debug("skipping ServiceAccount deletion — still in use by active pod(s); reconciler will retry", "name", sa.Name, "taskID", taskID)
-			continue
+			log.Debug("skipping ServiceAccount deletion — still in use; reconciler will retry", "name", saName, "taskID", taskID)
+			return nil
 		}
+	}
 
-		log.Debug("deleting Worker ServiceAccount", "name", sa.Name, "taskID", taskID)
-		if err := client.CoreV1().ServiceAccounts(namespace).Delete(ctx, sa.Name, metav1.DeleteOptions{}); err != nil {
-			return fmt.Errorf("deleting ServiceAccount %s: %v", sa.Name, err)
-		}
+	log.Debug("deleting Worker ServiceAccount", "name", saName, "taskID", taskID)
+	if err := client.CoreV1().ServiceAccounts(namespace).Delete(ctx, saName, metav1.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
+		return fmt.Errorf("deleting ServiceAccount %s: %v", saName, err)
 	}
 	return nil
 }

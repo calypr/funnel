@@ -19,6 +19,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	batchv1 "k8s.io/client-go/kubernetes/typed/batch/v1"
 	"k8s.io/client-go/rest"
+	"mvdan.cc/sh/v3/syntax"
 )
 
 // KubernetesCommand is responsible for configuring and running a task in a Kubernetes cluster.
@@ -110,6 +111,14 @@ func (kcmd KubernetesCommand) Run(ctx context.Context) error {
 			shellCmd += " 2> " + kcmd.StderrFile
 		}
 		cmd = []string{shellCmd}
+	}
+
+	// Validate single-element shell scripts before passing them to /bin/sh -c.
+	// Multi-element commands are exec'd directly and bypass the shell entirely.
+	if len(cmd) == 1 && !hasRedirects {
+		if err := validateShellSyntax(cmd[0]); err != nil {
+			return err
+		}
 	}
 
 	// Use a shell wrapper when the command is a single element (a shell script
@@ -443,4 +452,14 @@ func getKubernetesClientset() (*kubernetes.Clientset, error) {
 
 	clientset, err := kubernetes.NewForConfig(kubeconfig)
 	return clientset, err
+}
+
+// validateShellSyntax returns an error if s is not valid POSIX shell syntax.
+// Used to catch issues like unterminated quotes before passing single-element
+// commands to /bin/sh -c. Multi-element commands bypass the shell entirely.
+func validateShellSyntax(s string) error {
+	if _, err := syntax.NewParser().Parse(strings.NewReader(s), ""); err != nil {
+		return fmt.Errorf("single-element command is not valid shell syntax (consider using a multi-element command array instead): %w", err)
+	}
+	return nil
 }

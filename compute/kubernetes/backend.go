@@ -129,7 +129,6 @@ func (b *Backend) Close() {
 // Submit creates both the PVC and the worker job with better error handling
 func (b *Backend) Submit(ctx context.Context, task *tes.Task, config *config.Config) error {
 	err := b.createResources(ctx, task, config)
-	b.log.Debug("Error creating resources", "error", err, "task ID", task.Id)
 
 	if err != nil {
 		b.log.Error("Error creating resources, writing SystemError event", "error", err, "task ID", task.Id)
@@ -208,10 +207,10 @@ func (b *Backend) createResources(ctx context.Context, task *tes.Task, config *c
 	// External (user-managed) SAs are not owned by the Job — they outlive tasks.
 	if config.Kubernetes.ServiceAccountTemplate != "" {
 		saName := fmt.Sprintf("funnel-worker-sa-%s-%s", config.Kubernetes.JobsNamespace, task.Id)
-		externalSA := false
+		sharedSA := false
 		if sa, exists := task.Tags["_WORKER_SA"]; exists && sa != "" {
 			saName = sa
-			externalSA = true
+			sharedSA = true
 		}
 
 		// TODO: Add error handler to handle case where Get fails for reasons other than `NotFound`
@@ -224,7 +223,7 @@ func (b *Backend) createResources(ctx context.Context, task *tes.Task, config *c
 			b.log.Debug("Creating Worker ServiceAccount", "taskID", task.Id)
 			// Only set the owner reference for task-level SAs; external SAs are shared and must not be GC'd with the job.
 			saOwnerRef := ownerRef
-			if externalSA {
+			if sharedSA {
 				saOwnerRef = nil
 			}
 			err = resources.CreateServiceAccount(timeoutCtx, task, config, b.client, b.log, saOwnerRef)
@@ -289,18 +288,6 @@ func (b *Backend) createResources(ctx context.Context, task *tes.Task, config *c
 func (b *Backend) cleanResources(ctx context.Context, taskId string) error {
 	var errs error
 
-	// Check whether this task used an externally-managed ServiceAccount (e.g.
-	// Gen3Workflow per-user SA supplied via _WORKER_SA tag). If so, skip SA
-	// deletion — the SA is shared across tasks and must not be torn down here.
-	externalSA := false
-	if b.database != nil {
-		if task, err := b.database.GetTask(ctx, &tes.GetTaskRequest{Id: taskId, View: tes.View_FULL.String()}); err == nil {
-			if saName, exists := task.Tags["_WORKER_SA"]; exists && saName != "" {
-				externalSA = true
-			}
-		}
-	}
-
 	// Delete Job
 	b.log.Debug("deleting Job", "taskID", taskId)
 	err := resources.DeleteJob(ctx, b.conf, taskId, b.client, b.log)
@@ -332,11 +319,22 @@ func (b *Backend) cleanResources(ctx context.Context, taskId string) error {
 		b.log.Error("deleting Job", "error", err)
 	}
 
-	// Delete ServiceAccount
-	err = resources.DeleteServiceAccount(ctx, taskId, b.conf.Kubernetes.JobsNamespace, b.client, b.log, externalSA)
-	if err != nil {
+	// Determine the ServiceAccount for this task.
+	// Default to the conventional task-scoped name; override if the task
+	// specifies an externally-managed SA via the _WORKER_SA tag.
+	saOpts := &resources.DeleteServiceAccountOptions{}
+	if b.database != nil {
+		if task, err := b.database.GetTask(ctx, &tes.GetTaskRequest{Id: taskId, View: tes.View_FULL.String()}); err == nil {
+			if workerSA := task.Tags["_WORKER_SA"]; workerSA != "" {
+				saOpts.ServiceAccountName = workerSA
+				saOpts.SharedSA = true
+			}
+		}
+	}
+
+	if err := resources.DeleteServiceAccount(ctx, taskId, b.conf.Kubernetes.JobsNamespace, b.client, b.log, saOpts); err != nil {
 		errs = multierror.Append(errs, err)
-		b.log.Error("deleting Worker ServiceAccount", "error", err)
+		b.log.Error("deleting Worker ServiceAccount", "taskID", taskId, "error", err)
 	}
 
 	// Delete Role
@@ -346,6 +344,12 @@ func (b *Backend) cleanResources(ctx context.Context, taskId string) error {
 		b.log.Error("deleting Worker Role", "error", err)
 	}
 
+	// Delete PV
+	err = resources.DeletePV(ctx, taskId, b.conf.Kubernetes.JobsNamespace, b.client, b.log)
+	if err != nil {
+		errs = multierror.Append(errs, err)
+		b.log.Error("deleting Worker PV", "error", err)
+	}
 	return errs
 }
 
@@ -436,6 +440,8 @@ func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableClea
 				}
 			}
 		}
+		b.CleanOrphanedResources(ctx)
+
 	}
 
 	ticker := time.NewTicker(rate)
@@ -616,6 +622,7 @@ func (b *Backend) isResourceCleanupNeeded(ctx context.Context, taskID string) (b
 // than as a long-running goroutine, so that cleanup is decoupled from the Funnel server lifecycle
 // and multiple server replicas do not race to clean the same resources simultaneously.
 func (b *Backend) CleanOrphanedResources(ctx context.Context) {
+	b.log.Info("starting orphaned resource cleanup")
 	namespace := b.conf.Kubernetes.JobsNamespace
 	taskIDs := make(map[string]struct{})
 

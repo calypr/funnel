@@ -28,6 +28,60 @@ func (n *noopEventWriter) WriteEvent(ctx context.Context, ev *events.Event) erro
 
 func (n *noopEventWriter) Close() {}
 
+const (
+	configMapTemplate = `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: funnel-worker-config-{{.TaskId}}
+  namespace: {{.Namespace}}
+data:
+  config.yaml: "placeholder"
+`
+	serviceAccountTemplate = `apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: funnel-worker-sa-{{.Namespace}}-{{.TaskId}}
+  namespace: {{.Namespace}}
+  labels:
+    app: funnel
+    taskId: {{.TaskId}}
+`
+	roleTemplate = `apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: funnel-worker-sa-{{.Namespace}}-{{.TaskId}}-role
+  namespace: {{.Namespace}}
+  labels:
+    app: funnel
+    taskId: {{.TaskId}}
+rules: []
+`
+	roleBindingTemplate = `apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: funnel-worker-sa-{{.Namespace}}-{{.TaskId}}-binding
+  namespace: {{.Namespace}}
+  labels:
+    app: funnel
+    taskId: {{.TaskId}}
+subjects:
+- kind: ServiceAccount
+  name: funnel-worker-sa-{{.Namespace}}-{{.TaskId}}
+  namespace: {{.Namespace}}
+roleRef:
+  kind: Role
+  name: funnel-worker-sa-{{.Namespace}}-{{.TaskId}}-role
+  apiGroup: rbac.authorization.k8s.io
+`
+)
+
+func applyKubernetesTemplates(conf *config.Config) {
+	conf.Kubernetes.ConfigMapTemplate = configMapTemplate
+	conf.Kubernetes.ServiceAccountTemplate = serviceAccountTemplate
+	conf.Kubernetes.RoleTemplate = roleTemplate
+	conf.Kubernetes.RoleBindingTemplate = roleBindingTemplate
+}
+
 func TestTaskSubmission(t *testing.T) {
 	// Create a fake Kubernetes client
 	fakeClient := fake.NewSimpleClientset()
@@ -56,14 +110,7 @@ spec:
             memory: "{{.RamGb}}Gi"
             ephemeral-storage: "{{.DiskGb}}Gi"
 `
-	conf.Kubernetes.ConfigMapTemplate = `apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: funnel-worker-config-{{.TaskId}}
-  namespace: {{.Namespace}}
-data:
-  config.yaml: "placeholder"
-`
+	applyKubernetesTemplates(conf)
 
 	// Create a logger
 	log := logger.NewLogger("test", logger.DefaultConfig())
@@ -173,6 +220,8 @@ func TestSubmit_AppliesNodeSelectorAndTolerationsToWorkerJob(t *testing.T) {
 			Effect:   "NoSchedule",
 		},
 	}
+
+	applyKubernetesTemplates(conf)
 
 	// Include scheduling blocks in the worker template under test.
 	conf.Kubernetes.WorkerTemplate = `
