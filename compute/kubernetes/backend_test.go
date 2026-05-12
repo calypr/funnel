@@ -466,7 +466,7 @@ func TestHasTerminalContainerWaitingError(t *testing.T) {
 			wantTerminal: false,
 		},
 		{
-			name:         "running container is not terminal",
+			name: "running container is not terminal",
 			containerState: corev1.ContainerState{
 				Running: &corev1.ContainerStateRunning{},
 			},
