@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/ohsu-comp-bio/funnel/config"
@@ -387,5 +388,137 @@ func TestCancel_SAInUse(t *testing.T) {
 	_, err = fakeClient.CoreV1().ServiceAccounts(ns).Get(ctx, saName, metav1.GetOptions{})
 	if err != nil {
 		t.Errorf("expected SA to remain while pod is still running, got: %v", err)
+	}
+}
+
+// TestHasTerminalContainerWaitingError verifies that hasTerminalContainerWaitingError
+// correctly detects pods stuck in terminal waiting states (e.g. CreateContainerConfigError).
+func TestHasTerminalContainerWaitingError(t *testing.T) {
+	const ns = "test-namespace"
+
+	tests := []struct {
+		name           string
+		containerState corev1.ContainerState
+		initState      corev1.ContainerState
+		wantTerminal   bool
+		wantReasonPart string
+	}{
+		{
+			name: "CreateContainerConfigError is terminal",
+			containerState: corev1.ContainerState{
+				Waiting: &corev1.ContainerStateWaiting{
+					Reason:  "CreateContainerConfigError",
+					Message: "secret not found",
+				},
+			},
+			wantTerminal:   true,
+			wantReasonPart: "CreateContainerConfigError",
+		},
+		{
+			name: "InvalidImageName is terminal",
+			containerState: corev1.ContainerState{
+				Waiting: &corev1.ContainerStateWaiting{
+					Reason:  "InvalidImageName",
+					Message: "bad image",
+				},
+			},
+			wantTerminal:   true,
+			wantReasonPart: "InvalidImageName",
+		},
+		{
+			name: "CreateContainerError is terminal",
+			containerState: corev1.ContainerState{
+				Waiting: &corev1.ContainerStateWaiting{
+					Reason:  "CreateContainerError",
+					Message: "failed to create container",
+				},
+			},
+			wantTerminal:   true,
+			wantReasonPart: "CreateContainerError",
+		},
+		{
+			name: "init container with CreateContainerConfigError is terminal",
+			initState: corev1.ContainerState{
+				Waiting: &corev1.ContainerStateWaiting{
+					Reason:  "CreateContainerConfigError",
+					Message: "configmap not found",
+				},
+			},
+			wantTerminal:   true,
+			wantReasonPart: "CreateContainerConfigError",
+		},
+		{
+			name: "ContainerCreating is not terminal",
+			containerState: corev1.ContainerState{
+				Waiting: &corev1.ContainerStateWaiting{
+					Reason: "ContainerCreating",
+				},
+			},
+			wantTerminal: false,
+		},
+		{
+			name: "ImagePullBackOff is not in the terminal list",
+			containerState: corev1.ContainerState{
+				Waiting: &corev1.ContainerStateWaiting{
+					Reason: "ImagePullBackOff",
+				},
+			},
+			wantTerminal: false,
+		},
+		{
+			name:         "running container is not terminal",
+			containerState: corev1.ContainerState{
+				Running: &corev1.ContainerStateRunning{},
+			},
+			wantTerminal: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fakeClient := fake.NewSimpleClientset()
+			ctx := context.Background()
+
+			pod := &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pod",
+					Namespace: ns,
+					Labels:    map[string]string{"job-name": "test-job"},
+				},
+			}
+
+			if tc.containerState != (corev1.ContainerState{}) {
+				pod.Status.ContainerStatuses = []corev1.ContainerStatus{
+					{Name: "main", State: tc.containerState},
+				}
+			}
+			if tc.initState != (corev1.ContainerState{}) {
+				pod.Status.InitContainerStatuses = []corev1.ContainerStatus{
+					{Name: "init", State: tc.initState},
+				}
+			}
+
+			if _, err := fakeClient.CoreV1().Pods(ns).Create(ctx, pod, metav1.CreateOptions{}); err != nil {
+				t.Fatalf("creating pod: %v", err)
+			}
+
+			conf := config.DefaultConfig()
+			conf.Kubernetes.JobsNamespace = ns
+			b := &Backend{
+				client: fakeClient,
+				log:    logger.NewLogger("test", logger.DefaultConfig()),
+				conf:   conf,
+			}
+
+			got, reason := b.hasTerminalContainerWaitingError(ctx, "test-job")
+			if got != tc.wantTerminal {
+				t.Errorf("hasTerminalContainerWaitingError() = %v, want %v (reason=%q)", got, tc.wantTerminal, reason)
+			}
+			if tc.wantTerminal && tc.wantReasonPart != "" {
+				if !strings.Contains(reason, tc.wantReasonPart) {
+					t.Errorf("reason %q does not contain %q", reason, tc.wantReasonPart)
+				}
+			}
+		})
 	}
 }

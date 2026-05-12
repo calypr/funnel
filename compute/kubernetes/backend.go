@@ -353,6 +353,63 @@ func (b *Backend) cleanResources(ctx context.Context, taskId string) error {
 	return errs
 }
 
+// terminalWaitingReasons lists container waiting reasons that will never self-
+// resolve and should be treated as a permanent failure.
+var terminalWaitingReasons = []string{
+	"CreateContainerConfigError",
+	"InvalidImageName",
+	"CreateContainerError",
+}
+
+// hasTerminalContainerWaitingError returns true if any pod belonging to the
+// given job has a container stuck in a waiting state whose reason is known to
+// be permanent (e.g. CreateContainerConfigError). These pods will never
+// transition to a running state on their own so the task must be failed early
+// rather than waiting for the Job's backoff limit to be exhausted.
+func (b *Backend) hasTerminalContainerWaitingError(ctx context.Context, jobName string) (bool, string) {
+	pods, err := b.client.CoreV1().Pods(b.conf.Kubernetes.JobsNamespace).List(ctx, metav1.ListOptions{
+		LabelSelector: fmt.Sprintf("job-name=%s", jobName),
+	})
+	if err != nil {
+		b.log.Error("reconcile: listing pods for job", "taskID", jobName, "error", err)
+		return false, ""
+	}
+	for _, pod := range pods.Items {
+		for _, cs := range pod.Status.ContainerStatuses {
+			if cs.State.Waiting == nil {
+				continue
+			}
+			reason := cs.State.Waiting.Reason
+			for _, terminal := range terminalWaitingReasons {
+				if reason == terminal {
+					msg := cs.State.Waiting.Message
+					if msg == "" {
+						msg = reason
+					}
+					return true, fmt.Sprintf("%s: %s", reason, msg)
+				}
+			}
+		}
+		// Also check init containers
+		for _, cs := range pod.Status.InitContainerStatuses {
+			if cs.State.Waiting == nil {
+				continue
+			}
+			reason := cs.State.Waiting.Reason
+			for _, terminal := range terminalWaitingReasons {
+				if reason == terminal {
+					msg := cs.State.Waiting.Message
+					if msg == "" {
+						msg = reason
+					}
+					return true, fmt.Sprintf("%s: %s", reason, msg)
+				}
+			}
+		}
+	}
+	return false, ""
+}
+
 // isJobSchedulingTimedOut returns true if all pods for the given job have been
 // stuck in Pending (with a scheduling condition) for longer than timeout.
 // It returns false if any pod has been scheduled, or if pod status cannot be determined.
@@ -506,6 +563,25 @@ func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableClea
 						status := j.Status
 						switch {
 						case status.Active > 0:
+							// Check for container waiting errors that will never self-resolve
+							// (e.g. CreateContainerConfigError). These keep the Job Active
+							// indefinitely, so we must detect and fail them explicitly.
+							if terminal, reason := b.hasTerminalContainerWaitingError(ctx, jobName); terminal {
+								b.log.Debug("reconcile: worker pod has terminal container waiting error", "taskID", jobName, "reason", reason)
+								b.event.WriteEvent(ctx, events.NewState(jobName, tes.SystemError))
+								b.event.WriteEvent(ctx, events.NewSystemLog(
+									jobName, 0, 0, "error",
+									"Kubernetes worker pod has a terminal container waiting error",
+									map[string]string{"error": reason},
+								))
+								if !disableCleanup {
+									if err := b.cleanResources(ctx, jobName); err != nil {
+										b.log.Error("failed to clean resources", "taskID", jobName, "error", err)
+									}
+								}
+								continue
+							}
+
 							// If a scheduling timeout is configured, check whether the worker
 							// pod has been stuck in Pending beyond that duration. This catches
 							// scheduling failures (bad NodeSelector, insufficient resources, etc.)
