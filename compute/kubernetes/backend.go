@@ -441,6 +441,28 @@ func (b *Backend) isJobSchedulingTimedOut(ctx context.Context, jobName string, t
 	return false
 }
 
+// hasJobFailedCreateEvent returns true if the Kubernetes Job has emitted at
+// least one FailedCreate event — meaning the Job controller tried to create a
+// pod but was rejected before the pod object was ever persisted (e.g. due to
+// Pod Security Admission enforcement). In that case there are no pod objects
+// to inspect, so hasTerminalContainerWaitingError cannot detect the failure.
+// The most recent event message is returned as the reason string.
+func (b *Backend) hasJobFailedCreateEvent(ctx context.Context, jobName string) (bool, string) {
+	evList, err := b.client.CoreV1().Events(b.conf.Kubernetes.JobsNamespace).List(ctx, metav1.ListOptions{
+		FieldSelector: fmt.Sprintf("involvedObject.name=%s,reason=FailedCreate", jobName),
+	})
+	if err != nil {
+		b.log.Error("reconcile: listing events for job", "taskID", jobName, "error", err)
+		return false, ""
+	}
+	if len(evList.Items) == 0 {
+		return false, ""
+	}
+	// Return the message from the most recent event.
+	latest := evList.Items[len(evList.Items)-1]
+	return true, latest.Message
+}
+
 // Reconcile loops through tasks and checks the status from Funnel's database
 // against the status reported by Kubernetes. This allows the backend to report
 // system error's that prevented the worker process from running.
@@ -572,6 +594,26 @@ func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableClea
 								b.event.WriteEvent(ctx, events.NewSystemLog(
 									jobName, 0, 0, "error",
 									"Kubernetes worker pod has a terminal container waiting error",
+									map[string]string{"error": reason},
+								))
+								if !disableCleanup {
+									if err := b.cleanResources(ctx, jobName); err != nil {
+										b.log.Error("failed to clean resources", "taskID", jobName, "error", err)
+									}
+								}
+								continue
+							}
+
+							// Check for FailedCreate events on the Job itself. This catches
+							// cases where pod creation is rejected before a pod object is
+							// ever persisted (e.g. Pod Security Admission enforcement blocks
+							// the pod), so there are no pod container statuses to inspect.
+							if failed, reason := b.hasJobFailedCreateEvent(ctx, jobName); failed {
+								b.log.Debug("reconcile: worker job has FailedCreate event", "taskID", jobName, "reason", reason)
+								b.event.WriteEvent(ctx, events.NewState(jobName, tes.SystemError))
+								b.event.WriteEvent(ctx, events.NewSystemLog(
+									jobName, 0, 0, "error",
+									"Kubernetes worker job failed to create pod",
 									map[string]string{"error": reason},
 								))
 								if !disableCleanup {

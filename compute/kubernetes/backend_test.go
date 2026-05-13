@@ -522,3 +522,139 @@ func TestHasTerminalContainerWaitingError(t *testing.T) {
 		})
 	}
 }
+
+func TestHasJobFailedCreateEvent(t *testing.T) {
+	const ns = "test-ns"
+	const jobName = "test-job"
+
+	psaMessage := `pods "test-job-abc" is forbidden: violates PodSecurity "restricted:latest": ` +
+		`allowPrivilegeEscalation != false, runAsNonRoot != true`
+
+	cases := []struct {
+		name           string
+		events         []corev1.Event
+		wantFailed     bool
+		wantReasonPart string
+	}{
+		{
+			name:       "no events → no failure",
+			events:     nil,
+			wantFailed: false,
+		},
+		{
+			name: "unrelated event reason → no failure",
+			events: []corev1.Event{
+				{
+					ObjectMeta:     metav1.ObjectMeta{Name: "ev1", Namespace: ns},
+					InvolvedObject: corev1.ObjectReference{Name: jobName},
+					Reason:         "Scheduled",
+					Message:        "Successfully assigned pod",
+				},
+			},
+			wantFailed: false,
+		},
+		{
+			name: "FailedCreate event from PSA enforcement → failure detected",
+			events: []corev1.Event{
+				{
+					ObjectMeta:     metav1.ObjectMeta{Name: "ev-fc", Namespace: ns},
+					InvolvedObject: corev1.ObjectReference{Name: jobName},
+					Reason:         "FailedCreate",
+					Message:        psaMessage,
+				},
+			},
+			wantFailed:     true,
+			wantReasonPart: "violates PodSecurity",
+		},
+		{
+			name: "FailedCreate for missing service account → failure detected",
+			events: []corev1.Event{
+				{
+					ObjectMeta:     metav1.ObjectMeta{Name: "ev-sa", Namespace: ns},
+					InvolvedObject: corev1.ObjectReference{Name: jobName},
+					Reason:         "FailedCreate",
+					Message:        `pods "test-job-" is forbidden: error looking up service account jobs/funnel-worker-sa: serviceaccount "funnel-worker-sa" not found`,
+				},
+			},
+			wantFailed:     true,
+			wantReasonPart: "serviceaccount",
+		},
+		{
+			name: "multiple events, last is FailedCreate → failure detected with last message",
+			events: []corev1.Event{
+				{
+					ObjectMeta:     metav1.ObjectMeta{Name: "ev1", Namespace: ns},
+					InvolvedObject: corev1.ObjectReference{Name: jobName},
+					Reason:         "Scheduled",
+					Message:        "first message",
+				},
+				{
+					ObjectMeta:     metav1.ObjectMeta{Name: "ev2", Namespace: ns},
+					InvolvedObject: corev1.ObjectReference{Name: jobName},
+					Reason:         "FailedCreate",
+					Message:        psaMessage,
+				},
+			},
+			wantFailed:     true,
+			wantReasonPart: "violates PodSecurity",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+
+			// Build fake client pre-populated with events.
+			var objs []runtime.Object
+			for i := range tc.events {
+				objs = append(objs, &tc.events[i])
+			}
+			fakeClient := fake.NewSimpleClientset(objs...)
+
+			// The fake client's field selector support is limited; we intercept
+			// the List call and filter manually to simulate the FieldSelector
+			// used by hasJobFailedCreateEvent.
+			fakeClient.PrependReactor("list", "events", func(action k8stesting.Action) (bool, runtime.Object, error) {
+				la := action.(k8stesting.ListAction)
+				fs := la.GetListRestrictions().Fields.String()
+
+				all, err := fakeClient.Tracker().List(
+					corev1.SchemeGroupVersion.WithResource("events"),
+					corev1.SchemeGroupVersion.WithKind("Event"),
+					ns,
+				)
+				if err != nil {
+					return true, nil, err
+				}
+				evList := all.(*corev1.EventList)
+				var filtered []corev1.Event
+				for _, ev := range evList.Items {
+					nameMatch := strings.Contains(fs, fmt.Sprintf("involvedObject.name=%s", ev.InvolvedObject.Name))
+					reasonMatch := strings.Contains(fs, fmt.Sprintf("reason=%s", ev.Reason))
+					if nameMatch && reasonMatch {
+						filtered = append(filtered, ev)
+					}
+				}
+				return true, &corev1.EventList{Items: filtered}, nil
+			})
+
+			conf := config.DefaultConfig()
+			conf.Kubernetes.JobsNamespace = ns
+			b := &Backend{
+				client: fakeClient,
+				log:    logger.NewLogger("test", logger.DefaultConfig()),
+				conf:   conf,
+			}
+
+			got, reason := b.hasJobFailedCreateEvent(ctx, jobName)
+			if got != tc.wantFailed {
+				t.Errorf("hasJobFailedCreateEvent() = %v, want %v (reason=%q)", got, tc.wantFailed, reason)
+			}
+			if tc.wantFailed && tc.wantReasonPart != "" {
+				if !strings.Contains(reason, tc.wantReasonPart) {
+					t.Errorf("reason %q does not contain %q", reason, tc.wantReasonPart)
+				}
+			}
+		})
+	}
+}
