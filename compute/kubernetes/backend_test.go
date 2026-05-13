@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/ohsu-comp-bio/funnel/config"
 	"github.com/ohsu-comp-bio/funnel/events"
@@ -656,5 +658,152 @@ func TestHasJobFailedCreateEvent(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// mockReadOnlyServer implements tes.ReadOnlyServer for reconciler tests.
+type mockReadOnlyServer struct {
+	mu    sync.Mutex
+	tasks []*tes.Task
+}
+
+func (m *mockReadOnlyServer) ListTasks(_ context.Context, req *tes.ListTasksRequest) (*tes.ListTasksResponse, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []*tes.Task
+	for _, t := range m.tasks {
+		if t.State == req.State {
+			out = append(out, t)
+		}
+	}
+	return &tes.ListTasksResponse{Tasks: out}, nil
+}
+
+func (m *mockReadOnlyServer) GetTask(_ context.Context, req *tes.GetTaskRequest) (*tes.Task, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, t := range m.tasks {
+		if t.Id == req.Id {
+			return t, nil
+		}
+	}
+	return nil, fmt.Errorf("task %s not found", req.Id)
+}
+
+func (m *mockReadOnlyServer) Close() {}
+
+// capturingEventWriter records all events written to it.
+type capturingEventWriter struct {
+	mu     sync.Mutex
+	events []*events.Event
+}
+
+func (c *capturingEventWriter) WriteEvent(_ context.Context, ev *events.Event) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.events = append(c.events, ev)
+	return nil
+}
+
+func (c *capturingEventWriter) Close() {}
+
+func (c *capturingEventWriter) hasSystemError(taskID string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, ev := range c.events {
+		if ev.Id == taskID && ev.Type == events.Type_TASK_STATE {
+			if ev.GetState() == tes.State_SYSTEM_ERROR {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// TestReconcile_ZeroStatusFailedCreate verifies that a Job with all-zero
+// status counters (Active=0, Succeeded=0, Failed=0) but with a FailedCreate
+// event — as produced by Pod Security Admission enforcement — is detected by
+// the reconciler and transitions the task to SYSTEM_ERROR.
+func TestReconcile_ZeroStatusFailedCreate(t *testing.T) {
+	const ns = "test-ns"
+	const taskID = "test-task-psa"
+
+	psaMsg := `pods "test-task-psa-abc" is forbidden: violates PodSecurity "restricted:latest": runAsNonRoot != true`
+
+	// Build a Job with all-zero status counters (what we see with PSA blocking).
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      taskID,
+			Namespace: ns,
+			Labels:    map[string]string{"app": "funnel-worker"},
+		},
+		Status: batchv1.JobStatus{
+			Active:    0,
+			Succeeded: 0,
+			Failed:    0,
+		},
+	}
+
+	// FailedCreate event on the Job (emitted by the Job controller).
+	failedCreateEvent := &corev1.Event{
+		ObjectMeta:     metav1.ObjectMeta{Name: "ev-fc", Namespace: ns},
+		InvolvedObject: corev1.ObjectReference{Name: taskID},
+		Reason:         "FailedCreate",
+		Message:        psaMsg,
+	}
+
+	fakeClient := fake.NewSimpleClientset(job, failedCreateEvent)
+
+	// Intercept event List calls to apply field-selector filtering manually,
+	// since the fake client does not support server-side field selectors.
+	fakeClient.PrependReactor("list", "events", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		la := action.(k8stesting.ListAction)
+		fs := la.GetListRestrictions().Fields.String()
+
+		all, err := fakeClient.Tracker().List(
+			corev1.SchemeGroupVersion.WithResource("events"),
+			corev1.SchemeGroupVersion.WithKind("Event"),
+			ns,
+		)
+		if err != nil {
+			return true, nil, err
+		}
+		evList := all.(*corev1.EventList)
+		var filtered []corev1.Event
+		for _, ev := range evList.Items {
+			nameMatch := strings.Contains(fs, fmt.Sprintf("involvedObject.name=%s", ev.InvolvedObject.Name))
+			reasonMatch := strings.Contains(fs, fmt.Sprintf("reason=%s", ev.Reason))
+			if nameMatch && reasonMatch {
+				filtered = append(filtered, ev)
+			}
+		}
+		return true, &corev1.EventList{Items: filtered}, nil
+	})
+
+	db := &mockReadOnlyServer{
+		tasks: []*tes.Task{
+			{Id: taskID, State: tes.State_QUEUED},
+		},
+	}
+	evWriter := &capturingEventWriter{}
+
+	conf := config.DefaultConfig()
+	conf.Kubernetes.JobsNamespace = ns
+
+	b := &Backend{
+		client:   fakeClient,
+		event:    evWriter,
+		database: db,
+		log:      logger.NewLogger("test", logger.DefaultConfig()),
+		conf:     conf,
+	}
+
+	// Run a single reconcile tick (context cancels after the first tick fires).
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	b.reconcile(ctx, 100*time.Millisecond, true /* disableCleanup */)
+
+	if !evWriter.hasSystemError(taskID) {
+		t.Errorf("expected SYSTEM_ERROR event for task %s, got events: %+v", taskID, evWriter.events)
 	}
 }

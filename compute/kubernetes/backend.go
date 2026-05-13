@@ -453,13 +453,16 @@ func (b *Backend) hasJobFailedCreateEvent(ctx context.Context, jobName string) (
 	})
 	if err != nil {
 		b.log.Error("reconcile: listing events for job", "taskID", jobName, "error", err)
+		b.log.Debug("assuming no FailedCreate events due to error listing events", "taskID", jobName)
 		return false, ""
 	}
 	if len(evList.Items) == 0 {
+		b.log.Debug("no FailedCreate events found for job", "taskID", jobName)
 		return false, ""
 	}
 	// Return the message from the most recent event.
 	latest := evList.Items[len(evList.Items)-1]
+	b.log.Debug("found FailedCreate event for job", "taskID", jobName, "reason", latest.Message)
 	return true, latest.Message
 }
 
@@ -481,6 +484,7 @@ func (b *Backend) hasJobFailedCreateEvent(ctx context.Context, jobName string) (
 //
 // This loop is also used to cleanup successful jobs.
 func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableCleanup bool) {
+	fmt.Println("DEBUG: Starting Kubernetes backend reconciler loop with rate", rate)
 	// Clears all resources that still exist from jobs that have run before this server started.
 	// This handles two cases:
 	//   1. Completed jobs (Succeeded/Failed) that were not cleaned up before the server restarted.
@@ -532,6 +536,7 @@ func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableClea
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			fmt.Println("DEBUG: Running Kubernetes backend reconciler loop!")
 
 			// List worker jobs only (label selector excludes executor jobs and unrelated jobs).
 			// Bug: If K8s Job is not created by the time reconciler runs, then the TES Task itself will be prematurely marked as SYSTEM_ERROR
@@ -553,6 +558,7 @@ func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableClea
 			// List non-terminal tasks from Funnel's database
 			states := []tes.State{tes.State_QUEUED, tes.State_INITIALIZING, tes.State_RUNNING}
 			for _, s := range states {
+				fmt.Println("DEBUG: Reconciling tasks with state", s)
 				pageToken := ""
 				for {
 					lresp, err := b.database.ListTasks(ctx, &tes.ListTasksRequest{
@@ -568,6 +574,7 @@ func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableClea
 
 					// Compare Funnel Tasks against K8s Jobs
 					for _, task := range lresp.Tasks {
+						fmt.Println("DEBUG: Reconciling task", task.Id, "with state", task.State)
 						taskID := task.Id
 
 						// If the job exists, check its current status (Active, Succeeded, Failed)
@@ -583,6 +590,7 @@ func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableClea
 
 						jobName := j.Name
 						status := j.Status
+						fmt.Println("DEBUG: Job status for task", taskID, "is Active:", status.Active, "Succeeded:", status.Succeeded, "Failed:", status.Failed)
 						switch {
 						case status.Active > 0:
 							// Check for container waiting errors that will never self-resolve
@@ -608,6 +616,7 @@ func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableClea
 							// cases where pod creation is rejected before a pod object is
 							// ever persisted (e.g. Pod Security Admission enforcement blocks
 							// the pod), so there are no pod container statuses to inspect.
+							b.log.Debug("checking for FailedCreate events on job", "taskID", jobName)
 							if failed, reason := b.hasJobFailedCreateEvent(ctx, jobName); failed {
 								b.log.Debug("reconcile: worker job has FailedCreate event", "taskID", jobName, "reason", reason)
 								b.event.WriteEvent(ctx, events.NewState(jobName, tes.SystemError))
@@ -692,6 +701,28 @@ func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableClea
 								continue
 							}
 							delete(failedJobEvents, jobName)
+
+						default:
+							// All status counters are zero: the Job controller has not yet
+							// recorded any Active/Succeeded/Failed pods. This happens when
+							// every pod creation attempt is rejected before Kubernetes
+							// persists a pod object (e.g. Pod Security Admission blocks the
+							// pod). Check for FailedCreate events which are the only signal
+							// available in this state.
+							if failed, reason := b.hasJobFailedCreateEvent(ctx, jobName); failed {
+								b.log.Debug("reconcile: worker job has FailedCreate event (zero-status)", "taskID", jobName, "reason", reason)
+								b.event.WriteEvent(ctx, events.NewState(jobName, tes.SystemError))
+								b.event.WriteEvent(ctx, events.NewSystemLog(
+									jobName, 0, 0, "error",
+									"Kubernetes worker job failed to create pod",
+									map[string]string{"error": reason},
+								))
+								if !disableCleanup {
+									if err := b.cleanResources(ctx, jobName); err != nil {
+										b.log.Error("failed to clean resources", "taskID", jobName, "error", err)
+									}
+								}
+							}
 						}
 					}
 
