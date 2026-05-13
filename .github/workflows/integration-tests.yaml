@@ -9,7 +9,7 @@ concurrency:
   cancel-in-progress: true
  
 jobs:
-  gen3-integration:
+  integration-tests:
     runs-on: ubuntu-latest
  
     steps:
@@ -31,6 +31,9 @@ jobs:
  
       - name: Add ohsu Helm repo
         run: helm repo add ohsu https://calypr.org/helm-charts && helm repo update
+ 
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
  
       - name: Install Funnel
         run: |
