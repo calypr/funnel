@@ -29,19 +29,11 @@ jobs:
       # 2. Install Funnel via Helm
       # ---------------------------
  
-      - name: Add ohsu Helm repo
-        run: helm repo add ohsu https://calypr.org/helm-charts && helm repo update
- 
-      - name: Setup tmate session
-        uses: mxschmitt/action-tmate@v3
- 
       - name: Install Funnel
         run: |
-          # 'standard' is the default StorageClass created by Kind
-          helm upgrade --install funnel ohsu/funnel \
-            --set storage.className=standard \
-            --set storage.provisioner=rancher.io/local-path \
-            --wait --timeout=5m
+          helm repo add calypr https://calypr.org/helm-charts
+          helm repo update
+          helm upgrade --install funnel calypr/funnel --wait --timeout=60s --version 0.1.99-rc.35
 
       - name: Debug Funnel pods (on failure)
         if: failure()
@@ -54,18 +46,20 @@ jobs:
       # 3. Install Gen3-Workflow via Helm
       # ----------------------------------
 
-      - name: Install gen3workflow
-        run: |
-          helm upgrade --install gen3workflow ohsu/gen3workflow \
-            --set funnelUrl=http://funnel:8000 \
-            --wait --timeout=5m
+      # - name: Install gen3workflow
+      #   run: |
+      #     helm repo add gen3 https://helm.gen3.org
+      #     helm repo update
+      #     helm upgrade --install gen3workflow gen3/gen3workflow \
+      #       --set funnelUrl=http://funnel:8000 \
+      #       --wait --timeout=60s
 
-      - name: Debug gen3workflow pods (on failure)
-        if: failure()
-        run: |
-          kubectl get pods -o wide
-          kubectl describe pods
-          kubectl get events --sort-by='.lastTimestamp'
+      # - name: Debug gen3workflow pods (on failure)
+      #   if: failure()
+      #   run: |
+      #     kubectl get pods -o wide
+      #     kubectl describe pods
+      #     kubectl get events --sort-by='.lastTimestamp'
  
       # -------------------------------------
       # 4. Expose services for local testing
@@ -74,8 +68,8 @@ jobs:
       - name: Port-forward Funnel
         run: kubectl port-forward svc/funnel 8000:8000 &
  
-      - name: Port-forward gen3workflow
-        run: kubectl port-forward svc/gen3workflow 8080:8080 &
+      # - name: Port-forward gen3workflow
+      #   run: kubectl port-forward svc/gen3workflow 8080:8080 &
  
       # ----------------------------
       # 5. Run Nextflow + nf-canary
@@ -163,4 +157,3 @@ jobs:
             nf-canary/report.html
             nf-canary/.nextflow.log
           if-no-files-found: ignore
-
