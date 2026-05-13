@@ -45,7 +45,7 @@ jobs:
 
       - name: Deploy Funnel
         run: |
-          helm repo add ohsu https://ohsu-comp-bio.github.io/helm-charts
+          helm repo add ohsu https://calypr.org/helm-charts
           
           # 'local-path' is a k3d specific storage class used to automatically create a PersistentVolume
           # ref: https://k3d.io/v5.7.4/usage/k3s/#local-path-provisioner
@@ -56,9 +56,6 @@ jobs:
 
           # Port-forward the service
           kubectl port-forward svc/funnel 8000:8000 &
-
-      - name: Setup tmate session
-        uses: mxschmitt/action-tmate@v3
 
       - name: Submit Task
         run: |
