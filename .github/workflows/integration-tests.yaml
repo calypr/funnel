@@ -74,13 +74,13 @@ jobs:
       # ----------------------------
       # 5. Run Nextflow + nf-canary
       # ----------------------------
- 
+        
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
- 
+          
       - name: Install Nextflow
         run: |
           curl -s https://get.nextflow.io | bash
@@ -88,7 +88,8 @@ jobs:
           mkdir -p $HOME/.local/bin
           mv nextflow $HOME/.local/bin/
           echo "$HOME/.local/bin" >> $GITHUB_PATH
- 
+          
+      # Ref: https://github.com/nextflow-io/nf-ga4gh/blob/main/.github/workflows/build.yml
       - name: Clone nf-canary
         run: git clone https://github.com/seqeralabs/nf-canary
  
@@ -102,10 +103,14 @@ jobs:
           tes.endpoint = 'http://localhost:8000'
           EOF
  
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+ 
       - name: Run nf-canary tests
         id: nf_canary
         run: |
           cd nf-canary
+          export NXF_ANSI_LOG=false
           nextflow run main.nf -with-report report.html 2>&1 | tee nextflow.log
           echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
  
