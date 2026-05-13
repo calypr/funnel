@@ -1,8 +1,10 @@
 name: Integration Tests (Gen3)
 
 on: 
-  - push
-  - workflow_dispatch
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
 
 permissions:
   id-token: write
@@ -16,7 +18,7 @@ jobs:
     uses: uc-cdis/.github/.github/workflows/integration_tests.yaml@feat/external-repo-support
     with:
       SERVICE_TO_TEST: funnel
-      AWS_ROLE_TO_ASSUME: <TODO: add role ARN here>
+      AWS_ROLE_TO_ASSUME: "" # <TODO: add role ARN here>
     secrets:
       CI_TEST_ORCID_USERID: ${{ secrets.CI_TEST_ORCID_USERID }}
       CI_TEST_ORCID_PASSWORD: ${{ secrets.CI_TEST_ORCID_PASSWORD }}

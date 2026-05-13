@@ -38,23 +38,31 @@ jobs:
           helm upgrade --install funnel ohsu/funnel \
             --set storage.className=standard \
             --set storage.provisioner=rancher.io/local-path \
-            --wait --timeout=60s
- 
-      - name: Wait for Funnel server
-        run: kubectl rollout status deployment/funnel-server --timeout=60s
- 
+            --wait --timeout=5m
+
+      - name: Debug Funnel pods (on failure)
+        if: failure()
+        run: |
+          kubectl get pods -o wide
+          kubectl describe pods
+          kubectl get events --sort-by='.lastTimestamp'
+
       # ----------------------------------
       # 3. Install Gen3-Workflow via Helm
       # ----------------------------------
- 
+
       - name: Install gen3workflow
         run: |
           helm upgrade --install gen3workflow ohsu/gen3workflow \
             --set funnelUrl=http://funnel:8000 \
-            --wait --timeout=60s
- 
-      - name: Wait for gen3workflow
-        run: kubectl rollout status deployment/gen3workflow --timeout=60s
+            --wait --timeout=5m
+
+      - name: Debug gen3workflow pods (on failure)
+        if: failure()
+        run: |
+          kubectl get pods -o wide
+          kubectl describe pods
+          kubectl get events --sort-by='.lastTimestamp'
  
       # -------------------------------------
       # 4. Expose services for local testing
