@@ -410,6 +410,58 @@ func (b *Backend) hasTerminalContainerWaitingError(ctx context.Context, jobName 
 	return false, ""
 }
 
+// podWarningEventReasons lists the pod event reasons (from `kubectl describe pod`)
+// that are safe to surface to users as system log entries. These are all
+// informational failure signals with no risk of leaking sensitive runtime internals.
+var podWarningEventReasons = []string{
+	"Failed",           // image pull failures, container start failures
+	"BackOff",          // back-off restarting / pulling
+	"ErrImagePull",     // explicit image-pull error
+	"ImagePullBackOff", // image pull back-off
+	"StartError",       // OCI runtime / entrypoint errors
+}
+
+// fetchPodWarningEvents returns Warning events for pods belonging to jobName
+// whose reason is in podWarningEventReasons. The messages are deduplicated and
+// returned as a newline-joined string. An empty string is returned when nothing
+// useful is found. This surfaces the human-readable detail that appears in
+// `kubectl describe pod` (e.g. "Error: secret \"foo\" not found") into the
+// TES task system logs.
+func (b *Backend) fetchPodWarningEvents(ctx context.Context, jobName string) string {
+	pods, err := b.client.CoreV1().Pods(b.conf.Kubernetes.JobsNamespace).List(ctx, metav1.ListOptions{
+		LabelSelector: fmt.Sprintf("job-name=%s", jobName),
+	})
+	if err != nil {
+		b.log.Error("reconcile: listing pods for warning events", "taskID", jobName, "error", err)
+		return ""
+	}
+
+	seen := make(map[string]struct{})
+	var messages []string
+	for _, pod := range pods.Items {
+		evList, err := b.client.CoreV1().Events(b.conf.Kubernetes.JobsNamespace).List(ctx, metav1.ListOptions{
+			FieldSelector: fmt.Sprintf("involvedObject.name=%s,type=Warning", pod.Name),
+		})
+		if err != nil {
+			b.log.Error("reconcile: listing events for pod", "taskID", jobName, "pod", pod.Name, "error", err)
+			continue
+		}
+		for _, ev := range evList.Items {
+			for _, allowed := range podWarningEventReasons {
+				if ev.Reason == allowed {
+					key := ev.Reason + ":" + ev.Message
+					if _, dup := seen[key]; !dup {
+						seen[key] = struct{}{}
+						messages = append(messages, fmt.Sprintf("%s: %s", ev.Reason, ev.Message))
+					}
+					break
+				}
+			}
+		}
+	}
+	return strings.Join(messages, "\n")
+}
+
 // isJobSchedulingTimedOut returns true if all pods for the given job have been
 // stuck in Pending (with a scheduling condition) for longer than timeout.
 // It returns false if any pod has been scheduled, or if pod status cannot be determined.
@@ -439,6 +491,42 @@ func (b *Backend) isJobSchedulingTimedOut(ctx context.Context, jobName string, t
 		}
 	}
 	return false
+}
+
+// getFailedPodInfo returns a human-readable summary of why the most recently
+// terminated pod for jobName failed: "exit code N (Reason): Message". It is
+// best-effort; an empty string is returned when no useful information is found.
+func (b *Backend) getFailedPodInfo(ctx context.Context, jobName string) string {
+	pods, err := b.client.CoreV1().Pods(b.conf.Kubernetes.JobsNamespace).List(ctx, metav1.ListOptions{
+		LabelSelector: fmt.Sprintf("job-name=%s", jobName),
+	})
+	if err != nil {
+		b.log.Error("reconcile: listing pods for failed job", "taskID", jobName, "error", err)
+		return ""
+	}
+
+	var latestFinish metav1.Time
+	var result string
+	for _, pod := range pods.Items {
+		for _, cs := range pod.Status.ContainerStatuses {
+			t := cs.State.Terminated
+			if t == nil {
+				continue
+			}
+			if t.ExitCode == 0 {
+				continue
+			}
+			if latestFinish.IsZero() || t.FinishedAt.After(latestFinish.Time) {
+				latestFinish = t.FinishedAt
+				reason := t.Reason
+				if reason == "" {
+					reason = "ExitError"
+				}
+				result = fmt.Sprintf("exit code %d (%s): %s", t.ExitCode, reason, t.Message)
+			}
+		}
+	}
+	return result
 }
 
 // hasJobFailedCreateEvent returns true if the Kubernetes Job has emitted at
@@ -599,10 +687,14 @@ func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableClea
 							if terminal, reason := b.hasTerminalContainerWaitingError(ctx, jobName); terminal {
 								b.log.Debug("reconcile: worker pod has terminal container waiting error", "taskID", jobName, "reason", reason)
 								b.event.WriteEvent(ctx, events.NewState(jobName, tes.SystemError))
+								errDetail := reason
+								if podEvents := b.fetchPodWarningEvents(ctx, jobName); podEvents != "" {
+									errDetail = fmt.Sprintf("%s\n%s", reason, podEvents)
+								}
 								b.event.WriteEvent(ctx, events.NewSystemLog(
 									jobName, 0, 0, "error",
 									"Kubernetes worker pod has a terminal container waiting error",
-									map[string]string{"error": reason},
+									map[string]string{"error": errDetail},
 								))
 								if !disableCleanup {
 									if err := b.cleanResources(ctx, jobName); err != nil {
@@ -680,13 +772,18 @@ func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableClea
 								b.log.Error("reconcile: marshal failed job conditions", "taskID", jobName, "error", err)
 							}
 
+							errDetails := map[string]string{"error": string(conds)}
+							if podInfo := b.getFailedPodInfo(ctx, jobName); podInfo != "" {
+								errDetails["executor_error"] = podInfo
+							}
+
 							b.event.WriteEvent(ctx, events.NewState(jobName, tes.SystemError))
 							b.event.WriteEvent(
 								ctx,
 								events.NewSystemLog(
 									jobName, 0, 0, "error",
 									"Kubernetes job in FAILED state",
-									map[string]string{"error": string(conds)},
+									errDetails,
 								),
 							)
 

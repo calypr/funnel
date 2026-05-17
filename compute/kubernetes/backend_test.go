@@ -807,3 +807,189 @@ func TestReconcile_ZeroStatusFailedCreate(t *testing.T) {
 		t.Errorf("expected SYSTEM_ERROR event for task %s, got events: %+v", taskID, evWriter.events)
 	}
 }
+
+func TestFetchPodWarningEvents(t *testing.T) {
+	const ns = "test-ns"
+	const jobName = "test-job"
+
+	cases := []struct {
+		name        string
+		podName     string
+		events      []corev1.Event
+		wantContain []string // substrings that must appear in result
+		wantEmpty   bool
+	}{
+		{
+			name:      "no events → empty string",
+			podName:   "pod-1",
+			events:    nil,
+			wantEmpty: true,
+		},
+		{
+			name:    "non-warning event type → ignored",
+			podName: "pod-1",
+			events: []corev1.Event{
+				{
+					ObjectMeta:     metav1.ObjectMeta{Name: "ev1", Namespace: ns},
+					InvolvedObject: corev1.ObjectReference{Name: "pod-1"},
+					Type:           "Normal",
+					Reason:         "Pulled",
+					Message:        "Successfully pulled image",
+				},
+			},
+			wantEmpty: true,
+		},
+		{
+			name:    "unallowed warning reason → ignored",
+			podName: "pod-1",
+			events: []corev1.Event{
+				{
+					ObjectMeta:     metav1.ObjectMeta{Name: "ev2", Namespace: ns},
+					InvolvedObject: corev1.ObjectReference{Name: "pod-1"},
+					Type:           "Warning",
+					Reason:         "Evicted",
+					Message:        "node ran out of memory",
+				},
+			},
+			wantEmpty: true,
+		},
+		{
+			name:    "CreateContainerConfigError → secret not found in pod event",
+			podName: "pod-1",
+			events: []corev1.Event{
+				{
+					ObjectMeta:     metav1.ObjectMeta{Name: "ev3", Namespace: ns},
+					InvolvedObject: corev1.ObjectReference{Name: "pod-1"},
+					Type:           "Warning",
+					Reason:         "Failed",
+					Message:        `Error: secret "example-secret" not found`,
+				},
+			},
+			wantContain: []string{`Failed: Error: secret "example-secret" not found`},
+		},
+		{
+			name:    "ErrImagePull → image not found",
+			podName: "pod-1",
+			events: []corev1.Event{
+				{
+					ObjectMeta:     metav1.ObjectMeta{Name: "ev4", Namespace: ns},
+					InvolvedObject: corev1.ObjectReference{Name: "pod-1"},
+					Type:           "Warning",
+					Reason:         "ErrImagePull",
+					Message:        `Failed to pull image "xyz": not found`,
+				},
+			},
+			wantContain: []string{`ErrImagePull: Failed to pull image "xyz": not found`},
+		},
+		{
+			name:    "StartError → bad entrypoint",
+			podName: "pod-1",
+			events: []corev1.Event{
+				{
+					ObjectMeta:     metav1.ObjectMeta{Name: "ev5", Namespace: ns},
+					InvolvedObject: corev1.ObjectReference{Name: "pod-1"},
+					Type:           "Warning",
+					Reason:         "StartError",
+					Message:        `exec: "badcmd": executable file not found in $PATH`,
+				},
+			},
+			wantContain: []string{`StartError: exec: "badcmd": executable file not found in $PATH`},
+		},
+		{
+			name:    "duplicate events → deduplicated",
+			podName: "pod-1",
+			events: []corev1.Event{
+				{
+					ObjectMeta:     metav1.ObjectMeta{Name: "ev6a", Namespace: ns},
+					InvolvedObject: corev1.ObjectReference{Name: "pod-1"},
+					Type:           "Warning",
+					Reason:         "Failed",
+					Message:        `Error: secret "s" not found`,
+				},
+				{
+					ObjectMeta:     metav1.ObjectMeta{Name: "ev6b", Namespace: ns},
+					InvolvedObject: corev1.ObjectReference{Name: "pod-1"},
+					Type:           "Warning",
+					Reason:         "Failed",
+					Message:        `Error: secret "s" not found`,
+				},
+			},
+			wantContain: []string{`Failed: Error: secret "s" not found`},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+
+			// Pre-populate the fake client with the pod and events.
+			pod := &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      tc.podName,
+					Namespace: ns,
+					Labels:    map[string]string{"job-name": jobName},
+				},
+			}
+			objs := []runtime.Object{pod}
+			for i := range tc.events {
+				objs = append(objs, &tc.events[i])
+			}
+			fakeClient := fake.NewSimpleClientset(objs...)
+
+			// Intercept event List calls to filter by involvedObject.name and type,
+			// since the fake client does not support server-side field selectors.
+			fakeClient.PrependReactor("list", "events", func(action k8stesting.Action) (bool, runtime.Object, error) {
+				la := action.(k8stesting.ListAction)
+				fs := la.GetListRestrictions().Fields.String()
+
+				all, err := fakeClient.Tracker().List(
+					corev1.SchemeGroupVersion.WithResource("events"),
+					corev1.SchemeGroupVersion.WithKind("Event"),
+					ns,
+				)
+				if err != nil {
+					return true, nil, err
+				}
+				evList := all.(*corev1.EventList)
+				var filtered []corev1.Event
+				for _, ev := range evList.Items {
+					nameMatch := strings.Contains(fs, fmt.Sprintf("involvedObject.name=%s", ev.InvolvedObject.Name))
+					typeMatch := !strings.Contains(fs, "type=") || strings.Contains(fs, fmt.Sprintf("type=%s", ev.Type))
+					if nameMatch && typeMatch {
+						filtered = append(filtered, ev)
+					}
+				}
+				return true, &corev1.EventList{Items: filtered}, nil
+			})
+
+			conf := config.DefaultConfig()
+			conf.Kubernetes.JobsNamespace = ns
+			b := &Backend{
+				client: fakeClient,
+				log:    logger.NewLogger("test", logger.DefaultConfig()),
+				conf:   conf,
+			}
+
+			got := b.fetchPodWarningEvents(ctx, jobName)
+
+			if tc.wantEmpty {
+				if got != "" {
+					t.Errorf("expected empty string, got %q", got)
+				}
+				return
+			}
+			for _, want := range tc.wantContain {
+				if !strings.Contains(got, want) {
+					t.Errorf("result %q does not contain %q", got, want)
+				}
+			}
+			// Deduplication check: count occurrences of the first wantContain
+			if len(tc.wantContain) > 0 {
+				count := strings.Count(got, tc.wantContain[0])
+				if count > 1 {
+					t.Errorf("expected %q to appear once, got %d times in %q", tc.wantContain[0], count, got)
+				}
+			}
+		})
+	}
+}
