@@ -6,25 +6,81 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/minio/minio-go"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/ohsu-comp-bio/funnel/config"
 	"github.com/ohsu-comp-bio/funnel/events"
 	"github.com/ohsu-comp-bio/funnel/storage"
 	"github.com/ohsu-comp-bio/funnel/tes"
 	"github.com/ohsu-comp-bio/funnel/tests"
 	"github.com/ohsu-comp-bio/funnel/worker"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
 
+const (
+	minioKey    = "minioadmin"
+	minioSecret = "minioadmin"
+)
+
+// startMinio launches a temporary MinIO container and returns the host:port
+// endpoint. The container is terminated when t finishes.
+func startMinio(t *testing.T) string {
+	t.Helper()
+
+	ctx := context.Background()
+	ctr, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: testcontainers.ContainerRequest{
+			Image:        "quay.io/minio/minio:latest",
+			ExposedPorts: []string{"9000/tcp"},
+			Env: map[string]string{
+				"MINIO_ROOT_USER":     minioKey,
+				"MINIO_ROOT_PASSWORD": minioSecret,
+			},
+			Cmd:        []string{"server", "/data"},
+			WaitingFor: wait.ForHTTP("/minio/health/ready").WithPort("9000"),
+		},
+		Started: true,
+	})
+	if err != nil {
+		t.Skipf("could not start MinIO container (is Docker running?): %v", err)
+	}
+
+	t.Cleanup(func() {
+		testcontainers.TerminateContainer(ctr)
+	})
+
+	host, err := ctr.Host(ctx)
+	if err != nil {
+		testcontainers.TerminateContainer(ctr)
+		t.Fatal("could not get MinIO container host:", err)
+	}
+	port, err := ctr.MappedPort(ctx, "9000")
+	if err != nil {
+		testcontainers.TerminateContainer(ctr)
+		t.Fatal("could not get MinIO container port:", err)
+	}
+
+	return host + ":" + port.Port()
+}
+
 func TestGenericS3Storage(t *testing.T) {
-	conf = tests.DefaultConfig()
 	tests.SetLogOutput(log, t)
 	defer os.RemoveAll("./test_tmp")
 
-	if len(conf.GenericS3) > 0 {
-		if !conf.GenericS3[0].Valid() {
-			t.Skipf("Skipping generic s3 e2e tests...")
+	if len(conf.GenericS3) == 0 {
+		endpoint := startMinio(t)
+		conf.GenericS3 = []*config.GenericS3Storage{
+			{
+				Endpoint: endpoint,
+				Key:      minioKey,
+				Secret:   minioSecret,
+			},
 		}
-	} else {
+		t.Cleanup(func() { conf.GenericS3 = nil })
+	}
+
+	if !conf.GenericS3[0].Valid() {
 		t.Skipf("Skipping generic s3 e2e tests...")
 	}
 
@@ -144,13 +200,13 @@ func TestGenericS3Storage(t *testing.T) {
 	}
 
 	err = worker.DownloadInputs(ctx, []*tes.Input{
-		{Url: outDirURL, Path: "./test_tmp/test-s3-directory"},
+		{Url: outDirURL, Path: "./test_tmp/test-s3-directory", Type: tes.Directory},
 	}, store, ev, parallelXfer)
 	if err != nil {
 		t.Fatal("Failed to download directory:", err)
 	}
 
-	b, err = os.ReadFile("./test_tmp/test-s3-directory/test-output-directory/test-output-file.txt")
+	b, err = os.ReadFile("./test_tmp/test-s3-directory/test-output-file.txt")
 	if err != nil {
 		t.Fatal("Failed to read file in downloaded directory", err)
 	}
@@ -214,8 +270,20 @@ type minioTest struct {
 }
 
 func newMinioTest(conf *config.GenericS3Storage) (*minioTest, error) {
-	ssl := strings.HasPrefix(conf.Endpoint, "https")
-	client, err := minio.NewV2(conf.Endpoint, conf.Key, conf.Secret, ssl)
+	endpoint := conf.Endpoint
+	secure := strings.HasPrefix(endpoint, "https")
+	// Remove scheme from endpoint if present
+	if secure {
+		endpoint = strings.TrimPrefix(endpoint, "https://")
+	} else {
+		endpoint = strings.TrimPrefix(endpoint, "http://")
+	}
+
+	client, err := minio.New(endpoint, &minio.Options{
+		Creds:  credentials.NewStaticV4(conf.Key, conf.Secret, ""),
+		Secure: secure,
+		Region: conf.Region,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -229,18 +297,20 @@ func newMinioTest(conf *config.GenericS3Storage) (*minioTest, error) {
 }
 
 func (b *minioTest) createBucket(bucket string) error {
-	return b.client.MakeBucket(bucket, "")
+	return b.client.MakeBucket(context.Background(), bucket, minio.MakeBucketOptions{})
 }
 
 func (b *minioTest) deleteBucket(bucket string) error {
-	doneCh := make(chan struct{})
-	defer close(doneCh)
+	ctx := context.Background()
 	recursive := true
-	for obj := range b.client.ListObjects(bucket, "", recursive, doneCh) {
-		err := b.client.RemoveObject(bucket, obj.Key)
+	for obj := range b.client.ListObjects(ctx, bucket, minio.ListObjectsOptions{Recursive: recursive}) {
+		if obj.Err != nil {
+			return obj.Err
+		}
+		err := b.client.RemoveObject(ctx, bucket, obj.Key, minio.RemoveObjectOptions{})
 		if err != nil {
 			return err
 		}
 	}
-	return b.client.RemoveBucket(bucket)
+	return b.client.RemoveBucket(ctx, bucket)
 }
