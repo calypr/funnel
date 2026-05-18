@@ -97,6 +97,11 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
+      - name: Prepare branch tag
+        id: branch_tag
+        if: github.ref_type == 'branch'
+        run: echo "value=${GITHUB_REF_NAME//\//_}" >> $GITHUB_OUTPUT
+
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
@@ -111,8 +116,8 @@ jobs:
             # Latest
             type=raw,value=latest,enable=${{ github.ref_type == 'tag' && startsWith(github.ref_name, 'v') && !contains(github.ref_name, '-') }}
 
-            # Branch pushes
-            type=ref,event=branch,latest=false
+            # Branch pushes (/ replaced with _ to preserve branch prefix context)
+            type=raw,value=${{ steps.branch_tag.outputs.value }},enable=${{ github.ref_type == 'branch' }},latest=false
 
             # PR pushes
             type=ref,event=pr,latest=false
