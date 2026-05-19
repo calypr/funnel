@@ -111,13 +111,18 @@ func CreateJob(ctx context.Context, task *tes.Task, conf *config.Config, client 
 		return nil, fmt.Errorf("failed to decode job spec")
 	}
 
+	//FIXME: This should be taken care by the reconciler when DisableJobCleanup is false.
+	// Setting TTLSecondsAfterFinished here causes the job to be deleted
+	// regardless of the DisableJobCleanup setting, which can lead to unexpected job
+	// deletions if the reconciler is disabled.
+
 	// Ensure completed jobs are garbage-collected by the Kubernetes TTL Controller
 	// so that Succeeded/Failed pods don't accumulate on nodes and block Karpenter
 	// consolidation. Funnel's own reconciler only handles non-terminal tasks.
-	if job.Spec.TTLSecondsAfterFinished == nil {
-		var ttl int32 = 300
-		job.Spec.TTLSecondsAfterFinished = &ttl
-	}
+	// if job.Spec.TTLSecondsAfterFinished == nil {
+	// 	var ttl int32 = 300
+	// 	job.Spec.TTLSecondsAfterFinished = &ttl
+	// }
 
 	log.Debug("Creating job", "Job", job.Name, "JobsNamespace", conf.Kubernetes.JobsNamespace)
 	created, err := client.BatchV1().Jobs(conf.Kubernetes.JobsNamespace).Create(ctx, job, metav1.CreateOptions{})
