@@ -19,6 +19,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	batchv1 "k8s.io/client-go/kubernetes/typed/batch/v1"
 	"k8s.io/client-go/rest"
+	"mvdan.cc/sh/v3/syntax"
 )
 
 // KubernetesCommand is responsible for configuring and running a task in a Kubernetes cluster.
@@ -71,6 +72,24 @@ func (e *K8sSystemErr) Unwrap() error {
 	return e.Err
 }
 
+// normalizeShellCommand ensures a single-element command string is safe to
+// pass to /bin/sh -c. If the string is already valid shell syntax it is
+// returned unchanged. If the parser rejects it (e.g. an unterminated single
+// quote in "echo Hello O'hare!"), each whitespace-separated token is wrapped
+// in single quotes with any internal single quotes escaped, preserving the
+// original word boundaries.
+func normalizeShellCommand(s string) string {
+	if _, err := syntax.NewParser().Parse(strings.NewReader(s), ""); err == nil {
+		return s
+	}
+	tokens := strings.Fields(s)
+	for i, tok := range tokens {
+		escaped := strings.ReplaceAll(tok, "'", "'\\''")
+		tokens[i] = "'" + escaped + "'"
+	}
+	return strings.Join(tokens, " ")
+}
+
 // Create the Executor K8s job from kubernetes-executor-template.yaml
 // Funnel Worker job is created in compute/kubernetes/backend.go#CreateResources
 func (kcmd KubernetesCommand) Run(ctx context.Context) error {
@@ -110,6 +129,12 @@ func (kcmd KubernetesCommand) Run(ctx context.Context) error {
 			shellCmd += " 2> " + kcmd.StderrFile
 		}
 		cmd = []string{shellCmd}
+	}
+
+	// Normalize single-element shell scripts before passing them to /bin/sh -c.
+	// Multi-element commands are exec'd directly and bypass the shell entirely.
+	if len(cmd) == 1 && !hasRedirects {
+		cmd[0] = normalizeShellCommand(cmd[0])
 	}
 
 	// Use a shell wrapper when the command is a single element (a shell script

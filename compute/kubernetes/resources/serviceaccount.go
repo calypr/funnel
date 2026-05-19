@@ -95,9 +95,9 @@ type DeleteServiceAccountOptions struct {
 	// Required when the SA is externally managed (e.g. a Gen3Workflow per-user SA).
 	ServiceAccountName string
 
-	// ExternalSA indicates the SA is shared across tasks. When true, deletion is
+	// SharedSA indicates the SA is shared across tasks. When true, deletion is
 	// skipped if any other active pods are still using it.
-	ExternalSA bool
+	SharedSA bool
 }
 
 // DeleteServiceAccount deletes the ServiceAccount for a task.
@@ -105,21 +105,21 @@ type DeleteServiceAccountOptions struct {
 // By default (no options), it targets the conventional SA name
 // funnel-worker-$namespace-$taskID and deletes it unconditionally.
 //
-// If opts.ExternalSA is true, the SA is treated as shared — deletion is skipped
+// If opts.SharedSA is true, the SA is treated as shared — deletion is skipped
 // if any active pod is still using it, and the reconciler will retry on the
 // next pass when the last pod finishes.
 func DeleteServiceAccount(ctx context.Context, taskID, namespace string, client kubernetes.Interface, log *logger.Logger, opts *DeleteServiceAccountOptions) error {
 	saName := fmt.Sprintf("funnel-worker-%s-%s", namespace, taskID)
-	externalSA := false
+	sharedSA := false
 
 	if opts != nil {
 		if opts.ServiceAccountName != "" {
 			saName = opts.ServiceAccountName
 		}
-		externalSA = opts.ExternalSA
+		sharedSA = opts.SharedSA
 	}
 
-	if externalSA {
+	if sharedSA {
 		inUse, err := isServiceAccountAttachedToPods(ctx, saName, namespace, client)
 		if err != nil {
 			return fmt.Errorf("checking pod attachment for ServiceAccount %s: %v", saName, err)

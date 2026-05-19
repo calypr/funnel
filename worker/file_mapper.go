@@ -479,6 +479,27 @@ func (mapper *FileMapper) ContainerPath(src string) string {
 	return p
 }
 
+// mergeVolume inserts vol into vols using the same RW-deduplication rules as
+// AddVolume: skip if already covered by an existing mount, replace a narrower
+// existing mount with the wider one, otherwise append.
+func mergeVolume(vols []Volume, vol Volume, mapper *FileMapper) []Volume {
+	for i, v := range vols {
+		if vol == v {
+			return vols
+		}
+		if !vol.Readonly && !v.Readonly {
+			if mapper.IsSubpath(vol.ContainerPath, v.ContainerPath) {
+				return vols
+			}
+			if mapper.IsSubpath(v.ContainerPath, vol.ContainerPath) {
+				vols[i] = vol
+				return vols
+			}
+		}
+	}
+	return append(vols, vol)
+}
+
 // consolidateVolumes optimizes container mounts by replacing individual input
 // file mounts with a single read-write ancestor directory mount.
 //
@@ -528,11 +549,12 @@ func (mapper *FileMapper) consolidateVolumes() {
 		// All inputs share a common ancestor — one mount covers them all.
 		// WorkDir+ancestor is valid by the HostPath() construction invariant
 		// (every input host path == WorkDir + container path).
-		nonInputVols = append(nonInputVols, Volume{
+		inputAncestorVol := Volume{
 			HostPath:      filepath.Join(mapper.WorkDir, ancestor),
 			ContainerPath: ancestor,
 			Readonly:      false,
-		})
+		}
+		nonInputVols = mergeVolume(nonInputVols, inputAncestorVol, mapper)
 	} else {
 		// Inputs span disjoint subtrees; fall back to promoting each to its
 		// immediate parent directory to at least eliminate file-level mounts.
@@ -545,11 +567,11 @@ func (mapper *FileMapper) consolidateVolumes() {
 				continue
 			}
 			seen[key] = true
-			nonInputVols = append(nonInputVols, Volume{
+			nonInputVols = mergeVolume(nonInputVols, Volume{
 				HostPath:      hostParent,
 				ContainerPath: contParent,
 				Readonly:      false,
-			})
+			}, mapper)
 		}
 	}
 	mapper.Volumes = nonInputVols

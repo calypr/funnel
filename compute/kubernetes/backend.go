@@ -207,10 +207,10 @@ func (b *Backend) createResources(ctx context.Context, task *tes.Task, config *c
 	// External (user-managed) SAs are not owned by the Job — they outlive tasks.
 	if config.Kubernetes.ServiceAccountTemplate != "" {
 		saName := fmt.Sprintf("funnel-worker-sa-%s-%s", config.Kubernetes.JobsNamespace, task.Id)
-		externalSA := false
+		sharedSA := false
 		if sa, exists := task.Tags["_WORKER_SA"]; exists && sa != "" {
 			saName = sa
-			externalSA = true
+			sharedSA = true
 		}
 
 		// TODO: Add error handler to handle case where Get fails for reasons other than `NotFound`
@@ -223,7 +223,7 @@ func (b *Backend) createResources(ctx context.Context, task *tes.Task, config *c
 			b.log.Debug("Creating Worker ServiceAccount", "taskID", task.Id)
 			// Only set the owner reference for task-level SAs; external SAs are shared and must not be GC'd with the job.
 			saOwnerRef := ownerRef
-			if externalSA {
+			if sharedSA {
 				saOwnerRef = nil
 			}
 			err = resources.CreateServiceAccount(timeoutCtx, task, config, b.client, b.log, saOwnerRef)
@@ -327,7 +327,7 @@ func (b *Backend) cleanResources(ctx context.Context, taskId string) error {
 		if task, err := b.database.GetTask(ctx, &tes.GetTaskRequest{Id: taskId, View: tes.View_FULL.String()}); err == nil {
 			if workerSA := task.Tags["_WORKER_SA"]; workerSA != "" {
 				saOpts.ServiceAccountName = workerSA
-				saOpts.ExternalSA = true
+				saOpts.SharedSA = true
 			}
 		}
 	}
