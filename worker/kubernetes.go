@@ -38,6 +38,7 @@ type KubernetesCommand struct {
 	ResourceLimits *tes.Resources
 	ServiceAccount string
 	NeedsPVC       bool
+	TaskVolumes    []string // TES task.Volumes container paths; rendered as emptyDir volumes
 	Clientset      kubernetes.Interface
 	Command
 }
@@ -150,6 +151,7 @@ func (kcmd KubernetesCommand) Run(ctx context.Context) error {
 		"UseShell":           useShell,
 		"Workdir":            kcmd.Workdir,
 		"Volumes":            kcmd.Volumes,
+		"TaskVolumes":        kcmd.TaskVolumes,
 		"Env":                kcmd.Env,
 		"Cpus":               kcmd.Resources.CpuCores,
 		"RamGb":              kcmd.Resources.RamGb,

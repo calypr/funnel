@@ -254,9 +254,10 @@ func (b *Backend) createResources(ctx context.Context, task *tes.Task, config *c
 		}
 	}
 
-	// If the task has inputs, outputs, or declared volumes, create a PVC so
-	// executor pods can share data via PVC subPath mounts.
-	if len(task.Inputs) > 0 || len(task.Outputs) > 0 || len(task.Volumes) > 0 {
+	// If the task has inputs or outputs, create a PVC so executor pods can
+	// share data via PVC subPath mounts. TES task.Volumes are rendered as
+	// emptyDir volumes in the executor job template and do not need a PVC.
+	if len(task.Inputs) > 0 || len(task.Outputs) > 0 {
 		b.log.Debug("creating Worker PV", "taskID", task.Id)
 
 		// Check to make sure required configs are present

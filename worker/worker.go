@@ -226,6 +226,21 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 					// return fmt.Errorf("error writing resources event for task %s: %v", task.Id, err)
 				}
 
+				// Build a set of TES task volume paths so they can be excluded
+				// from PVC mounts — TES volumes are rendered as emptyDir instead.
+				taskVolSet := make(map[string]bool, len(task.GetVolumes()))
+				for _, v := range task.GetVolumes() {
+					taskVolSet[v] = true
+				}
+				var pvcVolumes []Volume
+				for _, v := range mapper.Volumes {
+					if !taskVolSet[v.ContainerPath] {
+						pvcVolumes = append(pvcVolumes, v)
+					}
+				}
+				pvcCommand := command
+				pvcCommand.Volumes = pvcVolumes
+
 				taskCommand = &KubernetesCommand{
 					TaskId:         task.Id,
 					JobId:          i,
@@ -237,8 +252,9 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 					JobsNamespace:  r.Executor.JobsNamespace,
 					Resources:      resources,
 					ResourceLimits: resourceLimits,
-					Command:        command,
-					NeedsPVC:       len(task.GetInputs()) > 0 || len(task.GetOutputs()) > 0 || len(task.GetVolumes()) > 0,
+					Command:        pvcCommand,
+					NeedsPVC:       len(task.GetInputs()) > 0 || len(task.GetOutputs()) > 0,
+					TaskVolumes:    task.GetVolumes(),
 					NodeSelector:   r.Executor.NodeSelector,
 					Tolerations:    r.Executor.Tolerations,
 					ServiceAccount: fmt.Sprintf("funnel-worker-sa-%s-%s", r.Executor.JobsNamespace, task.Id),

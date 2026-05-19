@@ -69,12 +69,16 @@ spec:
 
         volumeMounts:
         {{- if .NeedsPVC }}
-          {{- range $idx, $item := .Volumes}}
-          - name: funnel-storage-{{$.TaskId}}
-            mountPath: {{$item.ContainerPath}}
-            subPath: {{$.TaskId}}{{$item.ContainerPath}}
-          {{- end}}
+        {{- range $idx, $item := .Volumes}}
+        - name: funnel-storage-{{$.TaskId}}
+          mountPath: {{$item.ContainerPath}}
+          subPath: {{$.TaskId}}{{$item.ContainerPath}}
+        {{- end}}
         {{- end }}
+        {{- range $idx, $vol := .TaskVolumes}}
+        - name: funnel-vol-{{$idx}}
+          mountPath: {{$vol}}
+        {{- end}}
 
       volumes:
       {{- if .NeedsPVC }}
@@ -82,3 +86,7 @@ spec:
         persistentVolumeClaim:
           claimName: funnel-worker-pvc-{{.TaskId}}
       {{- end }}
+      {{- range $idx, $vol := .TaskVolumes}}
+      - name: funnel-vol-{{$idx}}
+        emptyDir: {}
+      {{- end}}
