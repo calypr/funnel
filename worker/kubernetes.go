@@ -237,17 +237,11 @@ func (kcmd KubernetesCommand) Run(ctx context.Context) error {
 	logger.Debug("Streaming pod logs", "podName", pod.Name)
 	err = streamPodLogs(ctx, kcmd.JobsNamespace, pod.Name, kcmd.Stdout, kcmd.Stderr)
 	if err != nil {
-		lastAttempt, checkErr := isWorkerLastAttempt(ctx, taskId, kcmd.JobsNamespace)
-		if checkErr != nil || lastAttempt {
-			logger.Debug("Error checking if worker attempt is last attempt", "error", checkErr)
-			return &K8sSystemErr{
-				Reason:  "LogStreamingFailed",
-				Message: fmt.Sprintf("Failed to stream logs from pod %s", pod.Name),
-				Err:     err,
-			}
+		return &K8sSystemErr{
+			Reason:  "LogStreamingFailed",
+			Message: fmt.Sprintf("Failed to stream logs from pod %s", pod.Name),
+			Err:     err,
 		}
-		logger.Debug("Log streaming error not marked as SYSTEM_ERROR because this is not the last worker attempt", "podName", pod.Name, "error", err)
-		return fmt.Errorf("Transient system error, will retry. error: failed to stream logs from pod %s: %v", pod.Name, err)
 	}
 
 	if len(pod.Status.ContainerStatuses) == 0 {
