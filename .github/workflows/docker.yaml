@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  QUAY_REPO: quay.io/ohsu-comp-bio/funnel
+  QUAY_REPO: quay.io/cdis/funnel
 
 jobs:
   build:
