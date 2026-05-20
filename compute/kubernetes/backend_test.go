@@ -86,6 +86,14 @@ func TestTaskSubmission(t *testing.T) {
 	// Create a fake Kubernetes client
 	fakeClient := fake.NewSimpleClientset()
 
+	// Inject a deterministic UID on every Job create so ownerRef propagation can be verified.
+	const testJobUID = "test-job-uid-1234"
+	fakeClient.PrependReactor("create", "jobs", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		obj := action.(k8stesting.CreateAction).GetObject().(*batchv1.Job)
+		obj.UID = testJobUID
+		return false, obj, nil
+	})
+
 	// Create a mock configuration
 	conf := config.DefaultConfig()
 	conf.Kubernetes.Namespace = "test-namespace"
@@ -155,11 +163,17 @@ spec:
 		t.Errorf("expected Job name '%s', got '%s'", task.Id, job.Name)
 	}
 
-	// Verify that the ConfigMap was created
+	// Verify that the ConfigMap was created with the Job's UID in its ownerRef.
 	configMapName := "funnel-worker-config-" + task.Id
-	_, err = fakeClient.CoreV1().ConfigMaps(conf.Kubernetes.JobsNamespace).Get(context.Background(), configMapName, metav1.GetOptions{})
+	cm, err := fakeClient.CoreV1().ConfigMaps(conf.Kubernetes.JobsNamespace).Get(context.Background(), configMapName, metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("failed to get ConfigMap: %v", err)
+	}
+	if len(cm.OwnerReferences) == 0 {
+		t.Fatal("expected ConfigMap to have an ownerReference, but got none")
+	}
+	if got := cm.OwnerReferences[0].UID; got != testJobUID {
+		t.Errorf("expected ConfigMap ownerRef UID %q, got %q", testJobUID, got)
 	}
 
 	// Clean up resources
@@ -174,11 +188,9 @@ spec:
 		t.Error("expected Job to be deleted, but it still exists")
 	}
 
-	// Verify that the ConfigMap was deleted
-	_, err = fakeClient.CoreV1().ConfigMaps(conf.Kubernetes.JobsNamespace).Get(context.Background(), configMapName, metav1.GetOptions{})
-	if err == nil {
-		t.Error("expected ConfigMap to be deleted, but it still exists")
-	}
+	// ConfigMap deletion is handled by Kubernetes garbage collection via ownerReferences,
+	// not explicitly by cleanResources. The fake clientset does not simulate cascading GC,
+	// so we only verify the ownerRef is set correctly (asserted above).
 
 }
 
