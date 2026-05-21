@@ -76,8 +76,8 @@ func CreateServiceAccount(ctx context.Context, task *tes.Task, conf *config.Conf
 
 // isServiceAccountAttachedToPods returns true if any active pod for any active pod
 // is still using the given ServiceAccount. Pods are skipped if they are terminating (DeletionTimestamp set)
-func isServiceAccountAttachedToPods(ctx context.Context, saName, namespace string, client kubernetes.Interface, taskID string) (bool, error) {
-	fmt.Println("DEBUG: Sleeping for 5s before ServiceAccount deletion to avoid Race Conditions...")
+func isServiceAccountAttachedToPods(ctx context.Context, saName, namespace string, client kubernetes.Interface, log *logger.Logger) (bool, error) {
+	log.Debug("ServiceAccount", "Sleeping for 5s before ServiceAccount deletion to avoid Race Conditions...")
 	time.Sleep(5 * time.Second)
 	pods, err := client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
 		FieldSelector: fmt.Sprintf("spec.serviceAccountName=%s", saName),
@@ -124,7 +124,7 @@ func DeleteServiceAccount(ctx context.Context, taskID, namespace string, client 
 	}
 
 	if sharedSA {
-		inUse, err := isServiceAccountAttachedToPods(ctx, saName, namespace, client, taskID)
+		inUse, err := isServiceAccountAttachedToPods(ctx, saName, namespace, client, log)
 		if err != nil {
 			return fmt.Errorf("checking pod attachment for ServiceAccount %s: %v", saName, err)
 		}
