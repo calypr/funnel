@@ -34,7 +34,6 @@ require (
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51
 	github.com/kr/pretty v0.3.1
 	github.com/logrusorgru/aurora v2.0.3+incompatible
-	github.com/minio/minio-go v6.0.14+incompatible
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
 	github.com/moby/term v0.5.2 // indirect
 	github.com/ncw/swift v1.0.53
@@ -74,7 +73,7 @@ require (
 	github.com/hashicorp/go-plugin v1.7.0
 	github.com/jackc/pgx/v5 v5.9.1
 	github.com/lestrrat-go/jwx/v2 v2.1.6
-	github.com/minio/minio-go/v7 v7.0.100
+	github.com/minio/minio-go/v7 v7.1.0
 	github.com/testcontainers/testcontainers-go v0.42.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.42.0
 	go.mongodb.org/mongo-driver/v2 v2.5.1
@@ -112,6 +111,7 @@ require (
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/shirou/gopsutil/v4 v4.26.3 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
+	github.com/zeebo/xxh3 v1.1.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.43.0 // indirect
 	mvdan.cc/sh/v3 v3.13.1 // indirect
 )
