@@ -150,24 +150,6 @@ func TestPostgresOperations(t *testing.T) {
 		}
 	})
 
-	// List Tasks
-	t.Run("ListTasks", func(t *testing.T) {
-		req := &tes.ListTasksRequest{
-			PageSize: 10,
-			View:     tes.View_MINIMAL.String(),
-		}
-		resp, err := db.ListTasks(ctx, req)
-		if err != nil {
-			t.Fatalf("Failed to list tasks: %v", err)
-		}
-		if len(resp.Tasks) != 1 {
-			t.Fatalf("Expected 1 task in list, got %d", len(resp.Tasks))
-		}
-		if resp.Tasks[0].Id != testTaskID {
-			t.Errorf("ListTasks returned wrong ID: %s", resp.Tasks[0].Id)
-		}
-	})
-
 	// Cancel Task
 	t.Run("CancelTask", func(t *testing.T) {
 		event := events.NewState(testTaskID, tes.State_CANCELED)
@@ -186,6 +168,38 @@ func TestPostgresOperations(t *testing.T) {
 		}
 		if fetchedTask.State != tes.State_CANCELED {
 			t.Errorf("Task state not CANCELED. Expected %s, Got %s", tes.State_CANCELED, fetchedTask.State)
+		}
+	})
+
+	// List Tasks
+	t.Run("ListTasks", func(t *testing.T) {
+		req := &tes.ListTasksRequest{
+			State:    tes.State_CANCELED,
+			PageSize: 10,
+			View:     tes.View_MINIMAL.String(),
+		}
+		resp, err := db.ListTasks(ctx, req)
+		if err != nil {
+			t.Fatalf("Failed to list tasks: %v", err)
+		}
+		if len(resp.Tasks) != 1 {
+			t.Fatalf("Expected 1 task in list, got %d", len(resp.Tasks))
+		}
+		if resp.Tasks[0].Id != testTaskID {
+			t.Errorf("ListTasks returned wrong ID: %s", resp.Tasks[0].Id)
+		}
+
+		req = &tes.ListTasksRequest{
+			State:    tes.State_COMPLETE,
+			PageSize: 10,
+			View:     tes.View_MINIMAL.String(),
+		}
+		resp, err = db.ListTasks(ctx, req)
+		if err != nil {
+			t.Fatalf("Failed to list tasks: %v", err)
+		}
+		if len(resp.Tasks) != 0 { // We only created one task and it's canceled, so there should be 0 complete tasks.
+			t.Fatalf("Expected 0 tasks in list, got %d", len(resp.Tasks))
 		}
 	})
 }
