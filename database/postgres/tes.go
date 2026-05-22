@@ -128,7 +128,7 @@ func (db *Postgres) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*
 	args = append(args, pageSize)
 
 	selectSQL := fmt.Sprintf("SELECT data FROM tasks %s %s %s", whereClause, orderByClause, limitClause)
-
+	fmt.Printf("ListTasks SQL: %s\n", selectSQL)
 	rows, err := db.client.Query(ctx, selectSQL, args...)
 	if err != nil {
 		return nil, err
