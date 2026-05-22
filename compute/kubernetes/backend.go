@@ -525,7 +525,7 @@ func (b *Backend) reconcileOnce(ctx context.Context, disableCleanup bool) {
 				break
 			}
 			for _, task := range lresp.Tasks {
-				b.log.Debug("reconcile: processing task", "taskID", task.Id, "state", task.State)
+				fmt.Println("DEBUG: Reconciling task", task.Id, "with state", task.State)
 				j, exists := k8sJobs[task.Id]
 				delete(k8sJobs, task.Id) // matched — remove so it isn't treated as orphaned
 				if exists {
