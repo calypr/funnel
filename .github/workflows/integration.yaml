@@ -142,7 +142,7 @@ jobs:
 
       - name: Add Helm repos
         run: |
-          helm repo add ohsu https://ohsu-comp-bio.github.io/helm-charts
+          helm repo add ohsu https://calypr.org/helm-charts
           helm repo add gen3 https://helm.gen3.org
           helm repo update
 
