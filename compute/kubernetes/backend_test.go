@@ -535,16 +535,16 @@ func TestHasJobFailedCreateEvent(t *testing.T) {
 	cases := []struct {
 		name           string
 		events         []corev1.Event
-		wantFailed     bool
+		wantCount      int
 		wantReasonPart string
 	}{
 		{
-			name:       "no events → no failure",
-			events:     nil,
-			wantFailed: false,
+			name:      "no events → count 0",
+			events:    nil,
+			wantCount: 0,
 		},
 		{
-			name: "unrelated event reason → no failure",
+			name: "unrelated event reason → count 0",
 			events: []corev1.Event{
 				{
 					ObjectMeta:     metav1.ObjectMeta{Name: "ev1", Namespace: ns},
@@ -553,10 +553,10 @@ func TestHasJobFailedCreateEvent(t *testing.T) {
 					Message:        "Successfully assigned pod",
 				},
 			},
-			wantFailed: false,
+			wantCount: 0,
 		},
 		{
-			name: "FailedCreate event from PSA enforcement → failure detected",
+			name: "one FailedCreate event from PSA enforcement → count 1 with message",
 			events: []corev1.Event{
 				{
 					ObjectMeta:     metav1.ObjectMeta{Name: "ev-fc", Namespace: ns},
@@ -565,11 +565,11 @@ func TestHasJobFailedCreateEvent(t *testing.T) {
 					Message:        psaMessage,
 				},
 			},
-			wantFailed:     true,
+			wantCount:      1,
 			wantReasonPart: "violates PodSecurity",
 		},
 		{
-			name: "FailedCreate for missing service account → failure detected",
+			name: "one FailedCreate for missing service account → count 1 with message",
 			events: []corev1.Event{
 				{
 					ObjectMeta:     metav1.ObjectMeta{Name: "ev-sa", Namespace: ns},
@@ -578,11 +578,11 @@ func TestHasJobFailedCreateEvent(t *testing.T) {
 					Message:        `pods "test-job-" is forbidden: error looking up service account jobs/funnel-worker-sa: serviceaccount "funnel-worker-sa" not found`,
 				},
 			},
-			wantFailed:     true,
+			wantCount:      1,
 			wantReasonPart: "serviceaccount",
 		},
 		{
-			name: "multiple events, last is FailedCreate → failure detected with last message",
+			name: "multiple FailedCreate events → count reflects all, last message returned",
 			events: []corev1.Event{
 				{
 					ObjectMeta:     metav1.ObjectMeta{Name: "ev1", Namespace: ns},
@@ -594,10 +594,16 @@ func TestHasJobFailedCreateEvent(t *testing.T) {
 					ObjectMeta:     metav1.ObjectMeta{Name: "ev2", Namespace: ns},
 					InvolvedObject: corev1.ObjectReference{Name: jobName},
 					Reason:         "FailedCreate",
+					Message:        "earlier failure",
+				},
+				{
+					ObjectMeta:     metav1.ObjectMeta{Name: "ev3", Namespace: ns},
+					InvolvedObject: corev1.ObjectReference{Name: jobName},
+					Reason:         "FailedCreate",
 					Message:        psaMessage,
 				},
 			},
-			wantFailed:     true,
+			wantCount:      2,
 			wantReasonPart: "violates PodSecurity",
 		},
 	}
@@ -648,11 +654,11 @@ func TestHasJobFailedCreateEvent(t *testing.T) {
 				conf:   conf,
 			}
 
-			got, reason := b.hasJobFailedCreateEvent(ctx, jobName)
-			if got != tc.wantFailed {
-				t.Errorf("hasJobFailedCreateEvent() = %v, want %v (reason=%q)", got, tc.wantFailed, reason)
+			gotCount, reason := b.hasJobFailedCreateEvent(ctx, jobName)
+			if gotCount != tc.wantCount {
+				t.Errorf("hasJobFailedCreateEvent() count = %d, want %d (reason=%q)", gotCount, tc.wantCount, reason)
 			}
-			if tc.wantFailed && tc.wantReasonPart != "" {
+			if tc.wantCount > 0 && tc.wantReasonPart != "" {
 				if !strings.Contains(reason, tc.wantReasonPart) {
 					t.Errorf("reason %q does not contain %q", reason, tc.wantReasonPart)
 				}
@@ -745,11 +751,16 @@ func TestReconcile_ZeroStatusFailedCreate(t *testing.T) {
 	}
 
 	// FailedCreate event on the Job (emitted by the Job controller).
+	// Count is set to maxErrEventWrites so that the reconciler's threshold is
+	// met by a single deduplicated event object, as Kubernetes would produce
+	// after the Job controller retries pod creation repeatedly.
 	failedCreateEvent := &corev1.Event{
 		ObjectMeta:     metav1.ObjectMeta{Name: "ev-fc", Namespace: ns},
 		InvolvedObject: corev1.ObjectReference{Name: taskID},
 		Reason:         "FailedCreate",
 		Message:        psaMsg,
+		Count:          maxErrEventWrites,
+		LastTimestamp:  metav1.Now(),
 	}
 
 	fakeClient := fake.NewSimpleClientset(job, failedCreateEvent)

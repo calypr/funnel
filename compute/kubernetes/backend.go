@@ -529,30 +529,92 @@ func (b *Backend) getFailedPodInfo(ctx context.Context, jobName string) string {
 	return result
 }
 
-// hasJobFailedCreateEvent returns true if the Kubernetes Job has emitted at
-// least one FailedCreate event — meaning the Job controller tried to create a
-// pod but was rejected before the pod object was ever persisted (e.g. due to
-// Pod Security Admission enforcement). In that case there are no pod objects
-// to inspect, so hasTerminalContainerWaitingError cannot detect the failure.
-// The most recent event message is returned as the reason string.
-func (b *Backend) hasJobFailedCreateEvent(ctx context.Context, jobName string) (bool, string) {
-	evList, err := b.client.CoreV1().Events(b.conf.Kubernetes.JobsNamespace).List(ctx, metav1.ListOptions{
+// hasJobFailedCreateEvent returns the total occurrence count of FailedCreate
+// events emitted by the Kubernetes Job controller for jobName, along with the
+// message from the most recent such event. A FailedCreate event is emitted
+// when the Job controller tried to create a pod but was rejected before the
+// pod object was ever persisted (e.g. due to Pod Security Admission
+// enforcement). In that case there are no pod objects to inspect, so
+// hasTerminalContainerWaitingError cannot detect the failure.
+//
+// Callers should require a minimum count before treating the situation as a
+// permanent failure, since a single FailedCreate event may be transient.
+//
+// A count of 0 is returned when no FailedCreate events exist, or when a
+// SuccessfulCreate event with a later timestamp is found — meaning the Job
+// controller recovered and successfully created a pod after the failures.
+// Kubernetes deduplicates repeated identical events into a single Event object
+// with an incremented Count field, so this function sums Count across all
+// FailedCreate event objects rather than using len(evList.Items).
+func (b *Backend) hasJobFailedCreateEvent(ctx context.Context, jobName string) (int, string) {
+	ns := b.conf.Kubernetes.JobsNamespace
+
+	failedList, err := b.client.CoreV1().Events(ns).List(ctx, metav1.ListOptions{
 		FieldSelector: fmt.Sprintf("involvedObject.name=%s,reason=FailedCreate", jobName),
 	})
 	if err != nil {
-		b.log.Error("reconcile: listing events for job", "taskID", jobName, "error", err)
-		b.log.Debug("assuming no FailedCreate events due to error listing events", "taskID", jobName)
-		return false, ""
+		b.log.Error("reconcile: listing FailedCreate events for job", "taskID", jobName, "error", err)
+		return 0, ""
 	}
-	if len(evList.Items) == 0 {
-		b.log.Debug("no FailedCreate events found for job", "taskID", jobName)
-		return false, ""
+	if len(failedList.Items) == 0 {
+		return 0, ""
 	}
-	// Return the message from the most recent event.
-	latest := evList.Items[len(evList.Items)-1]
-	b.log.Debug("found FailedCreate event for job", "taskID", jobName, "reason", latest.Message)
-	return true, latest.Message
+
+	// Find the most recent FailedCreate timestamp and sum occurrence counts.
+	// Kubernetes deduplicates rapid-fire identical events into a single Event
+	// object with Count > 1, so we sum Count rather than len(failedList.Items).
+	var latestFailed metav1.Time
+	var latestMsg string
+	var totalCount int
+	for _, ev := range failedList.Items {
+		c := int(ev.Count)
+		if c < 1 {
+			c = 1 // Count is 0 for brand-new singleton events; treat as 1
+		}
+		totalCount += c
+		ts := ev.LastTimestamp
+		if ts.IsZero() {
+			ts = metav1.Time{Time: ev.CreationTimestamp.Time}
+		}
+		if latestFailed.IsZero() || ts.After(latestFailed.Time) {
+			latestFailed = ts
+			latestMsg = ev.Message
+		}
+	}
+
+	// Check whether a SuccessfulCreate event exists with a timestamp after the
+	// last FailedCreate. If so, the Job controller recovered on its own
+	// (e.g. a missing ServiceAccount was created moments later by Helm) and we
+	// should not surface this as an error.
+	successList, err := b.client.CoreV1().Events(ns).List(ctx, metav1.ListOptions{
+		FieldSelector: fmt.Sprintf("involvedObject.name=%s,reason=SuccessfulCreate", jobName),
+	})
+	if err != nil {
+		b.log.Error("reconcile: listing SuccessfulCreate events for job", "taskID", jobName, "error", err)
+		// Proceed conservatively: treat as unresolved so the count is returned.
+	} else {
+		for _, ev := range successList.Items {
+			ts := ev.LastTimestamp
+			if ts.IsZero() {
+				ts = metav1.Time{Time: ev.CreationTimestamp.Time}
+			}
+			if ts.After(latestFailed.Time) {
+				b.log.Debug("reconcile: FailedCreate resolved by later SuccessfulCreate", "taskID", jobName)
+				return 0, ""
+			}
+		}
+	}
+
+	b.log.Debug("found unresolved FailedCreate events for job", "taskID", jobName, "count", totalCount, "reason", latestMsg)
+	return totalCount, latestMsg
 }
+
+// maxErrEventWrites is the minimum number of FailedCreate event occurrences
+// (summed across all Event objects for a Job) required before the reconciler
+// treats the situation as a permanent failure and marks the task SYSTEM_ERROR.
+// This guards against false positives from transient API hiccups that produce
+// a single FailedCreate before self-resolving.
+const maxErrEventWrites = 2
 
 // Reconcile loops through tasks and checks the status from Funnel's database
 // against the status reported by Kubernetes. This allows the backend to report
@@ -617,7 +679,6 @@ func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableClea
 
 	ticker := time.NewTicker(rate)
 	failedJobEvents := make(map[string]int)
-	const maxErrEventWrites = 2
 
 	for {
 		select {
@@ -708,9 +769,12 @@ func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableClea
 							// cases where pod creation is rejected before a pod object is
 							// ever persisted (e.g. Pod Security Admission enforcement blocks
 							// the pod), so there are no pod container statuses to inspect.
+							// We require at least maxErrEventWrites events before treating
+							// the situation as permanent, to avoid false positives from
+							// transient API hiccups.
 							b.log.Debug("checking for FailedCreate events on job", "taskID", jobName)
-							if failed, reason := b.hasJobFailedCreateEvent(ctx, jobName); failed {
-								b.log.Debug("reconcile: worker job has FailedCreate event", "taskID", jobName, "reason", reason)
+							if count, reason := b.hasJobFailedCreateEvent(ctx, jobName); count >= maxErrEventWrites {
+								b.log.Debug("reconcile: worker job has FailedCreate event", "taskID", jobName, "count", count, "reason", reason)
 								b.event.WriteEvent(ctx, events.NewState(jobName, tes.SystemError))
 								b.event.WriteEvent(ctx, events.NewSystemLog(
 									jobName, 0, 0, "error",
@@ -806,8 +870,11 @@ func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableClea
 							// persists a pod object (e.g. Pod Security Admission blocks the
 							// pod). Check for FailedCreate events which are the only signal
 							// available in this state.
-							if failed, reason := b.hasJobFailedCreateEvent(ctx, jobName); failed {
-								b.log.Debug("reconcile: worker job has FailedCreate event (zero-status)", "taskID", jobName, "reason", reason)
+							// We require at least maxErrEventWrites events before treating
+							// the situation as permanent, to avoid false positives from
+							// transient API hiccups.
+							if count, reason := b.hasJobFailedCreateEvent(ctx, jobName); count >= maxErrEventWrites {
+								b.log.Debug("reconcile: worker job has FailedCreate event (zero-status)", "taskID", jobName, "count", count, "reason", reason)
 								b.event.WriteEvent(ctx, events.NewState(jobName, tes.SystemError))
 								b.event.WriteEvent(ctx, events.NewSystemLog(
 									jobName, 0, 0, "error",
