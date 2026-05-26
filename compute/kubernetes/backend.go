@@ -510,10 +510,7 @@ func (b *Backend) getFailedPodInfo(ctx context.Context, jobName string) string {
 	for _, pod := range pods.Items {
 		for _, cs := range pod.Status.ContainerStatuses {
 			t := cs.State.Terminated
-			if t == nil {
-				continue
-			}
-			if t.ExitCode == 0 {
+			if t == nil || t.ExitCode == 0 {
 				continue
 			}
 			if latestFinish.IsZero() || t.FinishedAt.After(latestFinish.Time) {
