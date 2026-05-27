@@ -86,14 +86,6 @@ func TestTaskSubmission(t *testing.T) {
 	// Create a fake Kubernetes client
 	fakeClient := fake.NewSimpleClientset()
 
-	// Inject a deterministic UID on every Job create so ownerRef propagation can be verified.
-	const testJobUID = "test-job-uid-1234"
-	fakeClient.PrependReactor("create", "jobs", func(action k8stesting.Action) (bool, runtime.Object, error) {
-		obj := action.(k8stesting.CreateAction).GetObject().(*batchv1.Job)
-		obj.UID = testJobUID
-		return false, obj, nil
-	})
-
 	// Create a mock configuration
 	conf := config.DefaultConfig()
 	conf.Kubernetes.Namespace = "test-namespace"
@@ -163,17 +155,20 @@ spec:
 		t.Errorf("expected Job name '%s', got '%s'", task.Id, job.Name)
 	}
 
-	// Verify that the ConfigMap was created with the Job's UID in its ownerRef.
-	configMapName := "funnel-worker-config-" + task.Id
-	cm, err := fakeClient.CoreV1().ConfigMaps(conf.Kubernetes.JobsNamespace).Get(context.Background(), configMapName, metav1.GetOptions{})
+	// Seed a PV so we can verify cleanResources deletes it.
+	pvName := "funnel-worker-pv-" + task.Id
+	_, err = fakeClient.CoreV1().PersistentVolumes().Create(context.Background(), &corev1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: pvName,
+			Labels: map[string]string{
+				"app":       "funnel",
+				"taskId":    task.Id,
+				"namespace": conf.Kubernetes.JobsNamespace,
+			},
+		},
+	}, metav1.CreateOptions{})
 	if err != nil {
-		t.Fatalf("failed to get ConfigMap: %v", err)
-	}
-	if len(cm.OwnerReferences) == 0 {
-		t.Fatal("expected ConfigMap to have an ownerReference, but got none")
-	}
-	if got := cm.OwnerReferences[0].UID; got != testJobUID {
-		t.Errorf("expected ConfigMap ownerRef UID %q, got %q", testJobUID, got)
+		t.Fatalf("failed to create test PV: %v", err)
 	}
 
 	// Clean up resources
@@ -188,10 +183,11 @@ spec:
 		t.Error("expected Job to be deleted, but it still exists")
 	}
 
-	// ConfigMap deletion is handled by Kubernetes garbage collection via ownerReferences,
-	// not explicitly by cleanResources. The fake clientset does not simulate cascading GC,
-	// so we only verify the ownerRef is set correctly (asserted above).
-
+	// Verify that the PV was deleted
+	_, err = fakeClient.CoreV1().PersistentVolumes().Get(context.Background(), pvName, metav1.GetOptions{})
+	if err == nil {
+		t.Error("expected PV to be deleted, but it still exists")
+	}
 }
 
 func TestSubmit_AppliesNodeSelectorAndTolerationsToWorkerJob(t *testing.T) {

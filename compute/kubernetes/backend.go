@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"dario.cat/mergo"
@@ -596,23 +595,15 @@ func (b *Backend) CleanOrphanedResources(ctx context.Context) {
 	namespace := b.conf.Kubernetes.JobsNamespace
 	taskIDs := make(map[string]struct{})
 
-	// Collect task IDs from each resource type
-	if pvcs, err := b.client.CoreV1().PersistentVolumeClaims(namespace).List(ctx, metav1.ListOptions{LabelSelector: "app=funnel"}); err == nil {
-		if err != nil {
-			b.log.Error("backlog cleanup: listing PVCs", err)
-		}
-		for _, r := range pvcs.Items {
-			if id, ok := r.Labels["taskId"]; ok {
-				taskIDs[id] = struct{}{}
-			}
-		}
-	}
+	// Collect task IDs from resources that cleanResources manages directly.
+	// ConfigMaps, PVCs, Roles, and RoleBindings are now owned by the Job via ownerReferences
+	// and are garbage-collected by Kubernetes automatically — they are intentionally excluded here.
 
-	// PVs
-	if pvs, err := b.client.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{LabelSelector: fmt.Sprintf("app=funnel,namespace=%s", namespace)}); err == nil {
-		if err != nil {
-			b.log.Error("backlog cleanup: listing PVs", err)
-		}
+	// PVs (cluster-scoped; cannot be owned by a namespaced Job, so must be cleaned explicitly)
+	pvs, err := b.client.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{LabelSelector: fmt.Sprintf("app=funnel,namespace=%s", namespace)})
+	if err != nil {
+		b.log.Error("backlog cleanup: listing PVs", err)
+	} else {
 		for _, r := range pvs.Items {
 			if id, ok := r.Labels["taskId"]; ok {
 				taskIDs[id] = struct{}{}
@@ -620,51 +611,13 @@ func (b *Backend) CleanOrphanedResources(ctx context.Context) {
 		}
 	}
 
-	// ConfigMaps
-	if cms, err := b.client.CoreV1().ConfigMaps(namespace).List(ctx, metav1.ListOptions{LabelSelector: "app=funnel"}); err == nil {
-		if err != nil {
-			b.log.Error("backlog cleanup: listing ConfigMaps", err)
-		}
-		const cmPrefix = "funnel-worker-config-"
-		for _, r := range cms.Items {
-			if id, ok := r.Labels["taskId"]; ok {
-				taskIDs[id] = struct{}{}
-			} else if strings.HasPrefix(r.Name, cmPrefix) {
-				taskIDs[strings.TrimPrefix(r.Name, cmPrefix)] = struct{}{}
-			}
-		}
-	}
-
-	// ServiceAccounts
-	if sas, err := b.client.CoreV1().ServiceAccounts(namespace).List(ctx, metav1.ListOptions{LabelSelector: "app=funnel"}); err == nil {
-		if err != nil {
-			b.log.Error("backlog cleanup: listing ServiceAccounts", err)
-		}
+	// ServiceAccounts (shared SAs are not owned by a Job; task-scoped SAs may also be orphaned
+	// if they were created before ownerRef support was added)
+	sas, err := b.client.CoreV1().ServiceAccounts(namespace).List(ctx, metav1.ListOptions{LabelSelector: "app=funnel"})
+	if err != nil {
+		b.log.Error("backlog cleanup: listing ServiceAccounts", err)
+	} else {
 		for _, r := range sas.Items {
-			if id, ok := r.Labels["taskId"]; ok {
-				taskIDs[id] = struct{}{}
-			}
-		}
-	}
-
-	// Roles
-	if roles, err := b.client.RbacV1().Roles(namespace).List(ctx, metav1.ListOptions{LabelSelector: "app=funnel"}); err == nil {
-		if err != nil {
-			b.log.Error("backlog cleanup: listing Roles", err)
-		}
-		for _, r := range roles.Items {
-			if id, ok := r.Labels["taskId"]; ok {
-				taskIDs[id] = struct{}{}
-			}
-		}
-	}
-
-	// RoleBindings
-	if rbs, err := b.client.RbacV1().RoleBindings(namespace).List(ctx, metav1.ListOptions{LabelSelector: "app=funnel"}); err == nil {
-		if err != nil {
-			b.log.Error("backlog cleanup: listing RoleBindings", err)
-		}
-		for _, r := range rbs.Items {
 			if id, ok := r.Labels["taskId"]; ok {
 				taskIDs[id] = struct{}{}
 			}
