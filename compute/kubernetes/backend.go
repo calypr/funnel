@@ -356,9 +356,13 @@ func (b *Backend) cleanResources(ctx context.Context, taskId string) error {
 // terminalWaitingReasons lists container waiting reasons that will never self-
 // resolve and should be treated as a permanent failure.
 var terminalWaitingReasons = []string{
-	"CreateContainerConfigError",
-	"InvalidImageName",
-	"CreateContainerError",
+	"CreateContainerConfigError", // missing secret / configmap
+	"InvalidImageName",           // malformed image reference
+	"CreateContainerError",       // OCI runtime failed to create container
+	"ErrImagePull",               // image not found or pull failed
+	"ImagePullBackOff",           // repeated image pull failure
+	"RunContainerError",          // runtime failed to start container (e.g. bad entrypoint)
+	"StartError",                 // OCI runtime runc create failed
 }
 
 // hasTerminalContainerWaitingError returns true if any pod belonging to the

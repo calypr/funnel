@@ -386,11 +386,13 @@ func (kcmd KubernetesCommand) GetStderr() io.Writer {
 // terminalWaitingReasons are container waiting states that will never
 // self-resolve, so the executor job should be failed immediately.
 var terminalWaitingReasons = []string{
-	"CreateContainerConfigError",
-	"InvalidImageName",
-	"CreateContainerError",
-	"ErrImagePull",
-	"ImagePullBackOff",
+	"CreateContainerConfigError", // missing secret / configmap
+	"InvalidImageName",           // malformed image reference
+	"CreateContainerError",       // OCI runtime failed to create container
+	"ErrImagePull",               // image not found or pull failed
+	"ImagePullBackOff",           // repeated image pull failure
+	"RunContainerError",          // runtime failed to start container (e.g. bad entrypoint)
+	"StartError",                 // OCI runtime runc create failed
 }
 
 // podWarningEventReasons lists pod event reasons that are safe to surface to
