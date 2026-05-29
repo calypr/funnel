@@ -389,6 +389,8 @@ var terminalWaitingReasons = []string{
 	"CreateContainerConfigError",
 	"InvalidImageName",
 	"CreateContainerError",
+	"ErrImagePull",
+	"ImagePullBackOff",
 }
 
 // podWarningEventReasons lists pod event reasons that are safe to surface to
@@ -440,7 +442,8 @@ func fetchExecutorPodWarningEvents(ctx context.Context, clientset kubernetes.Int
 	return strings.Join(messages, "\n")
 }
 
-// Waits until the job finishes
+// waitForPodFinish watches pod events until the container terminates, a
+// terminal waiting state is detected, or the context is cancelled.
 func waitForPodFinish(ctx context.Context, watcher watch.Interface) (*corev1.Pod, error) {
 	// wait up to 5 min for the pod to appear
 	appearanceTimer := time.NewTimer(5 * 60 * time.Second)
