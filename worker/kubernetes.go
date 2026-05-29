@@ -3,6 +3,7 @@ package worker
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"slices"
@@ -255,8 +256,16 @@ func (kcmd KubernetesCommand) Run(ctx context.Context) error {
 		}
 	}
 	defer podWatcher.Stop()
+	executorJobName := fmt.Sprintf("%s-%d", taskId, kcmd.JobId)
 	pod, err := waitForPodFinish(ctx, podWatcher)
 	if err != nil {
+		var sysErr *K8sSystemErr
+		if errors.As(err, &sysErr) && slices.Contains(terminalWaitingReasons, sysErr.Reason) {
+			if events := fetchExecutorPodWarningEvents(context.Background(), clientset, kcmd.JobsNamespace, executorJobName); events != "" {
+				sysErr.Message = sysErr.Message + "\n" + events
+			}
+			return sysErr
+		}
 		return &K8sSystemErr{
 			Reason:  "PodWaitFailed",
 			Message: "Error waiting for pod to finish",
@@ -380,6 +389,55 @@ var terminalWaitingReasons = []string{
 	"CreateContainerConfigError",
 	"InvalidImageName",
 	"CreateContainerError",
+}
+
+// podWarningEventReasons lists pod event reasons that are safe to surface to
+// users. These describe container/image-level failures with no risk of leaking
+// sensitive runtime internals (e.g. secret values).
+var podWarningEventReasons = []string{
+	"Failed",           // image pull failures, container start failures
+	"BackOff",          // back-off restarting / pulling
+	"ErrImagePull",     // explicit image-pull error
+	"ImagePullBackOff", // image pull back-off
+	"StartError",       // OCI runtime / entrypoint errors
+}
+
+// fetchExecutorPodWarningEvents returns deduplicated Warning events for pods
+// belonging to the executor job (label job-name=<jobName>), filtered to
+// reasons in podWarningEventReasons. Returns an empty string when nothing
+// useful is found.
+func fetchExecutorPodWarningEvents(ctx context.Context, clientset kubernetes.Interface, namespace, jobName string) string {
+	pods, err := clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: fmt.Sprintf("job-name=%s", jobName),
+	})
+	if err != nil {
+		logger.Debug("failed to list pods for warning events", "jobName", jobName, "error", err)
+		return ""
+	}
+
+	seen := make(map[string]struct{})
+	var messages []string
+	for _, pod := range pods.Items {
+		evList, err := clientset.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{
+			FieldSelector: fmt.Sprintf("involvedObject.name=%s,type=Warning", pod.Name),
+		})
+		if err != nil {
+			logger.Debug("failed to list events for pod", "pod", pod.Name, "error", err)
+			continue
+		}
+		for _, ev := range evList.Items {
+			if !slices.Contains(podWarningEventReasons, ev.Reason) {
+				continue
+			}
+			key := ev.Reason + ":" + ev.Message
+			if _, dup := seen[key]; dup {
+				continue
+			}
+			seen[key] = struct{}{}
+			messages = append(messages, fmt.Sprintf("%s: %s", ev.Reason, ev.Message))
+		}
+	}
+	return strings.Join(messages, "\n")
 }
 
 // Waits until the job finishes
