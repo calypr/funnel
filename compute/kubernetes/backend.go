@@ -296,6 +296,29 @@ func (b *Backend) cleanResources(ctx context.Context, taskId string) error {
 		b.log.Error("deleting Job", "error", err)
 	}
 
+	// Delete PVC
+	err = resources.DeletePVC(ctx, taskId, b.conf.Kubernetes.JobsNamespace, b.client, b.log)
+	if err != nil {
+		errs = multierror.Append(errs, err)
+		b.log.Error("deleting Worker PVC", "error", err)
+	}
+
+	// Delete per-task ConfigMap only if ConfigMapTemplate was configured
+	if b.conf.Kubernetes.ConfigMapTemplate != "" {
+		err = resources.DeleteConfigMap(ctx, taskId, b.conf.Kubernetes.JobsNamespace, b.client, b.log)
+		if err != nil {
+			errs = multierror.Append(errs, err)
+			b.log.Error("deleting Worker ConfigMap", "error", err)
+		}
+	}
+
+	// Delete RoleBinding
+	err = resources.DeleteRoleBinding(ctx, taskId, b.conf.Kubernetes.JobsNamespace, b.client, b.log)
+	if err != nil {
+		errs = multierror.Append(errs, err)
+		b.log.Error("deleting Job", "error", err)
+	}
+
 	// Determine the ServiceAccount for this task.
 	// Default to the conventional task-scoped name; override if the task
 	// specifies an externally-managed SA via the _WORKER_SA tag.
@@ -312,6 +335,13 @@ func (b *Backend) cleanResources(ctx context.Context, taskId string) error {
 	if err := resources.DeleteServiceAccount(ctx, taskId, b.conf.Kubernetes.JobsNamespace, b.client, b.log, saOpts); err != nil {
 		errs = multierror.Append(errs, err)
 		b.log.Error("deleting Worker ServiceAccount", "taskID", taskId, "error", err)
+	}
+
+	// Delete Role
+	err = resources.DeleteRole(ctx, taskId, b.conf.Kubernetes.JobsNamespace, b.client, b.log)
+	if err != nil {
+		errs = multierror.Append(errs, err)
+		b.log.Error("deleting Worker Role", "error", err)
 	}
 
 	// Delete PV
@@ -670,8 +700,6 @@ func (b *Backend) CleanOrphanedResources(ctx context.Context) {
 			}
 		}
 	}
-
-	// TODO: Add Executor Jobs here beacause orphaned tasks can result in orphaned jobs
 
 	for taskID := range taskIDs {
 		clean, err := b.isResourceCleanupNeeded(ctx, taskID)
