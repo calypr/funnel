@@ -59,7 +59,7 @@ type K8sSystemErr struct {
 
 func (e *K8sExecutorErr) Error() string {
 	reason := e.Reason
-	if reason == "" {
+	if reason == "" || reason == "Error" {
 		reason = "ExitError"
 	}
 	return fmt.Sprintf("executor job %s failed with exit code %d (%s): %s",
