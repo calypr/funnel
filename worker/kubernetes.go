@@ -11,9 +11,9 @@ import (
 	"text/template"
 	"time"
 
+	k8sbackend "github.com/ohsu-comp-bio/funnel/compute/kubernetes"
 	"github.com/ohsu-comp-bio/funnel/logger"
 	"github.com/ohsu-comp-bio/funnel/tes"
-	k8sbackend "github.com/ohsu-comp-bio/funnel/compute/kubernetes"
 	v1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -395,7 +395,6 @@ var terminalWaitingReasons = []string{
 	"RunContainerError",          // runtime failed to start container (e.g. bad entrypoint)
 	"StartError",                 // OCI runtime runc create failed
 }
-
 
 // waitForPodFinish watches pod events until the container terminates, a
 // terminal waiting state is detected, or the context is cancelled.
