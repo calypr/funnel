@@ -532,6 +532,22 @@ func TestHasJobFailedCreateEvent(t *testing.T) {
 	psaMessage := `pods "test-job-abc" is forbidden: violates PodSecurity "restricted:latest": ` +
 		`allowPrivilegeEscalation != false, runAsNonRoot != true`
 
+	// persistentEvent builds a FailedCreate event that satisfies both the count
+	// and time-span thresholds required by hasJobFailedCreateEvent.
+	persistentEvent := func(name, msg string) corev1.Event {
+		now := metav1.Now()
+		first := metav1.NewTime(now.Add(-minFailureSpan - time.Second))
+		return corev1.Event{
+			ObjectMeta:     metav1.ObjectMeta{Name: name, Namespace: ns},
+			InvolvedObject: corev1.ObjectReference{Name: jobName},
+			Reason:         "FailedCreate",
+			Message:        msg,
+			Count:          failedCreateThreshold,
+			FirstTimestamp: first,
+			LastTimestamp:  now,
+		}
+	}
+
 	cases := []struct {
 		name           string
 		events         []corev1.Event
@@ -556,29 +572,19 @@ func TestHasJobFailedCreateEvent(t *testing.T) {
 			wantCount: 0,
 		},
 		{
-			name: "one FailedCreate event from PSA enforcement → count 1 with message",
+			name: "one FailedCreate event from PSA enforcement → persistent, count returned with message",
 			events: []corev1.Event{
-				{
-					ObjectMeta:     metav1.ObjectMeta{Name: "ev-fc", Namespace: ns},
-					InvolvedObject: corev1.ObjectReference{Name: jobName},
-					Reason:         "FailedCreate",
-					Message:        psaMessage,
-				},
+				persistentEvent("ev-fc", psaMessage),
 			},
-			wantCount:      1,
+			wantCount:      failedCreateThreshold,
 			wantReasonPart: "violates PodSecurity",
 		},
 		{
-			name: "one FailedCreate for missing service account → count 1 with message",
+			name: "one FailedCreate for missing service account → persistent, count returned with message",
 			events: []corev1.Event{
-				{
-					ObjectMeta:     metav1.ObjectMeta{Name: "ev-sa", Namespace: ns},
-					InvolvedObject: corev1.ObjectReference{Name: jobName},
-					Reason:         "FailedCreate",
-					Message:        `pods "test-job-" is forbidden: error looking up service account jobs/funnel-worker-sa: serviceaccount "funnel-worker-sa" not found`,
-				},
+				persistentEvent("ev-sa", `pods "test-job-" is forbidden: error looking up service account jobs/funnel-worker-sa: serviceaccount "funnel-worker-sa" not found`),
 			},
-			wantCount:      1,
+			wantCount:      failedCreateThreshold,
 			wantReasonPart: "serviceaccount",
 		},
 		{
@@ -590,20 +596,10 @@ func TestHasJobFailedCreateEvent(t *testing.T) {
 					Reason:         "Scheduled",
 					Message:        "first message",
 				},
-				{
-					ObjectMeta:     metav1.ObjectMeta{Name: "ev2", Namespace: ns},
-					InvolvedObject: corev1.ObjectReference{Name: jobName},
-					Reason:         "FailedCreate",
-					Message:        "earlier failure",
-				},
-				{
-					ObjectMeta:     metav1.ObjectMeta{Name: "ev3", Namespace: ns},
-					InvolvedObject: corev1.ObjectReference{Name: jobName},
-					Reason:         "FailedCreate",
-					Message:        psaMessage,
-				},
+				persistentEvent("ev2", "earlier failure"),
+				persistentEvent("ev3", psaMessage),
 			},
-			wantCount:      2,
+			wantCount:      failedCreateThreshold * 2,
 			wantReasonPart: "violates PodSecurity",
 		},
 	}
@@ -638,10 +634,15 @@ func TestHasJobFailedCreateEvent(t *testing.T) {
 				var filtered []corev1.Event
 				for _, ev := range evList.Items {
 					nameMatch := strings.Contains(fs, fmt.Sprintf("involvedObject.name=%s", ev.InvolvedObject.Name))
-					reasonMatch := strings.Contains(fs, fmt.Sprintf("reason=%s", ev.Reason))
-					if nameMatch && reasonMatch {
-						filtered = append(filtered, ev)
+					if !nameMatch {
+						continue
 					}
+					// Reason filter is optional: only apply it when present.
+					reasonFilter := fmt.Sprintf("reason=%s", ev.Reason)
+					if strings.Contains(fs, "reason=") && !strings.Contains(fs, reasonFilter) {
+						continue
+					}
+					filtered = append(filtered, ev)
 				}
 				return true, &corev1.EventList{Items: filtered}, nil
 			})
@@ -751,16 +752,20 @@ func TestReconcile_ZeroStatusFailedCreate(t *testing.T) {
 	}
 
 	// FailedCreate event on the Job (emitted by the Job controller).
-	// Count is set to maxErrEventWrites so that the reconciler's threshold is
-	// met by a single deduplicated event object, as Kubernetes would produce
-	// after the Job controller retries pod creation repeatedly.
+	// Count is set to failedCreateThreshold and FirstTimestamp/LastTimestamp
+	// span minFailureSpan so that both persistence thresholds are met by a
+	// single deduplicated event object, as Kubernetes produces after the Job
+	// controller retries pod creation repeatedly.
+	now := metav1.Now()
+	firstTime := metav1.NewTime(now.Add(-minFailureSpan - time.Second))
 	failedCreateEvent := &corev1.Event{
 		ObjectMeta:     metav1.ObjectMeta{Name: "ev-fc", Namespace: ns},
 		InvolvedObject: corev1.ObjectReference{Name: taskID},
 		Reason:         "FailedCreate",
 		Message:        psaMsg,
-		Count:          maxErrEventWrites,
-		LastTimestamp:  metav1.Now(),
+		Count:          failedCreateThreshold,
+		FirstTimestamp: firstTime,
+		LastTimestamp:  now,
 	}
 
 	fakeClient := fake.NewSimpleClientset(job, failedCreateEvent)
@@ -783,10 +788,15 @@ func TestReconcile_ZeroStatusFailedCreate(t *testing.T) {
 		var filtered []corev1.Event
 		for _, ev := range evList.Items {
 			nameMatch := strings.Contains(fs, fmt.Sprintf("involvedObject.name=%s", ev.InvolvedObject.Name))
-			reasonMatch := strings.Contains(fs, fmt.Sprintf("reason=%s", ev.Reason))
-			if nameMatch && reasonMatch {
-				filtered = append(filtered, ev)
+			if !nameMatch {
+				continue
 			}
+			// Reason filter is optional: only apply it when present in the selector.
+			reasonFilter := fmt.Sprintf("reason=%s", ev.Reason)
+			if strings.Contains(fs, "reason=") && !strings.Contains(fs, reasonFilter) {
+				continue
+			}
+			filtered = append(filtered, ev)
 		}
 		return true, &corev1.EventList{Items: filtered}, nil
 	})
