@@ -459,13 +459,13 @@ func TestHasTerminalContainerWaitingError(t *testing.T) {
 			wantTerminal: false,
 		},
 		{
-			name: "ImagePullBackOff is not in the terminal list",
+			name: "ImagePullBackOff is in the terminal list",
 			containerState: corev1.ContainerState{
 				Waiting: &corev1.ContainerStateWaiting{
 					Reason: "ImagePullBackOff",
 				},
 			},
-			wantTerminal: false,
+			wantTerminal: true,
 		},
 		{
 			name: "running container is not terminal",
