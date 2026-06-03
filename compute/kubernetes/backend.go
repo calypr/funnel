@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -425,41 +426,37 @@ var podWarningEventReasons = []string{
 	"StartError",       // OCI runtime / entrypoint errors
 }
 
-// fetchPodWarningEvents returns Warning events for pods belonging to jobName
+// FetchPodWarningEvents returns Warning events for pods belonging to jobName
 // whose reason is in podWarningEventReasons. The messages are deduplicated and
 // returned as a newline-joined string. An empty string is returned when nothing
 // useful is found. This surfaces the human-readable detail that appears in
 // `kubectl describe pod` (e.g. "Error: secret \"foo\" not found") into the
 // TES task system logs.
-func (b *Backend) fetchPodWarningEvents(ctx context.Context, jobName string) string {
-	pods, err := b.client.CoreV1().Pods(b.conf.Kubernetes.JobsNamespace).List(ctx, metav1.ListOptions{
+func FetchPodWarningEvents(ctx context.Context, clientset kubernetes.Interface, namespace, jobName string) string {
+	pods, err := clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: fmt.Sprintf("job-name=%s", jobName),
 	})
 	if err != nil {
-		b.log.Error("reconcile: listing pods for warning events", "taskID", jobName, "error", err)
 		return ""
 	}
 
 	seen := make(map[string]struct{})
 	var messages []string
 	for _, pod := range pods.Items {
-		evList, err := b.client.CoreV1().Events(b.conf.Kubernetes.JobsNamespace).List(ctx, metav1.ListOptions{
+		evList, err := clientset.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{
 			FieldSelector: fmt.Sprintf("involvedObject.name=%s,type=Warning", pod.Name),
 		})
 		if err != nil {
-			b.log.Error("reconcile: listing events for pod", "taskID", jobName, "pod", pod.Name, "error", err)
 			continue
 		}
 		for _, ev := range evList.Items {
-			for _, allowed := range podWarningEventReasons {
-				if ev.Reason == allowed {
-					key := ev.Reason + ":" + ev.Message
-					if _, dup := seen[key]; !dup {
-						seen[key] = struct{}{}
-						messages = append(messages, fmt.Sprintf("%s: %s", ev.Reason, ev.Message))
-					}
-					break
-				}
+			if !slices.Contains(podWarningEventReasons, ev.Reason) {
+				continue
+			}
+			key := ev.Reason + ":" + ev.Message
+			if _, dup := seen[key]; !dup {
+				seen[key] = struct{}{}
+				messages = append(messages, fmt.Sprintf("%s: %s", ev.Reason, ev.Message))
 			}
 		}
 	}
@@ -744,7 +741,7 @@ func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableClea
 								b.log.Debug("reconcile: worker pod has terminal container waiting error", "taskID", jobName, "reason", reason)
 								b.event.WriteEvent(ctx, events.NewState(jobName, tes.SystemError))
 								errDetail := reason
-								if podEvents := b.fetchPodWarningEvents(ctx, jobName); podEvents != "" {
+								if podEvents := FetchPodWarningEvents(ctx, b.client, b.conf.Kubernetes.JobsNamespace, jobName); podEvents != "" {
 									errDetail = fmt.Sprintf("%s\n%s", reason, podEvents)
 								}
 								b.event.WriteEvent(ctx, events.NewSystemLog(

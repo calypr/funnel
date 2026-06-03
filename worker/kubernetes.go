@@ -13,6 +13,7 @@ import (
 
 	"github.com/ohsu-comp-bio/funnel/logger"
 	"github.com/ohsu-comp-bio/funnel/tes"
+	k8sbackend "github.com/ohsu-comp-bio/funnel/compute/kubernetes"
 	v1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -261,7 +262,7 @@ func (kcmd KubernetesCommand) Run(ctx context.Context) error {
 	if err != nil {
 		var sysErr *K8sSystemErr
 		if errors.As(err, &sysErr) && slices.Contains(terminalWaitingReasons, sysErr.Reason) {
-			if events := fetchExecutorPodWarningEvents(context.Background(), clientset, kcmd.JobsNamespace, executorJobName); events != "" {
+			if events := k8sbackend.FetchPodWarningEvents(context.Background(), clientset, kcmd.JobsNamespace, executorJobName); events != "" {
 				sysErr.Message = sysErr.Message + "\n" + events
 			}
 			return sysErr
@@ -395,54 +396,6 @@ var terminalWaitingReasons = []string{
 	"StartError",                 // OCI runtime runc create failed
 }
 
-// podWarningEventReasons lists pod event reasons that are safe to surface to
-// users. These describe container/image-level failures with no risk of leaking
-// sensitive runtime internals (e.g. secret values).
-var podWarningEventReasons = []string{
-	"Failed",           // image pull failures, container start failures
-	"BackOff",          // back-off restarting / pulling
-	"ErrImagePull",     // explicit image-pull error
-	"ImagePullBackOff", // image pull back-off
-	"StartError",       // OCI runtime / entrypoint errors
-}
-
-// fetchExecutorPodWarningEvents returns deduplicated Warning events for pods
-// belonging to the executor job (label job-name=<jobName>), filtered to
-// reasons in podWarningEventReasons. Returns an empty string when nothing
-// useful is found.
-func fetchExecutorPodWarningEvents(ctx context.Context, clientset kubernetes.Interface, namespace, jobName string) string {
-	pods, err := clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("job-name=%s", jobName),
-	})
-	if err != nil {
-		logger.Debug("failed to list pods for warning events", "jobName", jobName, "error", err)
-		return ""
-	}
-
-	seen := make(map[string]struct{})
-	var messages []string
-	for _, pod := range pods.Items {
-		evList, err := clientset.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{
-			FieldSelector: fmt.Sprintf("involvedObject.name=%s,type=Warning", pod.Name),
-		})
-		if err != nil {
-			logger.Debug("failed to list events for pod", "pod", pod.Name, "error", err)
-			continue
-		}
-		for _, ev := range evList.Items {
-			if !slices.Contains(podWarningEventReasons, ev.Reason) {
-				continue
-			}
-			key := ev.Reason + ":" + ev.Message
-			if _, dup := seen[key]; dup {
-				continue
-			}
-			seen[key] = struct{}{}
-			messages = append(messages, fmt.Sprintf("%s: %s", ev.Reason, ev.Message))
-		}
-	}
-	return strings.Join(messages, "\n")
-}
 
 // waitForPodFinish watches pod events until the container terminates, a
 // terminal waiting state is detected, or the context is cancelled.

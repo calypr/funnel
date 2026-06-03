@@ -981,7 +981,7 @@ func TestFetchPodWarningEvents(t *testing.T) {
 				conf:   conf,
 			}
 
-			got := b.fetchPodWarningEvents(ctx, jobName)
+			got := FetchPodWarningEvents(ctx, b.client, b.conf.Kubernetes.JobsNamespace, jobName)
 
 			if tc.wantEmpty {
 				if got != "" {
