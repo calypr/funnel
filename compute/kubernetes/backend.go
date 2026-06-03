@@ -635,7 +635,6 @@ const maxErrEventWrites = 2
 //
 // This loop is also used to cleanup successful jobs.
 func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableCleanup bool) {
-	fmt.Println("DEBUG: Starting Kubernetes backend reconciler loop with rate", rate)
 	// Clears all resources that still exist from jobs that have run before this server started.
 	// This handles two cases:
 	//   1. Completed jobs (Succeeded/Failed) that were not cleaned up before the server restarted.
@@ -686,8 +685,6 @@ func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableClea
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			fmt.Println("DEBUG: Running Kubernetes backend reconciler loop!")
-
 			// List worker jobs only (label selector excludes executor jobs and unrelated jobs).
 			// Bug: If K8s Job is not created by the time reconciler runs, then the TES Task itself will be prematurely marked as SYSTEM_ERROR
 			jobs, err := b.client.BatchV1().Jobs(b.conf.Kubernetes.JobsNamespace).List(ctx, metav1.ListOptions{
@@ -708,7 +705,6 @@ func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableClea
 			// List non-terminal tasks from Funnel's database
 			states := []tes.State{tes.State_QUEUED, tes.State_INITIALIZING, tes.State_RUNNING}
 			for _, s := range states {
-				fmt.Println("DEBUG: Reconciling tasks with state", s)
 				pageToken := ""
 				for {
 					lresp, err := b.database.ListTasks(ctx, &tes.ListTasksRequest{
@@ -724,7 +720,6 @@ func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableClea
 
 					// Compare Funnel Tasks against K8s Jobs
 					for _, task := range lresp.Tasks {
-						fmt.Println("DEBUG: Reconciling task", task.Id, "with state", task.State)
 						taskID := task.Id
 
 						// If the job exists, check its current status (Active, Succeeded, Failed)
@@ -740,7 +735,6 @@ func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableClea
 
 						jobName := j.Name
 						status := j.Status
-						fmt.Println("DEBUG: Job status for task", taskID, "is Active:", status.Active, "Succeeded:", status.Succeeded, "Failed:", status.Failed)
 						switch {
 						case status.Active > 0:
 							// Check for container waiting errors that will never self-resolve
