@@ -50,27 +50,8 @@ jobs:
           kubectl describe pods
           kubectl get events --sort-by='.lastTimestamp'
 
-      # ----------------------------------
-      # 3. Install Gen3-Workflow via Helm
-      # ----------------------------------
-
-      # - name: Install gen3workflow
-      #   run: |
-      #     helm repo add gen3 https://helm.gen3.org
-      #     helm repo update
-      #     helm upgrade --install gen3workflow gen3/gen3workflow \
-      #       --set funnelUrl=http://funnel:8000 \
-      #       --wait --timeout=60s
-
-      # - name: Debug gen3workflow pods (on failure)
-      #   if: failure()
-      #   run: |
-      #     kubectl get pods -o wide
-      #     kubectl describe pods
-      #     kubectl get events --sort-by='.lastTimestamp'
- 
       # -------------------------------------
-      # 4. Expose services for local testing
+      # 3. Expose services for local testing
       # -------------------------------------
  
       - name: Port-forward Funnel
@@ -80,7 +61,7 @@ jobs:
       #   run: kubectl port-forward svc/gen3workflow 8080:8080 &
  
       # ----------------------------
-      # 5. Run Nextflow + nf-canary
+      # 4. Run Nextflow + nf-canary
       # ----------------------------
         
       - name: Setup Java
@@ -120,7 +101,7 @@ jobs:
           echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
  
       # -------------------
-      # 6. Verify K8s Jobs
+      # 5. Verify K8s Jobs
       # -------------------
  
       - name: Verify Kubernetes jobs completed
@@ -154,7 +135,7 @@ jobs:
           echo "All Kubernetes jobs completed successfully: $SUCCEEDED"
  
       # ------------------------------
-      # 7. Upload test logs + reports 
+      # 6. Upload test logs + reports 
       # ------------------------------
  
       - name: Upload Nextflow logs
@@ -167,3 +148,26 @@ jobs:
             nf-canary/report.html
             nf-canary/.nextflow.log
           if-no-files-found: ignore
+
+      - name: Summarize test results
+        if: always()
+        run: |
+          cd nf-canary
+          TOTAL=$(grep -c "Submitted process" nextflow.log 2>/dev/null || echo 0)
+          PASSED=$(grep -c "COMPLETED" nextflow.log 2>/dev/null || echo 0)
+          FAILED=$(grep -c "FAILED" nextflow.log 2>/dev/null || echo 0)
+          {
+            echo "## Integration Test Results"
+            echo "| Result | Count |"
+            echo "|--------|-------|"
+            echo "| ✅ Passed | $PASSED |"
+            echo "| ❌ Failed | $FAILED |"
+            echo "| Total | $TOTAL |"
+            if [ "$FAILED" -gt 0 ]; then
+              echo ""
+              echo "### Failed Tasks"
+              echo '```'
+              grep "FAILED" nextflow.log || true
+              echo '```'
+            fi
+          } >> $GITHUB_STEP_SUMMARY
