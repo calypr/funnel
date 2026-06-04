@@ -14,8 +14,6 @@ on:
   # Run on push to main/master/develop (e.g. after PR is merged)
   push:
     branches:
-      - main
-      - master
       - develop
 
 # Cancel redundant jobs (if a new job is triggered for the same workflow and ref)
@@ -43,11 +41,9 @@ jobs:
 
       - name: Deploy Funnel
         run: |
-          helm repo add ohsu https://ohsu-comp-bio.github.io/helm-charts
+          helm repo add calypr https://calypr.org/helm-charts
           
-          # 'local-path' is a k3d specific storage class used to automatically create a PersistentVolume
-          # ref: https://k3d.io/v5.7.4/usage/k3s/#local-path-provisioner
-          helm upgrade --install funnel ohsu/funnel --set storage.className=local-path --set storage.provisioner=local-path
+          helm upgrade --install funnel calypr/funnel
           
           # Wait for the Deployment to be available
           kubectl rollout status deployment/funnel-server --timeout=60s
@@ -65,3 +61,4 @@ jobs:
           
           # Exits 0 if the task is complete, otherwise exits 1
           funnel task get $ID | grep -q COMPLETE
+
