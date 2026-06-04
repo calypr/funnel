@@ -1,0 +1,9 @@
+{
+  "name": "Multi-element exec — curl with header containing comma and colon",
+  "executors": [
+    {
+      "image": "curlimages/curl:latest",
+      "command": ["curl", "-s", "https://api.github.com/zen", "-H", "Accept: application/json,text/plain"]
+    }
+  ]
+}

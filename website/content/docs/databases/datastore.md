@@ -38,7 +38,7 @@ to support the task-list queries.
 This is typically done through command-line by referencing an **index.yaml**
 file (do not change the filename) with the following content:
 
-```shell
+```sh
 gcloud datastore indexes create path/to/index.yaml --database='funnel'
 ```
 

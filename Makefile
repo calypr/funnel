@@ -47,8 +47,7 @@ proto:
 
 # Install Buf and dependencies
 proto-depends:
-#	@go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2@v2.11.1
-	@go install github.com/bufbuild/buf/cmd/buf@latest
+	@go install github.com/bufbuild/buf/cmd/buf@v1.28.1
 
 # Lint Protobuf files
 proto-lint:
@@ -103,6 +102,17 @@ test-mongodb:
 	@go version
 	@go test ./tests/core/ --funnel-config `pwd`/tests/mongo.config.yml
 	@go test ./tests/scheduler/ --funnel-config `pwd`/tests/mongo.config.yml
+
+start-postgres:
+	@docker rm -f funnel-postgres-test > /dev/null 2>&1 || echo
+	@docker run -d --name funnel-postgres-test -p 5432:5432 \
+		-e POSTGRES_PASSWORD=postgres \
+		docker.io/postgres > /dev/null
+
+test-postgres:
+	@go version
+	@go test ./tests/core/ --funnel-config `pwd`/tests/postgres.config.yml
+	@go test ./tests/scheduler/ --funnel-config `pwd`/tests/postgres.config.yml
 
 test-badger:
 	@go version
@@ -183,10 +193,12 @@ test-ftp:
 	@go test -v ./tests/storage -run TestFTPStorage -funnel-config `pwd`/tests/ftp.config.yml
 
 # Build the web dashboard
-webdash:
-	@go get -u github.com/go-bindata/go-bindata/...
-	@cd webdash && yarn build
+webdash: webdash-deps
+	@cd webdash && npm run build
 	@go-bindata -pkg webdash -prefix "webdash/build" -o webdash/web.go webdash/build/...
+
+webdash-deps:
+	@go install github.com/go-bindata/go-bindata/go-bindata@v3.1.2+incompatible
 
 # Build binaries for all OS/Architectures
 snapshot: release-dep
@@ -199,28 +211,29 @@ docker:
 	docker build -t quay.io/ohsu-comp-bio/funnel:latest ./
 
 # Create a release on Github using GoReleaser
-release:
-	@go get github.com/buchanae/github-release-notes
-	@goreleaser \
-		--clean \
-		--release-notes <(github-release-notes -org ohsu-comp-bio -repo funnel -stop-at ${LAST_PR_NUMBER})
+release: release-dep
+	@goreleaser --clean
 
 # Install dependencies for release
 release-dep:
-	@go install github.com/goreleaser/goreleaser
-	@go install github.com/buchanae/github-release-notes
+	@go install github.com/goreleaser/goreleaser/v2@latest
 
 # Generate mocks for testing.
-gen-mocks:
-	@go get github.com/vektra/mockery/...
+gen-mocks: gen-mocks-deps
 	@mockery -dir compute/scheduler -name Client -inpkg -output compute/scheduler
 	@mockery -dir compute/scheduler -name SchedulerServiceServer -inpkg -output compute/scheduler
 
+gen-mocks-deps:
+	@go install github.com/vektra/mockery/v2@v2.20.0
+
 # Bundle example task messages into Go code.
-bundle-examples:
+bundle-examples: bundle-examples-deps
 	@go-bindata -pkg examples -o examples/internal/bundle.go $(shell find examples/ -name '*.json')
 	@go-bindata -pkg config -o config/internal/bundle.go $(shell find config/ -name '*.txt' -o -name '*.yaml')
 	@gofmt -w -s examples/internal/bundle.go config/internal/bundle.go
+
+bundle-examples-deps:
+	@go install github.com/go-bindata/go-bindata/go-bindata@v3.1.2+incompatible
 
 # Make everything usually needed to prepare for a pull request
 full: proto install tidy lint test website webdash
@@ -233,12 +246,12 @@ hugo-deps:
 
 # Build the website
 website: hugo-deps
-	@hugo --source ./website
+	@hugo --source ./website --minify
 	@npx -y pagefind --site docs
 
 # Serve the Funnel website on http://localhost:1313
 website-dev: website
-	@hugo --source ./website --watch server
+	@hugo --source ./website --watch server --baseURL http://localhost:1313/
 
 # Remove build/development files.
 clean:

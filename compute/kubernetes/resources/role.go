@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"html/template"
+	"text/template"
 
 	"github.com/ohsu-comp-bio/funnel/config"
 	"github.com/ohsu-comp-bio/funnel/logger"
@@ -17,10 +17,10 @@ import (
 )
 
 // Create the Worker/Executor Role from config/kubernetes-role.yaml
-func CreateRole(task *tes.Task, config *config.Config, client kubernetes.Interface, log *logger.Logger) error {
+func CreateRole(ctx context.Context, task *tes.Task, conf *config.Config, client kubernetes.Interface, log *logger.Logger, ownerRef *metav1.OwnerReference) error {
 
 	// Load templates
-	t, err := template.New(task.Id).Parse(config.Kubernetes.RoleTemplate)
+	t, err := template.New(task.Id).Parse(conf.Kubernetes.RoleTemplate)
 	if err != nil {
 		return fmt.Errorf("parsing template: %v", err)
 	}
@@ -30,7 +30,7 @@ func CreateRole(task *tes.Task, config *config.Config, client kubernetes.Interfa
 	var buf bytes.Buffer
 	err = t.Execute(&buf, map[string]interface{}{
 		"TaskId":    task.Id,
-		"Namespace": config.Kubernetes.JobsNamespace,
+		"Namespace": conf.Kubernetes.JobsNamespace,
 	})
 	if err != nil {
 		return fmt.Errorf("%v", err)
@@ -47,7 +47,11 @@ func CreateRole(task *tes.Task, config *config.Config, client kubernetes.Interfa
 		return fmt.Errorf("failed to verify Role spec")
 	}
 
-	_, err = client.RbacV1().Roles(config.Kubernetes.JobsNamespace).Create(context.Background(), role, metav1.CreateOptions{})
+	if ownerRef != nil {
+		role.OwnerReferences = []metav1.OwnerReference{*ownerRef}
+	}
+
+	_, err = client.RbacV1().Roles(conf.Kubernetes.JobsNamespace).Create(ctx, role, metav1.CreateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to create Role: %v", err)
 	}
@@ -55,8 +59,19 @@ func CreateRole(task *tes.Task, config *config.Config, client kubernetes.Interfa
 	return nil
 }
 
-// Add this helper function for Role cleanup
-func DeleteRole(ctx context.Context, taskID string, client kubernetes.Interface, log *logger.Logger) error {
-	// TODO: Implement deletion of Roles
+// DeleteRole deletes the Role created for a task.
+func DeleteRole(ctx context.Context, taskID string, namespace string, client kubernetes.Interface, log *logger.Logger) error {
+	roles, err := client.RbacV1().Roles(namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: fmt.Sprintf("app=funnel,taskId=%s", taskID),
+	})
+	if err != nil {
+		return fmt.Errorf("listing Roles for task %s: %v", taskID, err)
+	}
+	for _, role := range roles.Items {
+		log.Debug("deleting Worker Role", "name", role.Name, "taskID", taskID)
+		if err := client.RbacV1().Roles(namespace).Delete(ctx, role.Name, metav1.DeleteOptions{}); err != nil {
+			return fmt.Errorf("deleting Role %s: %v", role.Name, err)
+		}
+	}
 	return nil
 }

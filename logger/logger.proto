@@ -5,24 +5,24 @@ package logger;
 option go_package = "github.com/ohsu-comp-bio/funnel/logger";
 
 message JSONFormatConfig {
-  bool disable_timestamp = 1;
-  string timestamp_format = 2;
+  bool DisableTimestamp = 1;
+  string TimestampFormat = 2;
 }
 
 message TextFormatConfig {
-  bool force_colors = 1;
-  bool disable_colors = 2;
-  bool disable_timestamp = 3;
-  bool full_timestamp = 4;
-  string timestamp_format = 5;
-  bool disable_sorting = 6;
-  string indent = 7;
+  bool ForceColors = 1;
+  bool DisableColors = 2;
+  bool DisableTimestamp = 3;
+  bool FullTimestamp = 4;
+  string TimestampFormat = 5;
+  bool DisableSorting = 6;
+  string Indent = 7;
 }
 
 message LoggerConfig {
-  string level = 1;
-  string formatter = 2;
-  string output_file = 3;
-  JSONFormatConfig json_format = 4;
-  TextFormatConfig text_format = 5;
+  string Level = 1;
+  string Formatter = 2;
+  string OutputFile = 3;
+  JSONFormatConfig JsonFormat = 4;
+  TextFormatConfig TextFormat = 5;
 }

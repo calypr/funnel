@@ -1,0 +1,9 @@
+{
+  "name": "Multi-element exec — explicit sh -c with shell features",
+  "executors": [
+    {
+      "image": "bash",
+      "command": ["sh", "-c", "echo 'inline shell'"]
+    }
+  ]
+}

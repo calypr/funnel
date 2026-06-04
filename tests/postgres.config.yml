@@ -1,0 +1,12 @@
+Database: postgres
+
+EventWriters:
+  - log
+
+Postgres:
+  Host: localhost:5432
+  User: funnel
+  Password: funnel
+  Database: funnel
+  AdminUser: postgres
+  AdminPassword: postgres

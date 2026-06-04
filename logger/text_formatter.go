@@ -117,8 +117,12 @@ func (f *textFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 
 		if vString, ok := v.(string); ok {
 			vParts := strings.Split(vString, "\n")
-			padding := 21
-			v = strings.Join(vParts, "\n"+strings.Repeat(" ", padding))
+			// Calculate proper padding based on key length + indent
+			keyPadding := len(f.Indent) + 20 // 20 chars for key alignment + indent
+			if len(k) > 20 {
+				keyPadding = len(f.Indent) + len(k) + 1
+			}
+			v = strings.Join(vParts, "\n"+strings.Repeat(" ", keyPadding))
 		}
 
 		fmt.Fprintf(b, "%s%-20s %v\n", f.Indent, aurora.Colorize(k, levelColor), v)

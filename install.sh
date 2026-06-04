@@ -11,10 +11,12 @@ show_help() {
 	echo "  $0 [version] [install_path]  # Install Funnel (default: latest version to \$HOME/.local/bin)"
 	echo "  $0 --list                    # List available versions"
 	echo "  $0 --help                    # Show this help"
+	echo "  $0 --version <version>       # Specify version to install"
+	echo "  $0 --dest <install_path>     # Specify installation path (default: \$HOME/.local/bin)"
 }
 
 list_tags() {
-	RELEASES_URL="https://api.github.com/repos/ohsu-comp-bio/funnel/releases"
+	RELEASES_URL="https://api.github.com/repos/calypr/funnel/releases"
 
 	# Get all releases and extract tag names
 	RELEASES_JSON=$(curl -s "$RELEASES_URL")
@@ -52,7 +54,7 @@ while [[ $# -gt 0 ]]; do
 		shift
 		;;
 	--dest | -d)
-		# Deprecated flag
+		# Set installation destination path
 		DEST="$2"
 		shift
 		shift
@@ -81,11 +83,11 @@ done
 get_release_url() {
 	if [ -z "$VERSION" ]; then
 		echo "No version specified. Fetching the latest release..."
-		RELEASE_URL="https://api.github.com/repos/ohsu-comp-bio/funnel/releases/latest"
+		RELEASE_URL="https://api.github.com/repos/calypr/funnel/releases/latest"
 		VERSION=$(curl -s $RELEASE_URL | grep '"tag_name":' | cut -d '"' -f 4)
 	else
 		echo "Fetching release for version $VERSION..."
-		RELEASE_URL="https://api.github.com/repos/ohsu-comp-bio/funnel/releases/tags/$VERSION"
+		RELEASE_URL="https://api.github.com/repos/calypr/funnel/releases/tags/$VERSION"
 	fi
 }
 

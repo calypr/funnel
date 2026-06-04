@@ -24,8 +24,12 @@ const s3Protocol = "s3://"
 
 // AmazonS3 provides access to an S3 object store.
 type AmazonS3 struct {
-	sess                 *session.Session
-	endpoint             string
+	sess     *session.Session
+	endpoint string
+	// region is the pre-configured AWS/S3-compatible region.  When set together
+	// with endpoint (non-AWS deployments), GetBucketRegion is skipped and this
+	// value is used directly.
+	region               string
 	customerAlgorithm    *string
 	customerKey          *string
 	customerKeyMD5       *string
@@ -76,6 +80,7 @@ func NewAmazonS3(conf *config.AmazonS3Storage) (*AmazonS3, error) {
 	return &AmazonS3{
 		sess,
 		endpoint,
+		conf.AWSConfig.Region,
 		customerAlgorithm,
 		customerKey,
 		customerKeyMD5,
@@ -310,9 +315,19 @@ func (s3b *AmazonS3) parse(rawurl string) (*urlparts, string, error) {
 		url.path = split[1]
 	}
 
-	region, err := s3manager.GetBucketRegion(context.Background(), s3b.sess, url.bucket, "us-east-1")
-	if err != nil {
-		return nil, "", fmt.Errorf("amazonS3: failed to determine region for bucket %q: %v", url.bucket, err)
+	// When a custom endpoint and a region are both configured (non-AWS S3-compatible
+	// services such as OVH Object Storage), skip the GetBucketRegion call: it
+	// performs an AWS-specific HeadBucket request that non-AWS providers reject
+	// with a 400 Bad Request.  Use the pre-configured region directly instead.
+	var region string
+	if s3b.endpoint != "" && s3b.region != "" {
+		region = s3b.region
+	} else {
+		var err error
+		region, err = s3manager.GetBucketRegion(context.Background(), s3b.sess, url.bucket, "us-east-1")
+		if err != nil {
+			return nil, "", fmt.Errorf("amazonS3: failed to determine region for bucket %q: %v", url.bucket, err)
+		}
 	}
 	return url, region, nil
 }

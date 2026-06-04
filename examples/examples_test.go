@@ -12,7 +12,7 @@ func TestExamplesAreValid(t *testing.T) {
 		var task tes.Task
 		err := protojson.Unmarshal([]byte(tb), &task)
 		if err != nil {
-			t.Fatal("unmarshal failed", en, err)
+			t.Fatal("unmarshal failed", en, err, tb)
 		}
 		if err := tes.Validate(&task); err != nil {
 			t.Fatal("Invalid task message:", en, "\n", "error:", err)

@@ -10,6 +10,7 @@ import (
 	"github.com/ohsu-comp-bio/funnel/database/dynamodb"
 	"github.com/ohsu-comp-bio/funnel/database/elastic"
 	"github.com/ohsu-comp-bio/funnel/database/mongodb"
+	"github.com/ohsu-comp-bio/funnel/database/postgres"
 	"github.com/ohsu-comp-bio/funnel/events"
 	"github.com/ohsu-comp-bio/funnel/logger"
 	"github.com/ohsu-comp-bio/funnel/storage"
@@ -29,7 +30,7 @@ func Run(ctx context.Context, conf *config.Config, log *logger.Logger, opts *Opt
 
 // NewWorker returns a new Funnel worker based on the given config.
 func NewWorker(ctx context.Context, conf *config.Config, log *logger.Logger, opts *Options) (*worker.DefaultWorker, error) {
-	log.Debug("NewWorker", "config", conf)
+	log.Debug("NewWorker", "config", conf.Safe())
 
 	err := validateConfig(conf, opts)
 	if err != nil {
@@ -75,12 +76,15 @@ func NewWorker(ctx context.Context, conf *config.Config, log *logger.Logger, opt
 		Backend: "docker",
 	}
 
-	if conf.Kubernetes.Executor == "kubernetes" {
+	if conf.Compute == "kubernetes" {
 		executor.Backend = "kubernetes"
 		executor.Template = conf.Kubernetes.ExecutorTemplate
 		executor.Namespace = conf.Kubernetes.Namespace
 		executor.JobsNamespace = conf.Kubernetes.JobsNamespace
 		executor.ServiceAccount = conf.Kubernetes.ServiceAccount
+		executor.Resources = conf.Kubernetes.Resources
+		executor.NodeSelector = conf.Kubernetes.NodeSelector
+		executor.Tolerations = convertK8sTolerations(conf.Kubernetes.Tolerations)
 	}
 
 	return &worker.DefaultWorker{
@@ -123,9 +127,14 @@ func newTaskReader(ctx context.Context, conf *config.Config, opts *Options) (wor
 		db, err := mongodb.NewMongoDB(conf.MongoDB)
 		return newDatabaseTaskReader(opts.TaskID, db, err)
 
-		// These readers connect via RPC (because the database is embedded in the server).
-		// case "boltdb", "badger":
-		// Default to asking the server for the task.
+	case "postgres":
+		db, err := postgres.NewPostgres(conf.Postgres)
+		return newDatabaseTaskReader(opts.TaskID, db, err)
+
+	// These readers connect via RPC (because the database is embedded in the server).
+	// case "boltdb", "badger":
+	// Default to asking the server for the task.
+
 	default:
 		return worker.NewRPCTaskReader(ctx, conf.RPCClient, opts.TaskID)
 	}
@@ -174,7 +183,7 @@ func (e *eventWriterBuilder) Add(ctx context.Context, name string, conf *config.
 	var err error
 	var writer events.Writer
 
-	switch name {
+	switch strings.ToLower(name) {
 	case "log":
 		writer = &events.Logger{Log: log}
 	case "boltdb", "badger", "grpc", "rpc":
@@ -191,6 +200,8 @@ func (e *eventWriterBuilder) Add(ctx context.Context, name string, conf *config.
 		writer, err = events.NewPubSubWriter(ctx, conf.PubSub)
 	case "mongodb":
 		writer, err = mongodb.NewMongoDB(conf.MongoDB)
+	case "postgres", "psql":
+		writer, err = postgres.NewPostgres(conf.Postgres)
 	default:
 		err = fmt.Errorf("unknown event writer: %s", name)
 	}
@@ -207,10 +218,41 @@ func validateConfig(conf *config.Config, opts *Options) error {
 	// only a subset of event writers are supported.
 	if opts.TaskFile != "" || opts.TaskBase64 != "" {
 		for _, e := range conf.EventWriters {
-			if e != "log" && e != "kafka" && e != "pubsub" {
+			if strings.ToLower(e) != "log" && strings.ToLower(e) != "kafka" && strings.ToLower(e) != "pubsub" {
 				return fmt.Errorf("event writer %q is not supported with a task file/string reader", e)
 			}
 		}
 	}
 	return nil
+}
+
+func convertK8sTolerations(in []*config.Toleration) []map[string]interface{} {
+	if len(in) == 0 {
+		return nil
+	}
+
+	out := make([]map[string]interface{}, 0, len(in))
+	for _, t := range in {
+		if t == nil {
+			continue
+		}
+
+		m := map[string]interface{}{
+			"Key":      t.Key,
+			"Operator": t.Operator,
+			"Effect":   t.Effect,
+		}
+		if t.Value != "" {
+			m["Value"] = t.Value
+		}
+		if t.TolerationSeconds != nil {
+			m["TolerationSeconds"] = *t.TolerationSeconds
+		}
+		out = append(out, m)
+	}
+
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }

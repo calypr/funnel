@@ -21,6 +21,15 @@ message SystemLog {
   map<string, string> fields = 3;
 }
 
+message Resources {
+  int32 cpu_cores = 1;
+  double ram_gb = 2;
+  double disk_gb = 3;
+  bool preemptible = 4;
+  map<string, string> backend_parameters = 5;
+  repeated string zones = 6;
+}
+
 enum Type {
   UNKNOWN = 0;
   TASK_STATE = 1;
@@ -35,6 +44,7 @@ enum Type {
   EXECUTOR_STDERR = 12;
   SYSTEM_LOG = 13;
   TASK_CREATED = 14;
+  TASK_RESOURCES = 15;
 }
 
 message Event {
@@ -51,6 +61,7 @@ message Event {
     string stderr = 14;
     SystemLog system_log = 15;
     tes.Task task = 19;
+    Resources resources = 20;
   }
   uint32 attempt = 16;
   uint32 index = 17;

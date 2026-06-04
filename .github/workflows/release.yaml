@@ -1,17 +1,24 @@
-# Publishes releases with semantic versioning
-# - https://github.com/semantic-release/semantic-release/blob/master/docs/recipes/ci-configurations/github-actions.md
-# - https://goreleaser.com/cookbooks/semantic-release/#example-semantic-release
-# - https://semver.org
+# Publishes releases to GitHub when a new semver tag is pushed
+# Ref: https://semver.org
 
 name: Release
 on:
   push:
+<<<<<<< HEAD
     branches:
       - develop
   workflow_dispatch:
+=======
+    tags:
+      - 'v*.*.*'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+>>>>>>> develop
 
 permissions:
-  contents: read # for checkout
+  contents: read
 
 jobs:
   release:
@@ -19,25 +26,29 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: write # to be able to publish a GitHub release
-      issues: write # to be able to comment on released issues
-      pull-requests: write # to be able to comment on released pull requests
-      id-token: write # to enable use of OIDC for npm provenance
+      contents: write
+      issues: write
+      pull-requests: write
+      id-token: write
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
+          ref: ${{ github.ref }}
           fetch-depth: 0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          node-version: "lts/*"
+          go-version-file: 'go.mod'
+          cache: true
 
       - name: Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
+          BRANCH: ${{ github.ref_name }}
         run: |
-          npm install semantic-release/changelog semantic-release/git semantic-release/exec
-          npx semantic-release
+          export PATH="$HOME/go/bin:$PATH"
+          make release

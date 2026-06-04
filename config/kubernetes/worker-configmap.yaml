@@ -1,0 +1,29 @@
+# Per-task worker ConfigMap template.
+#
+# This template is rendered once per task and should be used ONLY when the
+# WorkerTemplate references a per-task ConfigMap name such as:
+#   name: funnel-worker-config-{{.TaskId}}
+#
+# For deployments that mount a shared static ConfigMap (e.g. "funnel-config")
+# the same for every task, leave ConfigMapTemplate empty in the Funnel config.
+# That avoids creating one ConfigMap per task in etcd, which would:
+#   - Duplicate the full config (including storage credentials) N times
+#   - Require configmaps RBAC (get/create/delete) on the funnel ServiceAccount
+#   - Add unnecessary API-server and etcd pressure at scale
+#
+# Available template variables:
+#   {{.TaskId}}    — unique task identifier
+#   {{.Namespace}} — Kubernetes namespace for the job (JobsNamespace)
+#   {{.Config}}    — full Funnel worker config serialized to YAML
+#
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: funnel-worker-config-{{.TaskId}}
+  namespace: {{.Namespace}}
+  labels:
+    app: funnel
+    taskId: {{.TaskId}}
+data:
+  funnel-worker.yaml: |
+    {{.Config}}

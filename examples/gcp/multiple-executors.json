@@ -1,0 +1,46 @@
+{
+  "name": "GCP Batch - Multiple Executors Test",
+  "description": "Tests multiple executors sharing the same GCS volumes with independent symlink setups",
+  "inputs": [
+    {
+      "url": "gs://tes-batch-integration/input-data/sample.txt",
+      "path": "/data/input.txt",
+      "type": "FILE"
+    }
+  ],
+  "outputs": [
+    {
+      "url": "gs://tes-batch-integration/output/executor1-output.txt",
+      "path": "/data/output1.txt",
+      "type": "FILE"
+    },
+    {
+      "url": "gs://tes-batch-integration/output/executor2-output.txt",
+      "path": "/data/output2.txt",
+      "type": "FILE"
+    }
+  ],
+  "executors": [
+    {
+      "image": "gcr.io/google.com/cloudsdktool/google-cloud-cli:latest",
+      "command": [
+        "/bin/bash",
+        "-c",
+        "echo 'Executor 1: Processing input' && cat /data/input.txt && echo 'Executor 1: Converting to uppercase' && cat /data/input.txt | tr '[:lower:]' '[:upper:]' > /data/output1.txt && echo 'Executor 1: Done' && cat /data/output1.txt"
+      ]
+    },
+    {
+      "image": "gcr.io/google.com/cloudsdktool/google-cloud-cli:latest",
+      "command": [
+        "/bin/bash",
+        "-c",
+        "echo 'Executor 2: Processing input' && cat /data/input.txt && echo 'Executor 2: Counting lines/words/chars' && wc /data/input.txt && wc /data/input.txt > /data/output2.txt && echo 'Executor 2: Done' && cat /data/output2.txt"
+      ]
+    }
+  ],
+  "resources": {
+    "cpu_cores": 1,
+    "ram_gb": 1,
+    "disk_gb": 10
+  }
+}

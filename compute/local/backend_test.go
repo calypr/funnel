@@ -1,6 +1,7 @@
 package local
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/ohsu-comp-bio/funnel/config"
@@ -13,8 +14,9 @@ func createBackend(p map[string]string) *Backend {
 	conf := config.DefaultConfig()
 	log := logger.NewLogger("test", logger.DefaultConfig())
 	b := &Backend{
-		conf: conf,
-		log:  log,
+		conf:              conf,
+		log:               log,
+		backendParameters: p,
 	}
 	return b
 }
@@ -72,6 +74,6 @@ func TestBackendParamatersStrictFail(t *testing.T) {
 
 	err := b.CheckBackendParameterSupport(task)
 	if assert.Error(t, err) {
-		assert.Equal(t, err.Error(), "backend parameters not supported")
+		assert.True(t, strings.Contains(err.Error(), "backend parameters not supported: foo"))
 	}
 }

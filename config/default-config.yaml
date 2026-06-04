@@ -15,9 +15,9 @@ EventWriters:
 
 Logger:
   # Logging levels: debug, info, error
-  level: info
+  Level: info
   # Write logs to this path. If empty, logs are written to stderr.
-  outputFile: ""
+  OutputFile: ""
 
 Server:
   # Hostname of the Funnel server.
@@ -153,6 +153,22 @@ Worker:
   # Limit the number of concurrent downloads/uploads
   MaxParallelTransfers: 10
 
+  Container:
+    DriverCommand: docker
+
+    RunCommand: |
+      run -i --read-only
+      {{if .RemoveContainer}}--rm{{end}}
+      {{.GetEnvArgs}}
+      {{range $k, $v := .Tags}}--label "{{$k}}={{$v}}" {{end}}
+      {{if .Name}}--name "{{.Name}}"{{end}}
+      {{if .Workdir}}--workdir "{{.Workdir}}"{{end}}
+      {{range .Volumes}}--volume "{{.HostPath}}:{{.ContainerPath}}:{{if .Readonly}}ro{{else}}rw{{end}}" {{end}}
+      {{.Image}} {{.Command}}
+
+    PullCommand: pull {{.Image}}
+
+    StopCommand: rm -f {{.Name}}
 
 # -------------------------------------------------------------------------------
 # Databases and/or Event Writers/Handlers
@@ -213,6 +229,14 @@ MongoDB:
   # done on the database defined by the Database field.
   Username: ""
   Password: ""
+
+Postgres:
+  Host: localhost
+  Database: funnel
+  User: example
+  Password: example
+  Timeout:
+    duration: 300s
 
 Kafka:
   Servers:
@@ -344,6 +368,64 @@ AWSBatch:
     Region: ""
     Key: ""
     Secret: ""
+
+# Kubernetes describes the configuration for the Kubernetes compute backend.
+Kubernetes:
+  # The executor used to execute tasks. Available executors: docker, kubernetes
+  Executor: "kubernetes"
+  # Turn off task state reconciler. When enabled, Funnel communicates with Kubernetes
+  # to find tasks that are stuck in a queued state or errored and
+  # updates the task state accordingly.
+  DisableReconciler: false
+  DisableJobCleanup: false
+  # ReconcileRate is how often the compute backend compares states in Funnel's backend
+  # to those reported by the backend
+  ReconcileRate: 10s
+  # Kubernetes Namespace to spawn jobs within
+  Namespace: ""
+  # Kubernetes Namespace to spawn jobs within
+  JobsNamespace: ""
+  # Kubernetes ServiceAccount to use for the job
+  ServiceAccount: ""
+  # Master batch job template. See: https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.17/#job-v1-batch
+  WorkerTemplate: ""
+  # NodeSelector (scheduling)
+  NodeSelector: {}
+  # Tolerations (scheduling)
+  Tolerations: []
+
+  # Job template used for executing the tasks.
+  ExecutorTemplate: ""
+  PVTemplate: ""
+  PVCTemplate: ""
+
+  # Per-task ConfigMap template (optional).
+  #
+  # When empty (the default), no per-task ConfigMap is created. The worker job
+  # is expected to mount a pre-existing static ConfigMap — typically the same
+  # "funnel-config" ConfigMap used by the Funnel server — via a volume in
+  # WorkerTemplate. This is the recommended approach for the vast majority of
+  # deployments: the config is identical for all tasks, so duplicating it once
+  # per task wastes etcd storage, leaks credentials (the full config including
+  # storage keys is serialized), and requires extra configmaps RBAC.
+  #
+  # Set ConfigMapTemplate to a ConfigMap YAML template when the WorkerTemplate
+  # references a per-task ConfigMap name (e.g. funnel-worker-config-{{.TaskId}}).
+  # Available template variables: {{.TaskId}}, {{.Namespace}}, {{.Config}}
+  # where {{.Config}} is the full funnel worker config serialized to YAML.
+  # See config/kubernetes/worker-configmap.yaml for a reference template.
+  ConfigMapTemplate: ""
+
+  # Resource Requests/Limits for Executor Jobs
+  Resources:
+    Defaults:
+      Cpus: 100m
+      RamGb: 512Mi
+      DiskGb: 512Mi
+    Limits:
+      Cpus: 8000m
+      RamGb: 4096Mi
+      DiskGb: 4096Mi
 
 # -------------------------------------------------------------------------------
 # Storage

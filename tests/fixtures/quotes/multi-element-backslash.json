@@ -1,0 +1,9 @@
+{
+  "name": "Multi-element exec — backslash in argument",
+  "executors": [
+    {
+      "image": "alpine",
+      "command": ["echo", "back\\slash"]
+    }
+  ]
+}

@@ -1,16 +1,20 @@
 # This workflow builds and pushes a multi-arch image to Quay.io
-# Adapted from actions-arm64-native-example by @gartnera
-# ref: https://github.com/gartnera/actions-arm64-native-example/blob/main/.github/workflows/build.yml
+# Adapted from actions-arm64-native_example by @gartnera
+# ref: https://github.com/gartnera/actions-arm64-native_example/blob/main/.github/workflows/build.yml
 
-name: build
+name: Build + Push Docker Image
 
 on:
   push:
     branches:
       - develop
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
-  QUAY_REPO: quay.io/${{ github.repository_owner }}/${{ github.event.repository.name }}
+  QUAY_REPO: quay.io/ohsu-comp-bio/funnel
 
 jobs:
   build:
@@ -31,31 +35,33 @@ jobs:
 
       - name: Docker meta
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
           images: |
             ${{ env.QUAY_REPO }}
 
       - name: Login to Quay.io
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: quay.io
           username: ${{ secrets.QUAY_USERNAME }}
           password: ${{ secrets.QUAY_ROBOT_TOKEN }}
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Build and push by digest
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           outputs: type=image,name=${{ env.QUAY_REPO }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Export digest
         run: |
@@ -64,7 +70,7 @@ jobs:
           touch "${{ runner.temp }}/digests/${digest#sha256:}"          
 
       - name: Upload digest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: digests-${{ env.PLATFORM_PAIR }}
           path: ${{ runner.temp }}/digests/*
@@ -77,33 +83,52 @@ jobs:
       - build
     steps:
       - name: Download digests
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: ${{ runner.temp }}/digests
           pattern: digests-*
           merge-multiple: true
 
       - name: Login to Quay.io
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: quay.io
           username: ${{ secrets.QUAY_USERNAME }}
           password: ${{ secrets.QUAY_ROBOT_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Prepare branch tag
+        id: branch_tag
+        if: github.ref_type == 'branch'
+        run: echo "value=${GITHUB_REF_NAME//\//_}" >> $GITHUB_OUTPUT
 
       - name: Docker meta
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
-          images: |
-            ${{ env.QUAY_REPO }}
+          images: ${{ env.QUAY_REPO }}
+          flavor: |
+            latest=false
           tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=ref,event=tag
-            type=sha,prefix=
+            # Semver
+            type=semver,pattern={{version}},value=${{ github.ref_name }}
+
+            # Latest
+            type=raw,value=latest,enable=${{ github.ref_type == 'tag' && startsWith(github.ref_name, 'v') && !contains(github.ref_name, '-') }}
+
+            # Branch pushes (/ replaced with _ to preserve branch prefix context)
+            type=raw,value=${{ steps.branch_tag.outputs.value }},enable=${{ github.ref_type == 'branch' }},latest=false
+
+            # PR pushes
+            type=ref,event=pr,latest=false
+
+            # Git Tag
+            type=ref,event=tag,latest=false
+
+            # Commit SHA
+            type=sha,prefix=,latest=false
 
       - name: Create manifest list and push
         working-directory: ${{ runner.temp }}/digests

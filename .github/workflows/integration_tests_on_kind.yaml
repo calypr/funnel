@@ -1,0 +1,30 @@
+name: Gen3 Integration Tests
+
+on: pull_request
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  integration_tests:
+    name: Integration tests
+    uses: uc-cdis/.github/.github/workflows/integration_tests.yaml@master
+    with:
+      QUAY_ORG: ohsu-comp-bio
+      EXTERNAL_TO_CTDS: "true"
+      SERVICE_TO_TEST: gen3_workflow
+      SETUP_SCRIPT_1: https://raw.githubusercontent.com/uc-cdis/gen3-workflow/refs/heads/master/.github/workflows/integration_tests_on_kind/ci_start_kind_cluster.sh
+      SETUP_SCRIPT_2: https://raw.githubusercontent.com/uc-cdis/gen3-workflow/refs/heads/master/.github/workflows/integration_tests_on_kind/ci_override_config_and_start_minio.sh
+      SETUP_SCRIPT_3: https://raw.githubusercontent.com/uc-cdis/gen3-workflow/refs/heads/master/.github/workflows/integration_tests_on_kind/ci_expose_kind_cluster.sh
+    secrets:
+      CI_TEST_ORCID_USERID: ""
+      CI_TEST_ORCID_PASSWORD: ""
+      CI_TEST_RAS_EMAIL: ""
+      CI_TEST_RAS_PASSWORD: ""
+      CI_TEST_RAS_2_EMAIL: ""
+      CI_TEST_RAS_2_PASSWORD: ""
+      CI_SLACK_BOT_TOKEN: ""
+      CI_SLACK_CHANNEL_ID: ""

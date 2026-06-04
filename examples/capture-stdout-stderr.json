@@ -31,7 +31,7 @@
       "image": "alpine",
       "command": ["sh", "-c", "md5sum /tmp/in | tee /dev/stderr"],
       "stdout": "/tmp/out",
-      "stdout": "/tmp/err"
+      "stderr": "/tmp/err"
     }
   ]
 }

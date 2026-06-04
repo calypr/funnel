@@ -6,13 +6,13 @@ import "fmt"
 const (
 	Unknown       = State_UNKNOWN
 	Queued        = State_QUEUED
+	Initializing  = State_INITIALIZING
 	Running       = State_RUNNING
 	Paused        = State_PAUSED
 	Complete      = State_COMPLETE
 	ExecutorError = State_EXECUTOR_ERROR
 	SystemError   = State_SYSTEM_ERROR
 	Canceled      = State_CANCELED
-	Initializing  = State_INITIALIZING
 )
 
 // TransitionError describes an invalid state transition.
@@ -50,30 +50,31 @@ func ValidateTransition(from, to State) error {
 		return nil
 
 	case Initializing:
-
-		switch to {
-		case Unknown, Queued:
+		if to == Unknown || to == Queued {
 			return &TransitionError{from, to}
-		case Running, ExecutorError, SystemError, Canceled:
-			return nil
 		}
+		return nil
 
 	case Running:
-
-		switch to {
-		case Unknown, Queued:
-			return &TransitionError{from, to}
-		case Complete, ExecutorError, SystemError, Canceled:
+		if to == Complete || to == ExecutorError || to == SystemError || to == Canceled {
 			return nil
 		}
-
-	case ExecutorError, SystemError, Canceled, Complete:
-		// May not transition out of terminal state.
 		return &TransitionError{from, to}
 
-	default:
+	case ExecutorError, SystemError:
+		// May not transition out of these terminal state, except in the case of a retry.
+		// Whether to allow retries could be made into a configuration if needed
+		if to == Queued || to == Initializing {
+			return nil
+		}
 		return &TransitionError{from, to}
+
+	case Complete, Canceled:
+		// May not transition out of these terminal states
+		return &TransitionError{from, to}
+
 	}
+
 	// Shouldn't be reaching this point, but just in case.
 	return &TransitionError{from, to}
 }

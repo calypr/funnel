@@ -30,7 +30,7 @@ jobs:
 
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: funnel
 
@@ -39,16 +39,11 @@ jobs:
           wget -q -O - https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
           k3d cluster create test-cluster
 
-      - name: Setup tmate session
-        uses: mxschmitt/action-tmate@v3
-
       - name: Deploy Funnel
         run: |
-          helm repo add ohsu https://calypr.org/helm-charts
+          helm repo add calypr https://calypr.org/helm-charts
           
-          # 'local-path' is a k3d specific storage class used to automatically create a PersistentVolume
-          # ref: https://k3d.io/v5.7.4/usage/k3s/#local-path-provisioner
-          helm upgrade --install funnel ohsu/funnel --set storage.className=local-path --set storage.provisioner=local-path
+          helm upgrade --install funnel calypr/funnel
           
           # Wait for the Deployment to be available
           kubectl rollout status deployment/funnel-server --timeout=60s
@@ -66,3 +61,4 @@ jobs:
           
           # Exits 0 if the task is complete, otherwise exits 1
           funnel task get $ID | grep -q COMPLETE
+

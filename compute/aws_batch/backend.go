@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/service/batch"
 	"github.com/ohsu-comp-bio/funnel/config"
 	"github.com/ohsu-comp-bio/funnel/events"
@@ -40,9 +41,17 @@ func NewBackend(ctx context.Context, conf *config.AWSBatch, reader tes.ReadOnlyS
 	return b, nil
 }
 
+// client is an interface for AWS Batch operations.
+// It allows for mocking in tests.
+type client interface {
+	SubmitJob(input *batch.SubmitJobInput) (*batch.SubmitJobOutput, error)
+	CancelJob(input *batch.CancelJobInput) (*batch.CancelJobOutput, error)
+	DescribeJobsWithContext(ctx context.Context, input *batch.DescribeJobsInput, opts ...request.Option) (*batch.DescribeJobsOutput, error)
+}
+
 // Backend represents the local backend.
 type Backend struct {
-	client   *batch.Batch
+	client   client
 	conf     *config.AWSBatch
 	event    events.Writer
 	database tes.ReadOnlyServer

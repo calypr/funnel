@@ -1,6 +1,7 @@
 package task
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 
@@ -19,13 +20,23 @@ func Cancel(server string, ids []string, writer io.Writer) error {
 	res := []string{}
 
 	for _, taskID := range ids {
-		resp, err := cli.CancelTask(context.Background(), &tes.CancelTaskRequest{Id: taskID})
+		result, err := cli.CancelTaskWithMessage(context.Background(), &tes.CancelTaskRequest{Id: taskID})
 		if err != nil {
 			return err
 		}
-		// CancelTaskResponse is an empty struct
-		out := cli.Marshaler.Format(resp)
-		res = append(res, out)
+
+		// If there's an informational message, print it as JSON
+		if result.Message != "" {
+			output := map[string]interface{}{
+				"message": result.Message,
+			}
+			jsonBytes, _ := json.Marshal(output)
+			res = append(res, string(jsonBytes))
+		} else {
+			// Normal empty response
+			out := cli.Marshaler.Format(result.Response)
+			res = append(res, out)
+		}
 	}
 
 	for _, x := range res {

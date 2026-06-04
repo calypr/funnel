@@ -18,7 +18,7 @@ This page contains a rough collection of notes for people wanting to build Funne
 3. Clone funnel and build
 
 ```shell
-git clone https://github.com/ohsu-comp-bio/funnel
+git clone https://github.com/calypr/funnel
 
 cd funnel
 

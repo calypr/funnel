@@ -17,7 +17,7 @@ This page contains a rough collection of notes for people wanting to build Funne
 2. Ensure GOPATH is set. See [the docs][gopath] for help. Also, you probably want to add `$GOPATH/bin` to your `PATH`.
 3. Clone funnel and build
 
-	```shell
+	```sh
 	$ git clone https://github.com/ohsu-comp-bio/funnel.git
 	$ cd funnel
 	$ make

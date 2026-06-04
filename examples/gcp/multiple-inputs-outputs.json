@@ -1,0 +1,53 @@
+{
+  "name": "GCP Batch - Multiple Inputs and Outputs Test",
+  "description": "Tests multiple input files being processed into multiple output files",
+  "inputs": [
+    {
+      "url": "gs://tes-batch-integration/input-data/file1.txt",
+      "path": "/input/file1.txt",
+      "type": "FILE"
+    },
+    {
+      "url": "gs://tes-batch-integration/input-data/file2.txt",
+      "path": "/input/file2.txt",
+      "type": "FILE"
+    },
+    {
+      "url": "gs://tes-batch-integration/input-data/file3.txt",
+      "path": "/input/file3.txt",
+      "type": "FILE"
+    }
+  ],
+  "outputs": [
+    {
+      "url": "gs://tes-batch-integration/output/processed-file1.txt",
+      "path": "/output/result1.txt",
+      "type": "FILE"
+    },
+    {
+      "url": "gs://tes-batch-integration/output/processed-file2.txt",
+      "path": "/output/result2.txt",
+      "type": "FILE"
+    },
+    {
+      "url": "gs://tes-batch-integration/output/combined.txt",
+      "path": "/output/combined.txt",
+      "type": "FILE"
+    }
+  ],
+  "executors": [
+    {
+      "image": "gcr.io/google.com/cloudsdktool/google-cloud-cli:latest",
+      "command": [
+        "/bin/bash",
+        "-c",
+        "echo 'Processing file1' && cat /input/file1.txt | tr '[:lower:]' '[:upper:]' > /output/result1.txt && echo 'Processing file2' && cat /input/file2.txt | rev > /output/result2.txt && echo 'Combining all inputs' && cat /input/file1.txt /input/file2.txt /input/file3.txt > /output/combined.txt && echo 'All outputs written' && ls -la /output/"
+      ]
+    }
+  ],
+  "resources": {
+    "cpu_cores": 1,
+    "ram_gb": 1,
+    "disk_gb": 10
+  }
+}

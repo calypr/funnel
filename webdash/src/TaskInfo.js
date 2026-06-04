@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import PropTypes from 'prop-types';
 import { withStyles } from '@material-ui/core/styles';
 import Divider from '@material-ui/core/Divider';
@@ -8,6 +8,8 @@ import TableCell from '@material-ui/core/TableCell';
 import TableRow from '@material-ui/core/TableRow';
 import Typography from '@material-ui/core/Typography';
 import classNames from 'classnames';
+import Checkbox from '@material-ui/core/Checkbox';
+import Tooltip from '@material-ui/core/Tooltip';
 
 import { formatDate, elapsedTime } from './utils';
 
@@ -35,6 +37,7 @@ const styles = {
 
 function TaskInfoRaw(props) {
   const { classes, task } = props;
+  const [showEnv, setShowEnv] = useState(false);
 
   const renderRow = (key, val, formatFunc) => {
     if ( val ) {
@@ -173,9 +176,35 @@ function TaskInfoRaw(props) {
                   <TableCell className={classNames(classes.cell, classes.key)}><b>Image</b></TableCell>
                   <TableCell className={classNames(classes.cell, classes.value)}>{exec.image}</TableCell>
                 </TableRow>
+                <TableRow key='Env' className={classes.row}>
+                  <TableCell className={classNames(classes.cell, classes.key)}>
+                    <b>Env</b>
+                    <Tooltip title="Show environment variables">
+                      <Checkbox
+                        checked={showEnv}
+                        onChange={() => setShowEnv(!showEnv)}
+                        color="primary"
+                        inputProps={{ 'aria-label': 'Show environment variables' }}
+                      />
+                    </Tooltip>
+                  </TableCell>
+                  <TableCell className={classNames(classes.cell, classes.value)}>
+                    {showEnv && exec.env && (
+                      <Table size="small">
+                        <TableBody>
+                          {Object.entries(exec.env).map(([k, v]) => (
+                            <TableRow key={k} className={classes.row}>
+                              <TableCell className={classNames(classes.cell, classes.key)}><b>{k}</b></TableCell>
+                              <TableCell className={classNames(classes.cell, classes.value)}>{v}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </TableCell>
+                </TableRow>
                 {renderRow('Workdir', exec.workdir)}
-                {renderRow('Env', renderKV(exec.env, null, '0px 0px 0px 0px'))}
-                {logs[index] != undefined && 
+                {logs[index] != undefined &&
                 <>
                 {renderRow('StartTime', logs[index].start_time, formatDate)}
                 {renderRow('EndTime', logs[index].end_time, formatDate)}

@@ -11,20 +11,25 @@ import (
 
 	batch "cloud.google.com/go/batch/apiv1"
 	"cloud.google.com/go/batch/apiv1/batchpb"
-	"github.com/aws/aws-sdk-go/aws"
+	"cloud.google.com/go/logging"
+	logadmin "cloud.google.com/go/logging/apiv2"
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/ohsu-comp-bio/funnel/config"
 	"github.com/ohsu-comp-bio/funnel/events"
 	"github.com/ohsu-comp-bio/funnel/logger"
 	"github.com/ohsu-comp-bio/funnel/storage"
 	"github.com/ohsu-comp-bio/funnel/tes"
+	"google.golang.org/api/option"
 )
 
 type Backend struct {
-	client   client
-	conf     *config.GCPBatch
-	event    events.Writer
-	database tes.ReadOnlyServer
-	log      *logger.Logger
+	client             client
+	conf               *config.GCPBatch
+	event              events.Writer
+	database           tes.ReadOnlyServer
+	log                *logger.Logger
+	loggingClient      *logging.Client
+	loggingAdminClient *logadmin.Client
 	events.Backend
 }
 
@@ -34,12 +39,29 @@ func NewBackend(ctx context.Context, conf *config.GCPBatch, reader tes.ReadOnlyS
 		return nil, err
 	}
 
+	// Initialize Cloud Logging client for log retrieval
+	loggingClient, err := logging.NewClient(ctx, conf.Project)
+	if err != nil {
+		log.Warn("Failed to initialize Cloud Logging client, log retrieval will be disabled", "error", err)
+		// Continue without logging client - other functionality will still work
+		loggingClient = nil
+	}
+
+	// Initialize Cloud Logging Admin client for reading logs
+	loggingAdminClient, err := logadmin.NewClient(ctx, option.WithQuotaProject(conf.Project))
+	if err != nil {
+		log.Warn("Failed to initialize Cloud Logging Admin client, log retrieval will be disabled", "error", err)
+		loggingAdminClient = nil
+	}
+
 	b := &Backend{
-		client:   client,
-		conf:     conf,
-		event:    writer,
-		database: reader,
-		log:      log,
+		client:             client,
+		conf:               conf,
+		event:              writer,
+		database:           reader,
+		log:                log,
+		loggingClient:      loggingClient,
+		loggingAdminClient: loggingAdminClient,
 	}
 
 	if !conf.DisableReconciler {
@@ -63,18 +85,92 @@ func (b *Backend) WriteEvent(ctx context.Context, ev *events.Event) error {
 }
 
 func (b *Backend) Close() {
+	if b.loggingClient != nil {
+		b.loggingClient.Close()
+	}
 	b.database.Close()
 	b.event.Close()
 }
 
 // Example storage interface
-func (b *Backend) NewStorage(conf config.Config) (*storage.GoogleCloud, error) {
+func (b *Backend) NewStorage(conf *config.Config) (*storage.GoogleCloud, error) {
 	gs, nerr := storage.NewGoogleCloud(conf.GoogleStorage)
 	if nerr != nil {
 		return nil, fmt.Errorf("failed to configure Google Storage backend: %s", nerr)
 	}
 
 	return gs, nil
+}
+
+// extractBucketName extracts the bucket name from a gs:// URL
+func extractBucketName(url string) string {
+	if strings.HasPrefix(url, "gs://") {
+		parts := strings.SplitN(strings.TrimPrefix(url, "gs://"), "/", 2)
+		return parts[0]
+	}
+	return ""
+}
+
+// extractGCSPath extracts bucket and object path from a gs:// URL
+func extractGCSPath(url string) (bucket string, objectPath string) {
+	if strings.HasPrefix(url, "gs://") {
+		urlPath := strings.TrimPrefix(url, "gs://")
+		parts := strings.SplitN(urlPath, "/", 2)
+		bucket = parts[0]
+		if len(parts) > 1 {
+			objectPath = parts[1]
+		}
+	}
+	return bucket, objectPath
+}
+
+// validatePath checks if a path is safe to use in shell commands
+func validatePath(path string) error {
+	if path == "" {
+		return nil // Empty paths are handled elsewhere
+	}
+
+	// Check for dangerous shell metacharacters
+	dangerousChars := ";|&$`\n\r<>()"
+	if strings.ContainsAny(path, dangerousChars) {
+		return fmt.Errorf("path contains dangerous shell metacharacters: %s", path)
+	}
+
+	// Ensure path is absolute (starts with /)
+	if !strings.HasPrefix(path, "/") {
+		return fmt.Errorf("path must be absolute (start with /): %s", path)
+	}
+
+	return nil
+}
+
+// detectPathCollisions checks for multiple inputs/outputs using the same path
+func detectPathCollisions(inputs []*tes.Input, outputs []*tes.Output) error {
+	seen := make(map[string]string) // path -> url
+
+	for _, input := range inputs {
+		if input.Path == "" {
+			continue
+		}
+		if existingURL, exists := seen[input.Path]; exists && existingURL != input.Url {
+			return fmt.Errorf("path collision detected: %s used by both %s and %s",
+				input.Path, existingURL, input.Url)
+		}
+		seen[input.Path] = input.Url
+	}
+
+	for _, output := range outputs {
+		if output.Path == "" {
+			continue
+		}
+		if existingURL, exists := seen[output.Path]; exists && existingURL != output.Url {
+			return fmt.Errorf("path collision detected: %s used by both %s and %s",
+				output.Path, existingURL, output.Url)
+		}
+		seen[output.Path] = output.Url
+	}
+
+	return nil
 }
 
 func (b *Backend) Submit(task *tes.Task) error {
@@ -102,7 +198,7 @@ func (b *Backend) Submit(task *tes.Task) error {
 		}
 	}
 
-	// Mount all buckets to `/mnt/share/<BUCKET>` as volumes in the GCP Job Request
+	// Mount all buckets to `/mnt/disks/<BUCKET>` as volumes in the GCP Job Request
 	var volumes []*batchpb.Volume
 	for bucketName := range buckets {
 		volumes = append(volumes, &batchpb.Volume{
@@ -115,22 +211,83 @@ func (b *Backend) Submit(task *tes.Task) error {
 		})
 	}
 
+	// Build a path map: user-specified path → /mnt/disks/<bucket>/<object> so
+	// that executor commands referencing those paths are rewritten before
+	// submission. This avoids symlinks, which are unreliable across containers
+	// on COS (Container-Optimized OS) VMs where each container has an isolated
+	// filesystem.
+	if err := detectPathCollisions(task.Inputs, task.Outputs); err != nil {
+		return fmt.Errorf("GCP Batch path collision: %w", err)
+	}
+
+	pathMap := make(map[string]string) // userPath → mountedPath
+	for _, input := range task.Inputs {
+		if input.Path == "" || input.Url == "" {
+			continue
+		}
+		if err := validatePath(input.Path); err != nil {
+			return fmt.Errorf("invalid input path: %w", err)
+		}
+		bucket, objectPath := extractGCSPath(input.Url)
+		if bucket == "" {
+			continue
+		}
+		pathMap[input.Path] = fmt.Sprintf("/mnt/disks/%s/%s", bucket, objectPath)
+	}
+	for _, output := range task.Outputs {
+		if output.Path == "" || output.Url == "" {
+			continue
+		}
+		if err := validatePath(output.Path); err != nil {
+			return fmt.Errorf("invalid output path: %w", err)
+		}
+		bucket, objectPath := extractGCSPath(output.Url)
+		if bucket == "" {
+			continue
+		}
+		pathMap[output.Path] = fmt.Sprintf("/mnt/disks/%s/%s", bucket, objectPath)
+	}
+
+	// rewriteArg replaces all occurrences of known user paths within a string
+	// with their /mnt/disks/... equivalents. This handles both standalone path
+	// arguments and paths embedded inside shell script strings.
+	rewriteArg := func(s string) string {
+		for userPath, mountedPath := range pathMap {
+			s = strings.ReplaceAll(s, userPath, mountedPath)
+		}
+		return s
+	}
+
 	// Runnables
 	var runnables []*batchpb.Runnable
-	for _, executor := range task.Executors {
-		cmd := strings.Join(executor.Command, " ")
 
-		if executor.Stdout != "" {
-			// Redirect command output to the specified file path
-			cmd = fmt.Sprintf("%s | tee %s", cmd, executor.Stdout)
+	for _, executor := range task.Executors {
+		var commands []string
+		for _, arg := range executor.Command {
+			commands = append(commands, rewriteArg(arg))
+		}
+
+		// Wrap in a shell only when stdout/stdin/stderr redirection is needed.
+		if executor.Stdout != "" || executor.Stdin != "" || executor.Stderr != "" {
+			cmd := strings.Join(commands, " ")
+			if executor.Stdout != "" {
+				cmd = fmt.Sprintf("%s | tee %s", cmd, rewriteArg(executor.Stdout))
+			}
+			commands = []string{"sh", "-c", cmd}
+		}
+
+		container := &batchpb.Runnable_Container{
+			ImageUri: executor.Image,
+			Commands: commands,
+		}
+
+		if executor.Workdir != "" {
+			container.Options = fmt.Sprintf("--workdir %s", executor.Workdir)
 		}
 
 		runnable := &batchpb.Runnable{
 			Executable: &batchpb.Runnable_Container_{
-				Container: &batchpb.Runnable_Container{
-					ImageUri: executor.Image,
-					Commands: []string{"sh", "-c", cmd},
-				},
+				Container: container,
 			},
 		}
 
@@ -209,31 +366,13 @@ func (b *Backend) Cancel(ctx context.Context, taskID string) error {
 	return nil
 }
 
-// Reconciler adapted from aws_batch/backend.go
+// Reconciler adapted from aws_batch/backend.go (worker-based executor) to "direct"-based executor model with GCP Batch.
 //
 // Currently the logic is to:
 //  1. List all tasks in QUEUED, INITIALIZING, RUNNING states from the Funnel Database
 //  2. Map all TES Task IDs to GCP Job IDs
 //  3. List all GCP Jobs that have FAILED
 //  4. Update the TES Task in the Funnel Database to SYSTEM_ERROR
-//
-// NOTE: Successful Jobs will be handled
-//
-// Reconcile loops through tasks and checks the status from Funnel's database
-// against the status reported by GCP Batch. This allows the backend to report
-// system error's that prevented the worker process from running.
-//
-// Currently this handles a narrow set of cases:
-//
-// |---------------------|-----------------|--------------------|
-// |    Funnel State     |  Backend State  |  Reconciled State  |
-// |---------------------|-----------------|--------------------|
-// |        QUEUED       |     FAILED      |    SYSTEM_ERROR    |
-// |  INITIALIZING       |     FAILED      |    SYSTEM_ERROR    |
-// |       RUNNING       |     FAILED      |    SYSTEM_ERROR    |
-//
-// In this context a "FAILED" state is being used as a generic term that captures
-// one or more terminal states for the backend.
 func (b *Backend) reconcile(ctx context.Context) {
 	ticker := time.NewTicker(b.conf.ReconcileRate.AsDuration())
 
@@ -250,11 +389,10 @@ ReconcileLoop:
 			// For all Task states in QUEUED, INITIALIZING, RUNNING
 			for _, s := range states {
 				for {
-					fmt.Println("DEBUG: s:", s)
 
 					// List Tasks from Funnel Database
 					lresp, err := b.database.ListTasks(ctx, &tes.ListTasksRequest{
-						View:      tes.View_BASIC.String(),
+						View:      tes.View_FULL.String(),
 						State:     s,
 						PageSize:  100,
 						PageToken: pageToken,
@@ -265,18 +403,24 @@ ReconcileLoop:
 					}
 					pageToken = lresp.NextPageToken
 
-					fmt.Println("DEBUG: lresp:", lresp)
-
-					// Map TES Task ID → GCP Batch Job ID
+					// Map TES Task → GCP Batch Job
 					tmap := make(map[string]*tes.Task)
 					var jobs []*string
 					for _, t := range lresp.Tasks {
-						jobid := getTaskID(t)
+						jobid := b.getTaskID(t)
+						b.log.Debug("Checking task for GCP Batch job ID",
+							"taskID", t.Id,
+							"gcpbatch_uid", jobid,
+							"state", t.State)
 						if jobid != "" {
 							tmap[jobid] = t
 							jobs = append(jobs, aws.String(jobid))
 						}
 					}
+
+					b.log.Debug("Tasks to reconcile",
+						"count", len(jobs),
+						"state", s)
 
 					// Last page of jobs from the Funnel Database
 					if len(jobs) == 0 {
@@ -302,27 +446,108 @@ ReconcileLoop:
 						}
 
 						// If Job is in our list
-						if _, ok := tmap[j.Uid]; !ok {
+						task, ok := tmap[j.Uid]
+						if !ok {
 							continue
 						}
 
-						fmt.Println("DEBUG: j:", j)
+						// Handle FAILED jobs for now - basic state syncing
+						if j.Status.State == batchpb.JobStatus_FAILED {
+							// Fetch and write logs from Cloud Logging
+							if b.loggingAdminClient != nil {
+								if logs, err := b.fetchLogs(ctx, task.Id, j.Uid); err == nil {
+									for _, log := range logs {
+										b.event.WriteEvent(ctx, events.NewSystemLog(
+											task.Id, 0, 0, log.Level, log.Msg, log.Fields,
+										))
+									}
+								} else {
+									b.log.Debug("Could not fetch logs for failed job",
+										"taskID", task.Id,
+										"jobName", j.Name,
+										"error", err)
+								}
+							}
 
-						// task := tmap[*j.JobId]
-						// jstate := *j.Status
+							if task.State != tes.ExecutorError {
+								b.event.WriteEvent(ctx, events.NewState(task.Id, tes.ExecutorError))
 
-						// // Failed Jobs
-						// if jstate == "FAILED" {
-						// 	b.event.WriteEvent(ctx, events.NewState(task.Id, tes.SystemError))
-						// 	b.event.WriteEvent(
-						// 		ctx,
-						// 		events.NewSystemLog(
-						// 			task.Id, 0, 0, "error",
-						// 			"GCP Batch job in FAILED state",
-						// 			map[string]string{"error": *j.StatusReason, "gcpbatch_id": *j.JobId},
-						// 		),
-						// 	)
-						// }
+								// Get failure reason from status events if available
+								var failureReason string
+								if j.Status != nil && len(j.Status.StatusEvents) > 0 {
+									for _, event := range j.Status.StatusEvents {
+										if event.Description != "" {
+											failureReason = event.Description
+											break
+										}
+									}
+								}
+								if failureReason == "" {
+									failureReason = "GCP Batch job in FAILED state"
+								}
+
+								b.event.WriteEvent(
+									ctx,
+									events.NewSystemLog(
+										task.Id, 0, 0, "error",
+										failureReason,
+										map[string]string{
+											"gcpbatch_id":    j.Uid,
+											"gcpbatch_name":  j.Name,
+											"gcpbatch_state": j.Status.State.String(),
+										},
+									),
+								)
+							}
+						}
+
+						// Handle SUCCEEDED jobs
+						if j.Status.State == batchpb.JobStatus_SUCCEEDED {
+
+							// Fetch and write logs from Cloud Logging
+							if b.loggingAdminClient != nil {
+								if logs, err := b.fetchLogs(ctx, task.Id, j.Uid); err == nil {
+									for _, log := range logs {
+										b.event.WriteEvent(ctx, events.NewSystemLog(
+											task.Id, 0, 0, log.Level, log.Msg, log.Fields,
+										))
+									}
+								} else {
+									b.log.Debug("Could not fetch logs for completed job",
+										"taskID", task.Id,
+										"jobName", j.Name,
+										"error", err)
+								}
+							}
+
+							if task.State != tes.Complete {
+								b.event.WriteEvent(ctx, events.NewState(task.Id, tes.Complete))
+							}
+						}
+
+						// Handle RUNNING jobs
+						if j.Status.State == batchpb.JobStatus_RUNNING {
+
+							// Fetch and write logs from Cloud Logging for running tasks
+							if b.loggingAdminClient != nil {
+								if logs, err := b.fetchLogs(ctx, task.Id, j.Uid); err == nil {
+									for _, log := range logs {
+										b.event.WriteEvent(ctx, events.NewSystemLog(
+											task.Id, 0, 0, log.Level, log.Msg, log.Fields,
+										))
+									}
+								} else {
+									b.log.Debug("Could not fetch logs for running job",
+										"taskID", task.Id,
+										"jobName", j.Name,
+										"error", err)
+								}
+							}
+
+							if task.State != tes.Running {
+								b.event.WriteEvent(ctx, events.NewState(task.Id, tes.Running))
+							}
+						}
 					}
 
 					// continue to next page from ListTasks or break
@@ -337,13 +562,26 @@ ReconcileLoop:
 }
 
 // Retreives Batch Job ID from Task metadata (created in #Submit) stored in Funnel Database
-func getTaskID(task *tes.Task) string {
-	logs := task.GetLogs()
-	if len(logs) > 0 {
-		metadata := logs[0].GetMetadata()
-		if metadata != nil {
-			return metadata["gcpbatch_uid"]
+func (b *Backend) getTaskID(task *tes.Task) string {
+	if task.Logs != nil && len(task.Logs) > 0 {
+
+		if task.Logs[0].Metadata != nil {
+			uid := task.Logs[0].Metadata["gcpbatch_uid"]
+
+			if uid == "" {
+				b.log.Debug("No gcpbatch_uid found for task", "taskID", task.Id)
+				return ""
+			}
+
+			b.log.Debug("Retrieved gcpbatch_uid from task", "taskID", task.Id, "gcpbatch_uid", uid)
+			return uid
 		}
+
+		b.log.Debug("No Metadata found for task", "taskID", task.Id)
+		return ""
+
 	}
+
+	b.log.Debug("No Logs found for task", "taskID", task.Id)
 	return ""
 }

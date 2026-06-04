@@ -3,6 +3,7 @@ plugins:
   - plugin: buf.build/protocolbuffers/go
     out: .
     opt: paths=source_relative
+  
   - plugin: buf.build/grpc/go:v1.3.0
     out: .
     opt:
@@ -12,11 +13,11 @@ plugins:
   - plugin: buf.build/grpc-ecosystem/gateway
     out: .
     opt: logtostderr=true,paths=source_relative
+  
   - plugin: buf.build/grpc-ecosystem/openapiv2:v2.26.3
     out: .
     # Remove paths=source_relative; add any valid openapiv2 options if needed
     opt: logtostderr=true
-
 
   # Python (Protobuf)
   - plugin: buf.build/protocolbuffers/python:v24.4

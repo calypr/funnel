@@ -34,6 +34,7 @@ message Config {
   Kafka Kafka = 15;
   PubSub PubSub = 16;
   Datastore Datastore = 17;
+  Postgres Postgres = 33;
   // Compute
   HPCBackend HTCondor = 18;
   HPCBackend Slurm = 19;
@@ -114,6 +115,7 @@ message Scheduler {
   TimeoutConfig NodeDeadTimeout = 5;
 }
 
+// Resources describes the CPU, RAM, and disk resources required by a task.
 message Resources {
     uint32 Cpus = 1;
     double RamGb = 2;
@@ -187,6 +189,17 @@ message MongoDB {
   TimeoutConfig Timeout = 3;
   string Username = 4;
   string Password = 5;
+}
+
+// Postgres configures access to a PostgreSQL database.
+message Postgres {
+  string Host = 1;
+  string Database = 2;
+  string User = 3;
+  string Password = 4;
+  string AdminUser = 5;
+  string AdminPassword = 6;
+  TimeoutConfig Timeout = 7;
 }
 
 // Elastic configures access to an Elasticsearch database.
@@ -341,14 +354,40 @@ message Kubernetes {
   // https://kubernetes.io/docs/tasks/configure-pod-container/assign-pods-nodes/#create-a-pod-that-gets-scheduled-to-your-chosen-node
   map<string, string> NodeSelector = 16;
   repeated Toleration Tolerations = 17;
+
+  // Optional Kubernetes resource defaults and limits for tasks running on the Kubernetes backend.
+  KubernetesResources Resources = 18;
+
+  // Timeout for creating Kubernetes resources (PV, PVC, Job, etc.)
+  TimeoutConfig Timeout = 19;
+}
+
+// KubernetesResources describes default and maximum resource limits for Kubernetes tasks.
+message KubernetesResources {
+  ResourceDefaults Defaults = 1;
+  ResourceLimits Limits = 2;
+}
+
+// ResourceDefaults describes default and maximum resource limits for tasks.
+message ResourceDefaults {
+    string Cpus = 1;
+    string RamGb = 2;
+    string DiskGb = 3;
+}
+
+// ResourceLimits describes maximum resource limits for tasks.
+message ResourceLimits {
+    string Cpus = 1;
+    string RamGb = 2;
+    string DiskGb = 3;
 }
 
 // Kubernetes toleration
 // https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/
 message Toleration {
   string Key = 1;
-  string Operator = 2;        // "Equal" or "Exists"
-  string Value = 3;           // Required when operator is "Equal"
-  string Effect = 4;          // "NoSchedule", "PreferNoSchedule", or "NoExecute"
+  string Operator = 2; // "Equal" or "Exists"
+  string Value = 3; // Required when operator is "Equal"
+  string Effect = 4; // "NoSchedule", "PreferNoSchedule", or "NoExecute"
   optional int64 TolerationSeconds = 5;  // Only used with "NoExecute" effect
 }

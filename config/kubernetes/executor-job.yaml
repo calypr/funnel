@@ -50,8 +50,16 @@ spec:
       - name: funnel-worker-{{.TaskId}}
         image: {{.Image}}
         imagePullPolicy: Always
+        {{- if .UseShell}}
         command: ["/bin/sh", "-c"]
-        args: {{.Command}}
+        args:
+          - {{printf "%q" (index .Command 0)}}
+        {{- else}}
+        command:
+          {{- range .Command}}
+          - {{printf "%q" .}}
+          {{- end}}
+        {{- end}}
         workingDir: {{.Workdir}}
         resources:
           requests:
@@ -60,13 +68,12 @@ spec:
             ephemeral-storage: {{.DiskGb}}
 
         volumeMounts:
-        ### DO NOT CHANGE THIS
         {{- if .NeedsPVC }}
-          {{range $idx, $item := .Volumes}}
+          {{- range $idx, $item := .Volumes}}
           - name: funnel-storage-{{$.TaskId}}
             mountPath: {{$item.ContainerPath}}
             subPath: {{$.TaskId}}{{$item.ContainerPath}}
-          {{end}}
+          {{- end}}
         {{- end }}
 
       volumes:

@@ -4,7 +4,11 @@
   "executors": [
     {
       "image": "alpine",
-      "command": ["echo", "hello world"]
+      "command": [
+        "echo",
+        "hello world"
+      ],
+      "stdout": "/tmp/hello_out"
     }
   ]
 }

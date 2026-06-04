@@ -94,7 +94,7 @@ func DefaultConfig() *Config {
 					"{{if .RemoveContainer}}--rm{{end}} " +
 
 					// Environment variables
-					"{{range $k, $v := .Env}}--env {{$k}}={{$v}} {{end}} " +
+					"{{.GetEnvArgs}} " +
 
 					// Tags/Labels
 					"{{range $k, $v := .Tags}}--label {{$k}}={{$v}} {{end}} " +
@@ -140,6 +140,20 @@ func DefaultConfig() *Config {
 			},
 			Database: "funnel",
 		},
+		Postgres: &Postgres{
+			Host:          "localhost:5432",
+			Database:      "funnel",
+			User:          "funnel",
+			Password:      "example",
+			AdminUser:     "postgres",
+			AdminPassword: "example",
+			Timeout: &TimeoutConfig{
+				TimeoutOption: &TimeoutConfig_Duration{
+					Duration: durationpb.New(time.Second * 30),
+				},
+			},
+		},
+		// event writers
 		Kafka: &Kafka{
 			Topic: "funnel",
 		},
@@ -178,6 +192,7 @@ func DefaultConfig() *Config {
 		PBS:           &HPCBackend{},
 		GridEngine:    &GridEngine{},
 		AWSBatch:      &AWSBatch{AWSConfig: &AWSConfig{}},
+		GCPBatch:      &GCPBatch{},
 		Kubernetes:    &Kubernetes{},
 		GoogleStorage: &GoogleCloudStorage{},
 		PubSub:        &PubSub{},
@@ -211,39 +226,13 @@ func DefaultConfig() *Config {
 	c.AWSBatch.ReconcileRate = reconcile
 	c.AWSBatch.DisableReconciler = true
 
-	// The following K8s templates reflect the latest "default" templates in the Funnel Helm Charts repo:
-	// Ref: https://github.com/ohsu-comp-bio/helm-charts/tree/funnel-0.1.60/charts/funnel/files
+	c.GCPBatch.Project = "example-gcp-project"
+	c.GCPBatch.Location = "us-central1"
+	c.GCPBatch.ReconcileRate = reconcile
+	c.GCPBatch.DisableReconciler = true
 
-	// Funnel Worker Job
-	kubernetesTemplate := intern.MustAsset("config/kubernetes/worker-job.yaml")
-	c.Kubernetes.WorkerTemplate = string(kubernetesTemplate)
-
-	// Executor Job
-	executorTemplate := intern.MustAsset("config/kubernetes/executor-job.yaml")
-	c.Kubernetes.ExecutorTemplate = string(executorTemplate)
-
-	// Worker Persistent Volume
-	pvTemplate := intern.MustAsset("config/kubernetes/worker-pv.yaml")
-	c.Kubernetes.PVTemplate = string(pvTemplate)
-
-	// Worker Persistent Volume Claim
-	pvcTemplate := intern.MustAsset("config/kubernetes/worker-pvc.yaml")
-	c.Kubernetes.PVCTemplate = string(pvcTemplate)
-
-	// Worker Service Account
-	serviceAccountTemplate := intern.MustAsset("config/kubernetes/serviceaccount.yaml")
-	c.Kubernetes.ServiceAccountTemplate = string(serviceAccountTemplate)
-
-	// Worker Role
-	roleTemplate := intern.MustAsset("config/kubernetes/role.yaml")
-	c.Kubernetes.RoleTemplate = string(roleTemplate)
-
-	// Worker Role Binding
-	roleBindingTemplate := intern.MustAsset("config/kubernetes/rolebinding.yaml")
-	c.Kubernetes.RoleBindingTemplate = string(roleBindingTemplate)
-
-	c.Kubernetes.ReconcileRate = reconcile
-	c.Kubernetes.Executor = "kubernetes"
+	// Kubernetes Configs moved to Helm Charts:
+	// https://github.com/ohsu-comp-bio/helm-charts/tree/main/charts/funnel
 
 	return c
 }

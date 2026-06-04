@@ -13,6 +13,8 @@ import (
 	"google.golang.org/api/storage/v1"
 )
 
+// Download a public file from S3 Storage
+// e.g. CZ CELLxGENE Discover Census Data → https://registry.opendata.aws/czi-cellxgene-census
 func TestGenericS3AnonymousGet(t *testing.T) {
 	store, err := NewGenericS3(&config.GenericS3Storage{
 		Endpoint: "https://s3.amazonaws.com/",
@@ -23,7 +25,9 @@ func TestGenericS3AnonymousGet(t *testing.T) {
 		t.Fatal("Error creating generic S3 backend:", err)
 	}
 
-	_, err = store.Get(context.Background(), "s3://1000genomes/README.analysis_history", "_test_download/README.analysis_history")
+	_, err = store.Get(context.Background(),
+		"s3://cellxgene-census-public-us-west-2/cell-census/release.json",
+		"_test_download/release.json")
 	if err != nil {
 		t.Error("Error downloading file:", err)
 	}
@@ -41,11 +45,9 @@ func TestAmazonS3AnonymousGet(t *testing.T) {
 		endpoint: "",
 	}
 
-	// AWS S3 Public Datasets:
-	// - https://registry.opendata.aws/
-	// 1000 Genomes Public Dataset:
-	// - https://registry.opendata.aws/1000-genomes/
-	_, err = store.Get(context.Background(), "s3://1000genomes/README.analysis_history", "_test_download/README.analysis_history")
+	_, err = store.Get(context.Background(),
+		"s3://cellxgene-census-public-us-west-2/cell-census/release.json",
+		"_test_download/release.json")
 	if err != nil {
 		t.Error("Error downloading file:", err)
 	}
@@ -60,10 +62,13 @@ func TestGoogleStorageAnonymousGet(t *testing.T) {
 	store := &GoogleCloud{svc}
 
 	// Google Cloud Public Datasets:
-	// - https://cloud.google.com/datasets?hl=en
+	// https://cloud.google.com/datasets?hl=en
+	//
 	// Broad Institute Public Dataset:
-	// - https://console.cloud.google.com/storage/browser/gcp-public-data--broad-references;tab=objects?prefix=&forceOnObjectsSortingFiltering=false
-	_, err = store.Get(context.Background(), "gs://gcp-public-data--broad-references/C.elegans/WBcel235/README.txt", "_test_download/README.txt")
+	// https://console.cloud.google.com/storage/browser/gcp-public-data--broad-references
+	_, err = store.Get(context.Background(),
+		"gs://gcp-public-data--broad-references/C.elegans/WBcel235/README.txt",
+		"_test_download/README.txt")
 	if err != nil {
 		t.Error("Error downloading file:", err)
 	}

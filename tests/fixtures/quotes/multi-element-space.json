@@ -1,0 +1,9 @@
+{
+  "name": "Multi-element exec — space in argument",
+  "executors": [
+    {
+      "image": "alpine",
+      "command": ["echo", "Hello World!"]
+    }
+  ]
+}

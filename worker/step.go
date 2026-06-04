@@ -72,8 +72,12 @@ func (s *stepWorker) Run(ctx context.Context) error {
 
 		case result := <-done:
 			s.Event.EndTime(time.Now())
-			s.Event.Debug("Executor done", "result", result)
-			s.Event.ExitCode(getExitCode(result))
+			exitcode, err := getExitCode(result)
+			if err != nil {
+				s.Event.Error(err.Error())
+			} else {
+				s.Event.ExitCode(exitcode)
+			}
 			return result
 		}
 	}

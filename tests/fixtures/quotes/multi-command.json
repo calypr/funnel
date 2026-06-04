@@ -1,0 +1,6 @@
+{
+  "name": "Multi-command shell",
+  "executors": [
+    { "image": "bash", "command": ["echo start && echo \"inner 'quotes'\" && echo end"] }
+  ]
+}

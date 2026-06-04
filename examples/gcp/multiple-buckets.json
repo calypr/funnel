@@ -1,0 +1,38 @@
+{
+  "name": "GCP Batch - Multiple Buckets Test",
+  "description": "Tests reading from multiple GCS buckets and writing to a third bucket",
+  "inputs": [
+    {
+      "url": "gs://tes-batch-integration/input-data/sample.txt",
+      "path": "/input/bucket1-file.txt",
+      "type": "FILE"
+    },
+    {
+      "url": "gs://tes-batch-integration-2/data/reference.txt",
+      "path": "/input/bucket2-file.txt",
+      "type": "FILE"
+    }
+  ],
+  "outputs": [
+    {
+      "url": "gs://tes-batch-integration-3/output/result.txt",
+      "path": "/output/combined-result.txt",
+      "type": "FILE"
+    }
+  ],
+  "executors": [
+    {
+      "image": "gcr.io/google.com/cloudsdktool/google-cloud-cli:latest",
+      "command": [
+        "/bin/bash",
+        "-c",
+        "echo 'Reading from bucket 1:' && cat /input/bucket1-file.txt && echo '---' && echo 'Reading from bucket 2:' && cat /input/bucket2-file.txt && echo '---' && echo 'Combining files...' && cat /input/bucket1-file.txt /input/bucket2-file.txt > /output/combined-result.txt && echo 'Output written' && cat /output/combined-result.txt"
+      ]
+    }
+  ],
+  "resources": {
+    "cpu_cores": 1,
+    "ram_gb": 1,
+    "disk_gb": 10
+  }
+}

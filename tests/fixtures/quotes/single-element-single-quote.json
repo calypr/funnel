@@ -1,0 +1,9 @@
+{
+  "name": "Single-element exec — single quote in argument",
+  "executors": [
+    {
+      "image": "alpine",
+      "command": ["echo \"Hello O'hare!\""]
+    }
+  ]
+}

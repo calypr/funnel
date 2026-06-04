@@ -40,6 +40,38 @@
         }
       }
     },
+    "eventsResources": {
+      "type": "object",
+      "properties": {
+        "cpuCores": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "ramGb": {
+          "type": "number",
+          "format": "double"
+        },
+        "diskGb": {
+          "type": "number",
+          "format": "double"
+        },
+        "preemptible": {
+          "type": "boolean"
+        },
+        "backendParameters": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "zones": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
     "eventsSystemLog": {
       "type": "object",
       "properties": {
@@ -72,7 +104,8 @@
         "EXECUTOR_STDOUT",
         "EXECUTOR_STDERR",
         "SYSTEM_LOG",
-        "TASK_CREATED"
+        "TASK_CREATED",
+        "TASK_RESOURCES"
       ],
       "default": "UNKNOWN"
     },

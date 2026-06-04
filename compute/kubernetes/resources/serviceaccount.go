@@ -4,23 +4,25 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"html/template"
+	"text/template"
+	"time"
 
 	"github.com/ohsu-comp-bio/funnel/config"
 	"github.com/ohsu-comp-bio/funnel/logger"
 	"github.com/ohsu-comp-bio/funnel/tes"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 )
 
 // Create the Worker/Executor ServiceAccount from config/kubernetes-serviceaccount.yaml
-func CreateServiceAccount(task *tes.Task, config *config.Config, client kubernetes.Interface, log *logger.Logger) error {
+func CreateServiceAccount(ctx context.Context, task *tes.Task, conf *config.Config, client kubernetes.Interface, log *logger.Logger, ownerRef *metav1.OwnerReference) error {
 
 	// Load templates
-	t, err := template.New(task.Id).Parse(config.Kubernetes.ServiceAccountTemplate)
+	t, err := template.New(task.Id).Parse(conf.Kubernetes.ServiceAccountTemplate)
 	if err != nil {
 		return fmt.Errorf("parsing template: %v", err)
 	}
@@ -30,8 +32,8 @@ func CreateServiceAccount(task *tes.Task, config *config.Config, client kubernet
 	var buf bytes.Buffer
 	templateData := map[string]interface{}{
 		"TaskId":             task.Id,
-		"Namespace":          config.Kubernetes.JobsNamespace,
-		"ServiceAccountName": fmt.Sprintf("funnel-worker-sa-%s-%s", config.Kubernetes.JobsNamespace, task.Id),
+		"Namespace":          conf.Kubernetes.JobsNamespace,
+		"ServiceAccountName": fmt.Sprintf("funnel-worker-sa-%s-%s", conf.Kubernetes.JobsNamespace, task.Id),
 	}
 
 	// Override ServiceAccountName if provided in Task Tags
@@ -57,10 +59,14 @@ func CreateServiceAccount(task *tes.Task, config *config.Config, client kubernet
 
 	sa, ok := obj.(*corev1.ServiceAccount)
 	if !ok {
-		return fmt.Errorf("failed to decode ServiceAccount spec")
+		return fmt.Errorf("failed to cast to ServiceAccount spec")
 	}
 
-	_, err = client.CoreV1().ServiceAccounts(config.Kubernetes.JobsNamespace).Create(context.Background(), sa, metav1.CreateOptions{})
+	if ownerRef != nil {
+		sa.OwnerReferences = []metav1.OwnerReference{*ownerRef}
+	}
+
+	_, err = client.CoreV1().ServiceAccounts(conf.Kubernetes.JobsNamespace).Create(ctx, sa, metav1.CreateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to create ServiceAccount: %v", err)
 	}
@@ -68,8 +74,69 @@ func CreateServiceAccount(task *tes.Task, config *config.Config, client kubernet
 	return nil
 }
 
-// Add this helper function for ServiceAccount cleanup
-func DeleteServiceAccount(ctx context.Context, taskID string, client kubernetes.Interface, log *logger.Logger) error {
-	// TODO: Implement deletion of ServiceAccounts
+// isServiceAccountAttachedToPods returns true if any active pod for any active pod
+// is still using the given ServiceAccount. Pods are skipped if they are terminating (DeletionTimestamp set)
+func isServiceAccountAttachedToPods(ctx context.Context, saName, namespace string, client kubernetes.Interface, log *logger.Logger) (bool, error) {
+	log.Debug("ServiceAccount", "Sleeping for 5s before ServiceAccount deletion to avoid Race Conditions...")
+	time.Sleep(5 * time.Second)
+	pods, err := client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
+		FieldSelector: fmt.Sprintf("spec.serviceAccountName=%s", saName),
+	})
+	if err != nil {
+		return false, fmt.Errorf("listing pods using ServiceAccount %s: %v", saName, err)
+	}
+	for _, pod := range pods.Items {
+		if pod.DeletionTimestamp == nil {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+type DeleteServiceAccountOptions struct {
+	// ServiceAccountName overrides the default derived SA name (funnel-worker-$namespace-$taskID).
+	// Required when the SA is externally managed (e.g. a Gen3Workflow per-user SA).
+	ServiceAccountName string
+
+	// SharedSA indicates the SA is shared across tasks. When true, deletion is
+	// skipped if any other active pods are still using it.
+	SharedSA bool
+}
+
+// DeleteServiceAccount deletes the ServiceAccount for a task.
+//
+// By default (no options), it targets the conventional SA name
+// funnel-worker-$namespace-$taskID and deletes it unconditionally.
+//
+// If opts.SharedSA is true, the SA is treated as shared — deletion is skipped
+// if any active pod is still using it, and the reconciler will retry on the
+// next pass when the last pod finishes.
+func DeleteServiceAccount(ctx context.Context, taskID, namespace string, client kubernetes.Interface, log *logger.Logger, opts *DeleteServiceAccountOptions) error {
+	saName := fmt.Sprintf("funnel-worker-%s-%s", namespace, taskID)
+	sharedSA := false
+
+	if opts != nil {
+		if opts.ServiceAccountName != "" {
+			saName = opts.ServiceAccountName
+		}
+		sharedSA = opts.SharedSA
+	}
+
+	if sharedSA {
+		inUse, err := isServiceAccountAttachedToPods(ctx, saName, namespace, client, log)
+		if err != nil {
+			return fmt.Errorf("checking pod attachment for ServiceAccount %s: %v", saName, err)
+		}
+		if inUse {
+			log.Debug("skipping ServiceAccount deletion — still in use; reconciler will retry", "name", saName, "taskID", taskID)
+			return nil
+		}
+	}
+
+	log.Debug("deleting Worker ServiceAccount", "name", saName, "taskID", taskID)
+	if err := client.CoreV1().ServiceAccounts(namespace).Delete(ctx, saName, metav1.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
+		return fmt.Errorf("deleting ServiceAccount %s: %v", saName, err)
+	}
 	return nil
 }

@@ -7,7 +7,7 @@ import (
 )
 
 func TestMergeConfigFileWithFlags(t *testing.T) {
-	fileConfig := config.EmptyConfig()
+	fileConfig := config.DefaultConfig()
 	flagConf := &config.Config{
 		Server: &config.Server{
 			HostName: "test",
@@ -19,6 +19,9 @@ func TestMergeConfigFileWithFlags(t *testing.T) {
 	result, err := MergeConfigFileWithFlags("", flagConf)
 	if err != nil {
 		t.Error("unexpected error", err)
+	}
+	if result.Server == nil {
+		t.Fatal("unexpected nil Server config")
 	}
 	if result.Server.RPCAddress() != serverAddress {
 		t.Error("unexpected server address")

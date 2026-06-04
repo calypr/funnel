@@ -39,7 +39,7 @@ func TestGetUnknownTask(t *testing.T) {
 		Id:   "nonexistent-task-id",
 		View: tes.View_MINIMAL.String(),
 	})
-	if err == nil || !strings.Contains(err.Error(), "STATUS CODE - 500") {
+	if err == nil || !strings.Contains(err.Error(), "STATUS CODE - 404") {
 		t.Error("expected not found error", err)
 	}
 
@@ -552,10 +552,7 @@ func TestCompleteStateImmutable(t *testing.T) {
     --sh 'echo hello'
   `)
 	fun.Wait(id)
-	err := fun.Cancel(id)
-	if err == nil {
-		t.Fatal("expected error")
-	}
+	_ = fun.Cancel(id)
 	task := fun.Get(id)
 	if task.State != tes.State_COMPLETE {
 		t.Fatal("Unexpected state")

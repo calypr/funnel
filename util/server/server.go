@@ -1,8 +1,9 @@
-package server 
+package server
 
 import (
-	"google.golang.org/grpc/codes"
 	"net/http"
+
+	"google.golang.org/grpc/codes"
 )
 
 // GRPCCodeFromHTTPStatus converts an HTTP status code to the corresponding gRPC status code.

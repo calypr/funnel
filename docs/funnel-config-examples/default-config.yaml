@@ -1,0 +1,415 @@
+# The name of the active server database backend
+# Available backends: boltdb, badger, datastore, dynamodb, elastic, mongodb
+---
+Database: boltdb
+
+# The name of the active compute backend
+# Available backends: local, htcondor, slurm, pbs, gridengine, manual, aws-batch, kubernetes
+Compute: local
+
+# The name of the active event writer backend(s).
+# Available backends: log, boltdb, badger, datastore, dynamodb, elastic, mongodb, kafka
+EventWriters:
+  - boltdb
+  - log
+
+Logger:
+  # Logging levels: debug, info, error
+  level: info
+  # Write logs to this path. If empty, logs are written to stderr.
+  outputFile: ""
+
+Server:
+  # Hostname of the Funnel server.
+  HostName: localhost
+
+  # Port used for HTTP communication and the web dashboard.
+  HTTPPort: "8000"
+
+  # Port used for RPC communication.
+  RPCPort: "9090"
+
+  # Require basic authentication for the server APIs using a password.
+  # If used, make sure to properly restrict access to the config file
+  # (e.g. chmod 600 funnel.config.yml)
+  # BasicAuth:
+  #   - User: admin
+  #     Password: oejf023moq
+  #     Admin: true
+  #   - User: user1
+  #     Password: abc123
+  #   - User: user2
+  #     Password: foobar
+
+  # Require Bearer JWT authentication for the server APIs.
+  # Server won't launch when configuration URL cannot be loaded.
+  # OidcAuth:
+  #   # URL of the OIDC service configuration (activates OIDC configuration):
+  #   # Example: https://example.org/oidc/.well-knwon/openid-configuration
+  #   ServiceConfigURL:
+  #   # Client ID and secret are sent with the token introspection request
+  #   ClientId:
+  #   ClientSecret:
+  #   # The URL where OIDC should redirect after login (keep the path '/login')
+  #   RedirectURL: "http://localhost:8000/login"
+  #   # Optional: if specified, this scope value must be in the token:
+  #   RequireScope:
+  #   # Optional: if specified, this audience value must be in the token:
+  #   RequireAudience:
+  #   # List of usernames (JWT sub-claim) to be granted Admin-role:
+  #   Admins:
+  #     - admin.username.one@example.org
+  #     - admin.username.two@example.org
+
+  # Include a "Cache-Control: no-store" HTTP header in Get/List responses
+  # to prevent caching by intermediary services.
+  DisableHTTPCache: true
+
+  # Defines task access and visibility by options:
+  # "All" (default) - all tasks are visible to everyone
+  # "Owner" - tasks are visible to the users who created them
+  # "OwnerOrAdmin" - extends "Owner" by allowing Admin-users see everything
+  # Owner is the username associated with the task.
+  # Owners (usernames) were not recorded to tasks before Funnel 0.11.1.
+  TaskAccess: All
+
+RPCClient:
+  # RPC server address
+  ServerAddress: localhost:9090
+
+  # Credentials for Basic authentication for the server APIs using a password.
+  # If used, make sure to properly restrict access to the config file
+  # (e.g. chmod 600 funnel.config.yml)
+  # User: funnel
+  # Password: abc123
+
+  # connection timeout.
+  Timeout:
+    duration: 60s
+  # The maximum number of times that a request will be retried for failures.
+  # Time between retries follows an exponential backoff starting at 5 seconds
+  # up to 1 minute
+  MaxRetries: 10
+
+# The scheduler is used for the Manual compute backend.
+Scheduler:
+  # How often to run a scheduler iteration.
+  ScheduleRate: 1s
+  # How many tasks to schedule in one iteration.
+  ScheduleChunk: 10
+  # How long to wait between updates before marking a node dead.
+  NodePingTimeout:
+    duration: 60s
+  # How long to wait for a node to start, before marking the node dead.
+  NodeInitTimeout:
+    duration: 300s
+
+Node:
+  # If empty, a node ID will be automatically generated.
+  ID: ""
+
+  # If the node has been idle for longer than the timeout, it will shut down.
+  # disabled: true means there is no timeout. 0 means timeout immediately after the first task.
+  Timeout:
+    disabled: true
+
+  # A Node will automatically try to detect what resources are available to it.
+  # Defining Resources in the Node configuration overrides this behavior.
+  Resources:
+  # CPUs available.
+  # Cpus: 0
+
+  # RAM available, in GB.
+  # RamGb: 0.0
+
+  # Disk space available, in GB.
+  # DiskGb: 0.0
+
+  # For low-level tuning.
+  # How often to sync with the Funnel server.
+  UpdateRate: 5s
+
+Worker:
+  # Files created during processing will be written in this directory.
+  WorkDir: ./funnel-work-dir
+
+  # For low-level tuning.
+  # How often to poll for cancel signals
+  PollingRate: 5s
+
+  # For low-level tuning.
+  # How often to send stdout/err task log updates to the Funnel server.
+  # Setting this to 0 will result in these fields being updated a single time
+  # after the executor exits.
+  LogUpdateRate: 5s
+
+  # Max bytes to store for stdout/err in the task log.
+  LogTailSize: 10000  # 10 KB
+
+  # Normally the worker deletes its working directory after executing.
+  # This option disables that behavior.
+  LeaveWorkDir: false
+
+  # Limit the number of concurrent downloads/uploads
+  MaxParallelTransfers: 10
+
+
+# -------------------------------------------------------------------------------
+# Databases and/or Event Writers/Handlers
+# -------------------------------------------------------------------------------
+
+BoltDB:
+  # Path to the database file
+  Path: ./funnel-work-dir/funnel.db
+
+DynamoDB:
+  # Basename to use for dynamodb tables
+  TableBasename: funnel
+  AWSConfig:
+    # AWS region
+    Region: ""
+    # AWS Access key ID
+    Key: ""
+    # AWS Secret Access Key
+    Secret: ""
+
+Elastic:
+  # Prefix to use for indexes (task, events, nodes)
+  IndexPrefix: funnel
+  # URL of the elasticsearch server.
+  URL: http://localhost:9200
+  # Optional. Username for HTTP Basic Authentication.
+  Username:
+  # Optional. Password for HTTP Basic Authentication.
+  Password:
+  # Optional. Endpoint for the Elastic Service (https://elastic.co/cloud).
+  CloudID:
+  # Optional. Base64-encoded token for authorization; if set, overrides username/password and service token.
+  APIKey:
+  # Optional. Service token for authorization; if set, overrides username/password.
+  ServiceToken:
+
+# Google Cloud Datastore task database.
+Datastore:
+  Project: ""
+  # Path to account credentials file.
+  # Optional. If possible, credentials will be automatically discovered
+  # from the environment.
+  CredentialsFile: ""
+
+MongoDB:
+  # Addrs holds the addresses for the seed servers.
+  Addrs:
+    - localhost
+  # Database is the database name used within MongoDB to store funnel data.
+  Database: funnel
+  # Timeout is the amount of time to wait for a server to respond when
+  # first connecting and on follow up operations in the session. If
+  # timeout is zero, the call may block forever waiting for a connection
+  # to be established.
+  Timeout:
+    duration: 300s
+  # Username and Password inform the credentials for the initial authentication
+  # done on the database defined by the Database field.
+  Username: ""
+  Password: ""
+
+Kafka:
+  Servers:
+    - ""
+  Topic: funnel
+
+# -------------------------------------------------------------------------------
+# Compute Backends
+# -------------------------------------------------------------------------------
+
+HTCondor:
+  # Turn off task state reconciler. When enabled, Funnel communicates with the HPC
+  # scheduler to find tasks that are stuck in a queued state or errored and
+  # updates the task state accordingly.
+  DisableReconciler: true
+  # ReconcileRate is how often the compute backend compares states in Funnel's backend
+  # to those reported by the backend
+  ReconcileRate: 600s
+  TemplateFile: ""
+  Template: |
+    universe = vanilla
+    getenv = True
+    executable = {{.Executable}}
+    arguments = worker run --config {{.Config}} --task-id {{.TaskId}}
+    log = {{.WorkDir}}/condor-event-log
+    error = {{.WorkDir}}/funnel-stderr
+    output = {{.WorkDir}}/funnel-stdout
+    should_transfer_files = YES
+    when_to_transfer_output = ON_EXIT_OR_EVICT
+    {{if ne .Cpus 0 -}}
+    {{printf "request_cpus = %d" .Cpus}}
+    {{- end}}
+    {{if ne .RamGb 0.0 -}}
+    {{printf "request_memory = %.0f GB" .RamGb}}
+    {{- end}}
+    {{if ne .DiskGb 0.0 -}}
+    {{printf "request_disk = %.0f GB" .DiskGb}}
+    {{- end}}
+
+    queue
+
+PBS:
+  # Turn off task state reconciler. When enabled, Funnel communicates with the HPC
+  # scheduler to find tasks that are stuck in a queued state or errored and
+  # updates the task state accordingly.
+  DisableReconciler: true
+  # ReconcileRate is how often the compute backend compares states in Funnel's backend
+  # to those reported by the backend
+  ReconcileRate: 600s
+  TemplateFile: ""
+  Template: |
+    #!bin/bash
+    #PBS -N {{.TaskId}}
+    #PBS -o {{.WorkDir}}/funnel-stdout
+    #PBS -e {{.WorkDir}}/funnel-stderr
+    {{if ne .Cpus 0 -}}
+    {{printf "#PBS -l nodes=1:ppn=%d" .Cpus}}
+    {{- end}}
+    {{if ne .RamGb 0.0 -}}
+    {{printf "#PBS -l mem=%.0fgb" .RamGb}}
+    {{- end}}
+    {{if ne .DiskGb 0.0 -}}
+    {{printf "#PBS -l file=%.0fgb" .DiskGb}}
+    {{- end}}
+
+    {{.Executable}} worker run --config {{.Config}} --taskID {{.TaskId}}
+
+GridEngine:
+  TemplateFile: ""
+  Template: |
+    #!bin/bash
+    #$ -N {{.TaskId}}
+    #$ -o {{.WorkDir}}/funnel-stdout
+    #$ -e {{.WorkDir}}/funnel-stderr
+    #$ -l nodes=1
+    {{if ne .Cpus 0 -}}
+    {{printf "#$ -pe mpi %d" .Cpus}}
+    {{- end}}
+    {{if ne .RamGb 0.0 -}}
+    {{printf "#$ -l h_vmem=%.0fG" .RamGb}}
+    {{- end}}
+    {{if ne .DiskGb 0.0 -}}
+    {{printf "#$ -l h_fsize=%.0fG" .DiskGb}}
+    {{- end}}
+
+    {{.Executable}} worker run --config {{.Config}} --taskID {{.TaskId}}
+
+Slurm:
+  # Turn off task state reconciler. When enabled, Funnel communicates with the HPC
+  # scheduler to find tasks that are stuck in a queued state or errored and
+  # updates the task state accordingly.
+  DisableReconciler: true
+  # ReconcileRate is how often the compute backend compares states in Funnel's backend
+  # to those reported by the backend
+  ReconcileRate: 600s
+  TemplateFile: ""
+  Template: |
+    #!/bin/bash
+    #SBATCH --job-name {{.TaskId}}
+    #SBATCH --ntasks 1
+    #SBATCH --error {{.WorkDir}}/funnel-stderr
+    #SBATCH --output {{.WorkDir}}/funnel-stdout
+    {{if ne .Cpus 0 -}}
+    {{printf "#SBATCH --cpus-per-task %d" .Cpus}}
+    {{- end}}
+    {{if ne .RamGb 0.0 -}}
+    {{printf "#SBATCH --mem %.0fGB" .RamGb}}
+    {{- end}}
+    {{if ne .DiskGb 0.0 -}}
+    {{printf "#SBATCH --tmp %.0fGB" .DiskGb}}
+    {{- end}}
+
+    {{.Executable}} worker run --config {{.Config}} --taskID {{.TaskId}}
+
+# AWSBatch describes the configuration for the AWS Batch compute backend.
+AWSBatch:
+  # Turn off task state reconciler. When enabled, Funnel communicates with AWS Batch
+  # to find tasks that never started and updates task state accordingly.
+  DisableReconciler: true
+  # ReconcileRate is how often the compute backend compares states in Funnel's backend
+  # to those reported by AWS Batch
+  ReconcileRate: 600s
+  # JobDefinition can be either a name or the Amazon Resource Name (ARN).
+  JobDefinition: "funnel-job-def"
+  # JobQueue can be either a name or the Amazon Resource Name (ARN).
+  JobQueue: "funnel-job-queue"
+  # AWS region of the specified job queue and to create the job definition in
+  AWSConfig:
+    Region: ""
+    Key: ""
+    Secret: ""
+
+# -------------------------------------------------------------------------------
+# Storage
+# -------------------------------------------------------------------------------
+
+# If possible, credentials will be automatically discovered
+# from the environment.
+
+# Local file system.
+LocalStorage:
+  # Whitelist of local directory paths which Funnel is allowed to access.
+  AllowedDirs:
+    - ./
+
+# HTTPStorage is used to download public files on the web via a GET request.
+HTTPStorage:
+  # Timeout for http(s) GET requests.
+  Timeout:
+    duration: 30s
+
+AmazonS3:
+  Disabled: false
+  # The maximum number of times that a request will be retried for failures.
+  AWSConfig:
+    MaxRetries: 10
+    # AWS Access key ID
+    Key: ""
+    # AWS Secret Access Key
+    Secret: ""
+  # Server Side Encryption (SSE) settings
+  SSE:
+    # Customer Provided Key
+    # ref: https://docs.aws.amazon.com/AmazonS3/latest/userguide/ServerSideEncryptionCustomerKeys.html
+    CustomerKeyFile: ""
+    # KMS Key
+    # ref: https://docs.aws.amazon.com/AmazonS3/latest/userguide/UsingKMSEncryption.html
+    KMSKey: ""
+
+# Configure storage backends for S3 providers such as Minio and/or Ceph
+# GenericS3:
+#   - Disabled: true
+#     Endpoint: ""
+#     Key: ""
+#     Secret: ""
+
+GoogleStorage:
+  Disabled: false
+  # Path to account credentials file.
+  # Optional. If possible, credentials will be automatically discovered
+  # from the environment.
+  CredentialsFile: ""
+
+Swift:
+  Disabled: false
+  UserName: ""
+  Password: ""
+  AuthURL: ""
+  TenantName: ""
+  TenantID: ""
+  RegionName: ""
+  # 500 MB
+  ChunkSizeBytes: 500000000
+
+FTPStorage:
+  Disabled: false
+  Timeout:
+    duration: 10s
+  User: "anonymous"
+  Password: "anonymous"

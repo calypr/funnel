@@ -7,6 +7,7 @@ import (
 	funnelConfig "github.com/ohsu-comp-bio/funnel/config"
 	"github.com/ohsu-comp-bio/funnel/plugins/proto"
 	"github.com/ohsu-comp-bio/funnel/tes"
+	googleproto "google.golang.org/protobuf/proto"
 )
 
 // RPCClient is an implementation of Authorize that talks over RPC.
@@ -37,6 +38,6 @@ func (m *RPCServer) PluginAction(args *proto.Job, resp *proto.JobResponse) error
 	if err != nil {
 		return fmt.Errorf("authorize implementation failed: %w", err)
 	}
-	*resp = *v
+	googleproto.Merge(resp, v)
 	return nil
 }

@@ -1,0 +1,33 @@
+{
+  "name": "Command Construction Test - Arguments with Spaces",
+  "description": "This test demonstrates a potential issue with strings.Join() breaking commands that have arguments with spaces or special characters",
+  "inputs": [
+    {
+      "url": "gs://tes-batch-integration/input-data/sample.txt",
+      "path": "/input/file.txt",
+      "type": "FILE"
+    }
+  ],
+  "outputs": [
+    {
+      "url": "gs://tes-batch-integration/output/result.txt",
+      "path": "/output/result.txt",
+      "type": "FILE"
+    }
+  ],
+  "executors": [
+    {
+      "image": "gcr.io/google.com/cloudsdktool/google-cloud-cli:latest",
+      "command": [
+        "/bin/bash",
+        "-c",
+        "echo 'Hello World from GCP Batch' && cat /input/file.txt"
+      ]
+    }
+  ],
+  "resources": {
+    "cpu_cores": 1,
+    "ram_gb": 1,
+    "disk_gb": 10
+  }
+}

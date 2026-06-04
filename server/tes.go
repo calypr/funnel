@@ -18,6 +18,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+
+	"google.golang.org/grpc"
 )
 
 // TaskService is a wrapper which handles common TES Task Service operations,
@@ -99,7 +101,12 @@ func (ts *TaskService) CreateTask(ctx context.Context, task *tes.Task) (*tes.Cre
 				return nil, err
 			}
 		}
-		ts.Log.Debug("Plugin Response: ", pluginResponse)
+		ts.Log.Debug("Plugin", "Response Code", pluginResponse.Code,
+			"Message", pluginResponse.Message,
+			"User", pluginResponse.UserId,
+			"Task", pluginResponse.Task,
+			"Config", pluginResponse.Config.Safe(),
+		)
 		ctx = context.WithValue(ctx, "pluginResponse", pluginResponse)
 
 		// If using plugin, replace existing task with returned task from plugin
@@ -112,21 +119,48 @@ func (ts *TaskService) CreateTask(ctx context.Context, task *tes.Task) (*tes.Cre
 		return nil, status.Errorf(codes.InvalidArgument, "%v", err.Error())
 	}
 
-	err := ts.Compute.CheckBackendParameterSupport(task)
-	if err != nil {
-		return nil, fmt.Errorf("error from backend: %s", err)
+	if err := ts.Compute.CheckBackendParameterSupport(task); err != nil {
+		return nil, err
 	}
 
+	var err error
 	ctx = context.WithValue(ctx, "Config", ts.Config)
+
+	if ts.Config.Compute == "kubernetes" {
+		task.Resources, err = config.ValidateResources(task.Resources, ts.Config.Kubernetes.Resources)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "invalid resources: %v", err)
+		}
+	}
+
 	if err := ts.Event.WriteEvent(ctx, events.NewTaskCreated(task)); err != nil {
 		return nil, fmt.Errorf("error creating task: %s", err)
 	}
 
+	pluginResponse := ctx.Value("pluginResponse")
+	conf := ctx.Value("Config")
+
 	// dispatch to compute backend
 	go func() {
-		err := ts.Compute.WriteEvent(ctx, events.NewTaskCreated(task))
+		workerCtx := context.Background()
+
+		if pluginResponse != nil {
+			workerCtx = context.WithValue(workerCtx, "pluginResponse", pluginResponse)
+		}
+		if conf != nil {
+			workerCtx = context.WithValue(workerCtx, "Config", conf)
+		}
+
+		err := ts.Compute.WriteEvent(workerCtx, events.NewTaskCreated(task))
+		ts.Log.Debug("submitted task to compute backend", "taskID", task.Id, "error", err)
+
 		if err != nil {
-			ts.Log.Error("error submitting task to compute backend", "taskID", task.Id, "error", err)
+			ts.Log.Debug("writing SystemError event for task", "taskID", task.Id, "error", err)
+			err = ts.Event.WriteEvent(workerCtx, events.NewState(task.Id, tes.SystemError))
+
+			if err != nil {
+				ts.Log.Error("error writing SystemError event after compute backend submission failure", "taskID", task.Id, "error", err)
+			}
 		}
 	}()
 
@@ -179,12 +213,41 @@ func (ts *TaskService) CancelTask(ctx context.Context, req *tes.CancelTaskReques
 				return nil, err
 			}
 		}
-		ts.Log.Debug("Plugin Response: ", pluginResponse)
+		ts.Log.Debug("Plugin", "Response Code", pluginResponse.Code,
+			"Message", pluginResponse.Message,
+			"User", pluginResponse.UserId,
+			"Task", pluginResponse.Task,
+			"Config", pluginResponse.Config.Safe(),
+		)
 		ctx = context.WithValue(ctx, "pluginResponse", pluginResponse)
 	}
 
+	// Get current task state to check if it's already terminal
+	task, err := ts.Read.GetTask(ctx, &tes.GetTaskRequest{
+		Id: req.Id,
+	})
+	if err == tes.ErrNotFound {
+		return result, status.Errorf(codes.NotFound, "%v: taskID: %s", err.Error(), req.Id)
+	} else if err != nil {
+		return result, err
+	}
+
+	// Check if task is already in a terminal state
+	if tes.TerminalState(task.State) {
+		ts.Log.Info("Task already in terminal state, skipping cancel",
+			"taskId", req.Id,
+			"state", task.State)
+
+		// Return success with informational message via metadata
+		msg := fmt.Sprintf("Task is already in %s state, no action needed", task.State)
+		if err := grpc.SetHeader(ctx, metadata.Pairs("X-Funnel-Message", msg)); err != nil {
+			ts.Log.Error("Failed to set gRPC header", "error", err)
+		}
+		return result, nil
+	}
+
 	// updated database and other event streams (includes access-checking)
-	err := ts.Event.WriteEvent(ctx, events.NewState(req.Id, tes.Canceled))
+	err = ts.Event.WriteEvent(ctx, events.NewState(req.Id, tes.Canceled))
 	if err == tes.ErrNotFound {
 		return result, status.Errorf(codes.NotFound, "%v: taskID: %s", err.Error(), req.Id)
 	} else if err == tes.ErrNotPermitted {

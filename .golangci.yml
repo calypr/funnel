@@ -1,0 +1,39 @@
+# https://golangci-lint.run/docs/configuration/file/
+
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - govet
+    - misspell
+  exclusions:
+    paths:
+      - vendor
+      - webdash
+      - cmd/webdash
+      - funnel-work-dir
+    rules:
+      - path: ".*bundle\\.go"
+        linters: [govet, misspell]
+      - path: ".*\\.pb\\.go"
+        linters: [govet, misspell]
+      - path: ".*\\.pb\\.gw\\.go"
+        linters: [govet, misspell]
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    paths:
+      - vendor
+      - webdash
+      - cmd/webdash
+      - funnel-work-dir
+      - ".*bundle\\.go"
+      - ".*\\.pb\\.go"
+      - ".*\\.pb\\.gw\\.go"
+
+run:
+  timeout: 3m

@@ -1,5 +1,8 @@
 GenericS3:
   - Disabled: false
     Endpoint: "localhost:9000"
-    Key: "fakekey"
-    Secret: "fakesecret"
+    Key: "example-key"
+    Secret: "example-secret"
+
+AmazonS3:
+  Disabled: true

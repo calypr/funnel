@@ -19,10 +19,7 @@
 name: Compliance Test
 
 on:
-  # Run on push to main/master/develop (e.g. after PR is merged)
   push:
-    branches:
-      - develop
 
 # Cancel redundant jobs (if a new job is triggered for the same workflow and ref)
 concurrency:
@@ -37,21 +34,29 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        version: [1.0.0, 1.1.0]
-        db: ["boltdb", "mongodb"]
+        version:
+          - 1.0.0
+          - 1.1.0
+        # TODO: Re-enable postgres and s3 tests once we have these backends working in CI
+        db:
+          - local
+          # - postgres
         # Temporary: Only test local compute backend until we bring up a K8s cluster in Github Actions
         # compute: ["local", "kubernetes"]
-        compute: ["local"]
-        storage: ["local", "s3"]
+        compute:
+          - local
+        storage:
+          - local
+          # - s3
     needs: build
     runs-on: ubuntu-latest
     steps:
-      # Required to access the 'tests/mongo.config.yml' file
+      # Required to access the tests config files (e.g. tests/postgres.config.yml)
       # Perhaps uploading it as an artifact would be more efficient?
       - name: Check out code
-        uses: actions/checkout@v2
+        uses: actions/checkout@ee0669bd1cc54295c223e0bb666b733df41de1c5 # v2
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: funnel
 
@@ -59,19 +64,25 @@ jobs:
         run: |
           touch config.yml
 
-          if [ ${{ matrix.db }} = "mongodb" ]; then
-            make start-mongodb
-            cat `pwd`/tests/mongo.config.yml >> config.yml
+          if [ ${{ matrix.db }} = "postgres" ]; then
+            make start-postgres
+            for i in $(seq 1 30); do
+              docker exec funnel-postgres-test pg_isready -U postgres && break
+              echo "Waiting for Postgres... ($i/30)"
+              sleep 1
+              [ $i -eq 30 ] && { echo "Postgres did not become ready in time"; exit 1; }
+            done
+            cat `pwd`/tests/postgres.config.yml >> config.yml
           fi
 
           if [ ${{ matrix.storage }} = "s3" ]; then
             docker run -d -p 9000:9000 --name minio \
-                       -e "MINIO_ROOT_USER=minioadmin" \
-                       -e "MINIO_ROOT_PASSWORD=minioadmin" \
+                       -e "MINIO_ROOT_USER=example-key" \
+                       -e "MINIO_ROOT_PASSWORD=example-secret" \
                        -v /tmp/data:/data \
                        -v /tmp/config:/root/.minio \
                        minio/minio server /data
-            cat `pwd`/tests/s3.config.yml >> config.yml
+            cat `pwd`/tests/minio-s3.config.yml >> config.yml
           fi
 
           if [ ${{ matrix.compute }} = "kubernetes" ]; then
@@ -81,6 +92,23 @@ jobs:
 
           chmod +x funnel
           ./funnel server run --config `pwd`/config.yml &> funnel.logs &
+          echo $! > funnel.pid
+
+      - name: Wait for Funnel to be ready
+        run: |
+          for i in $(seq 1 10); do
+            if ! kill -0 $(cat funnel.pid) 2>/dev/null; then
+              echo "Funnel process exited unexpectedly:"
+              cat funnel.logs
+              exit 1
+            fi
+            curl -sf http://localhost:8000/v1/service-info && exit 0
+            echo "Waiting for Funnel... ($i/10)"
+            sleep 1
+          done
+          echo "Funnel did not become ready in time:"
+          cat funnel.logs
+          exit 1
 
       - name: Run OpenAPI Test Runner
         run: |
@@ -90,4 +118,6 @@ jobs:
           source venv/bin/activate
           pip install -r requirements.txt
           python setup.py install
-          openapi-test-runner report --version "${{ matrix.version }}" --server "http://localhost:8000/"
+          output=$(openapi-test-runner report --version "${{ matrix.version }}" --server "http://localhost:8000/" 2>&1)
+          echo "$output"
+          echo "$output" | grep -q "Failed - 0" || { echo "Compliance tests failed"; exit 1; }

@@ -2,9 +2,11 @@ package events
 
 import (
 	"context"
-	"errors"
 
 	tes "github.com/ohsu-comp-bio/funnel/tes"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type Computer interface {
@@ -21,7 +23,7 @@ func (b Backend) CheckBackendParameterSupport(task *tes.Task) error {
 	for k := range taskBackendParameters {
 		_, ok := b.BackendParameters[k]
 		if !ok {
-			return errors.New("backend parameters not supported")
+			return status.Errorf(codes.InvalidArgument, "backend parameters not supported: %s", k)
 		}
 	}
 

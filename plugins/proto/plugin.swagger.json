@@ -172,6 +172,9 @@
         "Datastore": {
           "$ref": "#/definitions/configDatastore"
         },
+        "Postgres": {
+          "$ref": "#/definitions/configPostgres"
+        },
         "HTCondor": {
           "$ref": "#/definitions/configHPCBackend",
           "title": "Compute"
@@ -535,9 +538,29 @@
             "type": "object",
             "$ref": "#/definitions/configToleration"
           }
+        },
+        "Resources": {
+          "$ref": "#/definitions/configKubernetesResources",
+          "description": "Optional Kubernetes resource defaults and limits for tasks running on the Kubernetes backend."
+        },
+        "Timeout": {
+          "$ref": "#/definitions/configTimeoutConfig",
+          "title": "Timeout for creating Kubernetes resources (PV, PVC, Job, etc.)"
         }
       },
       "description": "Kubernetes describes the configuration for the Kubernetes compute backend."
+    },
+    "configKubernetesResources": {
+      "type": "object",
+      "properties": {
+        "Defaults": {
+          "$ref": "#/definitions/configResourceDefaults"
+        },
+        "Limits": {
+          "$ref": "#/definitions/configResourceLimits"
+        }
+      },
+      "description": "KubernetesResources describes default and maximum resource limits for Kubernetes tasks."
     },
     "configLocalStorage": {
       "type": "object",
@@ -647,6 +670,33 @@
       },
       "title": "This config matches the funnel plugins repo protobuf"
     },
+    "configPostgres": {
+      "type": "object",
+      "properties": {
+        "Host": {
+          "type": "string"
+        },
+        "Database": {
+          "type": "string"
+        },
+        "User": {
+          "type": "string"
+        },
+        "Password": {
+          "type": "string"
+        },
+        "AdminUser": {
+          "type": "string"
+        },
+        "AdminPassword": {
+          "type": "string"
+        },
+        "Timeout": {
+          "$ref": "#/definitions/configTimeoutConfig"
+        }
+      },
+      "description": "Postgres configures access to a PostgreSQL database."
+    },
     "configPubSub": {
       "type": "object",
       "properties": {
@@ -681,6 +731,36 @@
       },
       "description": "RPCClient describes configuration for gRPC clients."
     },
+    "configResourceDefaults": {
+      "type": "object",
+      "properties": {
+        "Cpus": {
+          "type": "string"
+        },
+        "RamGb": {
+          "type": "string"
+        },
+        "DiskGb": {
+          "type": "string"
+        }
+      },
+      "description": "ResourceDefaults describes default and maximum resource limits for tasks."
+    },
+    "configResourceLimits": {
+      "type": "object",
+      "properties": {
+        "Cpus": {
+          "type": "string"
+        },
+        "RamGb": {
+          "type": "string"
+        },
+        "DiskGb": {
+          "type": "string"
+        }
+      },
+      "description": "ResourceLimits describes maximum resource limits for tasks."
+    },
     "configResources": {
       "type": "object",
       "properties": {
@@ -696,7 +776,8 @@
           "type": "number",
           "format": "double"
         }
-      }
+      },
+      "description": "Resources describes the CPU, RAM, and disk resources required by a task."
     },
     "configSSE": {
       "type": "object",
@@ -876,10 +957,10 @@
     "loggerJSONFormatConfig": {
       "type": "object",
       "properties": {
-        "disableTimestamp": {
+        "DisableTimestamp": {
           "type": "boolean"
         },
-        "timestampFormat": {
+        "TimestampFormat": {
           "type": "string"
         }
       }
@@ -887,19 +968,19 @@
     "loggerLoggerConfig": {
       "type": "object",
       "properties": {
-        "level": {
+        "Level": {
           "type": "string"
         },
-        "formatter": {
+        "Formatter": {
           "type": "string"
         },
-        "outputFile": {
+        "OutputFile": {
           "type": "string"
         },
-        "jsonFormat": {
+        "JsonFormat": {
           "$ref": "#/definitions/loggerJSONFormatConfig"
         },
-        "textFormat": {
+        "TextFormat": {
           "$ref": "#/definitions/loggerTextFormatConfig"
         }
       }
@@ -907,25 +988,25 @@
     "loggerTextFormatConfig": {
       "type": "object",
       "properties": {
-        "forceColors": {
+        "ForceColors": {
           "type": "boolean"
         },
-        "disableColors": {
+        "DisableColors": {
           "type": "boolean"
         },
-        "disableTimestamp": {
+        "DisableTimestamp": {
           "type": "boolean"
         },
-        "fullTimestamp": {
+        "FullTimestamp": {
           "type": "boolean"
         },
-        "timestampFormat": {
+        "TimestampFormat": {
           "type": "string"
         },
-        "disableSorting": {
+        "DisableSorting": {
           "type": "boolean"
         },
-        "indent": {
+        "Indent": {
           "type": "string"
         }
       }

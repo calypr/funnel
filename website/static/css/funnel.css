@@ -264,3 +264,12 @@ pre {
 .copy-code-button:focus {
   outline: none;
 }
+
+details {
+  padding: 0.5em;
+}
+
+details summary {
+  cursor: pointer;
+  padding-bottom: 0.5em;
+}

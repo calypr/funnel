@@ -3,7 +3,6 @@ package local
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/imdario/mergo"
@@ -13,6 +12,9 @@ import (
 	"github.com/ohsu-comp-bio/funnel/logger"
 	"github.com/ohsu-comp-bio/funnel/plugins/proto"
 	"github.com/ohsu-comp-bio/funnel/tes"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // NewBackend returns a new local Backend instance.
@@ -38,7 +40,7 @@ func (b Backend) CheckBackendParameterSupport(task *tes.Task) error {
 	for k := range taskBackendParameters {
 		_, ok := b.backendParameters[k]
 		if !ok {
-			return errors.New("backend parameters not supported")
+			return status.Errorf(codes.InvalidArgument, "backend parameters not supported: %s", k)
 		}
 	}
 
@@ -58,7 +60,6 @@ func (b *Backend) WriteEvent(ctx context.Context, ev *events.Event) error {
 
 	switch ev.Type {
 	case events.Type_TASK_CREATED:
-		b.log.Info("COMPUTE/LOCAL/BACKEND WRITE EVENT: +++++++++++++++++++++++++++++++++++")
 		return b.Submit(ev.GetTask())
 	}
 	return nil
@@ -97,7 +98,6 @@ func (b *Backend) Close() {}
 func (b *Backend) Submit(task *tes.Task) error {
 	ctx := context.Background()
 
-	// TODO: b.conf will need to be updated after authentication
 	w, err := workerCmd.NewWorker(ctx, b.conf, b.log, &workerCmd.Options{
 		TaskID: task.Id,
 	})

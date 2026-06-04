@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -32,6 +33,10 @@ func ToYamlFile(c *Config, path string) error {
 
 // Parse parses a YAML doc into the given Config instance.
 func Parse(raw []byte, conf *Config) error {
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return nil
+	}
+
 	jsonBytes, err := yaml.YAMLToJSON(raw)
 	if err != nil {
 		return fmt.Errorf("failed to convert YAML to JSON: %w", err)
