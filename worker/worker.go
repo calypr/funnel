@@ -337,7 +337,17 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 	// where the worker itself is in a bad state.
 	var outputLog []*tes.OutputFileLog
 	if run.syserr == nil {
-		outputLog, run.syserr = UploadOutputs(ctx, mapper.Outputs, r.Store, event, int(r.Conf.MaxParallelTransfers))
+		var uploadErr error
+		outputLog, uploadErr = UploadOutputs(ctx, mapper.Outputs, r.Store, event, int(r.Conf.MaxParallelTransfers))
+		if uploadErr != nil {
+			if run.execerr != nil {
+				// The executor already failed; treat upload errors as warnings so the
+				// task is reported as EXECUTOR_ERROR rather than SYSTEM_ERROR.
+				event.Error("Failed to upload outputs after executor error", "error", uploadErr)
+			} else {
+				run.syserr = uploadErr
+			}
+		}
 	}
 
 	// unmap paths for OutputFileLog

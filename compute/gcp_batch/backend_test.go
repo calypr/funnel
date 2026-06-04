@@ -256,10 +256,15 @@ func TestSubmit_MultipleInputsOutputs(t *testing.T) {
 		t.Errorf("Expected 3 volumes, got %d", len(volumes))
 	}
 
-	// Verify symlink commands are present in the generated command
+	// Paths are rewritten directly in executor commands — no separate setup runnable.
 	runnables := capturedReq.Job.TaskGroups[0].TaskSpec.Runnables
 	if len(runnables) != 1 {
-		t.Fatalf("Expected 1 runnable, got %d", len(runnables))
+		t.Fatalf("Expected 1 runnable (executor only), got %d", len(runnables))
+	}
+	// The executor command ["echo", "test"] doesn't reference any I/O paths, so
+	// verify correctness via the volumes instead — all 3 buckets must be mounted.
+	if len(volumes) != 3 {
+		t.Errorf("Expected 3 volumes for 3 unique buckets, got %d", len(volumes))
 	}
 }
 
@@ -311,10 +316,24 @@ func TestSubmit_MultipleExecutors(t *testing.T) {
 		t.Fatalf("Submit() error = %v", err)
 	}
 
-	// Should create 2 runnables, one per executor
+	// Should create 1 runnable per executor; paths are rewritten inline, no setup runnable.
 	runnables := capturedReq.Job.TaskGroups[0].TaskSpec.Runnables
 	if len(runnables) != 2 {
-		t.Fatalf("Expected 2 runnables, got %d", len(runnables))
+		t.Fatalf("Expected 2 runnables (1 per executor), got %d", len(runnables))
+	}
+	// Both executors reference /data/input.txt which maps to gs://bucket/input.txt.
+	for i, r := range runnables {
+		cmds := r.GetContainer().Commands
+		found := false
+		for _, c := range cmds {
+			if strings.Contains(c, "/mnt/disks/bucket/input.txt") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Runnable %d: expected rewritten path /mnt/disks/bucket/input.txt in commands %v", i, cmds)
+		}
 	}
 }
 
@@ -407,10 +426,63 @@ func TestSubmit_NoInputsOutputs(t *testing.T) {
 		t.Errorf("Expected 0 volumes, got %d", len(volumes))
 	}
 
-	// Command should still work, just no symlinks
-	cmd := capturedReq.Job.TaskGroups[0].TaskSpec.Runnables[0].GetContainer().Commands[2]
-	if !strings.Contains(cmd, "echo hello") {
-		t.Error("Executor command not present")
+	// Command should be passed directly (no sh -c wrapping when no redirection needed)
+	cmds := capturedReq.Job.TaskGroups[0].TaskSpec.Runnables[0].GetContainer().Commands
+	if len(cmds) != 2 || cmds[0] != "echo" || cmds[1] != "hello" {
+		t.Errorf("Expected direct command [echo hello], got %v", cmds)
+	}
+}
+
+// Test Submit with executor Workdir sets --workdir docker option
+func TestSubmit_ExecutorWorkdir(t *testing.T) {
+	log := logger.NewLogger("test", logger.DefaultConfig())
+	conf := &config.GCPBatch{
+		Project:  "test-project",
+		Location: "us-west1",
+	}
+
+	var capturedReq *batchpb.CreateJobRequest
+	mockClient := &mockClient{
+		CreateJobFunc: func(req *batchpb.CreateJobRequest) (*batchpb.Job, error) {
+			capturedReq = req
+			return &batchpb.Job{Name: "test-job", Uid: "test-uid"}, nil
+		},
+	}
+
+	backend := &Backend{
+		client: mockClient,
+		conf:   conf,
+		log:    log,
+		event:  &noopEventWriter{},
+	}
+
+	task := &tes.Task{
+		Id: "task1",
+		Executors: []*tes.Executor{
+			{Image: "alpine", Command: []string{"echo", "test"}, Workdir: "/work"},
+			{Image: "alpine", Command: []string{"echo", "no-workdir"}},
+		},
+	}
+
+	err := backend.Submit(task)
+	if err != nil {
+		t.Fatalf("Submit() error = %v", err)
+	}
+
+	runnables := capturedReq.Job.TaskGroups[0].TaskSpec.Runnables
+	// No inputs/outputs so no setup runnable; just the 2 executor runnables.
+	if len(runnables) != 2 {
+		t.Fatalf("Expected 2 runnables, got %d", len(runnables))
+	}
+
+	opts0 := runnables[0].GetContainer().Options
+	if !strings.Contains(opts0, "--workdir") || !strings.Contains(opts0, "/work") {
+		t.Errorf("Expected --workdir /work in Options, got %q", opts0)
+	}
+
+	opts1 := runnables[1].GetContainer().Options
+	if opts1 != "" {
+		t.Errorf("Expected empty Options for executor without Workdir, got %q", opts1)
 	}
 }
 
@@ -482,11 +554,12 @@ func TestSubmit_CommandConstruction(t *testing.T) {
 		t.Fatalf("Submit failed: %v", err)
 	}
 
-	// Verify the command was properly quoted
-	cmd := capturedReq.Job.TaskGroups[0].TaskSpec.Runnables[0].GetContainer().Commands[2]
-
-	// Should contain properly escaped quotes, not broken by spaces
-	if !strings.Contains(cmd, "python -c") {
-		t.Errorf("Command should contain 'python -c', got: %s", cmd)
+	// Commands are passed directly without shell wrapping, so the original args are preserved.
+	cmds := capturedReq.Job.TaskGroups[0].TaskSpec.Runnables[0].GetContainer().Commands
+	if len(cmds) != 3 || cmds[0] != "python" || cmds[1] != "-c" {
+		t.Errorf("Expected direct command [python -c <script>], got %v", cmds)
+	}
+	if !strings.Contains(cmds[2], "Hello World") {
+		t.Errorf("Expected script body in Commands[2], got: %s", cmds[2])
 	}
 }

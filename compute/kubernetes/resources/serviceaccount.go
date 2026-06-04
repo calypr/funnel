@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"text/template"
+	"time"
 
 	"github.com/ohsu-comp-bio/funnel/config"
 	"github.com/ohsu-comp-bio/funnel/logger"
@@ -73,9 +74,11 @@ func CreateServiceAccount(ctx context.Context, task *tes.Task, conf *config.Conf
 	return nil
 }
 
-// isServiceAccountAttachedToPods returns true as soon as it finds one active
-// (non-terminating) pod using the given ServiceAccount.
-func isServiceAccountAttachedToPods(ctx context.Context, saName, namespace string, client kubernetes.Interface) (bool, error) {
+// isServiceAccountAttachedToPods returns true if any active pod for any active pod
+// is still using the given ServiceAccount. Pods are skipped if they are terminating (DeletionTimestamp set)
+func isServiceAccountAttachedToPods(ctx context.Context, saName, namespace string, client kubernetes.Interface, log *logger.Logger) (bool, error) {
+	log.Debug("ServiceAccount", "Sleeping for 5s before ServiceAccount deletion to avoid Race Conditions...")
+	time.Sleep(5 * time.Second)
 	pods, err := client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
 		FieldSelector: fmt.Sprintf("spec.serviceAccountName=%s", saName),
 	})
@@ -84,9 +87,10 @@ func isServiceAccountAttachedToPods(ctx context.Context, saName, namespace strin
 	}
 	for _, pod := range pods.Items {
 		if pod.DeletionTimestamp == nil {
-			return true, nil // early return on first active pod
+			return true, nil
 		}
 	}
+
 	return false, nil
 }
 
@@ -120,7 +124,7 @@ func DeleteServiceAccount(ctx context.Context, taskID, namespace string, client 
 	}
 
 	if sharedSA {
-		inUse, err := isServiceAccountAttachedToPods(ctx, saName, namespace, client)
+		inUse, err := isServiceAccountAttachedToPods(ctx, saName, namespace, client, log)
 		if err != nil {
 			return fmt.Errorf("checking pod attachment for ServiceAccount %s: %v", saName, err)
 		}
