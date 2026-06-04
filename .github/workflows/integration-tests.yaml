@@ -34,14 +34,39 @@ jobs:
         uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
  
       # ---------------------------
-      # 2. Install Funnel via Helm
+      # 2. Install Funnel + MinIO
       # ---------------------------
  
       - name: Install Funnel
         run: |
+          cat <<EOF > values.yaml
+          endpoint_url: http://minio.default.svc.cluster.local:9000
+          authenticationSource: driver
+
+          AmazonS3:
+            Disabled: true
+
+          GenericS3:
+          - Disabled: false
+            Endpoint: http://minio.default:9000
+            Key: example
+            Secret: example-password
+            Region: us-east-1
+            Bucket: local
+
+          Database: postgres
+
+          EventWriters:
+            - log
+            - postgres
+
+          mongodb:
+            enabled: false  
+          EOF
+
           helm repo add calypr https://calypr.org/helm-charts
           helm repo update
-          helm upgrade --install funnel calypr/funnel --wait --timeout=60s --version 0.1.99-rc.35
+          helm upgrade --install funnel calypr/funnel --wait --timeout=60s --version 0.1.99-rc.35 --values values.yaml
 
       - name: Debug Funnel pods (on failure)
         if: failure()
@@ -49,6 +74,34 @@ jobs:
           kubectl get pods -o wide
           kubectl describe pods
           kubectl get events --sort-by='.lastTimestamp'
+
+      - name: Install Minio
+        run: |
+          helm repo add minio https://charts.min.io/
+          helm repo update
+          helm upgrade --install minio minio/minio \
+            --set resources.requests.memory=512Mi \
+            --set replicas=1 \
+            --set persistence.enabled=false \
+            --set mode=standalone \
+            --set rootUser=example \
+            --set rootPassword=example-password \
+            --set buckets[0].name=local \
+            --set buckets[0].policy=none \
+            --set buckets[0].purge=false
+
+      - name: Install AWS S3 CSI Driver (for testing S3 mounts in Funnel)
+        run: |
+          kubectl create secret generic aws-secret \
+            --namespace kube-system \
+            --from-literal "key_id=${AWS_ACCESS_KEY_ID}" \
+            --from-literal "access_key=${AWS_SECRET_ACCESS_KEY}"
+
+          helm repo add aws-mountpoint-s3-csi-driver https://awslabs.github.io/mountpoint-s3-csi-driver
+          helm repo update
+          helm upgrade --install aws-mountpoint-s3-csi-driver aws-mountpoint-s3-csi-driver/aws-mountpoint-s3-csi-driver \
+            --namespace kube-system \
+            --set awsAccessSecret.key_id=example,awsAccessSecret.access_key=example-password
 
       # -------------------------------------
       # 3. Expose services for local testing
@@ -62,6 +115,17 @@ jobs:
           for i in $(seq 1 10); do
             curl -sf http://localhost:8000/service-info && break
             echo "Waiting for Funnel... ($i/10)"
+            sleep 2
+          done
+
+      - name: Port-forward Minio
+        run: kubectl port-forward svc/minio 9000:9000 &
+
+      - name: Wait for Minio port-forward
+        run: |
+          for i in $(seq 1 10); do
+            curl -sf http://localhost:9000/minio/health/ready && break
+            echo "Waiting for Minio... ($i/10)"
             sleep 2
           done
  
@@ -104,13 +168,40 @@ jobs:
               endpoint                   = 'http://localhost:8000'
               basicUsername              = null
               basicPassword              = null
-          }
-          report.enabled = true
-          timeline.enabled = true
-          EOF
 
-      - name: Setup tmate session
-        uses: mxschmitt/action-tmate@v3
+              // Run all non-Fusion tests
+              run                        = 'all'
+              remoteFile                 = ''
+
+              // Disable Fusion — not applicable for basic TES/Funnel
+              skip                          = ''
+              gpu                           = false
+              run                           = ''
+              outdir                        = null
+              remoteFile                    = null
+              container                     = "quay.io/biocontainers/ubuntu:24.04"
+              fusion                        = false
+              fusion_kernel_version_min     = null
+              fusion_memory_capacity_gb_min = null
+              fusion_disk_capacity_gb_min   = null
+              fusion_nvme_required          = null
+              fusion_vcpus_min              = null
+              fusion_open_files_min         = null
+              fusion_cache_path             = '/tmp'
+              fusion_read_write_buckets     = ""
+              fusion_read_only_buckets      = ""
+          }
+          aws {
+              accessKey = "example"
+              secretKey = "example-password"
+              region = 'us-east-1'
+              client {
+                  endpoint = "http://localhost:9000"
+                  s3PathStyleAccess = true
+                  maxErrorRetry = 0
+              }
+          }
+          EOF
 
       - name: Run nf-canary tests
         id: nf_canary
@@ -119,7 +210,7 @@ jobs:
           NXF_ANSI_LOG: false
         run: |
           cd nf-canary
-          nextflow run main.nf -with-report report.html 2>&1 | tee nextflow.log
+          nextflow run main.nf -with-report report.html -w s3://local/work 2>&1 | tee nextflow.log
           echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
       
       # -------------------
