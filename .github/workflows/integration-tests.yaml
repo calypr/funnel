@@ -1,7 +1,15 @@
 name: Integration Tests (K8s)
- 
+
 on:
   push:
+    branches:
+      - develop
+  pull_request:
+    branches:
+      - develop
+
+permissions:
+  contents: read
 
 # Cancel redundant jobs
 concurrency:
@@ -18,12 +26,12 @@ jobs:
       # -----------------
  
       - name: Create Kind cluster
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1
         with:
           cluster_name: funnel-gen3
- 
+
       - name: Install Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
  
       # ---------------------------
       # 2. Install Funnel via Helm
@@ -76,7 +84,7 @@ jobs:
       # ----------------------------
         
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
         with:
           distribution: temurin
           java-version: '21'
@@ -102,9 +110,6 @@ jobs:
           process.executor = 'tes'
           tes.endpoint = 'http://localhost:8000'
           EOF
- 
-      - name: Setup tmate session
-        uses: mxschmitt/action-tmate@v3
  
       - name: Run nf-canary tests
         id: nf_canary
@@ -154,7 +159,7 @@ jobs:
  
       - name: Upload Nextflow logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: nextflow-logs
           path: |
