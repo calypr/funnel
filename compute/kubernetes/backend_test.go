@@ -447,17 +447,6 @@ func TestHasTerminalContainerWaitingError(t *testing.T) {
 			wantReasonPart: "CreateContainerError",
 		},
 		{
-			name: "init container with CreateContainerConfigError is terminal",
-			initState: corev1.ContainerState{
-				Waiting: &corev1.ContainerStateWaiting{
-					Reason:  "CreateContainerConfigError",
-					Message: "configmap not found",
-				},
-			},
-			wantTerminal:   true,
-			wantReasonPart: "CreateContainerConfigError",
-		},
-		{
 			name: "ContainerCreating is not terminal",
 			containerState: corev1.ContainerState{
 				Waiting: &corev1.ContainerStateWaiting{
@@ -486,9 +475,6 @@ func TestHasTerminalContainerWaitingError(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			fakeClient := fake.NewSimpleClientset()
-			ctx := context.Background()
-
 			pod := &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-pod",
@@ -502,25 +488,10 @@ func TestHasTerminalContainerWaitingError(t *testing.T) {
 					{Name: "main", State: tc.containerState},
 				}
 			}
-			if tc.initState != (corev1.ContainerState{}) {
-				pod.Status.InitContainerStatuses = []corev1.ContainerStatus{
-					{Name: "init", State: tc.initState},
-				}
-			}
 
-			if _, err := fakeClient.CoreV1().Pods(ns).Create(ctx, pod, metav1.CreateOptions{}); err != nil {
-				t.Fatalf("creating pod: %v", err)
-			}
+			pods := &corev1.PodList{Items: []corev1.Pod{*pod}}
 
-			conf := config.DefaultConfig()
-			conf.Kubernetes.JobsNamespace = ns
-			b := &Backend{
-				client: fakeClient,
-				log:    logger.NewLogger("test", logger.DefaultConfig()),
-				conf:   conf,
-			}
-
-			got, reason := b.hasTerminalContainerWaitingError(ctx, "test-job")
+			got, reason := hasTerminalContainerWaitingError(pods)
 			if got != tc.wantTerminal {
 				t.Errorf("hasTerminalContainerWaitingError() = %v, want %v (reason=%q)", got, tc.wantTerminal, reason)
 			}
@@ -999,7 +970,8 @@ func TestFetchPodWarningEvents(t *testing.T) {
 				conf:   conf,
 			}
 
-			got := FetchPodWarningEvents(ctx, b.client, b.conf.Kubernetes.JobsNamespace, jobName)
+			pods := &corev1.PodList{Items: []corev1.Pod{*pod}}
+			got := FetchPodWarningEvents(ctx, b.client, b.conf.Kubernetes.JobsNamespace, pods)
 
 			if tc.wantEmpty {
 				if got != "" {

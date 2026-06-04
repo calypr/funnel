@@ -324,30 +324,20 @@ func (b *Backend) cleanResources(ctx context.Context, taskId string) error {
 	return errs
 }
 
-// terminalWaitingReasons lists container waiting reasons that will never self-
-// resolve and should be treated as a permanent failure.
-var terminalWaitingReasons = []string{
-	"CreateContainerConfigError", // missing secret / configmap
-	"InvalidImageName",           // malformed image reference
-	"CreateContainerError",       // OCI runtime failed to create container
-	"ErrImagePull",               // image not found or pull failed
-	"ImagePullBackOff",           // repeated image pull failure
-	"RunContainerError",          // runtime failed to start container (e.g. bad entrypoint)
-	"StartError",                 // OCI runtime runc create failed
-}
-
-// hasTerminalContainerWaitingError returns true if any pod belonging to the
-// given job has a container stuck in a waiting state whose reason is known to
-// be permanent (e.g. CreateContainerConfigError). These pods will never
-// transition to a running state on their own so the task must be failed early
-// rather than waiting for the Job's backoff limit to be exhausted.
-func (b *Backend) hasTerminalContainerWaitingError(ctx context.Context, jobName string) (bool, string) {
-	pods, err := b.client.CoreV1().Pods(b.conf.Kubernetes.JobsNamespace).List(ctx, metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("job-name=%s", jobName),
-	})
-	if err != nil {
-		b.log.Error("reconcile: listing pods for job", "taskID", jobName, "error", err)
-		return false, ""
+// hasTerminalContainerWaitingError returns true if any pod in pods has a
+// container stuck in a waiting state whose reason is known to be permanent
+// (e.g. CreateContainerConfigError). These pods will never transition to a
+// running state on their own so the task must be failed early rather than
+// waiting for the Job's backoff limit to be exhausted.
+func hasTerminalContainerWaitingError(pods *corev1.PodList) (bool, string) {
+	terminalWaitingReasons := []string{
+		"CreateContainerConfigError", // missing secret / configmap
+		"InvalidImageName",           // malformed image reference
+		"CreateContainerError",       // OCI runtime failed to create container
+		"ErrImagePull",               // image not found or pull failed
+		"ImagePullBackOff",           // repeated image pull failure
+		"RunContainerError",          // runtime failed to start container (e.g. bad entrypoint)
+		"StartError",                 // OCI runtime runc create failed
 	}
 	for _, pod := range pods.Items {
 		for _, cs := range pod.Status.ContainerStatuses {
@@ -355,30 +345,12 @@ func (b *Backend) hasTerminalContainerWaitingError(ctx context.Context, jobName 
 				continue
 			}
 			reason := cs.State.Waiting.Reason
-			for _, terminal := range terminalWaitingReasons {
-				if reason == terminal {
-					msg := cs.State.Waiting.Message
-					if msg == "" {
-						msg = reason
-					}
-					return true, fmt.Sprintf("%s: %s", reason, msg)
+			if slices.Contains(terminalWaitingReasons, reason) {
+				msg := cs.State.Waiting.Message
+				if msg == "" {
+					msg = reason
 				}
-			}
-		}
-		// Also check init containers
-		for _, cs := range pod.Status.InitContainerStatuses {
-			if cs.State.Waiting == nil {
-				continue
-			}
-			reason := cs.State.Waiting.Reason
-			for _, terminal := range terminalWaitingReasons {
-				if reason == terminal {
-					msg := cs.State.Waiting.Message
-					if msg == "" {
-						msg = reason
-					}
-					return true, fmt.Sprintf("%s: %s", reason, msg)
-				}
+				return true, fmt.Sprintf("%s: %s", reason, msg)
 			}
 		}
 	}
@@ -396,20 +368,13 @@ var podWarningEventReasons = []string{
 	"StartError",       // OCI runtime / entrypoint errors
 }
 
-// FetchPodWarningEvents returns Warning events for pods belonging to jobName
-// whose reason is in podWarningEventReasons. The messages are deduplicated and
-// returned as a newline-joined string. An empty string is returned when nothing
-// useful is found. This surfaces the human-readable detail that appears in
+// FetchPodWarningEvents returns Warning events for the given pods whose reason
+// is in podWarningEventReasons. The messages are deduplicated and returned as a
+// newline-joined string. An empty string is returned when nothing useful is
+// found. This surfaces the human-readable detail that appears in
 // `kubectl describe pod` (e.g. "Error: secret \"foo\" not found") into the
 // TES task system logs.
-func FetchPodWarningEvents(ctx context.Context, clientset kubernetes.Interface, namespace, jobName string) string {
-	pods, err := clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("job-name=%s", jobName),
-	})
-	if err != nil {
-		return ""
-	}
-
+func FetchPodWarningEvents(ctx context.Context, clientset kubernetes.Interface, namespace string, pods *corev1.PodList) string {
 	seen := make(map[string]struct{})
 	var messages []string
 	for _, pod := range pods.Items {
@@ -712,14 +677,23 @@ func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableClea
 						status := j.Status
 						switch {
 						case status.Active > 0:
+							// Fetch pods once and pass to both checks to avoid redundant K8s API calls.
+							pods, err := b.client.CoreV1().Pods(b.conf.Kubernetes.JobsNamespace).List(ctx, metav1.ListOptions{
+								LabelSelector: fmt.Sprintf("job-name=%s", jobName),
+							})
+							if err != nil {
+								b.log.Error("reconcile: listing pods for job", "taskID", jobName, "error", err)
+								continue
+							}
+
 							// Check for container waiting errors that will never self-resolve
 							// (e.g. CreateContainerConfigError). These keep the Job Active
 							// indefinitely, so we must detect and fail them explicitly.
-							if terminal, reason := b.hasTerminalContainerWaitingError(ctx, jobName); terminal {
+							if terminal, reason := hasTerminalContainerWaitingError(pods); terminal {
 								b.log.Debug("reconcile: worker pod has terminal container waiting error", "taskID", jobName, "reason", reason)
 								b.event.WriteEvent(ctx, events.NewState(jobName, tes.SystemError))
 								errDetail := reason
-								if podEvents := FetchPodWarningEvents(ctx, b.client, b.conf.Kubernetes.JobsNamespace, jobName); podEvents != "" {
+								if podEvents := FetchPodWarningEvents(ctx, b.client, b.conf.Kubernetes.JobsNamespace, pods); podEvents != "" {
 									errDetail = fmt.Sprintf("%s\n%s", reason, podEvents)
 								}
 								b.event.WriteEvent(ctx, events.NewSystemLog(

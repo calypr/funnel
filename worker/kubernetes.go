@@ -262,8 +262,13 @@ func (kcmd KubernetesCommand) Run(ctx context.Context) error {
 	if err != nil {
 		var sysErr *K8sSystemErr
 		if errors.As(err, &sysErr) && slices.Contains(terminalWaitingReasons, sysErr.Reason) {
-			if events := k8sbackend.FetchPodWarningEvents(context.Background(), clientset, kcmd.JobsNamespace, executorJobName); events != "" {
-				sysErr.Message = sysErr.Message + "\n" + events
+			pods, listErr := clientset.CoreV1().Pods(kcmd.JobsNamespace).List(context.Background(), metav1.ListOptions{
+				LabelSelector: fmt.Sprintf("job-name=%s", executorJobName),
+			})
+			if listErr == nil {
+				if events := k8sbackend.FetchPodWarningEvents(context.Background(), clientset, kcmd.JobsNamespace, pods); events != "" {
+					sysErr.Message = sysErr.Message + "\n" + events
+				}
 			}
 			return sysErr
 		}
