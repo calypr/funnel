@@ -75,11 +75,6 @@ func (mapper *FileMapper) MapTask(task *tes.Task) error {
 		}
 	}
 
-	err = mapper.AddTmpVolume("/tmp")
-	if err != nil {
-		return err
-	}
-
 	// Add all the inputs to the mapper
 	for _, input := range task.Inputs {
 		err = mapper.AddInput(input)
