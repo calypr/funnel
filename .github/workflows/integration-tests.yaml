@@ -56,9 +56,14 @@ jobs:
  
       - name: Port-forward Funnel
         run: kubectl port-forward svc/funnel 8000:8000 &
- 
-      # - name: Port-forward gen3workflow
-      #   run: kubectl port-forward svc/gen3workflow 8080:8080 &
+
+      - name: Wait for Funnel port-forward
+        run: |
+          for i in $(seq 1 10); do
+            curl -sf http://localhost:8000/service-info && break
+            echo "Waiting for Funnel... ($i/10)"
+            sleep 2
+          done
  
       # ----------------------------
       # 4. Run Nextflow + nf-canary
@@ -84,22 +89,36 @@ jobs:
  
       - name: Configure nf-canary for TES (Funnel)
         run: |
-          cat >> nf-canary/nextflow.config <<'EOF'
+          cat <<EOF > nextflow.config
+          // Nextflow config file for running on TES Backend
           plugins {
-            id 'nf-ga4gh'
+            id 'nf-ga4gh@${PLUGIN_VERSION}'
           }
-          process.executor = 'tes'
-          tes.endpoint = 'http://localhost:8000'
+          process {
+              executor = 'tes'
+              // Pinning to recent LTS release for stability/security
+              container = 'ubuntu:24.04'
+          }
+          params {
+              // TES
+              endpoint                   = 'http://localhost:8000'
+              basicUsername              = null
+              basicPassword              = null
+          }
+          report.enabled = true
+          timeline.enabled = true
           EOF
- 
+
       - name: Run nf-canary tests
         id: nf_canary
+        env:
+          NXF_TES_ENDPOINT: http://localhost:8000
+          NXF_ANSI_LOG: false
         run: |
           cd nf-canary
-          export NXF_ANSI_LOG=false
           nextflow run main.nf -with-report report.html 2>&1 | tee nextflow.log
           echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
- 
+      
       # -------------------
       # 5. Verify K8s Jobs
       # -------------------
@@ -149,25 +168,3 @@ jobs:
             nf-canary/.nextflow.log
           if-no-files-found: ignore
 
-      - name: Summarize test results
-        if: always()
-        run: |
-          cd nf-canary
-          TOTAL=$(grep -c "Submitted process" nextflow.log 2>/dev/null || echo 0)
-          PASSED=$(grep -c "COMPLETED" nextflow.log 2>/dev/null || echo 0)
-          FAILED=$(grep -c "FAILED" nextflow.log 2>/dev/null || echo 0)
-          {
-            echo "## Integration Test Results"
-            echo "| Result | Count |"
-            echo "|--------|-------|"
-            echo "| ✅ Passed | $PASSED |"
-            echo "| ❌ Failed | $FAILED |"
-            echo "| Total | $TOTAL |"
-            if [ "$FAILED" -gt 0 ]; then
-              echo ""
-              echo "### Failed Tasks"
-              echo '```'
-              grep "FAILED" nextflow.log || true
-              echo '```'
-            fi
-          } >> $GITHUB_STEP_SUMMARY
