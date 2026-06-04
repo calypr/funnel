@@ -105,11 +105,6 @@ func TestMapTask(t *testing.T) {
 			Readonly:      false,
 		},
 		{
-			HostPath:      tmp + "/tmp",
-			ContainerPath: "/tmp",
-			Readonly:      false,
-		},
-		{
 			HostPath:      tmp + "/outputs",
 			ContainerPath: "/outputs",
 			Readonly:      false,
@@ -161,6 +156,14 @@ func TestMapTask(t *testing.T) {
 			t.Log("Diff", d)
 		}
 		t.Fatal("unexpected mapper outputs")
+	}
+
+	for _, vol := range ev {
+		fmt.Println("Expected volume:", vol)
+	}
+
+	for _, vol := range f.Volumes {
+		fmt.Println("Actual volume:", vol)
 	}
 
 	if diff := deep.Equal(f.Volumes, ev); diff != nil {
