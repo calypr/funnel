@@ -203,6 +203,9 @@ jobs:
           }
           EOF
 
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+        
       - name: Run nf-canary tests
         id: nf_canary
         env:
