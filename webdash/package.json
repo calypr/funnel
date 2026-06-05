@@ -10,7 +10,7 @@
     "react-app-rewired": "^2.2.1",
     "react-dom": "^19.2.5",
     "react-json-view": "^1.19.1",
-    "react-router-dom": "^7.14.1",
+    "react-router-dom": "^7.17.0",
     "react-scripts": "^5.0.1"
   },
   "scripts": {
