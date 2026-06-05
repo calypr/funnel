@@ -569,6 +569,26 @@ func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableClea
 	}
 }
 
+// extractTaskIDFromExecutorJobName parses the taskID from an executor job name.
+// Executor jobs are named "{taskID}-{index}" where index is a non-negative integer.
+// Returns an empty string if the name does not match the expected pattern.
+func extractTaskIDFromExecutorJobName(name string) string {
+	idx := strings.LastIndex(name, "-")
+	if idx <= 0 {
+		return ""
+	}
+	suffix := name[idx+1:]
+	for _, c := range suffix {
+		if c < '0' || c > '9' {
+			return ""
+		}
+	}
+	if len(suffix) == 0 {
+		return ""
+	}
+	return name[:idx]
+}
+
 // isResourceCleanupNeeded returns true when the task is confirmed gone (NotFound)
 // or in a terminal state.
 func (b *Backend) isResourceCleanupNeeded(ctx context.Context, taskID string) (bool, error) {
@@ -625,6 +645,19 @@ func (b *Backend) CleanOrphanedResources(ctx context.Context) {
 	}
 
 	// TODO: Add Executor Jobs here beacause orphaned tasks can result in orphaned jobs
+
+	// Executor Jobs (label app=funnel-executor; named {taskID}-{index}).
+	// These are not owned by the worker Job, so they must be discovered and cleaned explicitly.
+	executorJobs, err := b.client.BatchV1().Jobs(namespace).List(ctx, metav1.ListOptions{LabelSelector: "app=funnel-executor"})
+	if err != nil {
+		b.log.Error("backlog cleanup: listing executor jobs", err)
+	} else {
+		for _, j := range executorJobs.Items {
+			if taskID := extractTaskIDFromExecutorJobName(j.Name); taskID != "" {
+				taskIDs[taskID] = struct{}{}
+			}
+		}
+	}
 
 	for taskID := range taskIDs {
 		clean, err := b.isResourceCleanupNeeded(ctx, taskID)
