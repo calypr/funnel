@@ -155,11 +155,20 @@ spec:
 		t.Errorf("expected Job name '%s', got '%s'", task.Id, job.Name)
 	}
 
-	// Verify that the ConfigMap was created
-	configMapName := "funnel-worker-config-" + task.Id
-	_, err = fakeClient.CoreV1().ConfigMaps(conf.Kubernetes.JobsNamespace).Get(context.Background(), configMapName, metav1.GetOptions{})
+	// Seed a PV so we can verify cleanResources deletes it.
+	pvName := "funnel-worker-pv-" + task.Id
+	_, err = fakeClient.CoreV1().PersistentVolumes().Create(context.Background(), &corev1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: pvName,
+			Labels: map[string]string{
+				"app":       "funnel",
+				"taskId":    task.Id,
+				"namespace": conf.Kubernetes.JobsNamespace,
+			},
+		},
+	}, metav1.CreateOptions{})
 	if err != nil {
-		t.Fatalf("failed to get ConfigMap: %v", err)
+		t.Fatalf("failed to create test PV: %v", err)
 	}
 
 	// Clean up resources
@@ -174,12 +183,11 @@ spec:
 		t.Error("expected Job to be deleted, but it still exists")
 	}
 
-	// Verify that the ConfigMap was deleted
-	_, err = fakeClient.CoreV1().ConfigMaps(conf.Kubernetes.JobsNamespace).Get(context.Background(), configMapName, metav1.GetOptions{})
+	// Verify that the PV was deleted
+	_, err = fakeClient.CoreV1().PersistentVolumes().Get(context.Background(), pvName, metav1.GetOptions{})
 	if err == nil {
-		t.Error("expected ConfigMap to be deleted, but it still exists")
+		t.Error("expected PV to be deleted, but it still exists")
 	}
-
 }
 
 func TestSubmit_AppliesNodeSelectorAndTolerationsToWorkerJob(t *testing.T) {
