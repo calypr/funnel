@@ -94,8 +94,8 @@ jobs:
         run: |
           kubectl create secret generic aws-secret \
             --namespace kube-system \
-            --from-literal "key_id=${AWS_ACCESS_KEY_ID}" \
-            --from-literal "access_key=${AWS_SECRET_ACCESS_KEY}"
+            --from-literal "key_id=example" \
+            --from-literal "access_key=example-password"
 
           helm repo add aws-mountpoint-s3-csi-driver https://awslabs.github.io/mountpoint-s3-csi-driver
           helm repo update
@@ -203,9 +203,6 @@ jobs:
               }
           }
           EOF
-
-      - name: Setup tmate session
-        uses: mxschmitt/action-tmate@v3
 
       - name: Run nf-canary tests
         id: nf_canary
