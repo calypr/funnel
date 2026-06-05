@@ -217,6 +217,9 @@ jobs:
       # -------------------
       # 5. Verify K8s Jobs
       # -------------------
+
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
  
       - name: Verify Kubernetes jobs completed
         run: |
