@@ -218,29 +218,6 @@ jobs:
       # 5. Upload test logs + reports
       # ------------------------------
 
-      - name: Summarize test results
-        if: always()
-        run: |
-          cd nf-canary
-          TOTAL=$(grep -c "Submitted process" nextflow.log 2>/dev/null || echo 0)
-          PASSED=$(grep -c "COMPLETED" nextflow.log 2>/dev/null || echo 0)
-          FAILED=$(grep -c "FAILED" nextflow.log 2>/dev/null || echo 0)
-          {
-            echo "## Integration Test Results"
-            echo "| Result | Count |"
-            echo "|--------|-------|"
-            echo "| ✅ Passed | $PASSED |"
-            echo "| ❌ Failed | $FAILED |"
-            echo "| Total | $TOTAL |"
-            if [ "$FAILED" -gt 0 ]; then
-              echo ""
-              echo "### Failed Tasks"
-              echo '```'
-              grep "FAILED" nextflow.log || true
-              echo '```'
-            fi
-          } >> $GITHUB_STEP_SUMMARY
-
       - name: Upload Nextflow logs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -251,4 +228,3 @@ jobs:
             nf-canary/report.html
             nf-canary/.nextflow.log
           if-no-files-found: ignore
-
