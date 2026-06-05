@@ -148,11 +148,12 @@ jobs:
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           
       # Ref: https://github.com/nextflow-io/nf-ga4gh/blob/main/.github/workflows/build.yml
-      - name: Clone nf-canary
-        run: git clone https://github.com/seqeralabs/nf-canary
- 
-      - name: Configure nf-canary for TES (Funnel)
+      - name: Install + configure nf-canary
         run: |
+          git clone https://github.com/seqeralabs/nf-canary
+
+          cd nf-canary
+
           cat <<EOF > nextflow.config
           // Nextflow config file for running on TES Backend
           plugins {
@@ -203,9 +204,6 @@ jobs:
           }
           EOF
 
-      - name: Setup tmate session
-        uses: mxschmitt/action-tmate@v3
-        
       - name: Run nf-canary tests
         id: nf_canary
         env:
