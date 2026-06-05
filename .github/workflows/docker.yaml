@@ -6,8 +6,6 @@ name: Build + Push Docker Image
 
 on:
   push:
-    branches:
-      - develop
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

@@ -4,18 +4,12 @@
 name: Release
 on:
   push:
-<<<<<<< HEAD
-    branches:
-      - develop
-  workflow_dispatch:
-=======
     tags:
       - 'v*.*.*'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
->>>>>>> develop
 
 permissions:
   contents: read
