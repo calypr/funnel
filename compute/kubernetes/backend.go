@@ -297,29 +297,6 @@ func (b *Backend) cleanResources(ctx context.Context, taskId string) error {
 		b.log.Error("deleting Job", "error", err)
 	}
 
-	// Delete PVC
-	err = resources.DeletePVC(ctx, taskId, b.conf.Kubernetes.JobsNamespace, b.client, b.log)
-	if err != nil {
-		errs = multierror.Append(errs, err)
-		b.log.Error("deleting Worker PVC", "error", err)
-	}
-
-	// Delete per-task ConfigMap only if ConfigMapTemplate was configured
-	if b.conf.Kubernetes.ConfigMapTemplate != "" {
-		err = resources.DeleteConfigMap(ctx, taskId, b.conf.Kubernetes.JobsNamespace, b.client, b.log)
-		if err != nil {
-			errs = multierror.Append(errs, err)
-			b.log.Error("deleting Worker ConfigMap", "error", err)
-		}
-	}
-
-	// Delete RoleBinding
-	err = resources.DeleteRoleBinding(ctx, taskId, b.conf.Kubernetes.JobsNamespace, b.client, b.log)
-	if err != nil {
-		errs = multierror.Append(errs, err)
-		b.log.Error("deleting Job", "error", err)
-	}
-
 	// Determine the ServiceAccount for this task.
 	// Default to the conventional task-scoped name; override if the task
 	// specifies an externally-managed SA via the _WORKER_SA tag.
@@ -336,13 +313,6 @@ func (b *Backend) cleanResources(ctx context.Context, taskId string) error {
 	if err := resources.DeleteServiceAccount(ctx, taskId, b.conf.Kubernetes.JobsNamespace, b.client, b.log, saOpts); err != nil {
 		errs = multierror.Append(errs, err)
 		b.log.Error("deleting Worker ServiceAccount", "taskID", taskId, "error", err)
-	}
-
-	// Delete Role
-	err = resources.DeleteRole(ctx, taskId, b.conf.Kubernetes.JobsNamespace, b.client, b.log)
-	if err != nil {
-		errs = multierror.Append(errs, err)
-		b.log.Error("deleting Worker Role", "error", err)
 	}
 
 	// Delete PV
@@ -933,23 +903,15 @@ func (b *Backend) CleanOrphanedResources(ctx context.Context) {
 	namespace := b.conf.Kubernetes.JobsNamespace
 	taskIDs := make(map[string]struct{})
 
-	// Collect task IDs from each resource type
-	if pvcs, err := b.client.CoreV1().PersistentVolumeClaims(namespace).List(ctx, metav1.ListOptions{LabelSelector: "app=funnel"}); err == nil {
-		if err != nil {
-			b.log.Error("backlog cleanup: listing PVCs", err)
-		}
-		for _, r := range pvcs.Items {
-			if id, ok := r.Labels["taskId"]; ok {
-				taskIDs[id] = struct{}{}
-			}
-		}
-	}
+	// Collect task IDs from resources that cleanResources manages directly.
+	// ConfigMaps, PVCs, Roles, and RoleBindings are now owned by the Job via ownerReferences
+	// and are garbage-collected by Kubernetes automatically — they are intentionally excluded here.
 
-	// PVs
-	if pvs, err := b.client.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{LabelSelector: fmt.Sprintf("app=funnel,namespace=%s", namespace)}); err == nil {
-		if err != nil {
-			b.log.Error("backlog cleanup: listing PVs", err)
-		}
+	// PVs (cluster-scoped; cannot be owned by a namespaced Job, so must be cleaned explicitly)
+	pvs, err := b.client.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{LabelSelector: fmt.Sprintf("app=funnel,namespace=%s", namespace)})
+	if err != nil {
+		b.log.Error("backlog cleanup: listing PVs", err)
+	} else {
 		for _, r := range pvs.Items {
 			if id, ok := r.Labels["taskId"]; ok {
 				taskIDs[id] = struct{}{}
@@ -957,26 +919,12 @@ func (b *Backend) CleanOrphanedResources(ctx context.Context) {
 		}
 	}
 
-	// ConfigMaps
-	if cms, err := b.client.CoreV1().ConfigMaps(namespace).List(ctx, metav1.ListOptions{LabelSelector: "app=funnel"}); err == nil {
-		if err != nil {
-			b.log.Error("backlog cleanup: listing ConfigMaps", err)
-		}
-		const cmPrefix = "funnel-worker-config-"
-		for _, r := range cms.Items {
-			if id, ok := r.Labels["taskId"]; ok {
-				taskIDs[id] = struct{}{}
-			} else if strings.HasPrefix(r.Name, cmPrefix) {
-				taskIDs[strings.TrimPrefix(r.Name, cmPrefix)] = struct{}{}
-			}
-		}
-	}
-
-	// ServiceAccounts
-	if sas, err := b.client.CoreV1().ServiceAccounts(namespace).List(ctx, metav1.ListOptions{LabelSelector: "app=funnel"}); err == nil {
-		if err != nil {
-			b.log.Error("backlog cleanup: listing ServiceAccounts", err)
-		}
+	// ServiceAccounts (shared SAs are not owned by a Job; task-scoped SAs may also be orphaned
+	// if they were created before ownerRef support was added)
+	sas, err := b.client.CoreV1().ServiceAccounts(namespace).List(ctx, metav1.ListOptions{LabelSelector: "app=funnel"})
+	if err != nil {
+		b.log.Error("backlog cleanup: listing ServiceAccounts", err)
+	} else {
 		for _, r := range sas.Items {
 			if id, ok := r.Labels["taskId"]; ok {
 				taskIDs[id] = struct{}{}
@@ -984,29 +932,7 @@ func (b *Backend) CleanOrphanedResources(ctx context.Context) {
 		}
 	}
 
-	// Roles
-	if roles, err := b.client.RbacV1().Roles(namespace).List(ctx, metav1.ListOptions{LabelSelector: "app=funnel"}); err == nil {
-		if err != nil {
-			b.log.Error("backlog cleanup: listing Roles", err)
-		}
-		for _, r := range roles.Items {
-			if id, ok := r.Labels["taskId"]; ok {
-				taskIDs[id] = struct{}{}
-			}
-		}
-	}
-
-	// RoleBindings
-	if rbs, err := b.client.RbacV1().RoleBindings(namespace).List(ctx, metav1.ListOptions{LabelSelector: "app=funnel"}); err == nil {
-		if err != nil {
-			b.log.Error("backlog cleanup: listing RoleBindings", err)
-		}
-		for _, r := range rbs.Items {
-			if id, ok := r.Labels["taskId"]; ok {
-				taskIDs[id] = struct{}{}
-			}
-		}
-	}
+	// TODO: Add Executor Jobs here beacause orphaned tasks can result in orphaned jobs
 
 	for taskID := range taskIDs {
 		clean, err := b.isResourceCleanupNeeded(ctx, taskID)
