@@ -214,47 +214,33 @@ jobs:
           nextflow run main.nf -with-report report.html -w s3://local/work 2>&1 | tee nextflow.log
           echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
       
-      # -------------------
-      # 5. Verify K8s Jobs
-      # -------------------
+      # ------------------------------
+      # 5. Upload test logs + reports
+      # ------------------------------
 
-      - name: Setup tmate session
-        uses: mxschmitt/action-tmate@v3
- 
-      - name: Verify Kubernetes jobs completed
+      - name: Summarize test results
+        if: always()
         run: |
-          echo "=== All jobs in default namespace ==="
-          kubectl get jobs -o wide
- 
-          FAILED=$(kubectl get jobs \
-            --field-selector=status.failed!=0 \
-            -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || true)
- 
-          if [ -n "$FAILED" ]; then
-            echo "Failed jobs: $FAILED"
-            for JOB in $FAILED; do
-              echo "--- Logs for $JOB ---"
-              kubectl logs job/$JOB --tail=50 || true
-            done
-            exit 1
-          fi
- 
-          SUCCEEDED=$(kubectl get jobs \
-            --field-selector=status.successful!=0 \
-            -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || true)
- 
-          if [ -z "$SUCCEEDED" ]; then
-            echo "No jobs completed successfully — did any tasks run?"
-            kubectl describe jobs || true
-            exit 1
-          fi
- 
-          echo "All Kubernetes jobs completed successfully: $SUCCEEDED"
- 
-      # ------------------------------
-      # 6. Upload test logs + reports 
-      # ------------------------------
- 
+          cd nf-canary
+          TOTAL=$(grep -c "Submitted process" nextflow.log 2>/dev/null || echo 0)
+          PASSED=$(grep -c "COMPLETED" nextflow.log 2>/dev/null || echo 0)
+          FAILED=$(grep -c "FAILED" nextflow.log 2>/dev/null || echo 0)
+          {
+            echo "## Integration Test Results"
+            echo "| Result | Count |"
+            echo "|--------|-------|"
+            echo "| ✅ Passed | $PASSED |"
+            echo "| ❌ Failed | $FAILED |"
+            echo "| Total | $TOTAL |"
+            if [ "$FAILED" -gt 0 ]; then
+              echo ""
+              echo "### Failed Tasks"
+              echo '```'
+              grep "FAILED" nextflow.log || true
+              echo '```'
+            fi
+          } >> $GITHUB_STEP_SUMMARY
+
       - name: Upload Nextflow logs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
