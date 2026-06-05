@@ -22,6 +22,25 @@ import (
 	k8stesting "k8s.io/client-go/testing"
 )
 
+// mockDatabase implements tes.ReadOnlyServer for testing CleanOrphanedResources.
+type mockDatabase struct {
+	tasks map[string]*tes.Task
+}
+
+func (m *mockDatabase) GetTask(_ context.Context, req *tes.GetTaskRequest) (*tes.Task, error) {
+	t, ok := m.tasks[req.Id]
+	if !ok {
+		return nil, fmt.Errorf("not found")
+	}
+	return t, nil
+}
+
+func (m *mockDatabase) ListTasks(_ context.Context, _ *tes.ListTasksRequest) (*tes.ListTasksResponse, error) {
+	return &tes.ListTasksResponse{}, nil
+}
+
+func (m *mockDatabase) Close() {}
+
 // noopEventWriter implements events.Writer for testing.
 type noopEventWriter struct{}
 
@@ -992,5 +1011,116 @@ func TestFetchPodWarningEvents(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestExtractTaskIDFromExecutorJobName(t *testing.T) {
+	tests := []struct {
+		name string
+		want string
+	}{
+		{"abc123-0", "abc123"},
+		{"abc123-42", "abc123"},
+		{"task-id-with-dashes-0", "task-id-with-dashes"},
+		{"abc123", ""},     // no index suffix
+		{"abc123-", ""},    // empty suffix
+		{"abc123-foo", ""}, // non-numeric suffix
+		{"-0", ""},         // empty task ID portion
+		{"", ""},
+	}
+	for _, tt := range tests {
+		got := extractTaskIDFromExecutorJobName(tt.name)
+		if got != tt.want {
+			t.Errorf("extractTaskIDFromExecutorJobName(%q) = %q, want %q", tt.name, got, tt.want)
+		}
+	}
+}
+
+// TestCleanOrphanedResources_ExecutorJobs verifies that CleanOrphanedResources
+// discovers and deletes executor jobs whose parent tasks are in a terminal state.
+func TestCleanOrphanedResources_ExecutorJobs(t *testing.T) {
+	const ns = "test-namespace"
+	const taskID = "orphaned-task"
+	ctx := context.Background()
+
+	// Executor job left behind after the worker job was already removed.
+	executorJob := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      taskID + "-0",
+			Namespace: ns,
+			Labels:    map[string]string{"app": "funnel-executor"},
+		},
+	}
+
+	fakeClient := fake.NewSimpleClientset(executorJob)
+
+	db := &mockDatabase{
+		tasks: map[string]*tes.Task{
+			taskID: {Id: taskID, State: tes.State_COMPLETE},
+		},
+	}
+
+	conf := config.DefaultConfig()
+	conf.Kubernetes.Namespace = ns
+	conf.Kubernetes.JobsNamespace = ns
+
+	backend := &Backend{
+		client:   fakeClient,
+		log:      logger.NewLogger("test", logger.DefaultConfig()),
+		conf:     conf,
+		event:    &noopEventWriter{},
+		database: db,
+	}
+
+	backend.CleanOrphanedResources(ctx)
+
+	// Executor job must be gone.
+	_, err := fakeClient.BatchV1().Jobs(ns).Get(ctx, taskID+"-0", metav1.GetOptions{})
+	if err == nil {
+		t.Error("expected executor job to be deleted, but it still exists")
+	}
+}
+
+// TestCleanOrphanedResources_ExecutorJobs_ActiveTask verifies that executor jobs
+// for tasks that are still active are NOT deleted.
+func TestCleanOrphanedResources_ExecutorJobs_ActiveTask(t *testing.T) {
+	const ns = "test-namespace"
+	const taskID = "active-task"
+	ctx := context.Background()
+
+	executorJob := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      taskID + "-0",
+			Namespace: ns,
+			Labels:    map[string]string{"app": "funnel-executor"},
+		},
+	}
+
+	fakeClient := fake.NewSimpleClientset(executorJob)
+
+	db := &mockDatabase{
+		tasks: map[string]*tes.Task{
+			taskID: {Id: taskID, State: tes.State_RUNNING},
+		},
+	}
+
+	conf := config.DefaultConfig()
+	conf.Kubernetes.Namespace = ns
+	conf.Kubernetes.JobsNamespace = ns
+
+	backend := &Backend{
+		client:   fakeClient,
+		log:      logger.NewLogger("test", logger.DefaultConfig()),
+		conf:     conf,
+		event:    &noopEventWriter{},
+		database: db,
+	}
+
+	backend.CleanOrphanedResources(ctx)
+
+	// Executor job must still be present — task is running.
+	_, err := fakeClient.BatchV1().Jobs(ns).Get(ctx, taskID+"-0", metav1.GetOptions{})
+	if err != nil {
+		t.Errorf("expected executor job to remain for running task, got: %v", err)
 	}
 }
