@@ -425,10 +425,10 @@ func TestExtractTaskIDFromExecutorJobName(t *testing.T) {
 		{"abc123-0", "abc123"},
 		{"abc123-42", "abc123"},
 		{"task-id-with-dashes-0", "task-id-with-dashes"},
-		{"abc123", ""},      // no index suffix
-		{"abc123-", ""},     // empty suffix
-		{"abc123-foo", ""},  // non-numeric suffix
-		{"-0", ""},          // empty task ID portion
+		{"abc123", ""},     // no index suffix
+		{"abc123-", ""},    // empty suffix
+		{"abc123-foo", ""}, // non-numeric suffix
+		{"-0", ""},         // empty task ID portion
 		{"", ""},
 	}
 	for _, tt := range tests {
