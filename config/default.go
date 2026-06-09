@@ -229,7 +229,7 @@ func DefaultConfig() *Config {
 	c.GCPBatch.Project = "example-gcp-project"
 	c.GCPBatch.Location = "us-central1"
 	c.GCPBatch.ReconcileRate = reconcile
-	c.GCPBatch.DisableReconciler = true
+	c.GCPBatch.DisableReconciler = false
 
 	// Kubernetes Configs moved to Helm Charts:
 	// https://github.com/ohsu-comp-bio/helm-charts/tree/main/charts/funnel
