@@ -261,7 +261,7 @@ func (b *Backend) createResources(ctx context.Context, task *tes.Task, config *c
 		b.log.Debug("creating Worker PV", "taskID", task.Id)
 
 		// Check to make sure required configs are present
-		if config.GenericS3 == nil || len(config.GenericS3) == 0 ||
+		if len(config.GenericS3) == 0 ||
 			config.GenericS3[0].Bucket == "" || config.GenericS3[0].Region == "" {
 			return fmt.Errorf("Bucket or Region not found in GenericS3 config when attempting to create resources for task: %#v", task)
 		}
