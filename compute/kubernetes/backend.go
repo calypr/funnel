@@ -926,8 +926,6 @@ func (b *Backend) CleanOrphanedResources(ctx context.Context) {
 		}
 	}
 
-	// TODO: Add Executor Jobs here beacause orphaned tasks can result in orphaned jobs
-
 	// Executor Jobs (label app=funnel-executor; named {taskID}-{index}).
 	// These are not owned by the worker Job, so they must be discovered and cleaned explicitly.
 	executorJobs, err := b.client.BatchV1().Jobs(namespace).List(ctx, metav1.ListOptions{LabelSelector: "app=funnel-executor"})
