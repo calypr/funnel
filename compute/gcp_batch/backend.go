@@ -6,6 +6,7 @@ package gcp_batch
 import (
 	"context"
 	"fmt"
+	"path"
 	"strings"
 	"time"
 
@@ -13,12 +14,12 @@ import (
 	"cloud.google.com/go/batch/apiv1/batchpb"
 	"cloud.google.com/go/logging"
 	logadmin "cloud.google.com/go/logging/apiv2"
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/ohsu-comp-bio/funnel/config"
 	"github.com/ohsu-comp-bio/funnel/events"
 	"github.com/ohsu-comp-bio/funnel/logger"
 	"github.com/ohsu-comp-bio/funnel/storage"
 	"github.com/ohsu-comp-bio/funnel/tes"
+	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
 
@@ -403,27 +404,22 @@ ReconcileLoop:
 					}
 					pageToken = lresp.NextPageToken
 
-					// Map TES Task → GCP Batch Job
+					// Map Funnel task ID → task. The GCP job name is always
+					// "projects/.../jobs/<task-id>" so we match on path.Base(j.Name).
 					tmap := make(map[string]*tes.Task)
-					var jobs []*string
 					for _, t := range lresp.Tasks {
-						jobid := b.getTaskID(t)
-						b.log.Debug("Checking task for GCP Batch job ID",
+						b.log.Debug("Queueing task for reconciliation",
 							"taskID", t.Id,
-							"gcpbatch_uid", jobid,
 							"state", t.State)
-						if jobid != "" {
-							tmap[jobid] = t
-							jobs = append(jobs, aws.String(jobid))
-						}
+						tmap[t.Id] = t
 					}
 
 					b.log.Debug("Tasks to reconcile",
-						"count", len(jobs),
+						"count", len(tmap),
 						"state", s)
 
-					// Last page of jobs from the Funnel Database
-					if len(jobs) == 0 {
+					// Nothing to reconcile on this page — advance or stop.
+					if len(tmap) == 0 {
 						if pageToken == "" {
 							break
 						}
@@ -441,12 +437,16 @@ ReconcileLoop:
 
 					for {
 						j, err := it.Next()
+						if err == iterator.Done {
+							break
+						}
 						if err != nil {
+							b.log.Error("ListJobs iterator error", err)
 							break
 						}
 
-						// If Job is in our list
-						task, ok := tmap[j.Uid]
+						// Match by job name suffix, which equals the Funnel task ID.
+						task, ok := tmap[path.Base(j.Name)]
 						if !ok {
 							continue
 						}
