@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -323,6 +324,80 @@ func (b *Backend) cleanResources(ctx context.Context, taskId string) error {
 	return errs
 }
 
+// hasTerminalContainerWaitingError returns true if any pod in pods has a
+// container stuck in a waiting state whose reason is known to be permanent
+// (e.g. CreateContainerConfigError). These pods will never transition to a
+// running state on their own so the task must be failed early rather than
+// waiting for the Job's backoff limit to be exhausted.
+func hasTerminalContainerWaitingError(pods *corev1.PodList) (bool, string) {
+	terminalWaitingReasons := []string{
+		"CreateContainerConfigError", // missing secret / configmap
+		"InvalidImageName",           // malformed image reference
+		"CreateContainerError",       // OCI runtime failed to create container
+		"ErrImagePull",               // image not found or pull failed
+		"ImagePullBackOff",           // repeated image pull failure
+		"RunContainerError",          // runtime failed to start container (e.g. bad entrypoint)
+		"StartError",                 // OCI runtime runc create failed
+	}
+	for _, pod := range pods.Items {
+		for _, cs := range pod.Status.ContainerStatuses {
+			if cs.State.Waiting == nil {
+				continue
+			}
+			reason := cs.State.Waiting.Reason
+			if slices.Contains(terminalWaitingReasons, reason) {
+				msg := cs.State.Waiting.Message
+				if msg == "" {
+					msg = reason
+				}
+				return true, fmt.Sprintf("%s: %s", reason, msg)
+			}
+		}
+	}
+	return false, ""
+}
+
+// podWarningEventReasons lists the pod event reasons (from `kubectl describe pod`)
+// that are safe to surface to users as system log entries. These are all
+// informational failure signals with no risk of leaking sensitive runtime internals.
+var podWarningEventReasons = []string{
+	"Failed",           // image pull failures, container start failures
+	"BackOff",          // back-off restarting / pulling
+	"ErrImagePull",     // explicit image-pull error
+	"ImagePullBackOff", // image pull back-off
+	"StartError",       // OCI runtime / entrypoint errors
+}
+
+// FetchPodWarningEvents returns Warning events for the given pods whose reason
+// is in podWarningEventReasons. The messages are deduplicated and returned as a
+// newline-joined string. An empty string is returned when nothing useful is
+// found. This surfaces the human-readable detail that appears in
+// `kubectl describe pod` (e.g. "Error: secret \"foo\" not found") into the
+// TES task system logs.
+func FetchPodWarningEvents(ctx context.Context, clientset kubernetes.Interface, namespace string, pods *corev1.PodList) string {
+	seen := make(map[string]struct{})
+	var messages []string
+	for _, pod := range pods.Items {
+		evList, err := clientset.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{
+			FieldSelector: fmt.Sprintf("involvedObject.name=%s,type=Warning", pod.Name),
+		})
+		if err != nil {
+			continue
+		}
+		for _, ev := range evList.Items {
+			if !slices.Contains(podWarningEventReasons, ev.Reason) {
+				continue
+			}
+			key := ev.Reason + ":" + ev.Message
+			if _, dup := seen[key]; !dup {
+				seen[key] = struct{}{}
+				messages = append(messages, fmt.Sprintf("%s: %s", ev.Reason, ev.Message))
+			}
+		}
+	}
+	return strings.Join(messages, "\n")
+}
+
 // isJobSchedulingTimedOut returns true if all pods for the given job have been
 // stuck in Pending (with a scheduling condition) for longer than timeout.
 // It returns false if any pod has been scheduled, or if pod status cannot be determined.
@@ -352,6 +427,134 @@ func (b *Backend) isJobSchedulingTimedOut(ctx context.Context, jobName string, t
 		}
 	}
 	return false
+}
+
+// getFailedPodInfo returns a human-readable summary of why the most recently
+// terminated pod for jobName failed: "exit code N (Reason): Message". It is
+// best-effort; an empty string is returned when no useful information is found.
+func (b *Backend) getFailedPodInfo(ctx context.Context, jobName string) string {
+	pods, err := b.client.CoreV1().Pods(b.conf.Kubernetes.JobsNamespace).List(ctx, metav1.ListOptions{
+		LabelSelector: fmt.Sprintf("job-name=%s", jobName),
+	})
+	if err != nil {
+		b.log.Error("reconcile: listing pods for failed job", "taskID", jobName, "error", err)
+		return ""
+	}
+
+	var latestFinish metav1.Time
+	var result string
+	for _, pod := range pods.Items {
+		for _, cs := range pod.Status.ContainerStatuses {
+			t := cs.State.Terminated
+			if t == nil || t.ExitCode == 0 {
+				continue
+			}
+			if latestFinish.IsZero() || t.FinishedAt.After(latestFinish.Time) {
+				latestFinish = t.FinishedAt
+				reason := t.Reason
+				if reason == "" {
+					reason = "ExitError"
+				}
+				result = fmt.Sprintf("exit code %d (%s): %s", t.ExitCode, reason, t.Message)
+			}
+		}
+	}
+	return result
+}
+
+// failedCreateThreshold is the minimum number of FailedCreate events required
+// before the reconciler treats the job as persistently broken.
+const failedCreateThreshold = 5
+
+// minFailureSpan is the minimum duration between the first and last FailedCreate
+// event required before the reconciler acts. This prevents false-positives from
+// rapid-fire bursts in the first few seconds of a job's life.
+const minFailureSpan = 20 * time.Second
+
+// hasJobFailedCreateEvent returns (totalCount, message) when the job has
+// accumulated enough FailedCreate events spread over enough real time and no
+// SuccessfulCreate has occurred after the last failure. Returns (0, "") when
+// the failures look transient or have self-resolved.
+//
+// A FailedCreate event is emitted when the Job controller tried to create a pod
+// but was rejected before the pod object was ever persisted (e.g. Pod Security
+// Admission enforcement). In that case there are no pod container statuses to
+// inspect, so hasTerminalContainerWaitingError cannot detect the failure.
+func (b *Backend) hasJobFailedCreateEvent(ctx context.Context, jobName string) (int, string) {
+	ns := b.conf.Kubernetes.JobsNamespace
+
+	allEvents, err := b.client.CoreV1().Events(ns).List(ctx, metav1.ListOptions{
+		FieldSelector: fmt.Sprintf("involvedObject.name=%s", jobName),
+	})
+	if err != nil {
+		b.log.Error("reconcile: listing events for job", "taskID", jobName, "error", err)
+		return 0, ""
+	}
+
+	var (
+		firstFailed   metav1.Time
+		latestFailed  metav1.Time
+		latestMsg     string
+		totalCount    int
+		latestSuccess metav1.Time
+	)
+
+	for _, ev := range allEvents.Items {
+		last := ev.LastTimestamp
+		if last.IsZero() {
+			last = metav1.Time{Time: ev.CreationTimestamp.Time}
+		}
+		switch ev.Reason {
+		case "FailedCreate":
+			c := int(ev.Count)
+			if c < 1 {
+				c = 1 // brand-new singleton events have Count=0
+			}
+			totalCount += c
+			// Use FirstTimestamp (the time of the first occurrence in a
+			// deduplicated event) to measure how long the failures have been
+			// occurring. Fall back to LastTimestamp if FirstTimestamp is unset.
+			first := ev.FirstTimestamp
+			if first.IsZero() {
+				first = last
+			}
+			if firstFailed.IsZero() || first.Before(&firstFailed) {
+				firstFailed = first
+			}
+			if latestFailed.IsZero() || last.After(latestFailed.Time) {
+				latestFailed = last
+				latestMsg = ev.Message
+			}
+		case "SuccessfulCreate":
+			if latestSuccess.IsZero() || last.After(latestSuccess.Time) {
+				latestSuccess = last
+			}
+		}
+	}
+
+	if totalCount == 0 {
+		return 0, ""
+	}
+
+	// If a SuccessfulCreate occurred after the last failure the Job controller
+	// recovered on its own; do not surface this as an error.
+	if !latestSuccess.IsZero() && latestSuccess.After(latestFailed.Time) {
+		b.log.Debug("reconcile: FailedCreate resolved by later SuccessfulCreate", "taskID", jobName)
+		return 0, ""
+	}
+
+	// Require both a minimum count and a minimum span between first and last
+	// failure before treating this as persistent.
+	failureSpan := latestFailed.Time.Sub(firstFailed.Time)
+	if totalCount < failedCreateThreshold || failureSpan < minFailureSpan {
+		b.log.Debug("reconcile: FailedCreate below persistence threshold, skipping",
+			"taskID", jobName, "count", totalCount, "span", failureSpan)
+		return 0, ""
+	}
+
+	b.log.Debug("reconcile: persistent unresolved FailedCreate events",
+		"taskID", jobName, "count", totalCount, "span", failureSpan, "reason", latestMsg)
+	return totalCount, latestMsg
 }
 
 // Reconcile loops through tasks and checks the status from Funnel's database
@@ -416,14 +619,12 @@ func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableClea
 
 	ticker := time.NewTicker(rate)
 	failedJobEvents := make(map[string]int)
-	const maxErrEventWrites = 2
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-
 			// List worker jobs only (label selector excludes executor jobs and unrelated jobs).
 			// Bug: If K8s Job is not created by the time reconciler runs, then the TES Task itself will be prematurely marked as SYSTEM_ERROR
 			jobs, err := b.client.BatchV1().Jobs(b.conf.Kubernetes.JobsNamespace).List(ctx, metav1.ListOptions{
@@ -476,6 +677,59 @@ func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableClea
 						status := j.Status
 						switch {
 						case status.Active > 0:
+							// Fetch pods once and pass to both checks to avoid redundant K8s API calls.
+							pods, err := b.client.CoreV1().Pods(b.conf.Kubernetes.JobsNamespace).List(ctx, metav1.ListOptions{
+								LabelSelector: fmt.Sprintf("job-name=%s", jobName),
+							})
+							if err != nil {
+								b.log.Error("reconcile: listing pods for job", "taskID", jobName, "error", err)
+								continue
+							}
+
+							// Check for container waiting errors that will never self-resolve
+							// (e.g. CreateContainerConfigError). These keep the Job Active
+							// indefinitely, so we must detect and fail them explicitly.
+							if terminal, reason := hasTerminalContainerWaitingError(pods); terminal {
+								b.log.Debug("reconcile: worker pod has terminal container waiting error", "taskID", jobName, "reason", reason)
+								b.event.WriteEvent(ctx, events.NewState(jobName, tes.SystemError))
+								errDetail := reason
+								if podEvents := FetchPodWarningEvents(ctx, b.client, b.conf.Kubernetes.JobsNamespace, pods); podEvents != "" {
+									errDetail = fmt.Sprintf("%s\n%s", reason, podEvents)
+								}
+								b.event.WriteEvent(ctx, events.NewSystemLog(
+									jobName, 0, 0, "error",
+									"Kubernetes worker pod has a terminal container waiting error",
+									map[string]string{"error": errDetail},
+								))
+								if !disableCleanup {
+									if err := b.cleanResources(ctx, jobName); err != nil {
+										b.log.Error("failed to clean resources", "taskID", jobName, "error", err)
+									}
+								}
+								continue
+							}
+
+							// Check for FailedCreate events on the Job itself. This catches
+							// cases where pod creation is rejected before a pod object is
+							// ever persisted (e.g. Pod Security Admission enforcement blocks
+							// the pod), so there are no pod container statuses to inspect.
+							b.log.Debug("checking for FailedCreate events on job", "taskID", jobName)
+							if count, reason := b.hasJobFailedCreateEvent(ctx, jobName); count > 0 {
+								b.log.Debug("reconcile: worker job has FailedCreate event", "taskID", jobName, "count", count, "reason", reason)
+								b.event.WriteEvent(ctx, events.NewState(jobName, tes.SystemError))
+								b.event.WriteEvent(ctx, events.NewSystemLog(
+									jobName, 0, 0, "error",
+									"Kubernetes worker job failed to create pod",
+									map[string]string{"error": reason},
+								))
+								if !disableCleanup {
+									if err := b.cleanResources(ctx, jobName); err != nil {
+										b.log.Error("failed to clean resources", "taskID", jobName, "error", err)
+									}
+								}
+								continue
+							}
+
 							// If a scheduling timeout is configured, check whether the worker
 							// pod has been stuck in Pending beyond that duration. This catches
 							// scheduling failures (bad NodeSelector, insufficient resources, etc.)
@@ -513,7 +767,7 @@ func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableClea
 							delete(failedJobEvents, jobName)
 
 						case status.Failed > 0:
-							if count, exists := failedJobEvents[jobName]; exists && count >= maxErrEventWrites {
+							if count, exists := failedJobEvents[jobName]; exists && count >= failedCreateThreshold {
 								continue
 							}
 
@@ -523,13 +777,18 @@ func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableClea
 								b.log.Error("reconcile: marshal failed job conditions", "taskID", jobName, "error", err)
 							}
 
+							errDetails := map[string]string{"error": string(conds)}
+							if podInfo := b.getFailedPodInfo(ctx, jobName); podInfo != "" {
+								errDetails["executor_error"] = podInfo
+							}
+
 							b.event.WriteEvent(ctx, events.NewState(jobName, tes.SystemError))
 							b.event.WriteEvent(
 								ctx,
 								events.NewSystemLog(
 									jobName, 0, 0, "error",
 									"Kubernetes job in FAILED state",
-									map[string]string{"error": string(conds)},
+									errDetails,
 								),
 							)
 
@@ -544,6 +803,28 @@ func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableClea
 								continue
 							}
 							delete(failedJobEvents, jobName)
+
+						default:
+							// All status counters are zero: the Job controller has not yet
+							// recorded any Active/Succeeded/Failed pods. This happens when
+							// every pod creation attempt is rejected before Kubernetes
+							// persists a pod object (e.g. Pod Security Admission blocks the
+							// pod). Check for FailedCreate events which are the only signal
+							// available in this state.
+							if count, reason := b.hasJobFailedCreateEvent(ctx, jobName); count > 0 {
+								b.log.Debug("reconcile: worker job has FailedCreate event (zero-status)", "taskID", jobName, "count", count, "reason", reason)
+								b.event.WriteEvent(ctx, events.NewState(jobName, tes.SystemError))
+								b.event.WriteEvent(ctx, events.NewSystemLog(
+									jobName, 0, 0, "error",
+									"Kubernetes worker job failed to create pod",
+									map[string]string{"error": reason},
+								))
+								if !disableCleanup {
+									if err := b.cleanResources(ctx, jobName); err != nil {
+										b.log.Error("failed to clean resources", "taskID", jobName, "error", err)
+									}
+								}
+							}
 						}
 					}
 
@@ -644,8 +925,6 @@ func (b *Backend) CleanOrphanedResources(ctx context.Context) {
 			}
 		}
 	}
-
-	// TODO: Add Executor Jobs here beacause orphaned tasks can result in orphaned jobs
 
 	// Executor Jobs (label app=funnel-executor; named {taskID}-{index}).
 	// These are not owned by the worker Job, so they must be discovered and cleaned explicitly.
