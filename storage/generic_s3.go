@@ -198,6 +198,8 @@ func download(ctx context.Context, client *minio.Client, bucket, objectPath, fil
 	opts := minio.GetObjectOptions{}
 	if kmskeyId != "" {
 		logger.Debug("genericS3: using KMS encryption", "kmsKeyId", kmskeyId)
+		// Updated to avoid passing in erroneous context
+		// https://github.com/minio/minio-go/issues/2235
 		SSEKMS, err := encrypt.NewSSEKMS(kmskeyId, nil)
 		if err != nil {
 			return fmt.Errorf("genericS3: download(): creating SSEKMS: %v", err)
