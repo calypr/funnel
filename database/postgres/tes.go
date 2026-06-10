@@ -89,6 +89,14 @@ func (db *Postgres) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*
 		paramCount++
 	}
 
+	// State filter. FIXME: The logic fails to fetch the records for tasks in the UNKNOWN state, but we currently have no tasks in that state, so it isn't a problem.
+	// We should review this logic when we add support for UNKNOWN state tasks.
+	if req.State != tes.State_UNKNOWN {
+		whereClauses = append(whereClauses, fmt.Sprintf("state = $%d", paramCount))
+		args = append(args, req.State)
+		paramCount++
+	}
+
 	// Authorization filter
 	if userInfo := server.GetUser(ctx); !userInfo.CanSeeAllTasks() {
 		whereClauses = append(whereClauses, fmt.Sprintf("owner = $%d", paramCount))
