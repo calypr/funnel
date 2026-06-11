@@ -6,6 +6,11 @@ on:
   push:
     tags:
       - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v0.11.14)'
+        required: true
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -41,8 +46,8 @@ jobs:
       - name: Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
-          BRANCH: ${{ github.ref_name }}
+          GORELEASER_CURRENT_TAG: ${{ inputs.tag || github.ref_name }}
+          BRANCH: ${{ inputs.tag || github.ref_name }}
         run: |
           export PATH="$HOME/go/bin:$PATH"
           make release
