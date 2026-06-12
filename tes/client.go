@@ -179,6 +179,15 @@ func (c *Client) CancelTaskWithMessage(ctx context.Context, req *CancelTaskReque
 		return nil, err
 	}
 
+	// A successful cancel returns 204 No Content with an empty body. There is
+	// nothing to unmarshal, so return an empty response (plus any header message).
+	if len(bytes.TrimSpace(body)) == 0 {
+		return &CancelTaskResult{
+			Response: &CancelTaskResponse{},
+			Message:  httpResp.Header.Get("Grpc-Metadata-X-Funnel-Message"),
+		}, nil
+	}
+
 	// Check if the response contains a message field (from middleware)
 	var rawResponse map[string]interface{}
 	if err := json.Unmarshal(body, &rawResponse); err == nil {
