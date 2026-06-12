@@ -108,7 +108,7 @@ func (c *CustomMarshal) DetectView(task *tes.Task) (tes.View, error) {
 		return tes.View_MINIMAL, nil
 	}
 
-	if len(task.Logs[0].SystemLogs) == 0 {
+	if len(task.Logs) == 0 || len(task.Logs[0].SystemLogs) == 0 {
 		return tes.View_BASIC, nil
 	}
 
