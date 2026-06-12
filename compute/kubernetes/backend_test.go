@@ -732,6 +732,19 @@ func (c *capturingEventWriter) hasSystemError(taskID string) bool {
 	return false
 }
 
+// systemErrorCount returns the number of SYSTEM_ERROR state events written for taskID.
+func (c *capturingEventWriter) systemErrorCount(taskID string) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	n := 0
+	for _, ev := range c.events {
+		if ev.Id == taskID && ev.Type == events.Type_TASK_STATE && ev.GetState() == tes.State_SYSTEM_ERROR {
+			n++
+		}
+	}
+	return n
+}
+
 // hasSystemLog reports whether a SYSTEM_LOG event whose message contains substr
 // was written for taskID.
 func (c *capturingEventWriter) hasSystemLog(taskID, substr string) bool {
@@ -867,6 +880,18 @@ func TestReconcile_MissingJobFailsTask(t *testing.T) {
 	}
 	evWriter := &capturingEventWriter{}
 
+	// Cancel a few passes after the threshold is crossed so we can also assert
+	// the SYSTEM_ERROR is emitted exactly once (not re-fired every pass).
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var passes int
+	db.onQueuedList = func() {
+		passes++
+		if passes >= missingJobThreshold+2 {
+			cancel()
+		}
+	}
+
 	conf := config.DefaultConfig()
 	conf.Kubernetes.JobsNamespace = ns
 
@@ -878,16 +903,16 @@ func TestReconcile_MissingJobFailsTask(t *testing.T) {
 		conf:     conf,
 	}
 
-	// Run long enough for more than missingJobThreshold ticks to fire.
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	b.reconcile(ctx, 50*time.Millisecond, true /* disableCleanup */)
+	b.reconcile(ctx, 20*time.Millisecond, true /* disableCleanup */)
 
 	if !evWriter.hasSystemError(taskID) {
 		t.Errorf("expected SYSTEM_ERROR for task with missing job, got events: %+v", evWriter.events)
 	}
 	if !evWriter.hasSystemLog(taskID, "no longer exists") {
 		t.Errorf("expected SYSTEM_LOG describing missing job, got events: %+v", evWriter.events)
+	}
+	if n := evWriter.systemErrorCount(taskID); n != 1 {
+		t.Errorf("expected exactly one SYSTEM_ERROR event, got %d", n)
 	}
 }
 

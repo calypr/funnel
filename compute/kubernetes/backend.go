@@ -578,9 +578,14 @@ func (b *Backend) hasJobFailedCreateEvent(ctx context.Context, jobName string) (
 // |        QUEUED       |     FAILED      |    SYSTEM_ERROR    |
 // |  INITIALIZING       |     FAILED      |    SYSTEM_ERROR    |
 // |       RUNNING       |     FAILED      |    SYSTEM_ERROR    |
+// |        QUEUED       |    MISSING      |    SYSTEM_ERROR    |
+// |  INITIALIZING       |    MISSING      |    SYSTEM_ERROR    |
+// |       RUNNING       |    MISSING      |    SYSTEM_ERROR    |
 //
 // In this context a "FAILED" state is being used as a generic term that captures
-// one or more terminal states for the backend.
+// one or more terminal states for the backend. "MISSING" means the worker Job no
+// longer exists in Kubernetes (e.g. it was deleted out-of-band) — after a short
+// grace period the task is failed rather than left stuck (see issue #88).
 //
 // This loop is also used to cleanup successful jobs.
 func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableCleanup bool) {
@@ -694,6 +699,16 @@ func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableClea
 							// consecutive passes. A Job deleted out-of-band while the
 							// task is non-terminal would otherwise leave it stuck in
 							// QUEUED/INITIALIZING/RUNNING forever (issue #88).
+							//
+							// Once we have crossed the threshold and written the
+							// SYSTEM_ERROR event we keep the counter pinned (rather than
+							// deleting it) so that we do not re-emit the event on every
+							// subsequent pass while the task's terminal state propagates
+							// and it drops out of the non-terminal list.
+							if missingJobCounts[taskID] >= missingJobThreshold {
+								continue
+							}
+
 							missingJobCounts[taskID]++
 							if missingJobCounts[taskID] < missingJobThreshold {
 								b.log.Debug("reconcile: non-terminal task has no worker job, waiting before failing",
@@ -716,7 +731,6 @@ func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableClea
 									b.log.Error("reconcile: failed to clean resources for missing job", "taskID", taskID, "error", err)
 								}
 							}
-							delete(missingJobCounts, taskID)
 							continue
 						}
 
