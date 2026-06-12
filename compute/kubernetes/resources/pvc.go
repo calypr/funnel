@@ -18,7 +18,7 @@ import (
 
 // Create the Worker/Executor PVC from config/kubernetes-pvc.yaml
 // TODO: Move this config file to Helm Charts so users can see/customize it
-func CreatePVC(ctx context.Context, taskId string, conf *config.Config, client kubernetes.Interface, log *logger.Logger, ownerRef *metav1.OwnerReference) error {
+func CreatePVC(ctx context.Context, taskId string, diskGb float64, conf *config.Config, client kubernetes.Interface, log *logger.Logger, ownerRef *metav1.OwnerReference) error {
 
 	jobNamespace := conf.Kubernetes.JobsNamespace
 
@@ -41,6 +41,7 @@ func CreatePVC(ctx context.Context, taskId string, conf *config.Config, client k
 		"Namespace": jobNamespace,
 		"Bucket":    s3Bucket,
 		"Region":    s3Region,
+		"DiskGb":    diskGb,
 	})
 	if err != nil {
 		return fmt.Errorf("%v", err)

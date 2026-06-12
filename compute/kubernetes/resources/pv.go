@@ -18,7 +18,7 @@ import (
 )
 
 // Create the Worker/Executor PV from config/kubernetes-pv.yaml
-func CreatePV(ctx context.Context, taskId string, conf *config.Config, client kubernetes.Interface, log *logger.Logger) error {
+func CreatePV(ctx context.Context, taskId string, diskGb float64, conf *config.Config, client kubernetes.Interface, log *logger.Logger) error {
 
 	// Load templates
 	t, err := template.New(taskId).Parse(conf.Kubernetes.PVTemplate)
@@ -41,6 +41,7 @@ func CreatePV(ctx context.Context, taskId string, conf *config.Config, client ku
 		"Bucket":    s3Bucket,
 		"Region":    s3Region,
 		"KmsKeyID":  s3KmsKeyID,
+		"DiskGb":    diskGb,
 	})
 	if err != nil {
 		return fmt.Errorf("%v", err)

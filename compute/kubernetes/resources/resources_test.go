@@ -241,7 +241,7 @@ func TestCreatePV(t *testing.T) {
 	conf := config.DefaultConfig()
 	conf.Kubernetes.JobsNamespace = jobsNamespace
 	conf.Kubernetes.PVTemplate = minimalPVTemplate
-	err := CreatePV(ctx, testTaskID, conf, fake.NewSimpleClientset(), l)
+	err := CreatePV(ctx, testTaskID, 0, conf, fake.NewSimpleClientset(), l)
 	if err != nil {
 		t.Errorf("CreatePV failed: %v", err)
 	}
@@ -282,7 +282,7 @@ func TestCreatePVC(t *testing.T) {
 	conf := config.DefaultConfig()
 	conf.Kubernetes.JobsNamespace = jobsNamespace
 	conf.Kubernetes.PVCTemplate = minimalPVCTemplate
-	err := CreatePVC(ctx, testTaskID, conf, fake.NewSimpleClientset(), l, nil)
+	err := CreatePVC(ctx, testTaskID, 0, conf, fake.NewSimpleClientset(), l, nil)
 	if err != nil {
 		t.Errorf("CreatePVC failed: %v", err)
 	}

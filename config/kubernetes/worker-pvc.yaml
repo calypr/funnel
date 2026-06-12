@@ -13,5 +13,5 @@ spec:
     - ReadWriteMany
   resources:
     requests:
-      storage: 10Mi
+      storage: {{if ne .DiskGb 0.0}}"{{printf "%.0fGi" .DiskGb}}"{{else}}"1Gi"{{end}}
   volumeName: funnel-worker-pv-{{.TaskId}}

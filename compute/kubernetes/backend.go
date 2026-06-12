@@ -267,7 +267,8 @@ func (b *Backend) createResources(ctx context.Context, task *tes.Task, config *c
 		}
 
 		// Create PV (cluster-scoped — cannot be owned by a namespaced Job)
-		err = resources.CreatePV(timeoutCtx, task.Id, config, b.client, b.log)
+		diskGb := task.GetResources().GetDiskGb()
+		err = resources.CreatePV(timeoutCtx, task.Id, diskGb, config, b.client, b.log)
 		if err != nil {
 			_ = b.Cancel(context.Background(), task.Id)
 			return fmt.Errorf("creating Worker PV: %w", err)
@@ -275,7 +276,7 @@ func (b *Backend) createResources(ctx context.Context, task *tes.Task, config *c
 
 		// Create PVC
 		b.log.Debug("creating Worker PVC", "taskID", task.Id)
-		err = resources.CreatePVC(timeoutCtx, task.Id, config, b.client, b.log, ownerRef)
+		err = resources.CreatePVC(timeoutCtx, task.Id, diskGb, config, b.client, b.log, ownerRef)
 		if err != nil {
 			_ = b.Cancel(context.Background(), task.Id)
 			return fmt.Errorf("creating Worker PVC: %w", err)
