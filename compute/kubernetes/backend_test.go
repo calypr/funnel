@@ -670,11 +670,18 @@ func TestHasJobFailedCreateEvent(t *testing.T) {
 type mockReadOnlyServer struct {
 	mu    sync.Mutex
 	tasks []*tes.Task
+	// onQueuedList, if set, is invoked each time ListTasks is called for the
+	// QUEUED state. Tests use it to count reconcile passes and cancel the
+	// context deterministically after a known number of passes.
+	onQueuedList func()
 }
 
 func (m *mockReadOnlyServer) ListTasks(_ context.Context, req *tes.ListTasksRequest) (*tes.ListTasksResponse, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if req.State == tes.State_QUEUED && m.onQueuedList != nil {
+		m.onQueuedList()
+	}
 	var out []*tes.Task
 	for _, t := range m.tasks {
 		if t.State == req.State {
@@ -718,6 +725,21 @@ func (c *capturingEventWriter) hasSystemError(taskID string) bool {
 	for _, ev := range c.events {
 		if ev.Id == taskID && ev.Type == events.Type_TASK_STATE {
 			if ev.GetState() == tes.State_SYSTEM_ERROR {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// hasSystemLog reports whether a SYSTEM_LOG event whose message contains substr
+// was written for taskID.
+func (c *capturingEventWriter) hasSystemLog(taskID, substr string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, ev := range c.events {
+		if ev.Id == taskID && ev.Type == events.Type_SYSTEM_LOG {
+			if sl := ev.GetSystemLog(); sl != nil && strings.Contains(sl.Msg, substr) {
 				return true
 			}
 		}
@@ -824,6 +846,99 @@ func TestReconcile_ZeroStatusFailedCreate(t *testing.T) {
 
 	if !evWriter.hasSystemError(taskID) {
 		t.Errorf("expected SYSTEM_ERROR event for task %s, got events: %+v", taskID, evWriter.events)
+	}
+}
+
+// TestReconcile_MissingJobFailsTask verifies that a non-terminal task whose
+// worker Job has been deleted out-of-band (e.g. manually, or while the pod was
+// still ContainerCreating) is eventually transitioned to SYSTEM_ERROR with a
+// system log, rather than being left stuck in QUEUED forever. See issue #88.
+func TestReconcile_MissingJobFailsTask(t *testing.T) {
+	const ns = "test-ns"
+	const taskID = "test-task-missing-job"
+
+	// No worker Job exists in Kubernetes, but the task is QUEUED in the DB.
+	fakeClient := fake.NewSimpleClientset()
+
+	db := &mockReadOnlyServer{
+		tasks: []*tes.Task{
+			{Id: taskID, State: tes.State_QUEUED},
+		},
+	}
+	evWriter := &capturingEventWriter{}
+
+	conf := config.DefaultConfig()
+	conf.Kubernetes.JobsNamespace = ns
+
+	b := &Backend{
+		client:   fakeClient,
+		event:    evWriter,
+		database: db,
+		log:      logger.NewLogger("test", logger.DefaultConfig()),
+		conf:     conf,
+	}
+
+	// Run long enough for more than missingJobThreshold ticks to fire.
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	b.reconcile(ctx, 50*time.Millisecond, true /* disableCleanup */)
+
+	if !evWriter.hasSystemError(taskID) {
+		t.Errorf("expected SYSTEM_ERROR for task with missing job, got events: %+v", evWriter.events)
+	}
+	if !evWriter.hasSystemLog(taskID, "no longer exists") {
+		t.Errorf("expected SYSTEM_LOG describing missing job, got events: %+v", evWriter.events)
+	}
+}
+
+// TestReconcile_MissingJobGracePeriod verifies that a non-terminal task with no
+// worker Job is NOT failed within the grace window — this is the expected,
+// transient state immediately after submit (before the Job object is created).
+// The task must not be marked SYSTEM_ERROR until missingJobThreshold consecutive
+// passes have observed the missing job.
+func TestReconcile_MissingJobGracePeriod(t *testing.T) {
+	const ns = "test-ns"
+	const taskID = "test-task-grace"
+
+	fakeClient := fake.NewSimpleClientset()
+
+	evWriter := &capturingEventWriter{}
+	db := &mockReadOnlyServer{
+		tasks: []*tes.Task{
+			{Id: taskID, State: tes.State_QUEUED},
+		},
+	}
+
+	// Cancel the context after the second reconcile pass (2 < missingJobThreshold),
+	// so the task should still be within its grace window and not yet failed.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var passes int
+	db.onQueuedList = func() {
+		passes++
+		if passes >= 2 {
+			cancel()
+		}
+	}
+
+	conf := config.DefaultConfig()
+	conf.Kubernetes.JobsNamespace = ns
+
+	b := &Backend{
+		client:   fakeClient,
+		event:    evWriter,
+		database: db,
+		log:      logger.NewLogger("test", logger.DefaultConfig()),
+		conf:     conf,
+	}
+
+	b.reconcile(ctx, 20*time.Millisecond, true /* disableCleanup */)
+
+	if passes >= missingJobThreshold {
+		t.Skipf("reconcile ran %d passes before cancel; cannot assert grace behavior for threshold %d", passes, missingJobThreshold)
+	}
+	if evWriter.hasSystemError(taskID) {
+		t.Errorf("task was failed within grace window (%d passes, threshold %d): %+v", passes, missingJobThreshold, evWriter.events)
 	}
 }
 
