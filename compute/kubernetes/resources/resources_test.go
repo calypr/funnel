@@ -9,8 +9,12 @@ import (
 	"github.com/ohsu-comp-bio/funnel/tes"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 )
 
 const (
@@ -350,6 +354,74 @@ func TestDeleteNonExistentResources(t *testing.T) {
 		err := DeletePVC(context.Background(), nonExistentID, namespace, fakeClient, l)
 		if err != nil {
 			t.Errorf("DeletePVC returned unexpected error for non-existent resource: %v", err)
+		}
+	})
+}
+
+// TestDeleteRaceNotFound covers the TOCTOU case where a resource exists when we
+// List/Get it but is deleted (by the K8s TTL controller, GC, or a concurrent
+// reconcile/cancel) before our subsequent Delete/Update runs. A NotFound at that
+// point means the resource reached its desired end state and must not surface as
+// an error — otherwise a task :cancel returns a 500. See issue #89.
+func TestDeleteRaceNotFound(t *testing.T) {
+	// Executor job: present in the List, but Delete races with NotFound.
+	t.Run("ExecutorJob", func(t *testing.T) {
+		execJob := &batchv1.Job{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      testTaskID + "-0",
+				Namespace: jobsNamespace,
+			},
+		}
+		fakeClient := fake.NewSimpleClientset(execJob)
+		fakeClient.PrependReactor("delete", "jobs", func(action k8stesting.Action) (bool, runtime.Object, error) {
+			name := action.(k8stesting.DeleteAction).GetName()
+			return true, nil, apierrors.NewNotFound(schema.GroupResource{Group: "batch", Resource: "jobs"}, name)
+		})
+
+		conf := config.DefaultConfig()
+		conf.Kubernetes.JobsNamespace = jobsNamespace
+		if err := DeleteExecutorJobs(context.Background(), conf, testTaskID, fakeClient, l); err != nil {
+			t.Errorf("DeleteExecutorJobs should ignore NotFound on Delete, got: %v", err)
+		}
+	})
+
+	// PV: present in the Get, has a finalizer, but the finalizer-removing Update
+	// races with NotFound.
+	t.Run("PV", func(t *testing.T) {
+		pv := &corev1.PersistentVolume{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "funnel-worker-pv-" + testTaskID,
+				Finalizers: []string{"kubernetes.io/pv-protection"},
+				Labels:     map[string]string{"namespace": jobsNamespace},
+			},
+		}
+		fakeClient := fake.NewSimpleClientset(pv)
+		fakeClient.PrependReactor("update", "persistentvolumes", func(action k8stesting.Action) (bool, runtime.Object, error) {
+			return true, nil, apierrors.NewNotFound(schema.GroupResource{Resource: "persistentvolumes"}, pv.Name)
+		})
+
+		if err := DeletePV(context.Background(), testTaskID, jobsNamespace, fakeClient, l); err != nil {
+			t.Errorf("DeletePV should ignore NotFound on finalizer Update, got: %v", err)
+		}
+	})
+
+	// PVC: present in the Get, has a finalizer, but the finalizer-removing Update
+	// races with NotFound.
+	t.Run("PVC", func(t *testing.T) {
+		pvc := &corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "funnel-worker-pvc-" + testTaskID,
+				Namespace:  namespace,
+				Finalizers: []string{"kubernetes.io/pvc-protection"},
+			},
+		}
+		fakeClient := fake.NewSimpleClientset(pvc)
+		fakeClient.PrependReactor("update", "persistentvolumeclaims", func(action k8stesting.Action) (bool, runtime.Object, error) {
+			return true, nil, apierrors.NewNotFound(schema.GroupResource{Resource: "persistentvolumeclaims"}, pvc.Name)
+		})
+
+		if err := DeletePVC(context.Background(), testTaskID, namespace, fakeClient, l); err != nil {
+			t.Errorf("DeletePVC should ignore NotFound on finalizer Update, got: %v", err)
 		}
 	})
 }

@@ -92,6 +92,12 @@ func DeletePVC(ctx context.Context, taskID string, namespace string, client kube
 			pvc.Finalizers = nil
 			_, err = client.CoreV1().PersistentVolumeClaims(namespace).Update(ctx, pvc, metav1.UpdateOptions{})
 			if err != nil {
+				// The PVC may have been deleted between our Get and this Update
+				// (concurrent reconcile/cancel or owner-reference GC). NotFound
+				// means it is already gone, which is the desired end state.
+				if errors.IsNotFound(err) {
+					return nil
+				}
 				if errors.IsConflict(err) && i < maxRetries-1 {
 					log.Debug("conflict removing PVC finalizers, retrying", "pvc", name, "attempt", i+1)
 					time.Sleep(delay)
