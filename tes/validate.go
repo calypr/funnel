@@ -5,6 +5,29 @@ import (
 	"strings"
 )
 
+// forbiddenPathPrefixes are container paths that user-submitted tasks are not
+// allowed to mount inputs, outputs, volumes, or working directories into.
+// Mounting over these would expose or clobber sensitive host/kernel interfaces.
+var forbiddenPathPrefixes = []string{
+	"/dev",
+	"/proc",
+	"/sys",
+	"/run",
+	"/var/run",
+}
+
+// isForbiddenPath reports whether path is, or is nested under, any of the
+// forbidden path prefixes. The comparison is exact-segment based so that
+// "/devices" is not treated as being under "/dev".
+func isForbiddenPath(path string) bool {
+	for _, p := range forbiddenPathPrefixes {
+		if path == p || strings.HasPrefix(path, p+"/") {
+			return true
+		}
+	}
+	return false
+}
+
 // ValidationError contains task validation errors.
 type ValidationError []error
 
@@ -41,6 +64,10 @@ func Validate(t *Task) ValidationError {
 			errs.add("Task.Executors[%d].Workdir: must be an absolute path", i)
 		}
 
+		if isForbiddenPath(exec.Workdir) {
+			errs.add("Task.Executors[%d].Workdir: %q is not allowed as a working directory", i, exec.Workdir)
+		}
+
 		if exec.Stdin != "" && !strings.HasPrefix(exec.Stdin, "/") {
 			errs.add("Task.Executors[%d].Stdin: must be an absolute path", i)
 		}
@@ -68,6 +95,10 @@ func Validate(t *Task) ValidationError {
 		if input.Path != "" && !strings.HasPrefix(input.Path, "/") {
 			errs.add("task.Inputs[%d].Path: must be an absolute path", i)
 		}
+
+		if isForbiddenPath(input.Path) {
+			errs.add("Task.Inputs[%d].Path: %q is not allowed as an input path", i, input.Path)
+		}
 	}
 
 	for i, output := range t.Outputs {
@@ -82,11 +113,19 @@ func Validate(t *Task) ValidationError {
 		if output.Path != "" && !strings.HasPrefix(output.Path, "/") {
 			errs.add("task.Outputs[%d].Path: must be an absolute path", i)
 		}
+
+		if isForbiddenPath(output.Path) {
+			errs.add("Task.Outputs[%d].Path: %q is not allowed as an output path", i, output.Path)
+		}
 	}
 
 	for i, vol := range t.Volumes {
 		if !strings.HasPrefix(vol, "/") {
 			errs.add("Task.Volumes[%d]: must be an absolute path", i)
+		}
+
+		if isForbiddenPath(vol) {
+			errs.add("Task.Volumes[%d]: %q is not allowed as a volume path", i, vol)
 		}
 	}
 
