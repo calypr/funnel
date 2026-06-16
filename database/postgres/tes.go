@@ -10,6 +10,24 @@ import (
 	"github.com/ohsu-comp-bio/funnel/tes"
 )
 
+// trimUnusedExecutorLogs removes trailing executor log entries that correspond
+// to executors that never ran. On task creation the Postgres backend
+// pre-allocates one empty ExecutorLog per executor (see WriteEvent /
+// Type_TASK_CREATED) because jsonb_set cannot grow a JSON array in place. When a
+// task stops early (e.g. an executor fails with ignore_error=false), the slots
+// for the executors that never ran remain as empty placeholders. An executor
+// that never started has no StartTime, so trim trailing logs with an empty
+// StartTime to match the lazily-grown shape produced by the other backends.
+func trimUnusedExecutorLogs(task *tes.Task) {
+	for _, tl := range task.GetLogs() {
+		logs := tl.Logs
+		for len(logs) > 0 && logs[len(logs)-1].GetStartTime() == "" {
+			logs = logs[:len(logs)-1]
+		}
+		tl.Logs = logs
+	}
+}
+
 // The PostgreSQL struct for minimal projection (only fields outside the JSONB blob)
 type TaskCore struct {
 	ID       string `db:"id"`
@@ -57,6 +75,8 @@ func (db *Postgres) GetTask(ctx context.Context, req *tes.GetTaskRequest) (*tes.
 	task.Id = core.ID
 	task.State = tes.State(tes.State_value[stateStr])
 	// task.Owner = core.Owner
+
+	trimUnusedExecutorLogs(&task)
 
 	switch req.View {
 	case tes.View_BASIC.String():
@@ -155,6 +175,8 @@ func (db *Postgres) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*
 			fmt.Println("Error unmarshaling task JSON for ListTasks:", err)
 			continue
 		}
+
+		trimUnusedExecutorLogs(&task)
 
 		switch req.View {
 		case tes.View_BASIC.String():

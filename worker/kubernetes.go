@@ -3,12 +3,15 @@ package worker
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"text/template"
 	"time"
 
+	k8sbackend "github.com/ohsu-comp-bio/funnel/compute/kubernetes"
 	"github.com/ohsu-comp-bio/funnel/logger"
 	"github.com/ohsu-comp-bio/funnel/tes"
 	v1 "k8s.io/api/batch/v1"
@@ -57,8 +60,12 @@ type K8sSystemErr struct {
 }
 
 func (e *K8sExecutorErr) Error() string {
+	reason := e.Reason
+	if reason == "" || reason == "Error" {
+		reason = "ExitError"
+	}
 	return fmt.Sprintf("executor job %s failed with exit code %d (%s): %s",
-		e.JobName, e.ExitCode, e.Reason, e.Message)
+		e.JobName, e.ExitCode, reason, e.Message)
 }
 
 func (e *K8sSystemErr) Error() string {
@@ -250,8 +257,21 @@ func (kcmd KubernetesCommand) Run(ctx context.Context) error {
 		}
 	}
 	defer podWatcher.Stop()
+	executorJobName := fmt.Sprintf("%s-%d", taskId, kcmd.JobId)
 	pod, err := waitForPodFinish(ctx, podWatcher)
 	if err != nil {
+		var sysErr *K8sSystemErr
+		if errors.As(err, &sysErr) && slices.Contains(terminalWaitingReasons, sysErr.Reason) {
+			pods, listErr := clientset.CoreV1().Pods(kcmd.JobsNamespace).List(context.Background(), metav1.ListOptions{
+				LabelSelector: fmt.Sprintf("job-name=%s", executorJobName),
+			})
+			if listErr == nil {
+				if events := k8sbackend.FetchPodWarningEvents(context.Background(), clientset, kcmd.JobsNamespace, pods); events != "" {
+					sysErr.Message = sysErr.Message + "\n" + events
+				}
+			}
+			return sysErr
+		}
 		return &K8sSystemErr{
 			Reason:  "PodWaitFailed",
 			Message: "Error waiting for pod to finish",
@@ -386,7 +406,20 @@ func (kcmd KubernetesCommand) GetStderr() io.Writer {
 	return kcmd.Stderr
 }
 
-// Waits until the job finishes
+// terminalWaitingReasons are container waiting states that will never
+// self-resolve, so the executor job should be failed immediately.
+var terminalWaitingReasons = []string{
+	"CreateContainerConfigError", // missing secret / configmap
+	"InvalidImageName",           // malformed image reference
+	"CreateContainerError",       // OCI runtime failed to create container
+	"ErrImagePull",               // image not found or pull failed
+	"ImagePullBackOff",           // repeated image pull failure
+	"RunContainerError",          // runtime failed to start container (e.g. bad entrypoint)
+	"StartError",                 // OCI runtime runc create failed
+}
+
+// waitForPodFinish watches pod events until the container terminates, a
+// terminal waiting state is detected, or the context is cancelled.
 func waitForPodFinish(ctx context.Context, watcher watch.Interface) (*corev1.Pod, error) {
 	// wait up to 5 min for the pod to appear
 	appearanceTimer := time.NewTimer(5 * 60 * time.Second)
@@ -415,14 +448,26 @@ func waitForPodFinish(ctx context.Context, watcher watch.Interface) (*corev1.Pod
 			// Pod exists: stop the appearance timer
 			appearanceTimer.Stop()
 
-			// Check if container is terminated
 			podPhase := pod.Status.Phase
 			logger.Debug("Pod status:", "podPhase", podPhase)
-			if len(pod.Status.ContainerStatuses) > 0 {
-				cStatus := pod.Status.ContainerStatuses[0]
-				if cStatus.State.Terminated != nil {
+
+			allStatuses := append(pod.Status.ContainerStatuses, pod.Status.InitContainerStatuses...)
+			for _, cs := range allStatuses {
+				if cs.State.Terminated != nil {
 					logger.Debug("Container has terminated")
 					return pod, nil
+				}
+				// A container stuck in a terminal waiting state will never start;
+				// fail immediately rather than waiting for the job's backoff limit.
+				if w := cs.State.Waiting; w != nil && slices.Contains(terminalWaitingReasons, w.Reason) {
+					msg := w.Message
+					if msg == "" {
+						msg = w.Reason
+					}
+					return nil, &K8sSystemErr{
+						Reason:  w.Reason,
+						Message: fmt.Sprintf("executor pod has a terminal container waiting error: %s", msg),
+					}
 				}
 			}
 

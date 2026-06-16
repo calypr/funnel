@@ -6,6 +6,7 @@ package gcp_batch
 import (
 	"context"
 	"fmt"
+	"path"
 	"strings"
 	"time"
 
@@ -13,12 +14,12 @@ import (
 	"cloud.google.com/go/batch/apiv1/batchpb"
 	"cloud.google.com/go/logging"
 	logadmin "cloud.google.com/go/logging/apiv2"
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/ohsu-comp-bio/funnel/config"
 	"github.com/ohsu-comp-bio/funnel/events"
 	"github.com/ohsu-comp-bio/funnel/logger"
 	"github.com/ohsu-comp-bio/funnel/storage"
 	"github.com/ohsu-comp-bio/funnel/tes"
+	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
 
@@ -198,7 +199,7 @@ func (b *Backend) Submit(task *tes.Task) error {
 		}
 	}
 
-	// Mount all buckets to `/mnt/share/<BUCKET>` as volumes in the GCP Job Request
+	// Mount all buckets to `/mnt/disks/<BUCKET>` as volumes in the GCP Job Request
 	var volumes []*batchpb.Volume
 	for bucketName := range buckets {
 		volumes = append(volumes, &batchpb.Volume{
@@ -211,23 +212,83 @@ func (b *Backend) Submit(task *tes.Task) error {
 		})
 	}
 
+	// Build a path map: user-specified path → /mnt/disks/<bucket>/<object> so
+	// that executor commands referencing those paths are rewritten before
+	// submission. This avoids symlinks, which are unreliable across containers
+	// on COS (Container-Optimized OS) VMs where each container has an isolated
+	// filesystem.
+	if err := detectPathCollisions(task.Inputs, task.Outputs); err != nil {
+		return fmt.Errorf("GCP Batch path collision: %w", err)
+	}
+
+	pathMap := make(map[string]string) // userPath → mountedPath
+	for _, input := range task.Inputs {
+		if input.Path == "" || input.Url == "" {
+			continue
+		}
+		if err := validatePath(input.Path); err != nil {
+			return fmt.Errorf("invalid input path: %w", err)
+		}
+		bucket, objectPath := extractGCSPath(input.Url)
+		if bucket == "" {
+			continue
+		}
+		pathMap[input.Path] = fmt.Sprintf("/mnt/disks/%s/%s", bucket, objectPath)
+	}
+	for _, output := range task.Outputs {
+		if output.Path == "" || output.Url == "" {
+			continue
+		}
+		if err := validatePath(output.Path); err != nil {
+			return fmt.Errorf("invalid output path: %w", err)
+		}
+		bucket, objectPath := extractGCSPath(output.Url)
+		if bucket == "" {
+			continue
+		}
+		pathMap[output.Path] = fmt.Sprintf("/mnt/disks/%s/%s", bucket, objectPath)
+	}
+
+	// rewriteArg replaces all occurrences of known user paths within a string
+	// with their /mnt/disks/... equivalents. This handles both standalone path
+	// arguments and paths embedded inside shell script strings.
+	rewriteArg := func(s string) string {
+		for userPath, mountedPath := range pathMap {
+			s = strings.ReplaceAll(s, userPath, mountedPath)
+		}
+		return s
+	}
+
 	// Runnables
 	var runnables []*batchpb.Runnable
 
 	for _, executor := range task.Executors {
-		cmd := strings.Join(executor.Command, " ")
+		var commands []string
+		for _, arg := range executor.Command {
+			commands = append(commands, rewriteArg(arg))
+		}
 
-		if executor.Stdout != "" {
-			// Redirect command output to the specified file path
-			cmd = fmt.Sprintf("%s | tee %s", cmd, executor.Stdout)
+		// Wrap in a shell only when stdout/stdin/stderr redirection is needed.
+		if executor.Stdout != "" || executor.Stdin != "" || executor.Stderr != "" {
+			cmd := strings.Join(commands, " ")
+			if executor.Stdout != "" {
+				cmd = fmt.Sprintf("%s | tee %s", cmd, rewriteArg(executor.Stdout))
+			}
+			commands = []string{"sh", "-c", cmd}
+		}
+
+		container := &batchpb.Runnable_Container{
+			ImageUri: executor.Image,
+			Commands: commands,
+		}
+
+		if executor.Workdir != "" {
+			container.Options = fmt.Sprintf("--workdir %s", executor.Workdir)
 		}
 
 		runnable := &batchpb.Runnable{
 			Executable: &batchpb.Runnable_Container_{
-				Container: &batchpb.Runnable_Container{
-					ImageUri: executor.Image,
-					Commands: []string{"sh", "-c", cmd},
-				},
+				Container: container,
 			},
 		}
 
@@ -343,27 +404,22 @@ ReconcileLoop:
 					}
 					pageToken = lresp.NextPageToken
 
-					// Map TES Task → GCP Batch Job
+					// Map Funnel task ID → task. The GCP job name is always
+					// "projects/.../jobs/<task-id>" so we match on path.Base(j.Name).
 					tmap := make(map[string]*tes.Task)
-					var jobs []*string
 					for _, t := range lresp.Tasks {
-						jobid := b.getTaskID(t)
-						b.log.Debug("Checking task for GCP Batch job ID",
+						b.log.Debug("Queueing task for reconciliation",
 							"taskID", t.Id,
-							"gcpbatch_uid", jobid,
 							"state", t.State)
-						if jobid != "" {
-							tmap[jobid] = t
-							jobs = append(jobs, aws.String(jobid))
-						}
+						tmap[t.Id] = t
 					}
 
 					b.log.Debug("Tasks to reconcile",
-						"count", len(jobs),
+						"count", len(tmap),
 						"state", s)
 
-					// Last page of jobs from the Funnel Database
-					if len(jobs) == 0 {
+					// Nothing to reconcile on this page — advance or stop.
+					if len(tmap) == 0 {
 						if pageToken == "" {
 							break
 						}
@@ -381,12 +437,16 @@ ReconcileLoop:
 
 					for {
 						j, err := it.Next()
+						if err == iterator.Done {
+							break
+						}
 						if err != nil {
+							b.log.Error("ListJobs iterator error", err)
 							break
 						}
 
-						// If Job is in our list
-						task, ok := tmap[j.Uid]
+						// Match by job name suffix, which equals the Funnel task ID.
+						task, ok := tmap[path.Base(j.Name)]
 						if !ok {
 							continue
 						}

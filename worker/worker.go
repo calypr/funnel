@@ -196,8 +196,15 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 			resources = &tes.Resources{}
 		}
 
-		ignoreError := false
 		for i, d := range task.GetExecutors() {
+			// If a previous executor failed and its error was not to be ignored,
+			// stop before creating any state (executor writer, log slot, etc.) for
+			// this executor. Creating the writer above would otherwise emit an empty
+			// executor log entry for an executor that never ran.
+			if !run.ok() {
+				break
+			}
+
 			var command = Command{
 				Image:        d.Image,
 				ShellCommand: d.Command,
@@ -285,11 +292,11 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 			// stdout/stderr directly via its PVC mount. Creating host files here
 			// would poison the Mountpoint inode, making the file unreadable by
 			// the worker's mount instance (EPERM).
-			if (run.ok() || ignoreError) && r.Executor.Backend != "kubernetes" {
+			if r.Executor.Backend != "kubernetes" {
 				run.syserr = r.openStepLogs(mapper, s, d)
 			}
 
-			if run.ok() || ignoreError {
+			if run.ok() {
 				err := s.Run(ctx)
 
 				if err != nil {
@@ -309,10 +316,15 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 					default:
 						run.execerr = err
 					}
+
+					// If this executor declared that its errors should be ignored,
+					// clear the executor error so subsequent executors still run.
+					// System errors are never ignored.
+					if run.execerr != nil && d.GetIgnoreError() {
+						run.execerr = nil
+					}
 				}
 			}
-
-			ignoreError = d.GetIgnoreError()
 		}
 	}
 
@@ -337,7 +349,17 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 	// where the worker itself is in a bad state.
 	var outputLog []*tes.OutputFileLog
 	if run.syserr == nil {
-		outputLog, run.syserr = UploadOutputs(ctx, mapper.Outputs, r.Store, event, int(r.Conf.MaxParallelTransfers))
+		var uploadErr error
+		outputLog, uploadErr = UploadOutputs(ctx, mapper.Outputs, r.Store, event, int(r.Conf.MaxParallelTransfers))
+		if uploadErr != nil {
+			if run.execerr != nil {
+				// The executor already failed; treat upload errors as warnings so the
+				// task is reported as EXECUTOR_ERROR rather than SYSTEM_ERROR.
+				event.Error("Failed to upload outputs after executor error", "error", uploadErr)
+			} else {
+				run.syserr = uploadErr
+			}
+		}
 	}
 
 	// unmap paths for OutputFileLog
