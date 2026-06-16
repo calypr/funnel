@@ -29,7 +29,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
-	"google.golang.org/protobuf/proto"
 )
 
 // Server represents a Funnel server. The server handles
@@ -109,23 +108,6 @@ func customErrorHandler(ctx context.Context, mux *runtime.ServeMux, marshaler ru
 		return
 	}
 	w.Write(jErrBytes)
-}
-
-// cancelTaskNoContent makes a successful CancelTask respond with HTTP 204 No
-// Content instead of 200 with an empty `{}` body. Resource cleanup is best-effort
-// and never fails the request (see TaskService.CancelTask), so a successful cancel
-// carries no payload. grpc-gateway invokes this before writing the body; setting
-// 204 here causes the subsequent body write to be discarded (net/http returns
-// ErrBodyNotAllowed, which the gateway ignores), yielding a true bodyless 204.
-//
-// NOTE: added per issue #89 so a cancel is not reported as an error by clients.
-// Revisit during review if 200 `{}` is preferred for consistency with the rest
-// of the TES API surface.
-func cancelTaskNoContent(_ context.Context, w http.ResponseWriter, resp proto.Message) error {
-	if _, ok := resp.(*tes.CancelTaskResponse); ok {
-		w.WriteHeader(http.StatusNoContent)
-	}
-	return nil
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
@@ -218,7 +200,6 @@ func (s *Server) Serve(pctx context.Context) error {
 	grpcMux := runtime.NewServeMux(
 		runtime.WithMarshalerOption(runtime.MIMEWildcard, marsh),
 		runtime.WithErrorHandler(customErrorHandler),
-		runtime.WithForwardResponseOption(cancelTaskNoContent),
 	)
 
 	// m := protojson.MarshalOptions{

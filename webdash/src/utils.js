@@ -135,11 +135,6 @@ function get(url, postJson) {
     .then((fetchOpts) => fetchWithPost(fetchOpts, postJson))
     .then((fetchOpts) => fetch(url.toString(), fetchOpts))
     .then((response) => {
-      // A 204 No Content (e.g. a successful task cancel) has an empty body, so
-      // response.json() would throw. Return null instead of trying to parse.
-      if (response.status === 204) {
-        return null;
-      }
       return response.json();
     })
     .catch((error) => {

@@ -102,32 +102,6 @@ func TestGetTaskTrailingSlash(t *testing.T) {
 	}
 }
 
-// TestCancelTaskNoContent verifies the client handles a 204 No Content cancel
-// response (empty body) without trying to unmarshal it. See issue #89 / the 204
-// cancel-response change.
-func TestCancelTaskNoContent(t *testing.T) {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/v1/tasks/test-id:cancel", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-	})
-
-	ts := testServer(mux)
-	defer ts.Close()
-
-	c, err := NewClient("http://localhost:20001")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	resp, err := c.CancelTask(context.Background(), &CancelTaskRequest{Id: "test-id"})
-	if err != nil {
-		t.Fatalf("unexpected error on 204 cancel: %v", err)
-	}
-	if resp == nil {
-		t.Fatal("expected non-nil CancelTaskResponse")
-	}
-}
-
 func TestClientTimeout(t *testing.T) {
 	// Set up test server response
 	mux := http.NewServeMux()
