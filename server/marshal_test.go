@@ -89,6 +89,58 @@ func TestCustomMarshalDecoder_TaskAcceptsNullTags(t *testing.T) {
 	}
 }
 
+// A task with a CreationTime set but no logs (e.g. just after submission) must
+// not panic when its view is detected. Regression test for an index-out-of-range
+// panic at task.Logs[0] in DetectView.
+func TestDetectView_EmptyLogsDoesNotPanic(t *testing.T) {
+	c := NewMarshaler().(*CustomMarshal)
+
+	task := &tes.Task{
+		Id:           "task-1",
+		CreationTime: "2026-06-12T00:00:00Z",
+		// Logs intentionally empty.
+	}
+
+	view, err := c.DetectView(task)
+	if err != nil {
+		t.Fatalf("DetectView returned error: %v", err)
+	}
+	if view != tes.View_BASIC {
+		t.Fatalf("expected View_BASIC for a task with empty logs, got %v", view)
+	}
+}
+
+// MarshalList must not panic when the first task has a CreationTime but no logs.
+// This is the path that crashed the GRPC gateway when listing freshly submitted
+// tasks.
+func TestMarshalList_FirstTaskWithEmptyLogs(t *testing.T) {
+	c := NewMarshaler().(*CustomMarshal)
+
+	list := &tes.ListTasksResponse{
+		Tasks: []*tes.Task{
+			{
+				Id:           "task-1",
+				State:        tes.State_INITIALIZING,
+				CreationTime: "2026-06-12T00:00:00Z",
+				// Logs intentionally empty.
+			},
+		},
+	}
+
+	out, err := c.MarshalList(list)
+	if err != nil {
+		t.Fatalf("MarshalList returned error: %v", err)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(out, &payload); err != nil {
+		t.Fatalf("failed to unmarshal MarshalList output: %v", err)
+	}
+	if _, ok := payload["tasks"]; !ok {
+		t.Fatalf("expected tasks field in marshaled list output")
+	}
+}
+
 func TestCustomMarshalDecoder_NonTaskPassthrough(t *testing.T) {
 	m := NewMarshaler()
 	input := []byte(`{"id":"task-123"}`)
