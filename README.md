@@ -9,23 +9,23 @@
 [tests-badge]: https://github.com/calypr/funnel/actions/workflows/tests.yaml/badge.svg
 [tests]: https://github.com/calypr/funnel/actions/workflows/tests.yaml
 
-[compliance-tests]: https://github.com/ohsu-comp-bio/funnel/actions/workflows/compliance.yaml
-[compliance-tests-badge]: https://img.shields.io/github/actions/workflow/status/ohsu-comp-bio/funnel/compliance.yaml?label=TES%20Compliance
+[compliance-tests]: https://github.com/calypr/funnel/actions/workflows/compliance.yaml
+[compliance-tests-badge]: https://img.shields.io/github/actions/workflow/status/calypr/funnel/compliance.yaml?label=TES%20Compliance
 
 [license-badge]: https://img.shields.io/badge/License-MIT-yellow.svg
 [license]: https://opensource.org/licenses/MIT
 
 [godoc-badge]: https://img.shields.io/badge/godoc-ref-blue.svg
-[godoc]: http://godoc.org/github.com/ohsu-comp-bio/funnel
+[godoc]: http://godoc.org/github.com/calypr/funnel
 
-[release-badge]: https://img.shields.io/github/v/release/ohsu-comp-bio/funnel
-[release]: https://github.com/ohsu-comp-bio/funnel/releases
+[release-badge]: https://img.shields.io/github/v/release/calypr/funnel
+[release]: https://github.com/calypr/funnel/releases
 
 [docker-badge]: https://img.shields.io/badge/Docker%20Repo-Quay.io-blue?logo=docker
 [docker]: https://quay.io/repository/ohsu-comp-bio/funnel?tab=tags&tag=latest
 
 [helm-badge]: https://img.shields.io/badge/Helm-0F1689?logo=helm&logoColor=fff
-[helm]: https://github.com/ohsu-comp-bio/helm-charts
+[helm]: https://github.com/calypr/helm-charts
 
 <a title="Funnel Homepage" href="https://calypr.org/tools/funnel/">
   <img title="Funnel Logo" src="https://github.com/user-attachments/assets/f51cf06b-d802-4e20-bde1-bcd1fc5657e6" />
