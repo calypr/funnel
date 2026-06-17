@@ -595,32 +595,32 @@ func (b *Backend) cleanBacklog(ctx context.Context) {
 	b.CleanOrphanedResources(ctx)
 }
 
+func (b *Backend) cleanResourcesIfEnabled(ctx context.Context, jobName string, disableCleanup bool) {
+	if !disableCleanup {
+		b.log.Debug("reconcile: cleaning up job", "taskID", jobName)
+		if err := b.cleanResources(ctx, jobName); err != nil {
+			b.log.Error("reconcile: failed to clean resources", "taskID", jobName, "error", err)
+		}
+	}
+}
+
+func (b *Backend) writeSystemError(ctx context.Context, jobName string, errAttributes map[string]string, additionalMessage string) {
+	if additionalMessage == "" {
+		additionalMessage = "Kubernetes job in FAILED state"
+	}
+
+	b.event.WriteEvent(ctx, events.NewState(jobName, tes.SystemError))
+	b.event.WriteEvent(ctx, events.NewSystemLog(
+		jobName, 0, 0, "error", additionalMessage,
+		errAttributes,
+	))
+}
+
 func (b *Backend) reconcileJob(ctx context.Context, j *v1.Job, disableCleanup bool) {
 	jobName := j.Name
 	status := j.Status
 	jobBackoffLimit := j.Spec.BackoffLimit
 	schedulingTimeout := b.conf.Kubernetes.Timeout.GetDuration()
-
-	writeSystemError := func(errAttributes map[string]string, additionalMessage string) {
-		if additionalMessage == "" {
-			additionalMessage = "Kubernetes job in FAILED state"
-		}
-
-		b.event.WriteEvent(ctx, events.NewState(jobName, tes.SystemError))
-		b.event.WriteEvent(ctx, events.NewSystemLog(
-			jobName, 0, 0, "error", additionalMessage,
-			errAttributes,
-		))
-	}
-
-	cleanResourcesIfEnabled := func() {
-		if !disableCleanup {
-			b.log.Debug("reconcile: cleaning up job", "taskID", jobName)
-			if err := b.cleanResources(ctx, jobName); err != nil {
-				b.log.Error("reconcile: failed to clean resources", "taskID", jobName, "error", err)
-			}
-		}
-	}
 
 	pods, err := b.client.CoreV1().Pods(b.conf.Kubernetes.JobsNamespace).List(ctx, metav1.ListOptions{
 		LabelSelector: fmt.Sprintf("job-name=%s", jobName),
@@ -642,8 +642,8 @@ func (b *Backend) reconcileJob(ctx context.Context, j *v1.Job, disableCleanup bo
 			if podEvents := FetchPodWarningEvents(ctx, b.client, b.conf.Kubernetes.JobsNamespace, pods); podEvents != "" {
 				errDetail = fmt.Sprintf("%s\n%s", reason, podEvents)
 			}
-			writeSystemError(map[string]string{"error": errDetail}, "Kubernetes worker pod has a terminal container waiting error")
-			cleanResourcesIfEnabled()
+			b.writeSystemError(ctx, jobName, map[string]string{"error": errDetail}, "Kubernetes worker pod has a terminal container waiting error")
+			b.cleanResourcesIfEnabled(ctx, jobName, disableCleanup)
 			return
 		}
 
@@ -654,20 +654,20 @@ func (b *Backend) reconcileJob(ctx context.Context, j *v1.Job, disableCleanup bo
 		b.log.Debug("checking for FailedCreate events on job", "taskID", jobName)
 		if count, reason := b.hasJobFailedCreateEvent(ctx, jobName); count > 0 {
 			b.log.Debug("reconcile: worker job has FailedCreate event", "taskID", jobName, "count", count, "reason", reason)
-			writeSystemError(map[string]string{"error": reason}, "worker job failed to create pod")
-			cleanResourcesIfEnabled()
+			b.writeSystemError(ctx, jobName, map[string]string{"error": reason}, "worker job failed to create pod")
+			b.cleanResourcesIfEnabled(ctx, jobName, disableCleanup)
 			return
 		}
 
 		if schedulingTimeout != nil && b.isJobSchedulingTimedOut(ctx, schedulingTimeout.AsDuration(), pods) {
 			b.log.Debug("reconcile: worker pod scheduling timed out.", "taskID", jobName)
-			writeSystemError(map[string]string{"error": "worker pod scheduling timed out"}, "")
-			cleanResourcesIfEnabled()
+			b.writeSystemError(ctx, jobName, map[string]string{"error": "worker pod scheduling timed out"}, "")
+			b.cleanResourcesIfEnabled(ctx, jobName, disableCleanup)
 		}
 
 	case status.Succeeded > 0:
 		b.log.Debug("reconcile: reconciled successful job", "taskID", jobName)
-		cleanResourcesIfEnabled()
+		b.cleanResourcesIfEnabled(ctx, jobName, disableCleanup)
 
 	case status.Failed > 0:
 		// Only act if K8s has marked the Job as permanently failed (backoffLimit exhausted).
@@ -697,12 +697,12 @@ func (b *Backend) reconcileJob(ctx context.Context, j *v1.Job, disableCleanup bo
 			if podInfo := b.getFailedPodInfo(ctx, pods); podInfo != "" {
 				errDetails["executor_error"] = podInfo
 			}
-			writeSystemError(errDetails, "")
+			b.writeSystemError(ctx, jobName, errDetails, "")
 		}
 
 		b.log.Debug("reconcile: reconciled failed job", "taskID", jobName)
 		if jobBackoffLimit != nil && status.Failed > *jobBackoffLimit {
-			cleanResourcesIfEnabled()
+			b.cleanResourcesIfEnabled(ctx, jobName, disableCleanup)
 		} else {
 			b.log.Debug("reconcile: job backoff limit not exceeded. Kubernetes will retry the job.", "taskID", jobName, "failed", status.Failed, "backoffLimit", *jobBackoffLimit)
 		}
@@ -715,8 +715,8 @@ func (b *Backend) reconcileJob(ctx context.Context, j *v1.Job, disableCleanup bo
 		// available in this state.
 		if count, reason := b.hasJobFailedCreateEvent(ctx, jobName); count > 0 {
 			b.log.Debug("reconcile: worker job has FailedCreate event (zero-status)", "taskID", jobName, "count", count, "reason", reason)
-			writeSystemError(map[string]string{"error": reason}, "Kubernetes worker job failed to create pod")
-			cleanResourcesIfEnabled()
+			b.writeSystemError(ctx, jobName, map[string]string{"error": reason}, "Kubernetes worker job failed to create pod")
+			b.cleanResourcesIfEnabled(ctx, jobName, disableCleanup)
 		}
 	}
 }
@@ -750,6 +750,9 @@ func (b *Backend) reconcileOnce(ctx context.Context, disableCleanup bool) {
 				delete(k8sJobs, task.Id) // matched — remove so it isn't treated as orphaned
 				if exists {
 					b.reconcileJob(ctx, j, disableCleanup)
+				} else {
+					b.log.Debug("reconcile: job not found for task", "taskID", task.Id)
+					b.writeSystemError(ctx, task.Id, map[string]string{"error": "job not found"}, "Kubernetes job not found for task")
 				}
 			}
 			pageToken = lresp.NextPageToken
@@ -761,13 +764,8 @@ func (b *Backend) reconcileOnce(ctx context.Context, disableCleanup bool) {
 	}
 
 	// Any jobs still in k8sJobs were not matched to any Funnel task — orphaned or in terminal states.
-	if !disableCleanup {
-		for taskID := range k8sJobs {
-			b.log.Info("reconcile: cleaning up job for terminal or missing Funnel task", "taskID", taskID)
-			if err := b.cleanResources(ctx, taskID); err != nil {
-				b.log.Error("reconcile: failed to clean orphaned resources", "taskID", taskID, "error", err)
-			}
-		}
+	for taskID := range k8sJobs {
+		b.cleanResourcesIfEnabled(ctx, taskID, disableCleanup)
 	}
 
 }
