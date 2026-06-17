@@ -401,14 +401,8 @@ func FetchPodWarningEvents(ctx context.Context, clientset kubernetes.Interface, 
 // isJobSchedulingTimedOut returns true if all pods for the given job have been
 // stuck in Pending (with a scheduling condition) for longer than timeout.
 // It returns false if any pod has been scheduled, or if pod status cannot be determined.
-func (b *Backend) isJobSchedulingTimedOut(ctx context.Context, jobName string, timeout time.Duration) bool {
-	pods, err := b.client.CoreV1().Pods(b.conf.Kubernetes.JobsNamespace).List(ctx, metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("job-name=%s", jobName),
-	})
-	if err != nil {
-		b.log.Error("reconcile: listing pods for job", "taskID", jobName, "error", err)
-		return false
-	}
+func (b *Backend) isJobSchedulingTimedOut(ctx context.Context, timeout time.Duration, pods *corev1.PodList) bool {
+
 	if len(pods.Items) == 0 {
 		return false
 	}
@@ -432,14 +426,7 @@ func (b *Backend) isJobSchedulingTimedOut(ctx context.Context, jobName string, t
 // getFailedPodInfo returns a human-readable summary of why the most recently
 // terminated pod for jobName failed: "exit code N (Reason): Message". It is
 // best-effort; an empty string is returned when no useful information is found.
-func (b *Backend) getFailedPodInfo(ctx context.Context, jobName string) string {
-	pods, err := b.client.CoreV1().Pods(b.conf.Kubernetes.JobsNamespace).List(ctx, metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("job-name=%s", jobName),
-	})
-	if err != nil {
-		b.log.Error("reconcile: listing pods for failed job", "taskID", jobName, "error", err)
-		return ""
-	}
+func (b *Backend) getFailedPodInfo(ctx context.Context, pods *corev1.PodList) string {
 
 	var latestFinish metav1.Time
 	var result string
@@ -613,12 +600,15 @@ func (b *Backend) reconcileJob(ctx context.Context, j *v1.Job, disableCleanup bo
 	status := j.Status
 	schedulingTimeout := b.conf.Kubernetes.Timeout.GetDuration()
 
-	writeSystemError := func(reason string) {
+	writeSystemError := func(errAttributes map[string]string, additionalMessage string) {
+		if additionalMessage == "" {
+			additionalMessage = "Kubernetes job in FAILED state"
+		}
+
 		b.event.WriteEvent(ctx, events.NewState(jobName, tes.SystemError))
 		b.event.WriteEvent(ctx, events.NewSystemLog(
-			jobName, 0, 0, "error",
-			"Kubernetes job in FAILED state",
-			map[string]string{"error": reason},
+			jobName, 0, 0, "error", additionalMessage,
+			errAttributes,
 		))
 	}
 
@@ -631,11 +621,46 @@ func (b *Backend) reconcileJob(ctx context.Context, j *v1.Job, disableCleanup bo
 		}
 	}
 
+	pods, err := b.client.CoreV1().Pods(b.conf.Kubernetes.JobsNamespace).List(ctx, metav1.ListOptions{
+		LabelSelector: fmt.Sprintf("job-name=%s", jobName),
+	})
+	if err != nil {
+		b.log.Error("reconcile: failed to list pods for job", "taskID", jobName, "error", err)
+		return
+	}
+
 	switch {
 	case status.Active > 0:
-		if schedulingTimeout != nil && b.isJobSchedulingTimedOut(ctx, jobName, schedulingTimeout.AsDuration()) {
+
+		// Check for container waiting errors that will never self-resolve
+		// (e.g. CreateContainerConfigError). These keep the Job Active
+		// indefinitely, so we must detect and fail them explicitly.
+		if terminal, reason := hasTerminalContainerWaitingError(pods); terminal {
+			b.log.Debug("reconcile: worker pod has terminal container waiting error", "taskID", jobName, "reason", reason)
+			errDetail := reason
+			if podEvents := FetchPodWarningEvents(ctx, b.client, b.conf.Kubernetes.JobsNamespace, pods); podEvents != "" {
+				errDetail = fmt.Sprintf("%s\n%s", reason, podEvents)
+			}
+			writeSystemError(map[string]string{"error": errDetail}, "Kubernetes worker pod has a terminal container waiting error")
+			cleanResourcesIfEnabled()
+			return
+		}
+
+		// Check for FailedCreate events on the Job itself. This catches
+		// cases where pod creation is rejected before a pod object is
+		// ever persisted (e.g. Pod Security Admission enforcement blocks
+		// the pod), so there are no pod container statuses to inspect.
+		b.log.Debug("checking for FailedCreate events on job", "taskID", jobName)
+		if count, reason := b.hasJobFailedCreateEvent(ctx, jobName); count > 0 {
+			b.log.Debug("reconcile: worker job has FailedCreate event", "taskID", jobName, "count", count, "reason", reason)
+			writeSystemError(map[string]string{"error": reason}, "worker job failed to create pod")
+			cleanResourcesIfEnabled()
+			return
+		}
+
+		if schedulingTimeout != nil && b.isJobSchedulingTimedOut(ctx, schedulingTimeout.AsDuration(), pods) {
 			b.log.Debug("reconcile: worker pod scheduling timed out.", "taskID", jobName)
-			writeSystemError("worker pod scheduling timed out")
+			writeSystemError(map[string]string{"error": "worker pod scheduling timed out"}, "")
 			cleanResourcesIfEnabled()
 		}
 
@@ -667,10 +692,27 @@ func (b *Backend) reconcileJob(ctx context.Context, j *v1.Job, disableCleanup bo
 			if err != nil {
 				b.log.Error("reconcile: marshaling failed job conditions", "taskID", jobName, "error", err)
 			}
-			writeSystemError(string(conds))
+			errDetails := map[string]string{"error": string(conds)}
+			if podInfo := b.getFailedPodInfo(ctx, pods); podInfo != "" {
+				errDetails["executor_error"] = podInfo
+			}
+			writeSystemError(errDetails, "")
 		}
 		b.log.Debug("reconcile: reconciled failed job", "taskID", jobName)
 		cleanResourcesIfEnabled()
+
+	default:
+		// All status counters are zero: the Job controller has not yet
+		// recorded any Active/Succeeded/Failed pods. This happens when
+		// every pod creation attempt is rejected before Kubernetes
+		// persists a pod object (e.g. Pod Security Admission blocks the
+		// pod). Check for FailedCreate events which are the only signal
+		// available in this state.
+		if count, reason := b.hasJobFailedCreateEvent(ctx, jobName); count > 0 {
+			b.log.Debug("reconcile: worker job has FailedCreate event (zero-status)", "taskID", jobName, "count", count, "reason", reason)
+			writeSystemError(map[string]string{"error": reason}, "Kubernetes worker job failed to create pod")
+			cleanResourcesIfEnabled()
+		}
 	}
 }
 
@@ -924,7 +966,7 @@ func (b *Backend) reconcile_monolith(ctx context.Context, rate time.Duration, di
 							// itself succeeds immediately.
 							if b.conf.Kubernetes.Timeout.GetDuration() != nil {
 								timeout := b.conf.Kubernetes.Timeout.GetDuration().AsDuration()
-								if b.isJobSchedulingTimedOut(ctx, jobName, timeout) {
+								if b.isJobSchedulingTimedOut(ctx, timeout, pods) {
 									b.log.Debug("reconcile: worker pod scheduling timed out", "taskID", jobName)
 									b.event.WriteEvent(ctx, events.NewState(jobName, tes.SystemError))
 									b.event.WriteEvent(ctx, events.NewSystemLog(
