@@ -598,6 +598,7 @@ func (b *Backend) cleanBacklog(ctx context.Context) {
 func (b *Backend) reconcileJob(ctx context.Context, j *v1.Job, disableCleanup bool) {
 	jobName := j.Name
 	status := j.Status
+	jobBackoffLimit := j.Spec.BackoffLimit
 	schedulingTimeout := b.conf.Kubernetes.Timeout.GetDuration()
 
 	writeSystemError := func(errAttributes map[string]string, additionalMessage string) {
@@ -698,9 +699,13 @@ func (b *Backend) reconcileJob(ctx context.Context, j *v1.Job, disableCleanup bo
 			}
 			writeSystemError(errDetails, "")
 		}
-		b.log.Debug("reconcile: reconciled failed job", "taskID", jobName)
-		cleanResourcesIfEnabled()
 
+		b.log.Debug("reconcile: reconciled failed job", "taskID", jobName)
+		if jobBackoffLimit != nil && status.Failed > *jobBackoffLimit {
+			cleanResourcesIfEnabled()
+		} else {
+			b.log.Debug("reconcile: job backoff limit not exceeded. Kubernetes will retry the job.", "taskID", jobName, "failed", status.Failed, "backoffLimit", *jobBackoffLimit)
+		}
 	default:
 		// All status counters are zero: the Job controller has not yet
 		// recorded any Active/Succeeded/Failed pods. This happens when
