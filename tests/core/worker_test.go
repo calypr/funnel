@@ -381,6 +381,98 @@ func TestDockerContainerMetadata(t *testing.T) {
 	}
 }
 
+// When an executor fails and ignore_error is false, the task must stop and only
+// the failed executor should produce a log. Regression test for a phantom empty
+// executor log being emitted for executors that never ran.
+func TestExecutorErrorStopsTask(t *testing.T) {
+	tests.SetLogOutput(log, t)
+	conf := tests.DefaultConfig()
+	task := tes.Task{
+		Id: "test-task-" + tes.GenerateID(),
+		Executors: []*tes.Executor{
+			{
+				// "ERROR" is not a command, so this executor fails (exit 127).
+				Image:       "alpine",
+				Command:     []string{"ERROR"},
+				IgnoreError: false,
+			},
+			{
+				Image:   "alpine",
+				Command: []string{"echo", "hello"},
+			},
+		},
+	}
+
+	builder := &events.TaskBuilder{Task: &task}
+	logger := &events.Logger{Log: log}
+	m := &events.MultiWriter{logger, builder}
+
+	w := worker.DefaultWorker{
+		Conf:        conf.Worker,
+		Store:       &storage.Mux{},
+		TaskReader:  taskReader{&task},
+		EventWriter: m,
+	}
+
+	if err := w.Run(context.Background()); err != nil {
+		t.Log(err)
+	}
+
+	if task.State != tes.State_EXECUTOR_ERROR {
+		t.Errorf("expected state EXECUTOR_ERROR, got %s", task.State)
+	}
+
+	// Only the first executor should have run; the second must not produce a log.
+	if got := len(builder.Task.Logs[0].Logs); got != 1 {
+		t.Errorf("expected 1 executor log, got %d", got)
+	}
+}
+
+// When an executor fails but ignore_error is true, subsequent executors must
+// still run, producing a log entry per executor.
+func TestExecutorIgnoreErrorContinuesTask(t *testing.T) {
+	tests.SetLogOutput(log, t)
+	conf := tests.DefaultConfig()
+	task := tes.Task{
+		Id: "test-task-" + tes.GenerateID(),
+		Executors: []*tes.Executor{
+			{
+				Image:       "alpine",
+				Command:     []string{"ERROR"},
+				IgnoreError: true,
+			},
+			{
+				Image:   "alpine",
+				Command: []string{"echo", "hello"},
+			},
+		},
+	}
+
+	builder := &events.TaskBuilder{Task: &task}
+	logger := &events.Logger{Log: log}
+	m := &events.MultiWriter{logger, builder}
+
+	w := worker.DefaultWorker{
+		Conf:        conf.Worker,
+		Store:       &storage.Mux{},
+		TaskReader:  taskReader{&task},
+		EventWriter: m,
+	}
+
+	if err := w.Run(context.Background()); err != nil {
+		t.Log(err)
+	}
+
+	// Both executors should have run, each producing a log entry.
+	if got := len(builder.Task.Logs[0].Logs); got != 2 {
+		t.Errorf("expected 2 executor logs, got %d", got)
+	}
+
+	if task.State != tes.State_COMPLETE {
+		t.Errorf("expected state COMPLETE, got %s", task.State)
+	}
+}
+
 func TestWorkerRunFileTaskReader(t *testing.T) {
 	tests.SetLogOutput(log, t)
 	c := tests.DefaultConfig()
