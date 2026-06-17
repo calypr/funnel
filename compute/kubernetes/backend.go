@@ -1012,7 +1012,14 @@ func (b *Backend) reconcile_monolith(ctx context.Context, rate time.Duration, di
 							}
 
 							errDetails := map[string]string{"error": string(conds)}
-							if podInfo := b.getFailedPodInfo(ctx, jobName); podInfo != "" {
+							pods, err := b.client.CoreV1().Pods(b.conf.Kubernetes.JobsNamespace).List(ctx, metav1.ListOptions{
+								LabelSelector: fmt.Sprintf("job-name=%s", jobName),
+							})
+							if err != nil {
+								b.log.Error("reconcile: failed to list pods for job", "taskID", jobName, "error", err)
+								return
+							}
+							if podInfo := b.getFailedPodInfo(ctx, pods); podInfo != "" {
 								errDetails["executor_error"] = podInfo
 							}
 
