@@ -324,6 +324,15 @@ func (b *Backend) cleanResources(ctx context.Context, taskId string) error {
 	return errs
 }
 
+func (b *Backend) isJobMarkedAsFailed(jobStatus v1.JobStatus) bool {
+	for _, cond := range jobStatus.Conditions {
+		if cond.Type == v1.JobFailed && cond.Status == corev1.ConditionTrue {
+			return true
+		}
+	}
+	return false
+}
+
 // hasTerminalContainerWaitingError returns true if any pod in pods has a
 // container stuck in a waiting state whose reason is known to be permanent
 // (e.g. CreateContainerConfigError). These pods will never transition to a
@@ -619,7 +628,6 @@ func (b *Backend) writeSystemError(ctx context.Context, jobName string, errAttri
 func (b *Backend) reconcileJob(ctx context.Context, j *v1.Job, disableCleanup bool) {
 	jobName := j.Name
 	status := j.Status
-	jobBackoffLimit := j.Spec.BackoffLimit
 	schedulingTimeout := b.conf.Kubernetes.Timeout.GetDuration()
 
 	pods, err := b.client.CoreV1().Pods(b.conf.Kubernetes.JobsNamespace).List(ctx, metav1.ListOptions{
@@ -670,20 +678,16 @@ func (b *Backend) reconcileJob(ctx context.Context, j *v1.Job, disableCleanup bo
 		b.cleanResourcesIfEnabled(ctx, jobName, disableCleanup)
 
 	case status.Failed > 0:
+		b.log.Debug("reconcile: Job has non zero failed status", "taskID", jobName, "failed", status.Failed)
 		// Only act if K8s has marked the Job as permanently failed (backoffLimit exhausted).
 		// If Active > 0 is also set, K8s is still retrying — don't intervene.
 		if status.Active > 0 {
 			return
 		}
-		jobFailed := false
-		for _, cond := range status.Conditions {
-			if cond.Type == v1.JobFailed && cond.Status == corev1.ConditionTrue {
-				jobFailed = true
-				break
-			}
-		}
-		if !jobFailed {
+
+		if !b.isJobMarkedAsFailed(status) {
 			// K8s hasn't given up yet — still within backoffLimit, retrying.
+			b.log.Debug("reconcile: K8s hasn't given up yet — still within backoffLimit, retrying.", "taskID", jobName)
 			return
 		}
 		task, err := b.database.GetTask(ctx, &tes.GetTaskRequest{Id: jobName, View: tes.View_MINIMAL.String()})
@@ -700,12 +704,7 @@ func (b *Backend) reconcileJob(ctx context.Context, j *v1.Job, disableCleanup bo
 			b.writeSystemError(ctx, jobName, errDetails, "")
 		}
 
-		b.log.Debug("reconcile: reconciled failed job", "taskID", jobName)
-		if jobBackoffLimit != nil && status.Failed > *jobBackoffLimit {
-			b.cleanResourcesIfEnabled(ctx, jobName, disableCleanup)
-		} else {
-			b.log.Debug("reconcile: job backoff limit not exceeded. Kubernetes will retry the job.", "taskID", jobName, "failed", status.Failed, "backoffLimit", *jobBackoffLimit)
-		}
+		b.cleanResourcesIfEnabled(ctx, jobName, disableCleanup)
 	default:
 		// All status counters are zero: the Job controller has not yet
 		// recorded any Active/Succeeded/Failed pods. This happens when
@@ -764,7 +763,12 @@ func (b *Backend) reconcileOnce(ctx context.Context, disableCleanup bool) {
 	}
 
 	// Any jobs still in k8sJobs were not matched to any Funnel task — orphaned or in terminal states.
-	for taskID := range k8sJobs {
+	for taskID, job := range k8sJobs {
+		b.log.Debug("reconcile: Task is either orphaned or in a terminal state", "taskID", taskID)
+		if !b.isJobMarkedAsFailed(job.Status) {
+			b.log.Debug("reconcile: K8s hasn't given up yet — still within backoffLimit, retrying.", "taskID", taskID, "failed", job.Status.Failed, "backoffLimit", *job.Spec.BackoffLimit)
+			continue
+		}
 		b.cleanResourcesIfEnabled(ctx, taskID, disableCleanup)
 	}
 
