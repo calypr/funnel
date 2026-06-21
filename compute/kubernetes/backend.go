@@ -325,12 +325,19 @@ func (b *Backend) cleanResources(ctx context.Context, taskId string) error {
 }
 
 func (b *Backend) isJobMarkedAsFailed(jobStatus v1.JobStatus) bool {
+	var isComplete, isFailed bool
 	for _, cond := range jobStatus.Conditions {
-		if cond.Type == v1.JobFailed && cond.Status == corev1.ConditionTrue {
-			return true
+		if cond.Status != corev1.ConditionTrue {
+			continue
+		}
+		switch cond.Type {
+		case v1.JobComplete:
+			isComplete = true
+		case v1.JobFailed:
+			isFailed = true
 		}
 	}
-	return false
+	return isFailed && !isComplete
 }
 
 // hasTerminalContainerWaitingError returns true if any pod in pods has a
