@@ -325,21 +325,19 @@ func (b *Backend) cleanResources(ctx context.Context, taskId string) error {
 	return errs
 }
 
-func (b *Backend) isJobMarkedAsFailed(jobStatus v1.JobStatus) bool {
-	var isComplete, isFailed bool
+// isJobDone reports whether the job has finished — either succeeded
+// or permanently failed (backoffLimit exhausted) — as opposed to still
+// being retried or in progress.
+func (b *Backend) isJobDone(jobStatus v1.JobStatus) bool {
 	for _, cond := range jobStatus.Conditions {
-		b.log.Debug("checking job condition", "type", cond.Type, "status", cond.Status, "reason", cond.Reason, "message", cond.Message)
 		if cond.Status != corev1.ConditionTrue {
 			continue
 		}
-		switch cond.Type {
-		case v1.JobComplete:
-			isComplete = true
-		case v1.JobFailed:
-			isFailed = true
+		if cond.Type == v1.JobComplete || cond.Type == v1.JobFailed {
+			return true
 		}
 	}
-	return isFailed && !isComplete
+	return false
 }
 
 // hasTerminalContainerWaitingError returns true if any pod in pods has a
@@ -694,7 +692,7 @@ func (b *Backend) reconcileJob(ctx context.Context, j *v1.Job, disableCleanup bo
 			return
 		}
 		b.log.Debug("reconcile: checking is job marked as failed", "taskID", jobName)
-		if !b.isJobMarkedAsFailed(status) {
+		if !b.isJobDone(status) {
 			// K8s hasn't given up yet — still within backoffLimit, retrying.
 			b.log.Debug("reconcile: K8s hasn't given up yet — still within backoffLimit, retrying.", "taskID", jobName)
 			return
@@ -774,7 +772,7 @@ func (b *Backend) reconcileOnce(ctx context.Context, disableCleanup bool) {
 	// Any jobs still in k8sJobs were not matched to any Funnel task — orphaned or in terminal states.
 	for taskID, job := range k8sJobs {
 		b.log.Debug("reconcile: Task is either orphaned or in a terminal state", "taskID", taskID)
-		if !b.isJobMarkedAsFailed(job.Status) {
+		if !b.isJobDone(job.Status) {
 			b.log.Debug("reconcile: K8s hasn't given up yet — still within backoffLimit, retrying.", "taskID", taskID, "failed", job.Status.Failed, "backoffLimit", *job.Spec.BackoffLimit)
 			continue
 		}
