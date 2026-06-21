@@ -70,6 +70,7 @@ func NewBackend(ctx context.Context, conf *config.Config, reader tes.ReadOnlySer
 	if !conf.Kubernetes.DisableReconciler {
 		rate := conf.Kubernetes.ReconcileRate.AsDuration()
 		go b.reconcile(ctx, rate, conf.Kubernetes.DisableJobCleanup)
+
 	}
 
 	return b, nil
@@ -327,6 +328,7 @@ func (b *Backend) cleanResources(ctx context.Context, taskId string) error {
 func (b *Backend) isJobMarkedAsFailed(jobStatus v1.JobStatus) bool {
 	var isComplete, isFailed bool
 	for _, cond := range jobStatus.Conditions {
+		b.log.Debug("checking job condition", "type", cond.Type, "status", cond.Status, "reason", cond.Reason, "message", cond.Message)
 		if cond.Status != corev1.ConditionTrue {
 			continue
 		}
@@ -417,7 +419,7 @@ func FetchPodWarningEvents(ctx context.Context, clientset kubernetes.Interface, 
 // isJobSchedulingTimedOut returns true if all pods for the given job have been
 // stuck in Pending (with a scheduling condition) for longer than timeout.
 // It returns false if any pod has been scheduled, or if pod status cannot be determined.
-func (b *Backend) isJobSchedulingTimedOut(ctx context.Context, timeout time.Duration, pods *corev1.PodList) bool {
+func (b *Backend) isJobSchedulingTimedOut(timeout time.Duration, pods *corev1.PodList) bool {
 
 	if len(pods.Items) == 0 {
 		return false
@@ -674,7 +676,7 @@ func (b *Backend) reconcileJob(ctx context.Context, j *v1.Job, disableCleanup bo
 			return
 		}
 
-		if schedulingTimeout != nil && b.isJobSchedulingTimedOut(ctx, schedulingTimeout.AsDuration(), pods) {
+		if schedulingTimeout != nil && b.isJobSchedulingTimedOut(schedulingTimeout.AsDuration(), pods) {
 			b.log.Debug("reconcile: worker pod scheduling timed out.", "taskID", jobName)
 			b.writeSystemError(ctx, jobName, map[string]string{"error": "worker pod scheduling timed out"}, "")
 			b.cleanResourcesIfEnabled(ctx, jobName, disableCleanup)
@@ -691,7 +693,7 @@ func (b *Backend) reconcileJob(ctx context.Context, j *v1.Job, disableCleanup bo
 		if status.Active > 0 {
 			return
 		}
-
+		b.log.Debug("reconcile: checking is job marked as failed", "taskID", jobName)
 		if !b.isJobMarkedAsFailed(status) {
 			// K8s hasn't given up yet — still within backoffLimit, retrying.
 			b.log.Debug("reconcile: K8s hasn't given up yet — still within backoffLimit, retrying.", "taskID", jobName)
@@ -980,7 +982,7 @@ func (b *Backend) reconcile_monolith(ctx context.Context, rate time.Duration, di
 							// itself succeeds immediately.
 							if b.conf.Kubernetes.Timeout.GetDuration() != nil {
 								timeout := b.conf.Kubernetes.Timeout.GetDuration().AsDuration()
-								if b.isJobSchedulingTimedOut(ctx, timeout, pods) {
+								if b.isJobSchedulingTimedOut(timeout, pods) {
 									b.log.Debug("reconcile: worker pod scheduling timed out", "taskID", jobName)
 									b.event.WriteEvent(ctx, events.NewState(jobName, tes.SystemError))
 									b.event.WriteEvent(ctx, events.NewSystemLog(
