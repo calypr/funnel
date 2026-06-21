@@ -330,23 +330,6 @@ func (kcmd KubernetesCommand) Run(ctx context.Context) error {
 	return nil
 }
 
-func isWorkerLastAttempt(ctx context.Context, taskID, namespace string) (bool, error) {
-
-	clientset, err := getKubernetesClientset()
-	job, err := clientset.BatchV1().Jobs(namespace).Get(ctx, taskID, metav1.GetOptions{})
-	if err != nil {
-		return true, err
-	}
-	limit := int32(0)
-	if job.Spec.BackoffLimit != nil {
-		limit = *job.Spec.BackoffLimit
-	}
-	// failed count includes this attempt only after the pod exits,
-	// so while we're still running, status.Failed reflects *completed* failed attempts.
-	// If failed >= backoffLimit, the Job controller won't retry us.
-	return job.Status.Failed >= limit, nil
-}
-
 // streamPodLogs streams logs from a pod regardless of its state
 // This works for Running, Succeeded, and Failed pods (as long as they haven't been deleted)
 func streamPodLogs(ctx context.Context, namespace string, podName string, stdout io.Writer, stderr io.Writer) error {

@@ -68,9 +68,13 @@ func NewBackend(ctx context.Context, conf *config.Config, reader tes.ReadOnlySer
 	}
 
 	if !conf.Kubernetes.DisableReconciler {
+		b.cleanBacklog(ctx, conf.Kubernetes.DisableJobCleanup)
+
+		// TODO: Add a condition based on whether ExternalReconciler is enabled or not,
+		// so that we don't start the internal reconciler when an external one is configured.
+		// This is to avoid the possibility of multiple concurrent reconcilers running for each server instance.
 		rate := conf.Kubernetes.ReconcileRate.AsDuration()
 		go b.reconcile(ctx, rate, conf.Kubernetes.DisableJobCleanup)
-
 	}
 
 	return b, nil
@@ -575,7 +579,11 @@ func (b *Backend) listAllWorkerJobs(ctx context.Context) (map[string]*v1.Job, er
 	return k8sJobs, nil
 }
 
-func (b *Backend) cleanBacklog(ctx context.Context) {
+func (b *Backend) cleanBacklog(ctx context.Context, disableCleanup bool) {
+	if !disableCleanup {
+		return
+	}
+
 	k8sJobs, err := b.listAllWorkerJobs(ctx)
 	if err != nil {
 		b.log.Error("backlog cleanup: listing jobs", err)
@@ -783,10 +791,6 @@ func (b *Backend) reconcileOnce(ctx context.Context, disableCleanup bool) {
 
 // reconcile is the ticker-based loop used when ExternalReconciler is false.
 func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableCleanup bool) {
-	if !disableCleanup {
-		b.cleanBacklog(ctx)
-	}
-
 	ticker := time.NewTicker(rate)
 	defer ticker.Stop()
 
@@ -796,307 +800,6 @@ func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableClea
 			return
 		case <-ticker.C:
 			b.reconcileOnce(ctx, disableCleanup)
-		}
-	}
-}
-
-// Reconcile loops through tasks and checks the status from Funnel's database
-// against the status reported by Kubernetes. This allows the backend to report
-// system error's that prevented the worker process from running.
-//
-// Currently this handles a narrow set of cases:
-//
-// |---------------------|-----------------|--------------------|
-// |    Funnel State     |  Backend State  |  Reconciled State  |
-// |---------------------|-----------------|--------------------|
-// |        QUEUED       |     FAILED      |    SYSTEM_ERROR    |
-// |  INITIALIZING       |     FAILED      |    SYSTEM_ERROR    |
-// |       RUNNING       |     FAILED      |    SYSTEM_ERROR    |
-//
-// In this context a "FAILED" state is being used as a generic term that captures
-// one or more terminal states for the backend.
-//
-// This loop is also used to cleanup successful jobs.
-func (b *Backend) reconcile_monolith(ctx context.Context, rate time.Duration, disableCleanup bool) {
-	// Clears all resources that still exist from jobs that have run before this server started.
-	// This handles two cases:
-	//   1. Completed jobs (Succeeded/Failed) that were not cleaned up before the server restarted.
-	//   2. Orphaned jobs (Active) whose task no longer exists in the Funnel DB — left over from
-	//      a previous deployment or server crash.
-	if !disableCleanup {
-		jobs, err := b.client.BatchV1().Jobs(b.conf.Kubernetes.JobsNamespace).List(ctx, metav1.ListOptions{
-			LabelSelector: "app=funnel-worker",
-		})
-		if err != nil {
-			b.log.Error("backlog cleanup: listing jobs", err)
-		} else {
-			for _, j := range jobs.Items {
-				s := j.Status
-				taskID := j.Name
-
-				// Always clean up completed jobs from prior runs.
-				if s.Succeeded > 0 || s.Failed > 0 {
-					b.log.Debug("backlog cleanup: deleting completed job", "taskID", taskID)
-					if err := b.cleanResources(ctx, taskID); err != nil {
-						b.log.Error("backlog cleanup: failed to clean resources", "taskID", taskID, "error", err)
-					}
-					continue
-				}
-
-				// For active jobs, check whether the task still exists in the DB.
-				// If it doesn't, the job is orphaned from a previous deployment.
-				if s.Active > 0 {
-					_, err := b.database.GetTask(ctx, &tes.GetTaskRequest{Id: taskID, View: tes.View_MINIMAL.String()})
-					if err != nil {
-						b.log.Info("backlog cleanup: deleting orphaned active job with no matching task", "taskID", taskID)
-						if err := b.cleanResources(ctx, taskID); err != nil {
-							b.log.Error("backlog cleanup: failed to clean orphaned resources", "taskID", taskID, "error", err)
-						}
-					}
-				}
-			}
-		}
-		b.CleanOrphanedResources(ctx)
-
-	}
-
-	ticker := time.NewTicker(rate)
-	failedJobEvents := make(map[string]int)
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			// List worker jobs only (label selector excludes executor jobs and unrelated jobs).
-			// Bug: If K8s Job is not created by the time reconciler runs, then the TES Task itself will be prematurely marked as SYSTEM_ERROR
-			jobs, err := b.client.BatchV1().Jobs(b.conf.Kubernetes.JobsNamespace).List(ctx, metav1.ListOptions{
-				LabelSelector: "app=funnel-worker",
-			})
-			if err != nil {
-				b.log.Error("reconcile: listing jobs", err)
-				continue
-			}
-
-			// Index worker jobs by task ID. We use a label selector to avoid
-			// picking up executor jobs (app=funnel-executor) or unrelated jobs.
-			k8sJobs := make(map[string]*v1.Job)
-			for i := range jobs.Items {
-				k8sJobs[jobs.Items[i].Name] = &jobs.Items[i]
-			}
-
-			// List non-terminal tasks from Funnel's database
-			states := []tes.State{tes.State_QUEUED, tes.State_INITIALIZING, tes.State_RUNNING}
-			for _, s := range states {
-				pageToken := ""
-				for {
-					lresp, err := b.database.ListTasks(ctx, &tes.ListTasksRequest{
-						State:     s,
-						PageSize:  100,
-						PageToken: pageToken,
-					})
-					if err != nil {
-						b.log.Error("reconcile: listing non-terminal tasks from Funnel DB", err)
-						break
-					}
-					pageToken = lresp.NextPageToken
-
-					// Compare Funnel Tasks against K8s Jobs
-					for _, task := range lresp.Tasks {
-						taskID := task.Id
-
-						// If the job exists, check its current status (Active, Succeeded, Failed)
-						j := k8sJobs[taskID]
-
-						// Remove matched jobs so that any remaining entries after this
-						// loop represent orphaned K8s jobs with no Funnel task.
-						delete(k8sJobs, taskID)
-
-						if j == nil {
-							continue
-						}
-
-						jobName := j.Name
-						status := j.Status
-						switch {
-						case status.Active > 0:
-							// Fetch pods once and pass to both checks to avoid redundant K8s API calls.
-							pods, err := b.client.CoreV1().Pods(b.conf.Kubernetes.JobsNamespace).List(ctx, metav1.ListOptions{
-								LabelSelector: fmt.Sprintf("job-name=%s", jobName),
-							})
-							if err != nil {
-								b.log.Error("reconcile: listing pods for job", "taskID", jobName, "error", err)
-								continue
-							}
-
-							// Check for container waiting errors that will never self-resolve
-							// (e.g. CreateContainerConfigError). These keep the Job Active
-							// indefinitely, so we must detect and fail them explicitly.
-							if terminal, reason := hasTerminalContainerWaitingError(pods); terminal {
-								b.log.Debug("reconcile: worker pod has terminal container waiting error", "taskID", jobName, "reason", reason)
-								b.event.WriteEvent(ctx, events.NewState(jobName, tes.SystemError))
-								errDetail := reason
-								if podEvents := FetchPodWarningEvents(ctx, b.client, b.conf.Kubernetes.JobsNamespace, pods); podEvents != "" {
-									errDetail = fmt.Sprintf("%s\n%s", reason, podEvents)
-								}
-								b.event.WriteEvent(ctx, events.NewSystemLog(
-									jobName, 0, 0, "error",
-									"Kubernetes worker pod has a terminal container waiting error",
-									map[string]string{"error": errDetail},
-								))
-								if !disableCleanup {
-									if err := b.cleanResources(ctx, jobName); err != nil {
-										b.log.Error("failed to clean resources", "taskID", jobName, "error", err)
-									}
-								}
-								continue
-							}
-
-							// Check for FailedCreate events on the Job itself. This catches
-							// cases where pod creation is rejected before a pod object is
-							// ever persisted (e.g. Pod Security Admission enforcement blocks
-							// the pod), so there are no pod container statuses to inspect.
-							b.log.Debug("checking for FailedCreate events on job", "taskID", jobName)
-							if count, reason := b.hasJobFailedCreateEvent(ctx, jobName); count > 0 {
-								b.log.Debug("reconcile: worker job has FailedCreate event", "taskID", jobName, "count", count, "reason", reason)
-								b.event.WriteEvent(ctx, events.NewState(jobName, tes.SystemError))
-								b.event.WriteEvent(ctx, events.NewSystemLog(
-									jobName, 0, 0, "error",
-									"Kubernetes worker job failed to create pod",
-									map[string]string{"error": reason},
-								))
-								if !disableCleanup {
-									if err := b.cleanResources(ctx, jobName); err != nil {
-										b.log.Error("failed to clean resources", "taskID", jobName, "error", err)
-									}
-								}
-								continue
-							}
-
-							// If a scheduling timeout is configured, check whether the worker
-							// pod has been stuck in Pending beyond that duration. This catches
-							// scheduling failures (bad NodeSelector, insufficient resources, etc.)
-							// that the context timeout cannot detect because the Job API call
-							// itself succeeds immediately.
-							if b.conf.Kubernetes.Timeout.GetDuration() != nil {
-								timeout := b.conf.Kubernetes.Timeout.GetDuration().AsDuration()
-								if b.isJobSchedulingTimedOut(timeout, pods) {
-									b.log.Debug("reconcile: worker pod scheduling timed out", "taskID", jobName)
-									b.event.WriteEvent(ctx, events.NewState(jobName, tes.SystemError))
-									b.event.WriteEvent(ctx, events.NewSystemLog(
-										jobName, 0, 0, "error",
-										"Kubernetes job in FAILED state",
-										map[string]string{"error": "worker pod scheduling timed out"},
-									))
-									if !disableCleanup {
-										if err := b.cleanResources(ctx, jobName); err != nil {
-											b.log.Error("failed to clean resources", "taskID", jobName, "error", err)
-										}
-									}
-								}
-							}
-							continue
-						case status.Succeeded > 0:
-							if disableCleanup {
-								continue
-							}
-							b.log.Debug("reconcile: cleaning up successful job", "taskID", jobName)
-
-							// Delete resources
-							if err := b.cleanResources(ctx, jobName); err != nil {
-								b.log.Error("failed to clean resources", "taskID", jobName, "error", err)
-								continue
-							}
-							delete(failedJobEvents, jobName)
-
-						case status.Failed > 0:
-							if count, exists := failedJobEvents[jobName]; exists && count >= failedCreateThreshold {
-								continue
-							}
-
-							b.log.Debug("reconcile: writing system error event for failed job", "taskID", jobName)
-							conds, err := json.Marshal(status.Conditions)
-							if err != nil {
-								b.log.Error("reconcile: marshal failed job conditions", "taskID", jobName, "error", err)
-							}
-
-							errDetails := map[string]string{"error": string(conds)}
-							pods, err := b.client.CoreV1().Pods(b.conf.Kubernetes.JobsNamespace).List(ctx, metav1.ListOptions{
-								LabelSelector: fmt.Sprintf("job-name=%s", jobName),
-							})
-							if err != nil {
-								b.log.Error("reconcile: failed to list pods for job", "taskID", jobName, "error", err)
-								return
-							}
-							if podInfo := b.getFailedPodInfo(ctx, pods); podInfo != "" {
-								errDetails["executor_error"] = podInfo
-							}
-
-							b.event.WriteEvent(ctx, events.NewState(jobName, tes.SystemError))
-							b.event.WriteEvent(
-								ctx,
-								events.NewSystemLog(
-									jobName, 0, 0, "error",
-									"Kubernetes job in FAILED state",
-									errDetails,
-								),
-							)
-
-							failedJobEvents[jobName]++
-							if disableCleanup {
-								continue
-							}
-
-							b.log.Debug("reconcile: cleaning up failed job", "taskID", jobName)
-							if err := b.cleanResources(ctx, jobName); err != nil {
-								b.log.Error("failed to clean resources", "taskID", jobName, "error", err)
-								continue
-							}
-							delete(failedJobEvents, jobName)
-
-						default:
-							// All status counters are zero: the Job controller has not yet
-							// recorded any Active/Succeeded/Failed pods. This happens when
-							// every pod creation attempt is rejected before Kubernetes
-							// persists a pod object (e.g. Pod Security Admission blocks the
-							// pod). Check for FailedCreate events which are the only signal
-							// available in this state.
-							if count, reason := b.hasJobFailedCreateEvent(ctx, jobName); count > 0 {
-								b.log.Debug("reconcile: worker job has FailedCreate event (zero-status)", "taskID", jobName, "count", count, "reason", reason)
-								b.event.WriteEvent(ctx, events.NewState(jobName, tes.SystemError))
-								b.event.WriteEvent(ctx, events.NewSystemLog(
-									jobName, 0, 0, "error",
-									"Kubernetes worker job failed to create pod",
-									map[string]string{"error": reason},
-								))
-								if !disableCleanup {
-									if err := b.cleanResources(ctx, jobName); err != nil {
-										b.log.Error("failed to clean resources", "taskID", jobName, "error", err)
-									}
-								}
-							}
-						}
-					}
-
-					// Continue to next page from ListTasks if a token exists
-					if pageToken == "" {
-						break
-					}
-					time.Sleep(time.Millisecond * 100)
-				}
-			}
-
-			// Any jobs remaining in k8sJobs were not matched to a Funnel task —
-			// they are orphaned and should be cleaned up.
-			if !disableCleanup {
-				for taskID := range k8sJobs {
-					b.log.Info("reconcile: cleaning up orphaned job with no matching Funnel task", "taskID", taskID)
-					if err := b.cleanResources(ctx, taskID); err != nil {
-						b.log.Error("reconcile: failed to clean orphaned resources", "taskID", taskID, "error", err)
-					}
-					delete(failedJobEvents, taskID)
-				}
-			}
 		}
 	}
 }
