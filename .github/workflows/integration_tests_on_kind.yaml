@@ -16,6 +16,11 @@ jobs:
       QUAY_ORG: ohsu-comp-bio
       EXTERNAL_TO_CTDS: "true"
       SERVICE_TO_TEST: gen3_workflow
+      # Pin the integration test code (gen3-code-vigil) to the last known-good
+      # commit. On master, conftest.py:180 now calls get_navigation_url(), which
+      # crashes with KeyError: 'navigation' against the kind portal config.
+      # 891ea9e is the commit from the last green run (calypr/funnel run 27659443374).
+      TEST_REPO_BRANCH: "891ea9eaf18fa3ce114483af5cbcdd9356ce31c9"
       SETUP_SCRIPT_1: https://raw.githubusercontent.com/uc-cdis/gen3-workflow/refs/heads/master/.github/workflows/integration_tests_on_kind/ci_start_kind_cluster.sh
       SETUP_SCRIPT_2: https://raw.githubusercontent.com/uc-cdis/gen3-workflow/refs/heads/master/.github/workflows/integration_tests_on_kind/ci_override_config_and_start_minio.sh
       SETUP_SCRIPT_3: https://raw.githubusercontent.com/uc-cdis/gen3-workflow/refs/heads/master/.github/workflows/integration_tests_on_kind/ci_expose_kind_cluster.sh
