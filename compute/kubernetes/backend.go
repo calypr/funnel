@@ -267,7 +267,8 @@ func (b *Backend) createResources(ctx context.Context, task *tes.Task, config *c
 		}
 
 		// Create PV (cluster-scoped — cannot be owned by a namespaced Job)
-		err = resources.CreatePV(timeoutCtx, task.Id, config, b.client, b.log)
+		diskGb := task.GetResources().GetDiskGb()
+		err = resources.CreatePV(timeoutCtx, task.Id, diskGb, config, b.client, b.log)
 		if err != nil {
 			_ = b.Cancel(context.Background(), task.Id)
 			return fmt.Errorf("creating Worker PV: %w", err)
@@ -275,7 +276,7 @@ func (b *Backend) createResources(ctx context.Context, task *tes.Task, config *c
 
 		// Create PVC
 		b.log.Debug("creating Worker PVC", "taskID", task.Id)
-		err = resources.CreatePVC(timeoutCtx, task.Id, config, b.client, b.log, ownerRef)
+		err = resources.CreatePVC(timeoutCtx, task.Id, diskGb, config, b.client, b.log, ownerRef)
 		if err != nil {
 			_ = b.Cancel(context.Background(), task.Id)
 			return fmt.Errorf("creating Worker PVC: %w", err)
@@ -471,6 +472,15 @@ const failedCreateThreshold = 5
 // rapid-fire bursts in the first few seconds of a job's life.
 const minFailureSpan = 20 * time.Second
 
+// missingJobThreshold is the number of consecutive reconcile passes a
+// non-terminal task may have no matching worker Job in Kubernetes before the
+// reconciler marks it SYSTEM_ERROR. This grace window avoids a false positive
+// for the brief period between a task being submitted and its Job object being
+// created. A worker Job that is deleted out-of-band (e.g. manually, or while its
+// pod is still ContainerCreating) leaves the task with no Job indefinitely, so
+// after this many misses the task is failed rather than left stuck. See issue #88.
+const missingJobThreshold = 3
+
 // hasJobFailedCreateEvent returns (totalCount, message) when the job has
 // accumulated enough FailedCreate events spread over enough real time and no
 // SuccessfulCreate has occurred after the last failure. Returns (0, "") when
@@ -569,9 +579,14 @@ func (b *Backend) hasJobFailedCreateEvent(ctx context.Context, jobName string) (
 // |        QUEUED       |     FAILED      |    SYSTEM_ERROR    |
 // |  INITIALIZING       |     FAILED      |    SYSTEM_ERROR    |
 // |       RUNNING       |     FAILED      |    SYSTEM_ERROR    |
+// |        QUEUED       |    MISSING      |    SYSTEM_ERROR    |
+// |  INITIALIZING       |    MISSING      |    SYSTEM_ERROR    |
+// |       RUNNING       |    MISSING      |    SYSTEM_ERROR    |
 //
 // In this context a "FAILED" state is being used as a generic term that captures
-// one or more terminal states for the backend.
+// one or more terminal states for the backend. "MISSING" means the worker Job no
+// longer exists in Kubernetes (e.g. it was deleted out-of-band) — after a short
+// grace period the task is failed rather than left stuck (see issue #88).
 //
 // This loop is also used to cleanup successful jobs.
 func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableCleanup bool) {
@@ -619,6 +634,14 @@ func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableClea
 
 	ticker := time.NewTicker(rate)
 	failedJobEvents := make(map[string]int)
+
+	// missingJobCounts tracks, per task, the number of consecutive reconcile
+	// passes in which a non-terminal task has had no matching worker job in
+	// Kubernetes. A job can be legitimately absent for a short window right after
+	// submit (the Job API object has not been created yet), so we only treat the
+	// task as failed after the job has been missing for missingJobThreshold
+	// consecutive passes. The counter is reset as soon as the job reappears.
+	missingJobCounts := make(map[string]int)
 
 	for {
 		select {
@@ -670,8 +693,50 @@ func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableClea
 						delete(k8sJobs, taskID)
 
 						if j == nil {
+							// The task is non-terminal but has no worker Job in
+							// Kubernetes. This is expected briefly right after submit
+							// (the Job object is not created yet), so we only act once
+							// the job has been missing for missingJobThreshold
+							// consecutive passes. A Job deleted out-of-band while the
+							// task is non-terminal would otherwise leave it stuck in
+							// QUEUED/INITIALIZING/RUNNING forever (issue #88).
+							//
+							// Once we have crossed the threshold and written the
+							// SYSTEM_ERROR event we keep the counter pinned (rather than
+							// deleting it) so that we do not re-emit the event on every
+							// subsequent pass while the task's terminal state propagates
+							// and it drops out of the non-terminal list.
+							if missingJobCounts[taskID] >= missingJobThreshold {
+								continue
+							}
+
+							missingJobCounts[taskID]++
+							if missingJobCounts[taskID] < missingJobThreshold {
+								b.log.Debug("reconcile: non-terminal task has no worker job, waiting before failing",
+									"taskID", taskID, "state", task.State, "misses", missingJobCounts[taskID])
+								continue
+							}
+
+							b.log.Info("reconcile: worker job missing for non-terminal task, marking SYSTEM_ERROR",
+								"taskID", taskID, "state", task.State, "misses", missingJobCounts[taskID])
+							b.event.WriteEvent(ctx, events.NewState(taskID, tes.SystemError))
+							b.event.WriteEvent(ctx, events.NewSystemLog(
+								taskID, 0, 0, "error",
+								"Kubernetes worker job no longer exists",
+								map[string]string{"error": "worker job was deleted or never started while the task was non-terminal"},
+							))
+							// Best-effort cleanup of any remaining task resources
+							// (PVC/PV/ServiceAccount) left behind by the deleted job.
+							if !disableCleanup {
+								if err := b.cleanResources(ctx, taskID); err != nil {
+									b.log.Error("reconcile: failed to clean resources for missing job", "taskID", taskID, "error", err)
+								}
+							}
 							continue
 						}
+
+						// The job exists again — clear any prior missing-job streak.
+						delete(missingJobCounts, taskID)
 
 						jobName := j.Name
 						status := j.Status

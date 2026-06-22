@@ -18,7 +18,7 @@ import (
 )
 
 // Create the Worker/Executor PV from config/kubernetes-pv.yaml
-func CreatePV(ctx context.Context, taskId string, conf *config.Config, client kubernetes.Interface, log *logger.Logger) error {
+func CreatePV(ctx context.Context, taskId string, diskGb float64, conf *config.Config, client kubernetes.Interface, log *logger.Logger) error {
 
 	// Load templates
 	t, err := template.New(taskId).Parse(conf.Kubernetes.PVTemplate)
@@ -41,6 +41,7 @@ func CreatePV(ctx context.Context, taskId string, conf *config.Config, client ku
 		"Bucket":    s3Bucket,
 		"Region":    s3Region,
 		"KmsKeyID":  s3KmsKeyID,
+		"DiskGb":    diskGb,
 	})
 	if err != nil {
 		return fmt.Errorf("%v", err)
@@ -95,6 +96,12 @@ func DeletePV(ctx context.Context, taskID string, namespace string, client kuber
 			pv.Finalizers = nil
 			_, err = client.CoreV1().PersistentVolumes().Update(ctx, pv, metav1.UpdateOptions{})
 			if err != nil {
+				// The PV may have been deleted between our Get and this Update
+				// (concurrent reconcile/cancel or owner-reference GC). NotFound
+				// means it is already gone, which is the desired end state.
+				if errors.IsNotFound(err) {
+					return nil
+				}
 				if errors.IsConflict(err) && i < maxRetries-1 {
 					log.Debug("conflict removing PV finalizers, retrying", "pv", name, "attempt", i+1)
 					time.Sleep(delay)
