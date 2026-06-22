@@ -804,14 +804,6 @@ func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableClea
 	ticker := time.NewTicker(rate)
 	defer ticker.Stop()
 
-	// missingJobCounts tracks, per task, the number of consecutive reconcile
-	// passes in which a non-terminal task has had no matching worker job in
-	// Kubernetes. A job can be legitimately absent for a short window right after
-	// submit (the Job API object has not been created yet), so we only treat the
-	// task as failed after the job has been missing for missingJobThreshold
-	// consecutive passes. The counter is reset as soon as the job reappears.
-	missingJobCounts := make(map[string]int)
-
 	for {
 		select {
 		case <-ctx.Done():
