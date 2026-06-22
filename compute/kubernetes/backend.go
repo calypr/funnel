@@ -479,15 +479,6 @@ const failedCreateThreshold = 5
 // rapid-fire bursts in the first few seconds of a job's life.
 const minFailureSpan = 20 * time.Second
 
-// missingJobThreshold is the number of consecutive reconcile passes a
-// non-terminal task may have no matching worker Job in Kubernetes before the
-// reconciler marks it SYSTEM_ERROR. This grace window avoids a false positive
-// for the brief period between a task being submitted and its Job object being
-// created. A worker Job that is deleted out-of-band (e.g. manually, or while its
-// pod is still ContainerCreating) leaves the task with no Job indefinitely, so
-// after this many misses the task is failed rather than left stuck. See issue #88.
-const missingJobThreshold = 3
-
 // hasJobFailedCreateEvent returns (totalCount, message) when the job has
 // accumulated enough FailedCreate events spread over enough real time and no
 // SuccessfulCreate has occurred after the last failure. Returns (0, "") when
