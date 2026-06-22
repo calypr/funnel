@@ -162,7 +162,10 @@ func DeleteExecutorJobs(ctx context.Context, conf *config.Config, taskID string,
 				GracePeriodSeconds: &gracePeriod,
 				PropagationPolicy:  &prop,
 			})
-			if delErr != nil {
+			// A job present in the List above can be removed (TTL controller or a
+			// concurrent reconcile/cancel) before this Delete runs. A NotFound here
+			// means the desired end state — the job is gone — so it is not an error.
+			if delErr != nil && !errors.IsNotFound(delErr) {
 				errs = fmt.Errorf("deleting executor job %s: %v", job.Name, delErr)
 			}
 		}

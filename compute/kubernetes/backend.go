@@ -272,7 +272,8 @@ func (b *Backend) createResources(ctx context.Context, task *tes.Task, config *c
 		}
 
 		// Create PV (cluster-scoped — cannot be owned by a namespaced Job)
-		err = resources.CreatePV(timeoutCtx, task.Id, config, b.client, b.log)
+		diskGb := task.GetResources().GetDiskGb()
+		err = resources.CreatePV(timeoutCtx, task.Id, diskGb, config, b.client, b.log)
 		if err != nil {
 			_ = b.Cancel(context.Background(), task.Id)
 			return fmt.Errorf("creating Worker PV: %w", err)
@@ -280,7 +281,7 @@ func (b *Backend) createResources(ctx context.Context, task *tes.Task, config *c
 
 		// Create PVC
 		b.log.Debug("creating Worker PVC", "taskID", task.Id)
-		err = resources.CreatePVC(timeoutCtx, task.Id, config, b.client, b.log, ownerRef)
+		err = resources.CreatePVC(timeoutCtx, task.Id, diskGb, config, b.client, b.log, ownerRef)
 		if err != nil {
 			_ = b.Cancel(context.Background(), task.Id)
 			return fmt.Errorf("creating Worker PVC: %w", err)
@@ -477,6 +478,15 @@ const failedCreateThreshold = 5
 // event required before the reconciler acts. This prevents false-positives from
 // rapid-fire bursts in the first few seconds of a job's life.
 const minFailureSpan = 20 * time.Second
+
+// missingJobThreshold is the number of consecutive reconcile passes a
+// non-terminal task may have no matching worker Job in Kubernetes before the
+// reconciler marks it SYSTEM_ERROR. This grace window avoids a false positive
+// for the brief period between a task being submitted and its Job object being
+// created. A worker Job that is deleted out-of-band (e.g. manually, or while its
+// pod is still ContainerCreating) leaves the task with no Job indefinitely, so
+// after this many misses the task is failed rather than left stuck. See issue #88.
+const missingJobThreshold = 3
 
 // hasJobFailedCreateEvent returns (totalCount, message) when the job has
 // accumulated enough FailedCreate events spread over enough real time and no
@@ -793,6 +803,14 @@ func (b *Backend) reconcileOnce(ctx context.Context, disableCleanup bool) {
 func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableCleanup bool) {
 	ticker := time.NewTicker(rate)
 	defer ticker.Stop()
+
+	// missingJobCounts tracks, per task, the number of consecutive reconcile
+	// passes in which a non-terminal task has had no matching worker job in
+	// Kubernetes. A job can be legitimately absent for a short window right after
+	// submit (the Job API object has not been created yet), so we only treat the
+	// task as failed after the job has been missing for missingJobThreshold
+	// consecutive passes. The counter is reset as soon as the job reappears.
+	missingJobCounts := make(map[string]int)
 
 	for {
 		select {

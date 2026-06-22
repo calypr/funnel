@@ -569,7 +569,7 @@ func TestCreatePV_WithoutGenericS3DoesNotPanic(t *testing.T) {
 	conf.Kubernetes.PVTemplate = pvTemplateHostPath
 
 	client := fake.NewSimpleClientset()
-	if err := resources.CreatePV(context.Background(), unitTestTaskID, conf, client, unitTestLog); err != nil {
+	if err := resources.CreatePV(context.Background(), unitTestTaskID, 0, conf, client, unitTestLog); err != nil {
 		t.Fatalf("CreatePV without GenericS3: %v", err)
 	}
 
@@ -588,7 +588,7 @@ func TestCreatePV_WithGenericS3FieldsArePassed(t *testing.T) {
 	}
 
 	client := fake.NewSimpleClientset()
-	if err := resources.CreatePV(context.Background(), unitTestTaskID, conf, client, unitTestLog); err != nil {
+	if err := resources.CreatePV(context.Background(), unitTestTaskID, 0, conf, client, unitTestLog); err != nil {
 		t.Fatalf("CreatePV with GenericS3: %v", err)
 	}
 
@@ -619,7 +619,7 @@ func TestCreatePVC_WithoutGenericS3DoesNotPanic(t *testing.T) {
 	conf.Kubernetes.PVCTemplate = pvcTemplateHostPath
 
 	client := fake.NewSimpleClientset()
-	if err := resources.CreatePVC(context.Background(), unitTestTaskID, conf, client, unitTestLog, nil); err != nil {
+	if err := resources.CreatePVC(context.Background(), unitTestTaskID, 0, conf, client, unitTestLog, nil); err != nil {
 		t.Fatalf("CreatePVC without GenericS3: %v", err)
 	}
 

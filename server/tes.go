@@ -256,13 +256,23 @@ func (ts *TaskService) CancelTask(ctx context.Context, req *tes.CancelTaskReques
 		return result, err
 	}
 
-	// dispatch to compute backend
-	err = ts.Compute.WriteEvent(ctx, events.NewState(req.Id, tes.Canceled))
-	if err != nil {
-		ts.Log.Error("compute backend failed to cancel task", "taskID", req.Id, "error", err)
+	// Dispatch to the compute backend to clean up underlying resources (K8s jobs,
+	// PVs, etc.). The task is already marked Canceled in the database above, so
+	// cleanup is best-effort: a failure here (e.g. a resource already gone, or a
+	// transient API error) must not fail the cancel request with a 500. Record the
+	// failure in the task's system logs instead so it remains visible.
+	if err := ts.Compute.WriteEvent(ctx, events.NewState(req.Id, tes.Canceled)); err != nil {
+		ts.Log.Error("compute backend failed to clean up resources during cancel", "taskID", req.Id, "error", err)
+		if logErr := ts.Event.WriteEvent(ctx, events.NewSystemLog(
+			req.Id, 0, 0, "error",
+			"Error cleaning up compute resources during cancel",
+			map[string]string{"error": err.Error()},
+		)); logErr != nil {
+			ts.Log.Error("failed to write system log for cancel cleanup error", "taskID", req.Id, "error", logErr)
+		}
 	}
 
-	return result, err
+	return result, nil
 }
 
 // GetServiceInfo returns service metadata.

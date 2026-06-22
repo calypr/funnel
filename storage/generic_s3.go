@@ -226,28 +226,37 @@ func download(ctx context.Context, client *minio.Client, bucket, objectPath, fil
 	if err != nil {
 		return fmt.Errorf("failed creating file: %w", err)
 	}
-	defer outFile.Close()
-
-	// Output the downloaded file contents for debugging
-	content, err := os.ReadFile(outFile.Name())
-	if err != nil {
-		logger.Debug("Error reading file", "filePath", outFile.Name(), "error", err)
-	}
-	logger.Debug("genericS3: file contents", "filePath", outFile.Name(), "content", string(content))
-
-	// Output the downloaded file contents for debugging
-	content, err = os.ReadFile(outFile.Name())
-	if err != nil {
-		logger.Debug("Error reading file", "filePath", outFile.Name(), "error", err)
-	}
-	logger.Debug("genericS3: file contents", "filePath", outFile.Name(), "content", string(content))
 
 	// Step 3: Copy the contents
-	// TODO: Add stack trace (or simply more verbose logging) here...
-	// Can we add stack traces for all errors in Funnel?
 	logger.Debug("genericS3: io.Copy", "outFile", outFile.Name(), "obj", obj)
 	if _, err := io.Copy(outFile, obj); err != nil {
+		outFile.Close()
 		return fmt.Errorf("failed writing file: %w", err)
+	}
+
+	// Close explicitly (not via defer) so Mountpoint begins flushing to S3
+	// before we poll for readability below.
+	if err := outFile.Close(); err != nil {
+		return fmt.Errorf("failed closing file: %w", err)
+	}
+
+	// Wait for the file to become readable. When the path is on a
+	// Mountpoint-for-S3 backed filesystem, closing the write handle triggers
+	// an async S3 upload; os.Stat returns EPERM until that upload finishes.
+	const mountpointFlushTimeout = 5 * time.Minute
+	const mountpointFlushInterval = 2 * time.Second
+	deadline := time.Now().Add(mountpointFlushTimeout)
+	for {
+		_, err := os.Stat(filePath)
+		if err == nil {
+			break
+		}
+		if time.Now().Before(deadline) && (errors.Is(err, syscall.EPERM) || errors.Is(err, os.ErrNotExist)) {
+			logger.Debug("genericS3: waiting for input file to be readable after write", "path", filePath, "error", err)
+			time.Sleep(mountpointFlushInterval)
+			continue
+		}
+		return fmt.Errorf("failed waiting for file to become readable: %w", err)
 	}
 
 	return nil
@@ -276,7 +285,7 @@ func (s3 *GenericS3) Put(ctx context.Context, url, path string) (*Object, error)
 	// mount instance (the executor pod), os.Stat returns EPERM until Mountpoint
 	// finishes flushing the write to S3. Poll until the file is readable or the
 	// timeout expires.
-	const mountpointFlushTimeout = 30 * time.Second
+	const mountpointFlushTimeout = 5 * time.Minute
 	const mountpointFlushInterval = 2 * time.Second
 	deadline := time.Now().Add(mountpointFlushTimeout)
 	var fileInfo os.FileInfo
