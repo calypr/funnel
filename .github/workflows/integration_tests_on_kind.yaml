@@ -11,7 +11,7 @@ permissions:
 jobs:
   integration_tests:
     name: Integration tests
-    uses: uc-cdis/.github/.github/workflows/integration_tests.yaml@28f8020ea479e0b79e9a86bdfb9da6566806cf3b
+    uses: uc-cdis/.github/.github/workflows/integration_tests.yaml@master
     with:
       QUAY_ORG: ohsu-comp-bio
       EXTERNAL_TO_CTDS: "true"
