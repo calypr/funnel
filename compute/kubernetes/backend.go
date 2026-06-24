@@ -951,6 +951,18 @@ func (b *Backend) isResourceCleanupNeeded(ctx context.Context, taskID string) (b
 	}
 }
 
+// ReconcileOnce performs a single reconciliation pass over Funnel-managed Kubernetes
+// resources. It is intended to be invoked by an external scheduler (e.g. a Kubernetes
+// CronJob configured via the Helm chart's ReconcileRate value) so that reconciliation
+// is decoupled from the Funnel server lifecycle and multiple server replicas do not
+// race to reconcile the same resources.
+//
+// This is currently a stub that simply logs; the full reconciliation logic is added in
+// https://github.com/calypr/funnel/pull/1438.
+func (b *Backend) ReconcileOnce() {
+	b.log.Info("Reconciling!")
+}
+
 // CleanOrphanedResources deletes any Funnel-managed Kubernetes resources that are not associated
 // with an active task in the database.
 //

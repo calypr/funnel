@@ -67,6 +67,7 @@ is decoupled from the server lifecycle and multiple replicas do not race.`,
 				return fmt.Errorf("opening database: %v", err)
 			}
 
+			// TODO: Why are we building a new backend here?
 			// Build the K8s backend (connects to the cluster via in-cluster config).
 			// We pass a no-op event writer since this command only deletes resources
 			// and never needs to emit task state events.
@@ -77,7 +78,9 @@ is decoupled from the server lifecycle and multiple replicas do not race.`,
 
 			log.Info("Starting orphaned resource cleanup",
 				"namespace", conf.Kubernetes.JobsNamespace)
-			backend.CleanOrphanedResources(ctx)
+
+			backend.ReconcileOnce()
+			// backend.CleanOrphanedResources(ctx)
 			log.Info("Orphaned resource cleanup complete")
 			return nil
 		},
