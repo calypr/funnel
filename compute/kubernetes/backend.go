@@ -75,6 +75,41 @@ func NewBackend(ctx context.Context, conf *config.Config, reader tes.ReadOnlySer
 	return b, nil
 }
 
+// NewCleanupBackend returns a Backend suitable for one-shot resource cleanup
+// (e.g. the "funnel kubernetes cleanup" command run as a CronJob).
+//
+// Unlike NewBackend, it does not require a worker job template and does not start
+// the reconcile goroutine: cleanup only reads the database and deletes orphaned
+// Kubernetes resources, so the task-submission configuration is irrelevant. Like
+// the server backend, it connects to the same cluster via in-cluster config and
+// is intended to run inside the cluster (e.g. as a CronJob).
+func NewCleanupBackend(conf *config.Config, reader tes.ReadOnlyServer, writer events.Writer, log *logger.Logger) (*Backend, error) {
+	// Resolve the namespace cleanup should operate in. Prefer the configured
+	// namespace; otherwise fall back to the pod's ServiceAccount namespace.
+	if conf.Kubernetes.JobsNamespace == "" {
+		conf.Kubernetes.JobsNamespace = conf.Kubernetes.Namespace
+	}
+	if conf.Kubernetes.JobsNamespace == "" {
+		conf.Kubernetes.JobsNamespace = k8sutil.InClusterNamespace()
+	}
+	if conf.Kubernetes.JobsNamespace == "" {
+		return nil, fmt.Errorf("could not determine kubernetes namespace; set Kubernetes.Namespace in config")
+	}
+
+	clientset, err := k8sutil.NewK8sClient(conf)
+	if err != nil {
+		return nil, fmt.Errorf("creating kubernetes client: %v", err)
+	}
+
+	return &Backend{
+		client:   clientset,
+		event:    writer,
+		database: reader,
+		log:      log,
+		conf:     conf,
+	}, nil
+}
+
 func (b Backend) CheckBackendParameterSupport(task *tes.Task) error {
 	if !task.Resources.GetBackendParametersStrict() {
 		return nil
