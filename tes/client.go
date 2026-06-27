@@ -114,7 +114,7 @@ func (c *Client) ListTasks(ctx context.Context, req *ListTasksRequest) (*ListTas
 
 // CreateTask POSTs a Task message to /v1/tasks
 func (c *Client) CreateTask(ctx context.Context, task *Task) (*CreateTaskResponse, error) {
-	verr := Validate(task)
+	verr := Validate(task, nil)
 	if verr != nil {
 		return nil, fmt.Errorf("invalid task message: %v", verr)
 	}

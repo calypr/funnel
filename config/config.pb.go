@@ -7,14 +7,13 @@
 package config
 
 import (
-	reflect "reflect"
-	sync "sync"
-	unsafe "unsafe"
-
 	logger "github.com/ohsu-comp-bio/funnel/logger"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	durationpb "google.golang.org/protobuf/types/known/durationpb"
+	reflect "reflect"
+	sync "sync"
+	unsafe "unsafe"
 )
 
 const (
@@ -2774,9 +2773,15 @@ type Kubernetes struct {
 	// Optional Kubernetes resource defaults and limits for tasks running on the Kubernetes backend.
 	Resources *KubernetesResources `protobuf:"bytes,18,opt,name=Resources,proto3" json:"Resources,omitempty"`
 	// Timeout for creating Kubernetes resources (PV, PVC, Job, etc.)
-	Timeout       *TimeoutConfig `protobuf:"bytes,19,opt,name=Timeout,proto3" json:"Timeout,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Timeout *TimeoutConfig `protobuf:"bytes,19,opt,name=Timeout,proto3" json:"Timeout,omitempty"`
+	// ForbiddenPathPrefixes are container paths that user-submitted tasks are not
+	// allowed to mount inputs, outputs, volumes, or working directories into.
+	// Mounting over these would expose or clobber sensitive host/kernel
+	// interfaces. When set, this list replaces Funnel's built-in defaults
+	// (/dev, /proc, /sys, /run, /var/run).
+	ForbiddenPathPrefixes []string `protobuf:"bytes,20,rep,name=ForbiddenPathPrefixes,proto3" json:"ForbiddenPathPrefixes,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *Kubernetes) Reset() {
@@ -2938,6 +2943,13 @@ func (x *Kubernetes) GetResources() *KubernetesResources {
 func (x *Kubernetes) GetTimeout() *TimeoutConfig {
 	if x != nil {
 		return x.Timeout
+	}
+	return nil
+}
+
+func (x *Kubernetes) GetForbiddenPathPrefixes() []string {
+	if x != nil {
+		return x.ForbiddenPathPrefixes
 	}
 	return nil
 }
@@ -3456,7 +3468,7 @@ const file_config_config_proto_rawDesc = "" +
 	"\bDisabled\x18\x01 \x01(\bR\bDisabled\x12/\n" +
 	"\aTimeout\x18\x02 \x01(\v2\x15.config.TimeoutConfigR\aTimeout\x12\x12\n" +
 	"\x04User\x18\x03 \x01(\tR\x04User\x12\x1a\n" +
-	"\bPassword\x18\x04 \x01(\tR\bPassword\"\xb0\a\n" +
+	"\bPassword\x18\x04 \x01(\tR\bPassword\"\xe6\a\n" +
 	"\n" +
 	"Kubernetes\x12\x1a\n" +
 	"\bExecutor\x18\x01 \x01(\tR\bExecutor\x12&\n" +
@@ -3480,7 +3492,8 @@ const file_config_config_proto_rawDesc = "" +
 	"\fNodeSelector\x18\x10 \x03(\v2$.config.Kubernetes.NodeSelectorEntryR\fNodeSelector\x124\n" +
 	"\vTolerations\x18\x11 \x03(\v2\x12.config.TolerationR\vTolerations\x129\n" +
 	"\tResources\x18\x12 \x01(\v2\x1b.config.KubernetesResourcesR\tResources\x12/\n" +
-	"\aTimeout\x18\x13 \x01(\v2\x15.config.TimeoutConfigR\aTimeout\x1a?\n" +
+	"\aTimeout\x18\x13 \x01(\v2\x15.config.TimeoutConfigR\aTimeout\x124\n" +
+	"\x15ForbiddenPathPrefixes\x18\x14 \x03(\tR\x15ForbiddenPathPrefixes\x1a?\n" +
 	"\x11NodeSelectorEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"{\n" +

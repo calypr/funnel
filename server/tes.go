@@ -115,7 +115,7 @@ func (ts *TaskService) CreateTask(ctx context.Context, task *tes.Task) (*tes.Cre
 		}
 	}
 
-	if err := tes.InitTask(task, true); err != nil {
+	if err := tes.InitTask(task, true, ts.Config.Kubernetes.GetForbiddenPathPrefixes()); err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "%v", err.Error())
 	}
 

@@ -3,7 +3,7 @@ package tes
 import "testing"
 
 func TestValidation(t *testing.T) {
-	v := Validate(&Task{})
+	v := Validate(&Task{}, nil)
 	if len(v) == 0 {
 		t.Fatal("expected validation errors")
 	}
@@ -30,7 +30,7 @@ func TestForbiddenInputPath(t *testing.T) {
 			Inputs: []*Input{
 				{Url: "file:///src", Path: path},
 			},
-		})
+		}, nil)
 		if valid && len(v) != 0 {
 			t.Errorf("path %q: expected no validation errors, got: %v", path, v)
 		}
@@ -49,7 +49,7 @@ func TestForbiddenOutputAndVolumePaths(t *testing.T) {
 			{Url: "file:///dst", Path: "/sys/kernel"},
 		},
 		Volumes: []string{"/var/run"},
-	})
+	}, nil)
 	// Expect one error each for Workdir, Output.Path, and Volume.
 	if len(v) != 3 {
 		t.Fatalf("expected 3 forbidden-path validation errors, got %d: %v", len(v), v)
@@ -67,8 +67,40 @@ func TestEmptyTagKeyValidation(t *testing.T) {
 				Command: []string{"echo"},
 			},
 		},
-	})
+	}, nil)
 	if len(v) != 1 {
 		t.Fatal("expected 1 validation error")
+	}
+}
+
+// TestConfigurableForbiddenPaths verifies that a caller-supplied deny list
+// replaces the built-in defaults: configured prefixes are rejected, and paths
+// that are only in the defaults (but not in the custom list) are allowed.
+func TestConfigurableForbiddenPaths(t *testing.T) {
+	custom := []string{"/foo", "/bar/baz"}
+
+	task := func(inputPath string) *Task {
+		return &Task{
+			Executors: []*Executor{
+				{Image: "alpine", Command: []string{"echo"}},
+			},
+			Inputs: []*Input{
+				{Url: "file:///src", Path: inputPath},
+			},
+		}
+	}
+
+	// Configured prefixes are forbidden.
+	if v := Validate(task("/foo"), custom); len(v) == 0 {
+		t.Errorf("expected /foo to be forbidden with custom deny list")
+	}
+	if v := Validate(task("/bar/baz/data"), custom); len(v) == 0 {
+		t.Errorf("expected /bar/baz/data to be forbidden with custom deny list")
+	}
+
+	// A default prefix that is not in the custom list is now allowed, since the
+	// custom list replaces the defaults.
+	if v := Validate(task("/dev/sda"), custom); len(v) != 0 {
+		t.Errorf("expected /dev/sda to be allowed when custom deny list replaces defaults, got: %v", v)
 	}
 }

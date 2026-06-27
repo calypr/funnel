@@ -5,10 +5,11 @@ import (
 	"strings"
 )
 
-// forbiddenPathPrefixes are container paths that user-submitted tasks are not
-// allowed to mount inputs, outputs, volumes, or working directories into.
-// Mounting over these would expose or clobber sensitive host/kernel interfaces.
-var forbiddenPathPrefixes = []string{
+// DefaultForbiddenPathPrefixes are the container paths that user-submitted
+// tasks are not allowed to mount inputs, outputs, volumes, or working
+// directories into when no deny list is configured. Mounting over these would
+// expose or clobber sensitive host/kernel interfaces.
+var DefaultForbiddenPathPrefixes = []string{
 	"/dev",
 	"/proc",
 	"/sys",
@@ -17,10 +18,10 @@ var forbiddenPathPrefixes = []string{
 }
 
 // isForbiddenPath reports whether path is, or is nested under, any of the
-// forbidden path prefixes. The comparison is exact-segment based so that
+// given forbidden path prefixes. The comparison is exact-segment based so that
 // "/devices" is not treated as being under "/dev".
-func isForbiddenPath(path string) bool {
-	for _, p := range forbiddenPathPrefixes {
+func isForbiddenPath(path string, prefixes []string) bool {
+	for _, p := range prefixes {
 		if path == p || strings.HasPrefix(path, p+"/") {
 			return true
 		}
@@ -44,8 +45,16 @@ func (v ValidationError) Error() string {
 
 // Validate validates the given task and returns ValidationError,
 // or nil if the task is valid.
-func Validate(t *Task) ValidationError {
+//
+// forbiddenPathPrefixes is the deny list of container paths that inputs,
+// outputs, volumes, and working directories may not be mounted into. When it is
+// empty, DefaultForbiddenPathPrefixes is used.
+func Validate(t *Task, forbiddenPathPrefixes []string) ValidationError {
 	var errs ValidationError
+
+	if len(forbiddenPathPrefixes) == 0 {
+		forbiddenPathPrefixes = DefaultForbiddenPathPrefixes
+	}
 
 	if len(t.Executors) == 0 {
 		errs.add("Task.Executors: at least one executor is required")
@@ -64,7 +73,7 @@ func Validate(t *Task) ValidationError {
 			errs.add("Task.Executors[%d].Workdir: must be an absolute path", i)
 		}
 
-		if isForbiddenPath(exec.Workdir) {
+		if isForbiddenPath(exec.Workdir, forbiddenPathPrefixes) {
 			errs.add("Task.Executors[%d].Workdir: %q is not allowed as a working directory", i, exec.Workdir)
 		}
 
@@ -96,7 +105,7 @@ func Validate(t *Task) ValidationError {
 			errs.add("task.Inputs[%d].Path: must be an absolute path", i)
 		}
 
-		if isForbiddenPath(input.Path) {
+		if isForbiddenPath(input.Path, forbiddenPathPrefixes) {
 			errs.add("Task.Inputs[%d].Path: %q is not allowed as an input path", i, input.Path)
 		}
 	}
@@ -114,7 +123,7 @@ func Validate(t *Task) ValidationError {
 			errs.add("task.Outputs[%d].Path: must be an absolute path", i)
 		}
 
-		if isForbiddenPath(output.Path) {
+		if isForbiddenPath(output.Path, forbiddenPathPrefixes) {
 			errs.add("Task.Outputs[%d].Path: %q is not allowed as an output path", i, output.Path)
 		}
 	}
@@ -124,7 +133,7 @@ func Validate(t *Task) ValidationError {
 			errs.add("Task.Volumes[%d]: must be an absolute path", i)
 		}
 
-		if isForbiddenPath(vol) {
+		if isForbiddenPath(vol, forbiddenPathPrefixes) {
 			errs.add("Task.Volumes[%d]: %q is not allowed as a volume path", i, vol)
 		}
 	}

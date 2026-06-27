@@ -427,6 +427,13 @@ Kubernetes:
       RamGb: 4096Mi
       DiskGb: 4096Mi
 
+  # ForbiddenPathPrefixes is a deny list of container paths that user-submitted
+  # tasks may not mount inputs, outputs, volumes, or working directories into.
+  # Mounting over these would expose or clobber sensitive host/kernel interfaces.
+  # When left empty, Funnel uses its built-in defaults: /dev, /proc, /sys, /run,
+  # and /var/run. Setting this list replaces those defaults entirely.
+  ForbiddenPathPrefixes: []
+
 # -------------------------------------------------------------------------------
 # Storage
 # -------------------------------------------------------------------------------

@@ -546,6 +546,13 @@
         "Timeout": {
           "$ref": "#/definitions/configTimeoutConfig",
           "title": "Timeout for creating Kubernetes resources (PV, PVC, Job, etc.)"
+        },
+        "ForbiddenPathPrefixes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "ForbiddenPathPrefixes are container paths that user-submitted tasks are not\nallowed to mount inputs, outputs, volumes, or working directories into.\nMounting over these would expose or clobber sensitive host/kernel\ninterfaces. When set, this list replaces Funnel's built-in defaults\n(/dev, /proc, /sys, /run, /var/run)."
         }
       },
       "description": "Kubernetes describes the configuration for the Kubernetes compute backend."
