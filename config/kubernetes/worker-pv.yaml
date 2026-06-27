@@ -9,7 +9,7 @@ metadata:
 spec:
   storageClassName: "" # Required for static provisioning
   capacity:
-    storage: "10Mi"
+    storage: {{if ne .DiskGb 0.0}}"{{printf "%.0fGi" .DiskGb}}"{{else}}"1Gi"{{end}}
   accessModes:
     - ReadWriteMany
   persistentVolumeReclaimPolicy: Retain

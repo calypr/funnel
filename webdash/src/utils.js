@@ -134,7 +134,9 @@ function get(url, postJson) {
   return fetchOptsPromise
     .then((fetchOpts) => fetchWithPost(fetchOpts, postJson))
     .then((fetchOpts) => fetch(url.toString(), fetchOpts))
-    .then((response) => response.json())
+    .then((response) => {
+      return response.json();
+    })
     .catch((error) => {
       console.log("get", url.toString(), "error:", error);
       throw error;
