@@ -259,9 +259,8 @@ func TestHelloWorld(t *testing.T) {
 	}
 }
 
-// jobTemplateNoTTL is a minimal WorkerTemplate without ttlSecondsAfterFinished;
-// used to verify that a default TTL of 300 seconds is injected automatically.
-const jobTemplateNoTTL = `apiVersion: batch/v1
+// jobTemplate is a minimal WorkerTemplate
+const jobTemplate = `apiVersion: batch/v1
 kind: Job
 metadata:
   name: funnel-{{.TaskId}}
@@ -278,24 +277,6 @@ spec:
       - name: worker
         image: alpine
         command: ["echo", "{{.TaskName}}"]
-`
-
-// jobTemplateWithTTL has an explicit ttlSecondsAfterFinished of 600;
-// used to verify that a template-specified TTL is not overwritten by the default.
-const jobTemplateWithTTL = `apiVersion: batch/v1
-kind: Job
-metadata:
-  name: funnel-{{.TaskId}}
-  namespace: {{.JobsNamespace}}
-spec:
-  ttlSecondsAfterFinished: 600
-  backoffLimit: {{.BackoffLimit}}
-  template:
-    spec:
-      restartPolicy: Never
-      containers:
-      - name: worker
-        image: alpine
 `
 
 // Tests for SanitizeLabelValue: converts task names into valid Kubernetes label values.
@@ -349,57 +330,6 @@ func TestSanitizeLabelValue_StripsLeadingTrailingNonAlphanumeric(t *testing.T) {
 	}
 }
 
-// Tests for CreateJob: ttlSecondsAfterFinished defaults to 300 when absent from the template.
-func TestCreateJob_DefaultTTLIsSet(t *testing.T) {
-	client := fakeClientWithFunnelPod(unitTestNS)
-	task := &tes.Task{
-		Id:        "ttl-default",
-		Name:      "TTL Default Test",
-		Resources: &tes.Resources{CpuCores: 1, RamGb: 1.0},
-	}
-
-	if _, err := resources.CreateJob(context.Background(), task, baseJobConfig(jobTemplateNoTTL), client, unitTestLog); err != nil {
-		t.Fatalf("CreateJob: %v", err)
-	}
-
-	job, err := client.BatchV1().Jobs(unitTestJobsNS).Get(context.Background(), "funnel-"+task.Id, metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("get job: %v", err)
-	}
-
-	if job.Spec.TTLSecondsAfterFinished == nil {
-		t.Fatal("TTLSecondsAfterFinished is nil; want 300")
-	}
-	if got := *job.Spec.TTLSecondsAfterFinished; got != 300 {
-		t.Errorf("TTLSecondsAfterFinished = %d; want 300", got)
-	}
-}
-
-// Tests for CreateJob: a ttlSecondsAfterFinished already in the template is not overwritten.
-func TestCreateJob_ExistingTTLIsPreserved(t *testing.T) {
-	client := fakeClientWithFunnelPod(unitTestNS)
-	task := &tes.Task{
-		Id:        "ttl-preserve",
-		Resources: &tes.Resources{CpuCores: 1, RamGb: 1.0},
-	}
-
-	if _, err := resources.CreateJob(context.Background(), task, baseJobConfig(jobTemplateWithTTL), client, unitTestLog); err != nil {
-		t.Fatalf("CreateJob: %v", err)
-	}
-
-	job, err := client.BatchV1().Jobs(unitTestJobsNS).Get(context.Background(), "funnel-"+task.Id, metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("get job: %v", err)
-	}
-
-	if job.Spec.TTLSecondsAfterFinished == nil {
-		t.Fatal("TTLSecondsAfterFinished is nil; want 600")
-	}
-	if got := *job.Spec.TTLSecondsAfterFinished; got != 600 {
-		t.Errorf("TTLSecondsAfterFinished = %d; want 600 (template value must not be overwritten)", got)
-	}
-}
-
 // Tests for CreateJob: BackoffLimit falls back to 10 when not set via backend_parameters.
 func TestCreateJob_DefaultBackoffLimit(t *testing.T) {
 	client := fakeClientWithFunnelPod(unitTestNS)
@@ -408,7 +338,7 @@ func TestCreateJob_DefaultBackoffLimit(t *testing.T) {
 		Resources: &tes.Resources{CpuCores: 1},
 	}
 
-	if _, err := resources.CreateJob(context.Background(), task, baseJobConfig(jobTemplateNoTTL), client, unitTestLog); err != nil {
+	if _, err := resources.CreateJob(context.Background(), task, baseJobConfig(jobTemplate), client, unitTestLog); err != nil {
 		t.Fatalf("CreateJob: %v", err)
 	}
 
@@ -436,7 +366,7 @@ func TestCreateJob_BackoffLimitFromBackendParameters(t *testing.T) {
 		},
 	}
 
-	if _, err := resources.CreateJob(context.Background(), task, baseJobConfig(jobTemplateNoTTL), client, unitTestLog); err != nil {
+	if _, err := resources.CreateJob(context.Background(), task, baseJobConfig(jobTemplate), client, unitTestLog); err != nil {
 		t.Fatalf("CreateJob: %v", err)
 	}
 
@@ -463,7 +393,7 @@ func TestCreateJob_BackoffLimitInvalidValueFallsBackToDefault(t *testing.T) {
 		},
 	}
 
-	if _, err := resources.CreateJob(context.Background(), task, baseJobConfig(jobTemplateNoTTL), client, unitTestLog); err != nil {
+	if _, err := resources.CreateJob(context.Background(), task, baseJobConfig(jobTemplate), client, unitTestLog); err != nil {
 		t.Fatalf("CreateJob: %v", err)
 	}
 
@@ -490,7 +420,7 @@ func TestCreateJob_NegativeBackoffLimitFallsBackToDefault(t *testing.T) {
 		},
 	}
 
-	if _, err := resources.CreateJob(context.Background(), task, baseJobConfig(jobTemplateNoTTL), client, unitTestLog); err != nil {
+	if _, err := resources.CreateJob(context.Background(), task, baseJobConfig(jobTemplate), client, unitTestLog); err != nil {
 		t.Fatalf("CreateJob: %v", err)
 	}
 
@@ -516,7 +446,7 @@ func TestCreateJob_TaskNameLabelIsSanitized(t *testing.T) {
 		Resources: &tes.Resources{CpuCores: 1},
 	}
 
-	if _, err := resources.CreateJob(context.Background(), task, baseJobConfig(jobTemplateNoTTL), client, unitTestLog); err != nil {
+	if _, err := resources.CreateJob(context.Background(), task, baseJobConfig(jobTemplate), client, unitTestLog); err != nil {
 		t.Fatalf("CreateJob: %v", err)
 	}
 
