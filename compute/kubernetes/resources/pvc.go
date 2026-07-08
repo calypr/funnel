@@ -79,6 +79,7 @@ func DeletePVC(ctx context.Context, taskID string, namespace string, client kube
 	const maxRetries = 5
 	delay := 100 * time.Millisecond
 	for i := range maxRetries {
+		log.Debug("Attempting to delete Worker PVC", "taskID", taskID, "attempt", i+1)
 		// The PVC may not exist (no I/O task, or already deleted).
 		pvc, err := client.CoreV1().PersistentVolumeClaims(namespace).Get(ctx, name, metav1.GetOptions{})
 		if err != nil {
@@ -100,7 +101,7 @@ func DeletePVC(ctx context.Context, taskID string, namespace string, client kube
 					return nil
 				}
 				if errors.IsConflict(err) && i < maxRetries-1 {
-					log.Debug("conflict removing PVC finalizers, retrying", "pvc", name, "attempt", i+1)
+					log.Debug("conflict removing PVC finalizers, retrying", "pvc", name, "err", err, "attempt", i+1)
 					time.Sleep(delay)
 					delay *= 2
 					continue
@@ -114,6 +115,8 @@ func DeletePVC(ctx context.Context, taskID string, namespace string, client kube
 		if err != nil && !errors.IsNotFound(err) {
 			return fmt.Errorf("deleting PVC %s: %v", name, err)
 		}
+		log.Debug("deleting Worker PVC succeeded", "taskID", taskID, "attempt", i+1)
+
 		return nil
 	}
 
