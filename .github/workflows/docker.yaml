@@ -97,10 +97,31 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
-      - name: Prepare branch tag
-        id: branch_tag
-        if: github.ref_type == 'branch'
-        run: echo "value=${GITHUB_REF_NAME//\//_}" >> $GITHUB_OUTPUT
+      - name: Prepare build tag
+        id: build_tag
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          # Use the publication time, rather than the commit time, so this
+          # identifies when this image was actually pushed to Quay.
+          published_at="$(date -u +'%Y-%m-%d-%H-%M-%SZ')"
+          short_sha="${COMMIT_SHA:0:8}"
+
+          if [[ "$REF_TYPE" == "branch" ]]; then
+            ref_tag="${REF_NAME//\//_}"
+            echo "branch_value=${ref_tag}" >> "$GITHUB_OUTPUT"
+          else
+            ref_tag="$REF_NAME"
+          fi
+
+          # Keep the value valid as a Docker tag while retaining the source
+          # ref, readable UTC timestamp, and commit identity.
+          ref_tag="$(printf '%s' "$ref_tag" | tr -cs '[:alnum:]._-' '-')"
+          ref_tag="${ref_tag#-}"
+          ref_tag="${ref_tag%-}"
+          echo "value=${ref_tag}-${published_at}-${short_sha}" >> "$GITHUB_OUTPUT"
 
       - name: Docker meta
         id: meta
@@ -117,16 +138,16 @@ jobs:
             type=raw,value=latest,enable=${{ github.ref_type == 'tag' && startsWith(github.ref_name, 'v') && !contains(github.ref_name, '-') }}
 
             # Branch pushes (/ replaced with _ to preserve branch prefix context)
-            type=raw,value=${{ steps.branch_tag.outputs.value }},enable=${{ github.ref_type == 'branch' }},latest=false
+            type=raw,value=${{ steps.build_tag.outputs.branch_value }},enable=${{ github.ref_type == 'branch' }},latest=false
+
+            # Immutable, human-readable publication tag
+            type=raw,value=${{ steps.build_tag.outputs.value }},latest=false
 
             # PR pushes
             type=ref,event=pr,latest=false
 
             # Git Tag
             type=ref,event=tag,latest=false
-
-            # Commit SHA
-            type=sha,prefix=,latest=false
 
       - name: Create manifest list and push
         working-directory: ${{ runner.temp }}/digests
