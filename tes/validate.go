@@ -5,18 +5,6 @@ import (
 	"strings"
 )
 
-// DefaultForbiddenPathPrefixes are the container paths that user-submitted
-// tasks are not allowed to mount inputs, outputs, volumes, or working
-// directories into when no deny list is configured. Mounting over these would
-// expose or clobber sensitive host/kernel interfaces.
-var DefaultForbiddenPathPrefixes = []string{
-	"/dev",
-	"/proc",
-	"/sys",
-	"/run",
-	"/var/run",
-}
-
 // isForbiddenPath reports whether path is, or is nested under, any of the
 // given forbidden path prefixes. The comparison is exact-segment based so that
 // "/devices" is not treated as being under "/dev".
@@ -46,15 +34,11 @@ func (v ValidationError) Error() string {
 // Validate validates the given task and returns ValidationError,
 // or nil if the task is valid.
 //
-// forbiddenPathPrefixes is the deny list of container paths that inputs,
-// outputs, volumes, and working directories may not be mounted into. When it is
-// empty, DefaultForbiddenPathPrefixes is used.
+// forbiddenPathPrefixes is the configured deny list of container paths that
+// inputs, outputs, volumes, and working directories may not be mounted into.
+// An empty list means that no paths are denied.
 func Validate(t *Task, forbiddenPathPrefixes []string) ValidationError {
 	var errs ValidationError
-
-	if len(forbiddenPathPrefixes) == 0 {
-		forbiddenPathPrefixes = DefaultForbiddenPathPrefixes
-	}
 
 	if len(t.Executors) == 0 {
 		errs.add("Task.Executors: at least one executor is required")

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"reflect"
 	"testing"
 )
 
@@ -31,6 +32,9 @@ func TestConfigParsing(t *testing.T) {
 	err := ParseFile("./default-config.yaml", conf)
 	if err != nil {
 		t.Error("unexpected error:", err)
+	}
+	if got, want := conf.Kubernetes.ForbiddenPathPrefixes, []string{"/dev", "/proc", "/sys", "/run", "/var/run"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected default forbidden paths %v, got %v", want, got)
 	}
 
 	yaml := `

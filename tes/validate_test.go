@@ -2,6 +2,14 @@ package tes
 
 import "testing"
 
+var configuredDefaultForbiddenPaths = []string{
+	"/dev",
+	"/proc",
+	"/sys",
+	"/run",
+	"/var/run",
+}
+
 func TestValidation(t *testing.T) {
 	v := Validate(&Task{}, nil)
 	if len(v) == 0 {
@@ -30,7 +38,7 @@ func TestForbiddenInputPath(t *testing.T) {
 			Inputs: []*Input{
 				{Url: "file:///src", Path: path},
 			},
-		}, nil)
+		}, configuredDefaultForbiddenPaths)
 		if valid && len(v) != 0 {
 			t.Errorf("path %q: expected no validation errors, got: %v", path, v)
 		}
@@ -49,7 +57,7 @@ func TestForbiddenOutputAndVolumePaths(t *testing.T) {
 			{Url: "file:///dst", Path: "/sys/kernel"},
 		},
 		Volumes: []string{"/var/run"},
-	}, nil)
+	}, configuredDefaultForbiddenPaths)
 	// Expect one error each for Workdir, Output.Path, and Volume.
 	if len(v) != 3 {
 		t.Fatalf("expected 3 forbidden-path validation errors, got %d: %v", len(v), v)
@@ -74,8 +82,8 @@ func TestEmptyTagKeyValidation(t *testing.T) {
 }
 
 // TestConfigurableForbiddenPaths verifies that a caller-supplied deny list
-// replaces the built-in defaults: configured prefixes are rejected, and paths
-// that are only in the defaults (but not in the custom list) are allowed.
+// replaces the configured defaults: configured prefixes are rejected, and
+// paths omitted from the custom list are allowed.
 func TestConfigurableForbiddenPaths(t *testing.T) {
 	custom := []string{"/foo", "/bar/baz"}
 
@@ -102,5 +110,8 @@ func TestConfigurableForbiddenPaths(t *testing.T) {
 	// custom list replaces the defaults.
 	if v := Validate(task("/dev/sda"), custom); len(v) != 0 {
 		t.Errorf("expected /dev/sda to be allowed when custom deny list replaces defaults, got: %v", v)
+	}
+	if v := Validate(task("/proc/self"), custom); len(v) != 0 {
+		t.Errorf("expected /proc/self to be allowed when custom deny list replaces defaults, got: %v", v)
 	}
 }

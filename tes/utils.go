@@ -83,8 +83,7 @@ func GenerateID() string {
 // will always be overwritten, even if already set, otherwise they
 // will only be set if they are empty.
 //
-// forbiddenPathPrefixes is the deny list passed through to Validate; when empty,
-// DefaultForbiddenPathPrefixes is used.
+// forbiddenPathPrefixes is the configured deny list passed through to Validate.
 func InitTask(task *Task, overwrite bool, forbiddenPathPrefixes []string) error {
 	if overwrite || task.Id == "" {
 		task.Id = GenerateID()
