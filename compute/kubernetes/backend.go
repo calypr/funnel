@@ -771,8 +771,15 @@ func (b *Backend) reconcileJob(ctx context.Context, j *v1.Job, disableCleanup bo
 	}
 }
 
-// reconcileOnce performs a single reconciliation pass.
-func (b *Backend) reconcileOnce(ctx context.Context, disableCleanup bool) {
+// ReconcileOnce performs a single reconciliation pass over Funnel-managed Kubernetes
+// resources. It is intended to be invoked by an external scheduler (e.g. a Kubernetes
+// CronJob configured via the Helm chart's ReconcileRate value) so that reconciliation
+// is decoupled from the Funnel server lifecycle and multiple server replicas do not
+// race to reconcile the same resources.
+//
+// This is currently a stub that simply logs; the full reconciliation logic is added in
+// https://github.com/calypr/funnel/pull/1438.
+func (b *Backend) ReconcileOnce(ctx context.Context, disableCleanup bool) {
 	k8sJobs, err := b.listAllWorkerJobs(ctx)
 	if err != nil {
 		b.log.Error("reconcile: listing jobs", err)
@@ -835,7 +842,7 @@ func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableClea
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			b.reconcileOnce(ctx, disableCleanup)
+			b.ReconcileOnce(ctx, disableCleanup)
 		}
 	}
 }
@@ -873,18 +880,6 @@ func (b *Backend) isResourceCleanupNeeded(ctx context.Context, taskID string) (b
 	default:
 		return false, nil
 	}
-}
-
-// ReconcileOnce performs a single reconciliation pass over Funnel-managed Kubernetes
-// resources. It is intended to be invoked by an external scheduler (e.g. a Kubernetes
-// CronJob configured via the Helm chart's ReconcileRate value) so that reconciliation
-// is decoupled from the Funnel server lifecycle and multiple server replicas do not
-// race to reconcile the same resources.
-//
-// This is currently a stub that simply logs; the full reconciliation logic is added in
-// https://github.com/calypr/funnel/pull/1438.
-func (b *Backend) ReconcileOnce() {
-	b.log.Info("Reconciling!")
 }
 
 // CleanOrphanedResources deletes any Funnel-managed Kubernetes resources that are not associated

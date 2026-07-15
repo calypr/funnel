@@ -82,12 +82,8 @@ is decoupled from the server lifecycle and multiple replicas do not race.`,
 			log.Info("Starting orphaned resource cleanup",
 				"namespace", conf.Kubernetes.JobsNamespace)
 
-			// Delete Funnel-managed resources whose task is gone or terminal.
-			//
-			// TODO: Once the modular reconciler lands (calypr/funnel#1438, #1410)
-			// this should call the full single-pass reconcile (reconcileOnce) so the
-			// CronJob also reconciles task/job state, not just orphaned resources.
-			backend.CleanOrphanedResources(ctx)
+			// Reconcile task/job state and delete resources whose task is gone or terminal.
+			backend.ReconcileOnce(ctx, false)
 
 			log.Info("Orphaned resource cleanup complete")
 			return nil
