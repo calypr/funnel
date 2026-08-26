@@ -40,8 +40,9 @@ so you will also need to configure the RPC client.
 
 ```yaml
 RPCClient:
-  User: funnel
-  Password: abc123
+  Credential:
+    User: funnel
+    Password: abc123
 ```
 
 Make sure to properly protect the configuration file so that it's not readable
