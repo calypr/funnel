@@ -83,6 +83,12 @@ func GenerateID() string {
 // will always be overwritten, even if already set, otherwise they
 // will only be set if they are empty.
 func InitTask(task *Task, overwrite bool) error {
+	return InitTaskWithForbiddenPathPrefixes(task, overwrite, nil)
+}
+
+// InitTaskWithForbiddenPathPrefixes initializes and validates a task while
+// rejecting mounts at or beneath the configured container path prefixes.
+func InitTaskWithForbiddenPathPrefixes(task *Task, overwrite bool, forbiddenPathPrefixes []string) error {
 	if overwrite || task.Id == "" {
 		task.Id = GenerateID()
 	}
@@ -92,7 +98,7 @@ func InitTask(task *Task, overwrite bool) error {
 	if overwrite || task.CreationTime == "" {
 		task.CreationTime = time.Now().Format(time.RFC3339Nano)
 	}
-	if err := Validate(task); err != nil {
+	if err := ValidateWithForbiddenPathPrefixes(task, forbiddenPathPrefixes); err != nil {
 		return fmt.Errorf("invalid task message:\n%s", err)
 	}
 	return nil
