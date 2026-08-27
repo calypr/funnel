@@ -35,7 +35,7 @@ func NewFileTaskReader(path string) (*FileTaskReader, error) {
 		return nil, fmt.Errorf("unmarshaling task from JSON: %v", err)
 	}
 
-	err = tes.InitTask(task, false, nil)
+	err = tes.InitTask(task, false)
 	if err != nil {
 		return nil, fmt.Errorf("initializing task: %v", err)
 	}

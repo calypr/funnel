@@ -1,6 +1,7 @@
 package util
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/ohsu-comp-bio/funnel/config"
@@ -35,8 +36,8 @@ func TestMergeConfigFileWithFlags(t *testing.T) {
 	if result.Compute != fileConfig.Compute {
 		t.Error("expected Config.Compute to equal default value from config.DefaultValue()")
 	}
-	if len(result.Kubernetes.ForbiddenPathPrefixes) != 0 {
-		t.Fatalf("expected no runtime deny-list defaults, got %v", result.Kubernetes.ForbiddenPathPrefixes)
+	if got, want := result.Kubernetes.ForbiddenPathPrefixes, []string{"/dev", "/proc", "/sys", "/run", "/var/run"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected runtime deny-list defaults %v, got %v", want, got)
 	}
 
 	fileConfig.Server.HTTPPort = "8888"
@@ -71,7 +72,7 @@ func TestMergeConfigFileReplacesForbiddenPathPrefixes(t *testing.T) {
 		t.Fatal("unexpected error", err)
 	}
 
-	if got, want := result.Kubernetes.ForbiddenPathPrefixes, []string{"/secret"}; len(got) != len(want) || got[0] != want[0] {
+	if got, want := result.Kubernetes.ForbiddenPathPrefixes, []string{"/secret"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("expected configured deny list %v, got %v", want, got)
 	}
 }

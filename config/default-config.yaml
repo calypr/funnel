@@ -430,9 +430,8 @@ Kubernetes:
   # ForbiddenPathPrefixes is a deny list of container paths that user-submitted
   # tasks may not mount inputs, outputs, volumes, or working directories into.
   # Mounting over these would expose or clobber sensitive host/kernel interfaces.
-  # Example deny list. This is configuration, not an implicit runtime default:
-  # an empty list disables path denial, and a non-empty list replaces the list
-  # shown here entirely.
+  # These paths are denied by default for Kubernetes tasks. A configured
+  # non-empty list replaces the defaults shown here.
   ForbiddenPathPrefixes:
     - /dev
     - /proc

@@ -42,6 +42,14 @@ type TaskService struct {
 	Plugin        shared.Authorize
 	PluginManager *shared.Manager
 }
+
+func (ts *TaskService) forbiddenPathPrefixes() []string {
+	if ts.Config == nil || ts.Config.Compute != "kubernetes" || ts.Config.Kubernetes == nil {
+		return nil
+	}
+	return ts.Config.Kubernetes.GetForbiddenPathPrefixes()
+}
+
 type contextKey string
 
 const InternalCallKey contextKey = "internalCall"
@@ -115,7 +123,7 @@ func (ts *TaskService) CreateTask(ctx context.Context, task *tes.Task) (*tes.Cre
 		}
 	}
 
-	if err := tes.InitTask(task, true, ts.Config.Kubernetes.GetForbiddenPathPrefixes()); err != nil {
+	if err := tes.InitTaskWithForbiddenPathPrefixes(task, true, ts.forbiddenPathPrefixes()); err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "%v", err.Error())
 	}
 

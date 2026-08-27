@@ -364,8 +364,8 @@ message Kubernetes {
   // ForbiddenPathPrefixes are container paths that user-submitted tasks are not
   // allowed to mount inputs, outputs, volumes, or working directories into.
   // Mounting over these would expose or clobber sensitive host/kernel
-  // interfaces. When set, this list replaces Funnel's built-in defaults
-  // (/dev, /proc, /sys, /run, /var/run).
+  // interfaces. Funnel defaults to /dev, /proc, /sys, /run, and /var/run.
+  // A configured non-empty list replaces those defaults.
   repeated string ForbiddenPathPrefixes = 20;
 }
 

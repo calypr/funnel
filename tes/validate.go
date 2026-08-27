@@ -2,15 +2,30 @@ package tes
 
 import (
 	"fmt"
+	"path"
 	"strings"
 )
 
 // isForbiddenPath reports whether path is, or is nested under, any of the
 // given forbidden path prefixes. The comparison is exact-segment based so that
 // "/devices" is not treated as being under "/dev".
-func isForbiddenPath(path string, prefixes []string) bool {
-	for _, p := range prefixes {
-		if path == p || strings.HasPrefix(path, p+"/") {
+func isForbiddenPath(candidate string, prefixes []string) bool {
+	if candidate == "" {
+		return false
+	}
+
+	candidate = path.Clean(candidate)
+	for _, prefix := range prefixes {
+		if prefix == "" {
+			continue
+		}
+
+		prefix = path.Clean(prefix)
+		if !path.IsAbs(prefix) {
+			continue
+		}
+
+		if prefix == "/" || candidate == prefix || strings.HasPrefix(candidate, prefix+"/") {
 			return true
 		}
 	}
@@ -33,11 +48,14 @@ func (v ValidationError) Error() string {
 
 // Validate validates the given task and returns ValidationError,
 // or nil if the task is valid.
-//
-// forbiddenPathPrefixes is the configured deny list of container paths that
-// inputs, outputs, volumes, and working directories may not be mounted into.
-// An empty list means that no paths are denied.
-func Validate(t *Task, forbiddenPathPrefixes []string) ValidationError {
+func Validate(t *Task) ValidationError {
+	return ValidateWithForbiddenPathPrefixes(t, nil)
+}
+
+// ValidateWithForbiddenPathPrefixes validates the given task and rejects
+// inputs, outputs, volumes, and working directories at or beneath any of the
+// configured container path prefixes.
+func ValidateWithForbiddenPathPrefixes(t *Task, forbiddenPathPrefixes []string) ValidationError {
 	var errs ValidationError
 
 	if len(t.Executors) == 0 {

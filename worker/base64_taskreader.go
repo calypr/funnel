@@ -19,7 +19,7 @@ func NewBase64TaskReader(raw string) (*Base64TaskReader, error) {
 		return nil, err
 	}
 
-	err = tes.InitTask(task, false, nil)
+	err = tes.InitTask(task, false)
 	if err != nil {
 		return nil, fmt.Errorf("initializing task: %v", err)
 	}

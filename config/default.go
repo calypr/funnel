@@ -193,9 +193,9 @@ func DefaultConfig() *Config {
 		GridEngine: &GridEngine{},
 		AWSBatch:   &AWSBatch{AWSConfig: &AWSConfig{}},
 		GCPBatch:   &GCPBatch{},
-		// Kubernetes configuration is supplied by the config file/chart.
-		// An empty ForbiddenPathPrefixes list intentionally disables this check.
-		Kubernetes:    &Kubernetes{},
+		Kubernetes: &Kubernetes{
+			ForbiddenPathPrefixes: []string{"/dev", "/proc", "/sys", "/run", "/var/run"},
+		},
 		GoogleStorage: &GoogleCloudStorage{},
 		PubSub:        &PubSub{},
 		Datastore:     &Datastore{},

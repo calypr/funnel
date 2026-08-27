@@ -11,7 +11,7 @@ var configuredDefaultForbiddenPaths = []string{
 }
 
 func TestValidation(t *testing.T) {
-	v := Validate(&Task{}, nil)
+	v := Validate(&Task{})
 	if len(v) == 0 {
 		t.Fatal("expected validation errors")
 	}
@@ -25,13 +25,16 @@ func TestForbiddenInputPath(t *testing.T) {
 		"/sys":          false, // forbidden: exact match
 		"/run/secret":   false, // forbidden: nested
 		"/var/run/x":    false, // forbidden: nested
+		"/data/../dev":  false, // forbidden after cleaning dot segments
+		"//dev/null":    false, // forbidden after cleaning repeated slashes
 		"/devices/data": true,  // allowed: not a /dev segment
 		"/data/dev":     true,  // allowed: forbidden prefix not at root
+		"/dev/../data":  true,  // allowed after cleaning out of /dev
 		"/home/inputs":  true,  // allowed
 	}
 
 	for path, valid := range cases {
-		v := Validate(&Task{
+		v := ValidateWithForbiddenPathPrefixes(&Task{
 			Executors: []*Executor{
 				{Image: "alpine", Command: []string{"echo"}},
 			},
@@ -49,7 +52,7 @@ func TestForbiddenInputPath(t *testing.T) {
 }
 
 func TestForbiddenOutputAndVolumePaths(t *testing.T) {
-	v := Validate(&Task{
+	v := ValidateWithForbiddenPathPrefixes(&Task{
 		Executors: []*Executor{
 			{Image: "alpine", Command: []string{"echo"}, Workdir: "/proc/1"},
 		},
@@ -75,7 +78,7 @@ func TestEmptyTagKeyValidation(t *testing.T) {
 				Command: []string{"echo"},
 			},
 		},
-	}, nil)
+	})
 	if len(v) != 1 {
 		t.Fatal("expected 1 validation error")
 	}
@@ -99,19 +102,48 @@ func TestConfigurableForbiddenPaths(t *testing.T) {
 	}
 
 	// Configured prefixes are forbidden.
-	if v := Validate(task("/foo"), custom); len(v) == 0 {
+	if v := ValidateWithForbiddenPathPrefixes(task("/foo"), custom); len(v) == 0 {
 		t.Errorf("expected /foo to be forbidden with custom deny list")
 	}
-	if v := Validate(task("/bar/baz/data"), custom); len(v) == 0 {
+	if v := ValidateWithForbiddenPathPrefixes(task("/bar/baz/data"), custom); len(v) == 0 {
 		t.Errorf("expected /bar/baz/data to be forbidden with custom deny list")
 	}
 
 	// A default prefix that is not in the custom list is now allowed, since the
 	// custom list replaces the defaults.
-	if v := Validate(task("/dev/sda"), custom); len(v) != 0 {
+	if v := ValidateWithForbiddenPathPrefixes(task("/dev/sda"), custom); len(v) != 0 {
 		t.Errorf("expected /dev/sda to be allowed when custom deny list replaces defaults, got: %v", v)
 	}
-	if v := Validate(task("/proc/self"), custom); len(v) != 0 {
+	if v := ValidateWithForbiddenPathPrefixes(task("/proc/self"), custom); len(v) != 0 {
 		t.Errorf("expected /proc/self to be allowed when custom deny list replaces defaults, got: %v", v)
+	}
+}
+
+func TestRootForbiddenPath(t *testing.T) {
+	task := &Task{
+		Executors: []*Executor{{Image: "alpine", Command: []string{"echo"}}},
+		Volumes:   []string{"/data"},
+	}
+	if v := ValidateWithForbiddenPathPrefixes(task, []string{"/"}); len(v) == 0 {
+		t.Fatal("expected root prefix to forbid every absolute container path")
+	}
+}
+
+func TestForbiddenPathPrefixNormalization(t *testing.T) {
+	cases := []struct {
+		candidate string
+		prefixes  []string
+		forbidden bool
+	}{
+		{candidate: "/dev/null", prefixes: []string{"/dev/"}, forbidden: true},
+		{candidate: "/safe/../dev/null", prefixes: []string{"//dev"}, forbidden: true},
+		{candidate: "/devices", prefixes: []string{"/dev/"}, forbidden: false},
+		{candidate: "/dev", prefixes: []string{"dev"}, forbidden: false},
+	}
+
+	for _, tc := range cases {
+		if got := isForbiddenPath(tc.candidate, tc.prefixes); got != tc.forbidden {
+			t.Errorf("isForbiddenPath(%q, %v) = %t, want %t", tc.candidate, tc.prefixes, got, tc.forbidden)
+		}
 	}
 }

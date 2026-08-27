@@ -29,7 +29,7 @@ func MergeConfigFileWithFlags(file string, flagConf *config.Config) (*config.Con
 
 		// Repeated fields are appended by proto.Merge. ForbiddenPathPrefixes is
 		// an authoritative configuration list, so a non-empty value from the
-		// config file must replace the runtime defaults instead.
+		// config file must replace the Kubernetes runtime defaults instead.
 		if fileConf.Kubernetes != nil && len(fileConf.Kubernetes.ForbiddenPathPrefixes) > 0 {
 			conf.Kubernetes.ForbiddenPathPrefixes = append([]string(nil), fileConf.Kubernetes.ForbiddenPathPrefixes...)
 		}

@@ -51,3 +51,20 @@ Node:
 		t.Error("expected error")
 	}
 }
+
+func TestEmbeddedDefaultConfigForbiddenPaths(t *testing.T) {
+	raw, ok := Examples()["default-config"]
+	if !ok {
+		t.Fatal("embedded default-config example is missing")
+	}
+
+	conf := EmptyConfig()
+	if err := Parse([]byte(raw), conf); err != nil {
+		t.Fatal("parsing embedded default-config example:", err)
+	}
+
+	want := []string{"/dev", "/proc", "/sys", "/run", "/var/run"}
+	if got := conf.Kubernetes.ForbiddenPathPrefixes; !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected embedded forbidden paths %v, got %v", want, got)
+	}
+}
