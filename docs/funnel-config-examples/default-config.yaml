@@ -80,8 +80,9 @@ RPCClient:
   # Credentials for Basic authentication for the server APIs using a password.
   # If used, make sure to properly restrict access to the config file
   # (e.g. chmod 600 funnel.config.yml)
-  # User: funnel
-  # Password: abc123
+  # Credential:
+  #   User: funnel
+  #   Password: abc123
 
   # connection timeout.
   Timeout:
