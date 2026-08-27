@@ -360,6 +360,13 @@ message Kubernetes {
 
   // Timeout for creating Kubernetes resources (PV, PVC, Job, etc.)
   TimeoutConfig Timeout = 19;
+
+  // ForbiddenPathPrefixes are container paths that user-submitted tasks are not
+  // allowed to mount inputs, outputs, volumes, or working directories into.
+  // Mounting over these would expose or clobber sensitive host/kernel
+  // interfaces. Funnel defaults to /dev, /proc, /sys, /run, and /var/run.
+  // A configured non-empty list replaces those defaults.
+  repeated string ForbiddenPathPrefixes = 20;
 }
 
 // KubernetesResources describes default and maximum resource limits for Kubernetes tasks.

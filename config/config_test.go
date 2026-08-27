@@ -1,6 +1,7 @@
 package config
 
 import (
+	"reflect"
 	"testing"
 )
 
@@ -32,6 +33,9 @@ func TestConfigParsing(t *testing.T) {
 	if err != nil {
 		t.Error("unexpected error:", err)
 	}
+	if got, want := conf.Kubernetes.ForbiddenPathPrefixes, []string{"/dev", "/proc", "/sys", "/run", "/var/run"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected default forbidden paths %v, got %v", want, got)
+	}
 
 	yaml := `
 BadKey: foo
@@ -45,5 +49,22 @@ Node:
 	err = Parse([]byte(yaml), conf)
 	if err == nil {
 		t.Error("expected error")
+	}
+}
+
+func TestEmbeddedDefaultConfigForbiddenPaths(t *testing.T) {
+	raw, ok := Examples()["default-config"]
+	if !ok {
+		t.Fatal("embedded default-config example is missing")
+	}
+
+	conf := EmptyConfig()
+	if err := Parse([]byte(raw), conf); err != nil {
+		t.Fatal("parsing embedded default-config example:", err)
+	}
+
+	want := []string{"/dev", "/proc", "/sys", "/run", "/var/run"}
+	if got := conf.Kubernetes.ForbiddenPathPrefixes; !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected embedded forbidden paths %v, got %v", want, got)
 	}
 }
