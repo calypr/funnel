@@ -427,6 +427,18 @@ Kubernetes:
       RamGb: 4096Mi
       DiskGb: 4096Mi
 
+  # ForbiddenPathPrefixes is a deny list of container paths that user-submitted
+  # tasks may not mount inputs, outputs, volumes, or working directories into.
+  # Mounting over these would expose or clobber sensitive host/kernel interfaces.
+  # These paths are denied by default for Kubernetes tasks. A configured
+  # non-empty list replaces the defaults shown here.
+  ForbiddenPathPrefixes:
+    - /dev
+    - /proc
+    - /sys
+    - /run
+    - /var/run
+
 # -------------------------------------------------------------------------------
 # Storage
 # -------------------------------------------------------------------------------
