@@ -27,8 +27,9 @@ import (
 
 // Cmd is the root "funnel kubernetes" command.
 var Cmd = &cobra.Command{
-	Use:   "kubernetes",
-	Short: "Funnel Kubernetes management commands.",
+	Use:     "kubernetes",
+	Aliases: []string{"k8s"},
+	Short:   "Funnel Kubernetes management commands.",
 }
 
 func init() {
@@ -67,17 +68,23 @@ is decoupled from the server lifecycle and multiple replicas do not race.`,
 				return fmt.Errorf("opening database: %v", err)
 			}
 
-			// Build the K8s backend (connects to the cluster via in-cluster config).
-			// We pass a no-op event writer since this command only deletes resources
-			// and never needs to emit task state events.
-			backend, err := k8sbackend.NewBackend(ctx, conf, reader, &events.Logger{Log: log}, log)
+			// Build a cleanup-only K8s backend. This connects to the same cluster as
+			// the running Funnel Server (via in-cluster config) but, unlike the full
+			// server backend, does not require a worker job template and does not start
+			// the reconcile goroutine — cleanup only reads the database and deletes
+			// orphaned resources. The event writer just logs, since cleanup never emits
+			// task state events.
+			backend, err := k8sbackend.NewCleanupBackend(conf, reader, &events.Logger{Log: log}, log)
 			if err != nil {
 				return fmt.Errorf("initializing kubernetes backend: %v", err)
 			}
 
 			log.Info("Starting orphaned resource cleanup",
 				"namespace", conf.Kubernetes.JobsNamespace)
-			backend.CleanOrphanedResources(ctx)
+
+			// Reconcile task/job state and delete resources whose task is gone or terminal.
+			backend.ReconcileOnce(ctx, false)
+
 			log.Info("Orphaned resource cleanup complete")
 			return nil
 		},

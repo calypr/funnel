@@ -80,6 +80,41 @@ func NewBackend(ctx context.Context, conf *config.Config, reader tes.ReadOnlySer
 	return b, nil
 }
 
+// NewCleanupBackend returns a Backend suitable for one-shot resource cleanup
+// (e.g. the "funnel kubernetes cleanup" command run as a CronJob).
+//
+// Unlike NewBackend, it does not require a worker job template and does not start
+// the reconcile goroutine: cleanup only reads the database and deletes orphaned
+// Kubernetes resources, so the task-submission configuration is irrelevant. Like
+// the server backend, it connects to the same cluster via in-cluster config and
+// is intended to run inside the cluster (e.g. as a CronJob).
+func NewCleanupBackend(conf *config.Config, reader tes.ReadOnlyServer, writer events.Writer, log *logger.Logger) (*Backend, error) {
+	// Resolve the namespace cleanup should operate in. Prefer the configured
+	// namespace; otherwise fall back to the pod's ServiceAccount namespace.
+	if conf.Kubernetes.JobsNamespace == "" {
+		conf.Kubernetes.JobsNamespace = conf.Kubernetes.Namespace
+	}
+	if conf.Kubernetes.JobsNamespace == "" {
+		conf.Kubernetes.JobsNamespace = k8sutil.InClusterNamespace()
+	}
+	if conf.Kubernetes.JobsNamespace == "" {
+		return nil, fmt.Errorf("could not determine kubernetes namespace; set Kubernetes.Namespace in config")
+	}
+
+	clientset, err := k8sutil.NewK8sClient(conf)
+	if err != nil {
+		return nil, fmt.Errorf("creating kubernetes client: %v", err)
+	}
+
+	return &Backend{
+		client:   clientset,
+		event:    writer,
+		database: reader,
+		log:      log,
+		conf:     conf,
+	}, nil
+}
+
 func (b Backend) CheckBackendParameterSupport(task *tes.Task) error {
 	if !task.Resources.GetBackendParametersStrict() {
 		return nil
@@ -736,8 +771,15 @@ func (b *Backend) reconcileJob(ctx context.Context, j *v1.Job, disableCleanup bo
 	}
 }
 
-// reconcileOnce performs a single reconciliation pass.
-func (b *Backend) reconcileOnce(ctx context.Context, disableCleanup bool) {
+// ReconcileOnce performs a single reconciliation pass over Funnel-managed Kubernetes
+// resources. It is intended to be invoked by an external scheduler (e.g. a Kubernetes
+// CronJob configured via the Helm chart's ReconcileRate value) so that reconciliation
+// is decoupled from the Funnel server lifecycle and multiple server replicas do not
+// race to reconcile the same resources.
+//
+// This is currently a stub that simply logs; the full reconciliation logic is added in
+// https://github.com/calypr/funnel/pull/1438.
+func (b *Backend) ReconcileOnce(ctx context.Context, disableCleanup bool) {
 	k8sJobs, err := b.listAllWorkerJobs(ctx)
 	if err != nil {
 		b.log.Error("reconcile: listing jobs", err)
@@ -800,7 +842,7 @@ func (b *Backend) reconcile(ctx context.Context, rate time.Duration, disableClea
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			b.reconcileOnce(ctx, disableCleanup)
+			b.ReconcileOnce(ctx, disableCleanup)
 		}
 	}
 }
