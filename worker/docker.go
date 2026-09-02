@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"path"
 	"strings"
 	"text/template"
 	"time"
@@ -44,6 +45,20 @@ func (docker DockerCommand) MemoryMB() int64 {
 		return 0
 	}
 	return int64(math.Round(docker.Resources.RamGb * 1024))
+}
+
+// NeedsTmpfs reports whether the container needs Funnel's executor-local /tmp
+// mount. A task-provided mount at /tmp or one of its ancestors takes precedence
+// so explicitly requested storage can persist between executors.
+func (docker DockerCommand) NeedsTmpfs() bool {
+	const tmpDir = "/tmp"
+	for _, volume := range docker.Volumes {
+		containerPath := path.Clean(volume.ContainerPath)
+		if containerPath == "/" || containerPath == tmpDir || strings.HasPrefix(tmpDir, containerPath+"/") {
+			return false
+		}
+	}
+	return true
 }
 
 type DockerVersion struct {

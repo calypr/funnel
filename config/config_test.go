@@ -2,6 +2,7 @@ package config
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -66,5 +67,37 @@ func TestEmbeddedDefaultConfigForbiddenPaths(t *testing.T) {
 	want := []string{"/dev", "/proc", "/sys", "/run", "/var/run"}
 	if got := conf.Kubernetes.ForbiddenPathPrefixes; !reflect.DeepEqual(got, want) {
 		t.Fatalf("expected embedded forbidden paths %v, got %v", want, got)
+	}
+}
+
+func TestRPCClientCredentialParsing(t *testing.T) {
+	conf := EmptyConfig()
+	raw := []byte(`
+RPCClient:
+  Credential:
+    User: funnel
+    Password: abc123
+`)
+	if err := Parse(raw, conf); err != nil {
+		t.Fatal("parsing nested RPC credential:", err)
+	}
+	if got := conf.RPCClient.Credential; got.User != "funnel" || got.Password != "abc123" {
+		t.Fatalf("unexpected RPC credential: %+v", got)
+	}
+}
+
+func TestRPCClientLegacyCredentialFieldsRejected(t *testing.T) {
+	conf := EmptyConfig()
+	raw := []byte(`
+RPCClient:
+  User: funnel
+  Password: abc123
+`)
+	err := Parse(raw, conf)
+	if err == nil {
+		t.Fatal("expected legacy RPC credential fields to be rejected")
+	}
+	if !strings.Contains(err.Error(), `unknown field "User"`) {
+		t.Fatalf("expected unknown User field error, got %v", err)
 	}
 }
