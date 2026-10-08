@@ -108,6 +108,43 @@ funnel task create hello-world.json
   <img title="K8s Storage" src="/img/k8s-pvc.png" />
 </a>
 
+## Per-task storage modes (`PVCMode`)
+
+Tasks with inputs, outputs or volumes share data between the Worker and
+Executor pods through a PVC. How that storage is provisioned is controlled
+by `Kubernetes.PVCMode` (set the same value in the server and worker config):
+
+| Mode | Created per task | Requirements |
+|---|---|---|
+| `full` (default) | PV (S3 Mountpoint CSI) + statically bound PVC | `GenericS3` `Bucket`/`Region`, S3 CSI driver, ClusterRole for `persistentvolumes` |
+| `pvc` | PVC only, dynamically provisioned | `StorageClassName` of a `ReadWriteMany` StorageClass (e.g. NFS, CephFS) |
+| `shared` | nothing | a pre-existing `ReadWriteMany` PVC named `SharedPVCName` (default `funnel-pvc`); tasks are isolated by `subPath` |
+
+```yaml
+Kubernetes:
+  PVCMode: pvc
+  StorageClassName: nfs-csi
+```
+
+`pvc` and `shared` need only namespaced RBAC, which makes them suitable for
+shared/on-premise clusters without an S3 CSI driver. Custom `WorkerTemplate`,
+`ExecutorTemplate` and `PVCTemplate` should reference the claim as
+`{{.PVCName}}` and, in `PVCTemplate`, use `{{.StorageClassName}}` (see
+`config/kubernetes/worker-pvc.yaml`). `WorkerImage` optionally overrides the
+Worker Job image (default: the image of the running Funnel server pod).
+
+The Worker derives the name of the PVC that executor pods mount from its own
+`Kubernetes.PVCMode` and `SharedPVCName`, so these must match the server
+config. This is automatic when the Worker config is rendered from the server
+config via `ConfigMapTemplate`; with a separately maintained Worker config,
+set them in both places, otherwise executor pods stay `Pending` on a missing
+claim.
+
+When Funnel does not create task-scoped ServiceAccounts (no
+`ServiceAccountTemplate`, no `_WORKER_SA` tag), task and orphan cleanup do not
+call the ServiceAccount API either, so a static, Helm-managed ServiceAccount
+needs no `serviceaccounts` RBAC.
+
 # Additional Resources 📚
 
 - [Helm Repo](https://ohsu-comp-bio.github.io/helm-charts)

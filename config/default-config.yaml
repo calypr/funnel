@@ -441,6 +441,20 @@ Kubernetes:
     - /run
     - /var/run
 
+  # PVCMode controls how per-task storage is provisioned:
+  #   full   - dedicated PV + PVC per task (S3 CSI-backed, needs GenericS3
+  #            Bucket/Region and a ClusterRole for PVs)
+  #   pvc    - dedicated PVC per task, dynamically provisioned via
+  #            StorageClassName (no PV, no ClusterRole needed)
+  #   shared - no per-task storage; all tasks mount the pre-existing
+  #            SharedPVCName (default "funnel-pvc"), isolated by subPath
+  PVCMode: full
+  StorageClassName: ""
+  SharedPVCName: ""
+  # Optional override of the Worker Job image (default: the image of the
+  # running Funnel server pod).
+  WorkerImage: ""
+
 # -------------------------------------------------------------------------------
 # Storage
 # -------------------------------------------------------------------------------

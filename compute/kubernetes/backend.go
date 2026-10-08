@@ -49,6 +49,11 @@ func NewBackend(ctx context.Context, conf *config.Config, reader tes.ReadOnlySer
 		return nil, fmt.Errorf("invalid configuration; must provide a kubernetes namespace")
 	}
 
+	// Per-task storage provisioning mode (full | pvc | shared)
+	if err := conf.Kubernetes.ValidatePVCMode(); err != nil {
+		return nil, fmt.Errorf("invalid configuration; %v", err)
+	}
+
 	// Funnel Worker + Executor Namespace
 	if conf.Kubernetes.JobsNamespace == "" {
 		conf.Kubernetes.JobsNamespace = conf.Kubernetes.Namespace
@@ -260,23 +265,31 @@ func (b *Backend) createResources(ctx context.Context, task *tes.Task, config *c
 		}
 	}
 
-	// If the task has inputs, outputs, or declared volumes, create a PVC so
-	// executor pods can share data via PVC subPath mounts.
-	if len(task.Inputs) > 0 || len(task.Outputs) > 0 || len(task.Volumes) > 0 {
-		b.log.Debug("creating Worker PV", "taskID", task.Id)
-
-		// Check to make sure required configs are present
-		if len(config.GenericS3) == 0 ||
-			config.GenericS3[0].Bucket == "" || config.GenericS3[0].Region == "" {
-			return fmt.Errorf("Bucket or Region not found in GenericS3 config when attempting to create resources for task: %#v", task)
-		}
-
-		// Create PV (cluster-scoped — cannot be owned by a namespaced Job)
+	// If the task has inputs, outputs, or declared volumes, provision storage
+	// so executor pods can share data via PVC subPath mounts. What is created
+	// depends on Kubernetes.PVCMode:
+	//   - full:   a dedicated PV (S3 CSI-backed) + PVC per task
+	//   - pvc:    a dedicated, dynamically-provisioned PVC per task
+	//   - shared: nothing; the job templates mount the pre-existing shared PVC
+	needsPVC := len(task.Inputs) > 0 || len(task.Outputs) > 0 || len(task.Volumes) > 0
+	if needsPVC && config.Kubernetes.CreatesPVC() {
 		diskGb := task.GetResources().GetDiskGb()
-		err = resources.CreatePV(timeoutCtx, task.Id, diskGb, config, b.client, b.log)
-		if err != nil {
-			_ = b.Cancel(context.Background(), task.Id)
-			return fmt.Errorf("creating Worker PV: %w", err)
+
+		if config.Kubernetes.CreatesPV() {
+			b.log.Debug("creating Worker PV", "taskID", task.Id)
+
+			// Check to make sure required configs are present
+			if len(config.GenericS3) == 0 ||
+				config.GenericS3[0].Bucket == "" || config.GenericS3[0].Region == "" {
+				return fmt.Errorf("Bucket or Region not found in GenericS3 config when attempting to create resources for task: %#v", task)
+			}
+
+			// Create PV (cluster-scoped — cannot be owned by a namespaced Job)
+			err = resources.CreatePV(timeoutCtx, task.Id, diskGb, config, b.client, b.log)
+			if err != nil {
+				_ = b.Cancel(context.Background(), task.Id)
+				return fmt.Errorf("creating Worker PV: %w", err)
+			}
 		}
 
 		// Create PVC
@@ -316,16 +329,24 @@ func (b *Backend) cleanResources(ctx context.Context, taskId string) error {
 		}
 	}
 
-	if err := resources.DeleteServiceAccount(ctx, taskId, b.conf.Kubernetes.JobsNamespace, b.client, b.log, saOpts); err != nil {
-		errs = multierror.Append(errs, err)
-		b.log.Error("deleting Worker ServiceAccount", "taskID", taskId, "error", err)
+	// Only delete ServiceAccounts Funnel manages: task-scoped ones created from
+	// ServiceAccountTemplate, or a shared SA named via the _WORKER_SA tag.
+	// Deployments with a static, Helm-managed SA need no serviceaccounts RBAC.
+	if b.conf.Kubernetes.ServiceAccountTemplate != "" || saOpts.SharedSA {
+		if err := resources.DeleteServiceAccount(ctx, taskId, b.conf.Kubernetes.JobsNamespace, b.client, b.log, saOpts); err != nil {
+			errs = multierror.Append(errs, err)
+			b.log.Error("deleting Worker ServiceAccount", "taskID", taskId, "error", err)
+		}
 	}
 
-	// Delete PV
-	err = resources.DeletePV(ctx, taskId, b.conf.Kubernetes.JobsNamespace, b.client, b.log)
-	if err != nil {
-		errs = multierror.Append(errs, err)
-		b.log.Error("deleting Worker PV", "error", err)
+	// Delete PV. Only PVCModeFull creates (cluster-scoped) PVs; skipping it in
+	// the other modes avoids requiring cluster-wide RBAC for PVs.
+	if b.conf.Kubernetes.CreatesPV() {
+		err = resources.DeletePV(ctx, taskId, b.conf.Kubernetes.JobsNamespace, b.client, b.log)
+		if err != nil {
+			errs = multierror.Append(errs, err)
+			b.log.Error("deleting Worker PV", "error", err)
+		}
 	}
 	return errs
 }
@@ -855,27 +876,33 @@ func (b *Backend) CleanOrphanedResources(ctx context.Context) {
 	// ConfigMaps, PVCs, Roles, and RoleBindings are now owned by the Job via ownerReferences
 	// and are garbage-collected by Kubernetes automatically — they are intentionally excluded here.
 
-	// PVs (cluster-scoped; cannot be owned by a namespaced Job, so must be cleaned explicitly)
-	pvs, err := b.client.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{LabelSelector: fmt.Sprintf("app=funnel,namespace=%s", namespace)})
-	if err != nil {
-		b.log.Error("CleanOrphanedResources: listing PVs", "error", err)
-	} else {
-		for _, r := range pvs.Items {
-			if id, ok := r.Labels["taskId"]; ok {
-				taskIDs[id] = struct{}{}
+	// PVs (cluster-scoped; cannot be owned by a namespaced Job, so must be cleaned explicitly).
+	// Only PVCModeFull creates PVs, so the other modes need no cluster-wide RBAC.
+	if b.conf.Kubernetes.CreatesPV() {
+		pvs, err := b.client.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{LabelSelector: fmt.Sprintf("app=funnel,namespace=%s", namespace)})
+		if err != nil {
+			b.log.Error("CleanOrphanedResources: listing PVs", "error", err)
+		} else {
+			for _, r := range pvs.Items {
+				if id, ok := r.Labels["taskId"]; ok {
+					taskIDs[id] = struct{}{}
+				}
 			}
 		}
 	}
 
 	// ServiceAccounts (shared SAs are not owned by a Job; task-scoped SAs may also be orphaned
-	// if they were created before ownerRef support was added)
-	sas, err := b.client.CoreV1().ServiceAccounts(namespace).List(ctx, metav1.ListOptions{LabelSelector: "app=funnel"})
-	if err != nil {
-		b.log.Error("CleanOrphanedResources: listing ServiceAccounts", "error", err)
-	} else {
-		for _, r := range sas.Items {
-			if id, ok := r.Labels["taskId"]; ok {
-				taskIDs[id] = struct{}{}
+	// if they were created before ownerRef support was added). Only relevant when Funnel
+	// creates task-scoped SAs from ServiceAccountTemplate.
+	if b.conf.Kubernetes.ServiceAccountTemplate != "" {
+		sas, err := b.client.CoreV1().ServiceAccounts(namespace).List(ctx, metav1.ListOptions{LabelSelector: "app=funnel"})
+		if err != nil {
+			b.log.Error("CleanOrphanedResources: listing ServiceAccounts", "error", err)
+		} else {
+			for _, r := range sas.Items {
+				if id, ok := r.Labels["taskId"]; ok {
+					taskIDs[id] = struct{}{}
+				}
 			}
 		}
 	}

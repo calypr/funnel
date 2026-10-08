@@ -12,6 +12,7 @@ import (
 	"time"
 
 	k8sbackend "github.com/ohsu-comp-bio/funnel/compute/kubernetes"
+	"github.com/ohsu-comp-bio/funnel/config"
 	"github.com/ohsu-comp-bio/funnel/logger"
 	"github.com/ohsu-comp-bio/funnel/tes"
 	v1 "k8s.io/api/batch/v1"
@@ -41,8 +42,24 @@ type KubernetesCommand struct {
 	ResourceLimits *tes.Resources
 	ServiceAccount string
 	NeedsPVC       bool
-	Clientset      kubernetes.Interface
+	// PVCMode mirrors config.Kubernetes.PVCMode ("full", "pvc", or "shared").
+	// In "shared" mode the executor job mounts the shared PVC (SharedPVCName);
+	// otherwise it mounts the task's own PVC, created server-side
+	// (compute/kubernetes/backend.go).
+	PVCMode string
+	// SharedPVCName mirrors config.Kubernetes.SharedPVCName. Only used when
+	// PVCMode is "shared"; empty defaults to "funnel-pvc".
+	SharedPVCName string
+	Clientset     kubernetes.Interface
 	Command
+}
+
+// pvcName returns the name of the PVC the executor pod should mount. The
+// naming convention is shared with the server via
+// config.Kubernetes.PVCNameForTask.
+func (kcmd KubernetesCommand) pvcName() string {
+	k := &config.Kubernetes{PVCMode: kcmd.PVCMode, SharedPVCName: kcmd.SharedPVCName}
+	return k.PVCNameForTask(kcmd.TaskId)
 }
 
 type K8sExecutorErr struct {
@@ -166,6 +183,7 @@ func (kcmd KubernetesCommand) Run(ctx context.Context) error {
 		"DiskGbLimit":        kcmd.ResourceLimits.DiskGb,
 		"Image":              kcmd.Image,
 		"NeedsPVC":           kcmd.NeedsPVC,
+		"PVCName":            kcmd.pvcName(),
 		"NodeSelector":       kcmd.NodeSelector,
 		"Tolerations":        kcmd.Tolerations,
 		"ServiceAccountName": kcmd.ServiceAccount,
