@@ -164,7 +164,7 @@ start-generic-s3:
 	@docker rm -f funnel-s3server > /dev/null 2>&1 || echo
 	@docker run -d --name funnel-s3server -p 18888:8000 -e REMOTE_MANAGEMENT_DISABLE=1 zenko/cloudserver
 	@docker rm -f funnel-minio > /dev/null 2>&1 || echo
-	@docker run -d --name funnel-minio -p 9000:9000 -e "MINIO_ACCESS_KEY=fakekey" -e "MINIO_SECRET_KEY=fakesecret" -e "MINIO_REGION=us-east-1" minio/minio server /data
+	@docker run -d --name funnel-minio -p 9000:9000 -e "MINIO_ACCESS_KEY=fakekey" -e "MINIO_SECRET_KEY=fakesecret" -e "MINIO_REGION=us-east-1" quay.io/minio/minio server /data
 
 test-generic-s3:
 	@go test -v ./tests/storage -funnel-config `pwd`/tests/amazoncli-minio-s3.config.yml -run TestAmazonS3Storage
