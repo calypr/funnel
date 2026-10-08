@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/ohsu-comp-bio/funnel/config"
+	"github.com/ohsu-comp-bio/funnel/logger"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -19,12 +20,16 @@ type Authentication struct {
 	admins map[string]bool
 	basic  map[string]string
 	oidc   *OidcConfig
+	log    *logger.Logger
 }
 
 const (
 	AccessAll          = "All"
 	AccessOwner        = "Owner"
 	AccessOwnerOrAdmin = "OwnerOrAdmin"
+
+	// Logged as the user ID when the request was not authenticated.
+	anonymousUserID = "ANONYMOUS"
 )
 
 // Extracted info about the current user, which is exposed through Context.
@@ -69,10 +74,23 @@ func GetUsername(ctx context.Context) string {
 	return GetUser(ctx).Username
 }
 
+// Returns an identifier of the current user for audit logging. With OIDC
+// authentication this is the `sub` claim of the Bearer token, with Basic
+// authentication the configured username. Non-authenticated (public) users
+// have no identifier, so a placeholder is logged instead.
+func GetUserID(ctx context.Context) string {
+	username := GetUser(ctx).Username
+	if username == "" {
+		return anonymousUserID
+	}
+	return username
+}
+
 func NewAuthentication(
 	creds []*config.BasicCredential,
 	oidc *config.OidcAuth,
 	taskAccess string,
+	log *logger.Logger,
 ) *Authentication {
 	basicCreds := make(map[string]string)
 	adminUsers := make(map[string]bool)
@@ -100,6 +118,7 @@ func NewAuthentication(
 		admins: adminUsers,
 		basic:  basicCreds,
 		oidc:   initOidcConfig(oidc),
+		log:    log,
 	}
 }
 
@@ -118,11 +137,13 @@ func (a *Authentication) Interceptor(
 
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
+		a.logRejected(info.FullMethod, errMissingMetadata)
 		return nil, errMissingMetadata
 	}
 
 	values := md["authorization"]
 	if len(values) == 0 {
+		a.logRejected(info.FullMethod, errTokenRequired)
 		return nil, errTokenRequired
 	}
 
@@ -149,10 +170,18 @@ func (a *Authentication) Interceptor(
 	}
 
 	if !authorized {
+		a.logRejected(info.FullMethod, authErr)
 		return nil, authErr
 	}
 
 	return handler(ctx, req)
+}
+
+// Writes an audit log entry for a request rejected by authentication. Such
+// requests do not reach the audit interceptor, and they have no authenticated
+// user to be attributed to.
+func (a *Authentication) logRejected(method string, err error) {
+	logAuditEntry(a.log, method, anonymousUserID, "", err)
 }
 
 // HTTP request handler for the /login endpoint. Initiates user authentication
