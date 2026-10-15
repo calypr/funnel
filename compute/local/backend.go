@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/imdario/mergo"
+	"dario.cat/mergo"
 	workerCmd "github.com/ohsu-comp-bio/funnel/cmd/worker"
 	"github.com/ohsu-comp-bio/funnel/config"
 	"github.com/ohsu-comp-bio/funnel/events"

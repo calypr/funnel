@@ -2,12 +2,13 @@ package storage
 
 import (
 	"context"
+	"io"
 	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/ohsu-comp-bio/funnel/config"
 	"google.golang.org/api/option"
 	"google.golang.org/api/storage/v1"
@@ -34,22 +35,45 @@ func TestGenericS3AnonymousGet(t *testing.T) {
 }
 
 func TestAmazonS3AnonymousGet(t *testing.T) {
-	c := aws.NewConfig().WithCredentials(credentials.AnonymousCredentials).WithMaxRetries(10)
-	s, err := session.NewSession(c)
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.Header.Get("Authorization") != "" {
+			t.Error("anonymous download was signed")
+		}
+		if r.URL.Path != "/public/release.json" {
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+		w.Header().Set("Content-Length", "7")
+		w.Header().Set("Last-Modified", "Mon, 02 Jan 2006 15:04:05 GMT")
+		w.Header().Set("ETag", `"fixture"`)
+		if r.Method == http.MethodGet {
+			_, _ = io.WriteString(w, "release")
+		}
+	}))
+	defer server.Close()
+	store, err := NewAmazonS3(&config.AmazonS3Storage{AWSConfig: &config.AWSConfig{
+		Endpoint:                  server.URL,
+		Region:                    "us-east-1",
+		DisableAutoCredentialLoad: true,
+	}})
 	if err != nil {
-		t.Fatal("Error creating amazon S3 backend:", err)
+		t.Fatal(err)
 	}
-
-	store := &AmazonS3{
-		sess:     s,
-		endpoint: "",
-	}
-
-	_, err = store.Get(context.Background(),
-		"s3://cellxgene-census-public-us-west-2/cell-census/release.json",
-		"_test_download/release.json")
+	path := filepath.Join(t.TempDir(), "release.json")
+	_, err = store.Get(t.Context(), "s3://public/release.json", path)
 	if err != nil {
-		t.Error("Error downloading file:", err)
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(body) != "release" {
+		t.Fatalf("download = %q, want release", body)
+	}
+	if requests != 2 {
+		t.Fatalf("requests = %d, want HEAD and GET", requests)
 	}
 }
 

@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/imdario/mergo"
+	"dario.cat/mergo"
 	"github.com/ohsu-comp-bio/funnel/config"
 )
 

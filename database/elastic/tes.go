@@ -1,6 +1,7 @@
 package elastic
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -11,7 +12,6 @@ import (
 	"github.com/elastic/go-elasticsearch/v8/typedapi/types/enums/sortorder"
 	"github.com/ohsu-comp-bio/funnel/server"
 	"github.com/ohsu-comp-bio/funnel/tes"
-	"golang.org/x/net/context"
 )
 
 // Custom unmarshaller where unknown JSON properties do not cause an error.

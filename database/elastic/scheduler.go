@@ -1,6 +1,7 @@
 package elastic
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/elastic/go-elasticsearch/v8/typedapi/types"
@@ -9,7 +10,6 @@ import (
 	"github.com/elastic/go-elasticsearch/v8/typedapi/types/enums/sortorder"
 	"github.com/ohsu-comp-bio/funnel/compute/scheduler"
 	"github.com/ohsu-comp-bio/funnel/tes"
-	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

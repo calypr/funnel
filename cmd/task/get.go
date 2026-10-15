@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"io"
 
+	"context"
+
 	"github.com/ohsu-comp-bio/funnel/tes"
-	"golang.org/x/net/context"
 )
 
 // Get runs the "task get" CLI command, which connects to the server,

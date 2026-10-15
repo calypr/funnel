@@ -1,10 +1,11 @@
 package worker
 
 import (
+	"context"
+
 	"github.com/ohsu-comp-bio/funnel/config"
 	"github.com/ohsu-comp-bio/funnel/tes"
 	util "github.com/ohsu-comp-bio/funnel/util/rpc"
-	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 )
 

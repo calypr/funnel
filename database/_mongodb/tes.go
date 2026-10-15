@@ -3,10 +3,11 @@ package mongodb
 import (
 	"fmt"
 
+	"context"
+
 	"github.com/globalsign/mgo"
 	"github.com/globalsign/mgo/bson"
 	"github.com/ohsu-comp-bio/funnel/tes"
-	"golang.org/x/net/context"
 )
 
 var basicView = bson.M{

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 	"net/http"
@@ -8,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/ohsu-comp-bio/funnel/config"
-	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"

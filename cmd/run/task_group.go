@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"sync"
 
+	"context"
+
 	"github.com/ohsu-comp-bio/funnel/tes"
-	"golang.org/x/net/context"
 )
 
 type taskGroup struct {

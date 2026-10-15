@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/net/context"
+	"context"
 )
 
 func testServer(mux http.Handler) *httptest.Server {

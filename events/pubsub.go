@@ -2,16 +2,24 @@ package events
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"sync"
 
-	"cloud.google.com/go/pubsub"
+	"cloud.google.com/go/pubsub/v2"
+	"cloud.google.com/go/pubsub/v2/apiv1/pubsubpb"
 	"github.com/ohsu-comp-bio/funnel/config"
-	oldctx "golang.org/x/net/context"
 	"google.golang.org/api/option"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // PubSubWriter writes events to Google Cloud Pub/Sub.
 type PubSubWriter struct {
-	topic *pubsub.Topic
+	client    *pubsub.Client
+	publisher *pubsub.Publisher
+	shutdown  chan struct{}
+	closeOnce sync.Once
 }
 
 // NewPubSubWriter creates a new PubSubWriter.
@@ -31,23 +39,29 @@ func NewPubSubWriter(ctx context.Context, conf *config.PubSub) (*PubSubWriter, e
 		return nil, err
 	}
 
-	topic := client.Topic(conf.Topic)
-	ok, err := topic.Exists(ctx)
+	topicName := fmt.Sprintf("projects/%s/topics/%s", conf.Project, conf.Topic)
+	_, err = client.TopicAdminClient.GetTopic(ctx, &pubsubpb.GetTopicRequest{Topic: topicName})
+	if status.Code(err) == codes.NotFound {
+		_, err = client.TopicAdminClient.CreateTopic(ctx, &pubsubpb.Topic{Name: topicName})
+	}
 	if err != nil {
+		_ = client.Close()
 		return nil, err
 	}
-	if !ok {
-		topic, err = client.CreateTopic(ctx, conf.Topic)
-		if err != nil {
-			return nil, err
-		}
-	}
 
+	w := &PubSubWriter{
+		client:    client,
+		publisher: client.Publisher(topicName),
+		shutdown:  make(chan struct{}),
+	}
 	go func() {
-		<-ctx.Done()
-		topic.Stop()
+		select {
+		case <-ctx.Done():
+			w.Close()
+		case <-w.shutdown:
+		}
 	}()
-	return &PubSubWriter{topic}, nil
+	return w, nil
 }
 
 // WriteEvent writes an event to the configured Pub/Sub topic.
@@ -64,48 +78,95 @@ func (p *PubSubWriter) WriteEvent(ctx context.Context, ev *Event) error {
 		return err
 	}
 
-	p.topic.Publish(ctx, &pubsub.Message{
-		Data: []byte(s),
-	})
+	p.publisher.Publish(ctx, &pubsub.Message{Data: []byte(s)})
 	return nil
 }
 
-func (p *PubSubWriter) Close() {}
+func (p *PubSubWriter) Close() {
+	p.closeOnce.Do(func() {
+		close(p.shutdown)
+		p.publisher.Stop()
+		_ = p.client.Close()
+	})
+}
 
 // ReadPubSub reads events from the topic configured by "conf".
 // The subscription "subname" will be created if it doesn't exist.
 // This blocks until the context is canceled.
 func ReadPubSub(ctx context.Context, conf *config.PubSub, subname string, w Writer) error {
-	cl, err := pubsub.NewClient(ctx, conf.Project)
+	opts := []option.ClientOption{}
+	if conf.CredentialsFile != "" {
+		opts = append(opts, option.WithCredentialsFile(conf.CredentialsFile))
+	}
+	client, err := pubsub.NewClient(ctx, conf.Project, opts...)
 	if err != nil {
 		return err
 	}
+	defer client.Close()
 
-	sub := cl.Subscription(subname)
-	ok, err := sub.Exists(ctx)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		topic := cl.Topic(conf.Topic)
-
-		sub, err = cl.CreateSubscription(ctx, subname, pubsub.SubscriptionConfig{
-			Topic: topic,
+	subscriptionName := fmt.Sprintf("projects/%s/subscriptions/%s", conf.Project, subname)
+	_, err = client.SubscriptionAdminClient.GetSubscription(ctx, &pubsubpb.GetSubscriptionRequest{
+		Subscription: subscriptionName,
+	})
+	if status.Code(err) == codes.NotFound {
+		topicName := fmt.Sprintf("projects/%s/topics/%s", conf.Project, conf.Topic)
+		_, err = client.SubscriptionAdminClient.CreateSubscription(ctx, &pubsubpb.Subscription{
+			Name:  subscriptionName,
+			Topic: topicName,
 		})
-		if err != nil {
-			return err
+		if status.Code(err) == codes.AlreadyExists {
+			err = nil
 		}
 	}
+	if err != nil {
+		return err
+	}
 
-	sub.Receive(ctx, func(ctx oldctx.Context, m *pubsub.Message) {
-		ev := &Event{}
-		Unmarshal(m.Data, ev)
-		if err != nil {
+	receiveCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var callbackErr error
+	var failOnce sync.Once
+	fail := func(err error) {
+		if err == nil {
 			return
 		}
-		w.WriteEvent(context.Background(), ev)
-		m.Ack()
-	})
+		failOnce.Do(func() {
+			callbackErr = err
+			cancel()
+		})
+	}
 
+	err = client.Subscriber(subscriptionName).Receive(receiveCtx, func(messageCtx context.Context, m *pubsub.Message) {
+		ev := &Event{}
+		if err := Unmarshal(m.Data, ev); err != nil {
+			m.Nack()
+			fail(fmt.Errorf("unmarshal Pub/Sub event: %w", err))
+			return
+		}
+		if err := w.WriteEvent(messageCtx, ev); err != nil {
+			m.Nack()
+			if ctx.Err() == nil {
+				fail(fmt.Errorf("write Pub/Sub event: %w", err))
+			}
+			return
+		}
+
+		ackStatus, err := m.AckWithResult().Get(messageCtx)
+		if err != nil {
+			if ctx.Err() == nil {
+				fail(fmt.Errorf("acknowledge Pub/Sub event: %w", err))
+			}
+			return
+		}
+		if ackStatus != pubsub.AcknowledgeStatusSuccess {
+			fail(fmt.Errorf("acknowledge Pub/Sub event: status %v", ackStatus))
+		}
+	})
+	if callbackErr != nil {
+		return callbackErr
+	}
+	if err != nil && !errors.Is(err, context.Canceled) {
+		return err
+	}
 	return nil
 }
