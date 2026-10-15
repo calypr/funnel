@@ -1,0 +1,25 @@
+# MinIO's former public Quay images are unavailable. Use Bitnami's archived
+# images with their matching chart, pinned by multi-platform digest.
+global:
+  security:
+    allowInsecureImages: true # The chart otherwise rejects the renamed archive.
+image:
+  repository: bitnamilegacy/minio
+  tag: 2025.7.23-debian-12-r3
+  digest: sha256:953d489a81cc4de7975f90e07202189c4325da39b0b92470b6a13c7ea99e36cd
+clientImage:
+  repository: bitnamilegacy/minio-client
+  tag: 2025.7.21-debian-12-r3
+  digest: sha256:73bd39f7899a0cef12b8dd5df13aa93a3ed1aaa44236542442e9ac76819ac158
+mode: standalone
+console:
+  enabled: false
+persistence:
+  enabled: false
+auth:
+  rootUser: example
+  rootPassword: example-password
+defaultBuckets: local
+resources:
+  requests:
+    memory: 512Mi
