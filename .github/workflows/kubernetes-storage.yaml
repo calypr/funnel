@@ -2,7 +2,6 @@ name: Kubernetes storage E2E
 
 on:
   pull_request:
-    branches: [develop]
   push:
     branches: [develop]
 
