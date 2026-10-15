@@ -29,6 +29,8 @@ type DefaultWorker struct {
 	Command
 }
 
+var errTaskCanceled = errors.New("task canceled")
+
 // Configuration of the task executor.
 type Executor struct {
 	// "docker" or "kubernetes"
@@ -118,11 +120,11 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 	defer func() {
 		event.EndTime(time.Now())
 		switch {
-		case run.taskCanceled:
+		case errors.Is(context.Cause(run.ctx), errTaskCanceled):
 			// The task was canceled.
 			event.Info("Canceled")
 			event.State(tes.State_CANCELED)
-			runerr = fmt.Errorf("task canceled")
+			runerr = errTaskCanceled
 		case run.syserr != nil:
 			// Something else failed
 			event.Error("System error", "error", run.syserr)
@@ -149,7 +151,8 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 		run.syserr = e
 	})
 
-	ctx := r.pollForCancel(pctx, func() { run.taskCanceled = true })
+	ctx, stopPolling := r.pollForCancel(pctx)
+	defer stopPolling()
 	run.ctx = ctx
 
 	// Prepare file mapper, which maps task file URLs to host filesystem paths
@@ -446,12 +449,14 @@ func (r *DefaultWorker) sanitizeValues(value string) string {
 	return re.ReplaceAllString(value, "")
 }
 
-func (r *DefaultWorker) pollForCancel(pctx context.Context, cancelCallback func()) context.Context {
-	taskctx, cancel := context.WithCancel(pctx)
+func (r *DefaultWorker) pollForCancel(pctx context.Context) (context.Context, func()) {
+	taskctx, cancel := context.WithCancelCause(pctx)
+	done := make(chan struct{})
 
 	// Start a goroutine that polls the server to watch for a canceled state.
 	// If a cancel state is found, "taskctx" is canceled.
 	go func() {
+		defer close(done)
 		ticker := time.NewTicker(r.Conf.PollingRate.AsDuration())
 		defer ticker.Stop()
 
@@ -462,11 +467,14 @@ func (r *DefaultWorker) pollForCancel(pctx context.Context, cancelCallback func(
 			case <-ticker.C:
 				state, _ := r.TaskReader.State(taskctx)
 				if tes.TerminalState(state) {
-					cancel()
-					cancelCallback()
+					cancel(errTaskCanceled)
+					return
 				}
 			}
 		}
 	}()
-	return taskctx
+	return taskctx, func() {
+		cancel(nil)
+		<-done
+	}
 }

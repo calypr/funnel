@@ -45,10 +45,9 @@ func handlePanic(cb func(error)) {
 
 // helper aims to simplify the error and context checking in the worker code.
 type helper struct {
-	syserr       error
-	execerr      error
-	taskCanceled bool
-	ctx          context.Context
+	syserr  error
+	execerr error
+	ctx     context.Context
 }
 
 func (h *helper) ok() bool {

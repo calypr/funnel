@@ -5,6 +5,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/ohsu-comp-bio/funnel/tes"
 	"github.com/ohsu-comp-bio/funnel/tests"
 	"github.com/ohsu-comp-bio/funnel/worker"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
@@ -124,15 +126,15 @@ func TestWorkDirCleanup(t *testing.T) {
 }
 
 type eventCounter struct {
-	stdout, stderr int
+	stdout, stderr atomic.Int32
 }
 
 func (e *eventCounter) WriteEvent(ctx context.Context, ev *events.Event) error {
 	switch ev.Type {
 	case events.Type_EXECUTOR_STDOUT:
-		e.stdout++
+		e.stdout.Add(1)
 	case events.Type_EXECUTOR_STDERR:
-		e.stderr++
+		e.stderr.Add(1)
 	}
 	return nil
 }
@@ -143,8 +145,12 @@ type taskReader struct {
 	task *tes.Task
 }
 
+func newTaskReader(task *tes.Task) taskReader {
+	return taskReader{task: proto.Clone(task).(*tes.Task)}
+}
+
 func (r taskReader) Task(ctx context.Context) (*tes.Task, error) {
-	return r.task, nil
+	return proto.Clone(r.task).(*tes.Task), nil
 }
 
 func (r taskReader) State(ctx context.Context) (tes.State, error) {
@@ -178,7 +184,7 @@ func TestLargeLogRate(t *testing.T) {
 	w := worker.DefaultWorker{
 		Conf:        conf.Worker,
 		Store:       &storage.Mux{},
-		TaskReader:  taskReader{&task},
+		TaskReader:  newTaskReader(&task),
 		EventWriter: m,
 	}
 
@@ -189,8 +195,8 @@ func TestLargeLogRate(t *testing.T) {
 	// Given the difficulty of timing how long it task a task + docker container to start,
 	// we just check that a small amount of events were generated.
 	// 20 events is not too bad for dumping many megabytes of data.
-	if counts.stdout > 20 {
-		t.Error("unexpected stdout event count", counts.stdout)
+	if counts.stdout.Load() > 20 {
+		t.Error("unexpected stdout event count", counts.stdout.Load())
 	}
 }
 
@@ -219,7 +225,7 @@ func TestZeroLogRate(t *testing.T) {
 	w := worker.DefaultWorker{
 		Conf:        conf.Worker,
 		Store:       &storage.Mux{},
-		TaskReader:  taskReader{&task},
+		TaskReader:  newTaskReader(&task),
 		EventWriter: m,
 	}
 
@@ -228,8 +234,8 @@ func TestZeroLogRate(t *testing.T) {
 	time.Sleep(time.Second)
 
 	// we expect a single event to be generated
-	if counts.stdout != 1 {
-		t.Error("unexpected stdout event count", counts.stdout)
+	if counts.stdout.Load() != 1 {
+		t.Error("unexpected stdout event count", counts.stdout.Load())
 	}
 }
 
@@ -258,7 +264,7 @@ func TestZeroLogTailSize(t *testing.T) {
 	w := worker.DefaultWorker{
 		Conf:        conf.Worker,
 		Store:       &storage.Mux{},
-		TaskReader:  taskReader{&task},
+		TaskReader:  newTaskReader(&task),
 		EventWriter: m,
 	}
 
@@ -270,8 +276,8 @@ func TestZeroLogTailSize(t *testing.T) {
 	}
 
 	// we expect zero events to be generated
-	if counts.stdout != 0 {
-		t.Error("unexpected stdout event count", counts.stdout)
+	if counts.stdout.Load() != 0 {
+		t.Error("unexpected stdout event count", counts.stdout.Load())
 	}
 }
 
@@ -298,7 +304,7 @@ func TestLogTailContent(t *testing.T) {
 	w := worker.DefaultWorker{
 		Conf:        conf.Worker,
 		Store:       &storage.Mux{},
-		TaskReader:  taskReader{&task},
+		TaskReader:  newTaskReader(&task),
 		EventWriter: m,
 	}
 
@@ -342,7 +348,7 @@ func TestDockerContainerMetadata(t *testing.T) {
 	w := worker.DefaultWorker{
 		Conf:        conf.Worker,
 		Store:       &storage.Mux{},
-		TaskReader:  taskReader{&task},
+		TaskReader:  newTaskReader(&task),
 		EventWriter: m,
 	}
 
@@ -409,7 +415,7 @@ func TestExecutorErrorStopsTask(t *testing.T) {
 	w := worker.DefaultWorker{
 		Conf:        conf.Worker,
 		Store:       &storage.Mux{},
-		TaskReader:  taskReader{&task},
+		TaskReader:  newTaskReader(&task),
 		EventWriter: m,
 	}
 
@@ -454,7 +460,7 @@ func TestExecutorIgnoreErrorContinuesTask(t *testing.T) {
 	w := worker.DefaultWorker{
 		Conf:        conf.Worker,
 		Store:       &storage.Mux{},
-		TaskReader:  taskReader{&task},
+		TaskReader:  newTaskReader(&task),
 		EventWriter: m,
 	}
 
@@ -479,7 +485,7 @@ func TestWorkerRunFileTaskReader(t *testing.T) {
 
 	// Task builder collects events into a task view.
 	task := &tes.Task{}
-	b := events.TaskBuilder{Task: task}
+	b := &events.TaskBuilder{Task: task}
 
 	opts := &workerCmd.Options{
 		TaskFile: "../../examples/hello-world.json",
@@ -508,7 +514,7 @@ func TestWorkerRunBase64TaskReader(t *testing.T) {
 
 	// Task builder collects events into a task view.
 	task := &tes.Task{}
-	b := events.TaskBuilder{Task: task}
+	b := &events.TaskBuilder{Task: task}
 
 	opts := &workerCmd.Options{
 		TaskBase64: "ewogICJuYW1lIjogIkhlbGxvIHdvcmxkIiwKICAiZGVzY3JpcHRpb24iOiAiRGVtb25zdHJhdGVzIHRoZSBtb3N0IGJhc2ljIGVjaG8gdGFzay4iLAogICJleGVjdXRvcnMiOiBbCiAgICB7CiAgICAgICJpbWFnZSI6ICJhbHBpbmUiLAogICAgICAiY29tbWFuZCI6IFsiZWNobyIsICJoZWxsbyB3b3JsZCJdCiAgICB9CiAgXQp9Cg==",
