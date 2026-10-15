@@ -14,6 +14,7 @@ import (
 	"github.com/ohsu-comp-bio/funnel/events"
 	"github.com/ohsu-comp-bio/funnel/logger"
 	plugin "github.com/ohsu-comp-bio/funnel/plugins/proto"
+	"github.com/ohsu-comp-bio/funnel/storage"
 	"github.com/ohsu-comp-bio/funnel/tes"
 	"google.golang.org/protobuf/types/known/structpb"
 	batchv1 "k8s.io/api/batch/v1"
@@ -343,6 +344,57 @@ func TestInvalidStorageFailsBeforeCreatingResources(t *testing.T) {
 	}
 	if len(client.Actions()) != 0 {
 		t.Fatalf("invalid binding reached Kubernetes: %v", client.Actions())
+	}
+}
+
+func TestS3MountedReadVolumeReferencesResolveBeforeResourceCreation(t *testing.T) {
+	for _, volumeName := range []string{"missing", "workspace"} {
+		t.Run(volumeName, func(t *testing.T) {
+			ctx := context.Background()
+			client := bindingClient()
+			conf := bindingConfig(t, existingStorage(t, "shared"))
+			conf.Kubernetes.Storage.VolumeMounts = []*structpb.Struct{nativeResource(t, `name: workspace
+mountPath: /reference
+readOnly: true`)}
+			conf.GenericS3 = []*config.GenericS3Storage{{
+				Endpoint: "https://s3.example.test",
+				Key:      "access-key",
+				Secret:   "access-secret",
+				Bucket:   "reference",
+				MountedRead: &config.S3MountedRead{
+					Volume: volumeName,
+				},
+			}}
+			if _, err := client.CoreV1().PersistentVolumeClaims("tasks").Create(ctx, &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: "shared", Namespace: "tasks"}, Spec: corev1.PersistentVolumeClaimSpec{AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany}}}, metav1.CreateOptions{}); err != nil {
+				t.Fatal(err)
+			}
+			client.ClearActions()
+			backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logger.DefaultConfig())}
+			err := backend.Submit(ctx, &tes.Task{Id: "input-binding"}, conf)
+			if volumeName == "missing" {
+				if err == nil || !strings.Contains(err.Error(), "unknown") {
+					t.Fatalf("missing reference was not rejected: %v", err)
+				}
+				if len(client.Actions()) != 0 {
+					t.Fatalf("invalid input reference reached Kubernetes: %v", client.Actions())
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			job, err := client.BatchV1().Jobs("tasks").Get(ctx, "input-binding", metav1.GetOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			plan, err := storageplan.Decode(job.Annotations[storageplan.Annotation])
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(plan.S3ReadMounts) != 1 || plan.S3ReadMounts[0] != (storage.S3ReadMount{Endpoint: "https://s3.example.test", Bucket: "reference", Prefix: "", Root: "/reference"}) {
+				t.Fatalf("submitted Job lost the volume-based S3 read mount: %+v", plan.S3ReadMounts)
+			}
+		})
 	}
 }
 
