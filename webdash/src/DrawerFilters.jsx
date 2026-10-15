@@ -1,21 +1,22 @@
 import React from 'react';
 import PropTypes from 'prop-types';
-import ListItem from '@material-ui/core/ListItem';
-import ListItemText from '@material-ui/core/ListItemText';
-import ListSubheader from '@material-ui/core/ListSubheader';
-import Input from '@material-ui/core/Input';
-import InputLabel from '@material-ui/core/InputLabel';
-import MenuItem from '@material-ui/core/MenuItem';
-import FormGroup from '@material-ui/core/FormGroup';
-import Select from '@material-ui/core/Select';
-import TextField from '@material-ui/core/TextField';
-import Icon from '@material-ui/core/Icon';
-import IconButton from '@material-ui/core/IconButton';
-import DeleteIcon from '@material-ui/icons/Delete';
+import ListItem from '@mui/material/ListItem';
+import ListItemButton from '@mui/material/ListItemButton';
+import ListItemText from '@mui/material/ListItemText';
+import ListSubheader from '@mui/material/ListSubheader';
+import Input from '@mui/material/Input';
+import InputLabel from '@mui/material/InputLabel';
+import MenuItem from '@mui/material/MenuItem';
+import FormGroup from '@mui/material/FormGroup';
+import Select from '@mui/material/Select';
+import TextField from '@mui/material/TextField';
+import Icon from '@mui/material/Icon';
+import IconButton from '@mui/material/IconButton';
+import DeleteIcon from '@mui/icons-material/Delete';
 import { Link } from "react-router-dom";
 
 function ListItemLink(props) {
-  return <ListItem button component={Link} {...props} />;
+  return <ListItemButton component={Link} {...props} />;
 }
 
 const NavListItems = (

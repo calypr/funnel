@@ -1,19 +1,19 @@
 import React from 'react';
 import PropTypes from 'prop-types';
-import { withStyles } from '@material-ui/core/styles';
-import Table from '@material-ui/core/Table';
-import TableBody from '@material-ui/core/TableBody';
-import TableCell from '@material-ui/core/TableCell';
-import TableRow from '@material-ui/core/TableRow';
-import classNames from 'classnames';
+import Table from '@mui/material/Table';
+import TableBody from '@mui/material/TableBody';
+import TableCell from '@mui/material/TableCell';
+import TableRow from '@mui/material/TableRow';
 import { Link } from "react-router-dom";
 
 import { formatTimestamp } from './utils';
 import { styles } from './TaskInfo';
 
+const keyCellSx = { ...styles.cell, ...styles.key };
+const valueCellSx = { ...styles.cell, ...styles.value };
 
 function NodeInfoRaw(props) {
-  const { classes, node } = props;
+  const { node } = props;
 
   const renderRow = (key, val, formatFunc) => {
     if ( val ) {
@@ -25,9 +25,9 @@ function NodeInfoRaw(props) {
     }
     if ( key && val ) {
       return (
-        <TableRow key={key} className={classes.row}>
-          <TableCell className={classNames(classes.cell, classes.key)}><b>{key}</b></TableCell>
-          <TableCell className={classNames(classes.cell, classes.value)}>{val}</TableCell>
+        <TableRow key={key} sx={styles.row}>
+          <TableCell sx={keyCellSx}><b>{key}</b></TableCell>
+          <TableCell sx={valueCellSx}>{val}</TableCell>
         </TableRow>
       );
     }
@@ -69,7 +69,7 @@ function NodeInfoRaw(props) {
     }
     return (
       <div>
-        <Table className={classes.table}>
+        <Table sx={styles.table}>
           <TableBody>
             {renderRow('ID', node.id)}
             {renderRow('Hostname', node.hostname)}
@@ -96,5 +96,5 @@ NodeInfoRaw.propTypes = {
   node: PropTypes.object.isRequired,
 };
 
-const NodeInfo = withStyles(styles)(NodeInfoRaw);
+const NodeInfo = NodeInfoRaw;
 export { NodeInfo };
