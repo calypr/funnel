@@ -8,7 +8,8 @@ import (
 	"github.com/cenkalti/backoff/v7"
 )
 
-// Retrier is a wrapper around "github.com/cenkalti/backoff/v7".ExponentialBackOff
+// Retrier retries failed operations until they succeed, reach MaxTries attempts,
+// exceed MaxElapsedTime, or the context is canceled.
 type Retrier struct {
 	InitialInterval     time.Duration
 	MaxInterval         time.Duration
@@ -21,9 +22,8 @@ type Retrier struct {
 	backoff             backoff.BackOff
 }
 
-// NewRetrier creates a new Retrier instance using default values.
+// NewRetrier returns a retrier configured for ten attempts over fifteen minutes.
 func NewRetrier() *Retrier {
-	// based on https://github.com/cenkalti/backoff/v7/blob/master/exponential.go#L59
 	return &Retrier{
 		InitialInterval:     time.Millisecond * 500,
 		MaxInterval:         time.Second * 60,

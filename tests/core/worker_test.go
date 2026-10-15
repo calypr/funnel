@@ -17,7 +17,6 @@ import (
 	"github.com/ohsu-comp-bio/funnel/tes"
 	"github.com/ohsu-comp-bio/funnel/tests"
 	"github.com/ohsu-comp-bio/funnel/worker"
-	gcontext "golang.org/x/net/context"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
@@ -146,11 +145,11 @@ type taskReader struct {
 	task *tes.Task
 }
 
-func (r taskReader) Task(ctx gcontext.Context) (*tes.Task, error) {
+func (r taskReader) Task(ctx context.Context) (*tes.Task, error) {
 	return r.task, nil
 }
 
-func (r taskReader) State(ctx gcontext.Context) (tes.State, error) {
+func (r taskReader) State(ctx context.Context) (tes.State, error) {
 	return r.task.State, nil
 }
 

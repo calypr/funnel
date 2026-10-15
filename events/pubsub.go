@@ -78,8 +78,8 @@ func (p *PubSubWriter) WriteEvent(ctx context.Context, ev *Event) error {
 		return err
 	}
 
-	_, err = p.publisher.Publish(ctx, &pubsub.Message{Data: []byte(s)}).Get(ctx)
-	return err
+	p.publisher.Publish(ctx, &pubsub.Message{Data: []byte(s)})
+	return nil
 }
 
 func (p *PubSubWriter) Close() {

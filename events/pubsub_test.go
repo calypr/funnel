@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -165,18 +166,48 @@ func TestPubSubWriterAndReader(t *testing.T) {
 	}
 }
 
-func TestPubSubWriterReturnsPublishError(t *testing.T) {
-	startPubSubTestServer(t, pstest.WithErrorInjection("Publish", codes.InvalidArgument, "publish failed"))
+type blockingPublishReactor struct {
+	started chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (r *blockingPublishReactor) React(interface{}) (bool, interface{}, error) {
+	r.once.Do(func() { close(r.started) })
+	<-r.release
+	return true, nil, status.Error(codes.PermissionDenied, "publish failed")
+}
+
+func TestPubSubWriterEnqueuesWithoutWaitingForPublishResult(t *testing.T) {
+	reactor := &blockingPublishReactor{started: make(chan struct{}), release: make(chan struct{})}
+	startPubSubTestServer(t, pstest.ServerReactorOption{FuncName: "Publish", Reactor: reactor})
 	conf := &config.PubSub{Project: "funnel-test", Topic: "events"}
 	writer, err := NewPubSubWriter(context.Background(), conf)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer writer.Close()
+	defer func() {
+		close(reactor.release)
+		writer.Close()
+	}()
 
-	err = writer.WriteEvent(context.Background(), &Event{Id: "event-1", Type: Type_TASK_START_TIME})
-	if err == nil || !strings.Contains(err.Error(), "publish failed") {
-		t.Fatalf("WriteEvent() error = %v, want publish failure", err)
+	writeDone := make(chan error, 1)
+	go func() {
+		writeDone <- writer.WriteEvent(context.Background(), &Event{Id: "event-1", Type: Type_TASK_START_TIME})
+	}()
+
+	select {
+	case <-reactor.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Pub/Sub did not begin the queued publish")
+	}
+	select {
+	case err := <-writeDone:
+		if err != nil {
+			t.Fatalf("WriteEvent() error = %v, want successful enqueue", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("WriteEvent waited for the remote publish result")
 	}
 }
 

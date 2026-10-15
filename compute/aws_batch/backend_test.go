@@ -139,3 +139,31 @@ func TestBatchRequestContexts(t *testing.T) {
 		t.Fatal("submission or cancellation was skipped")
 	}
 }
+
+func TestNewBackendPreservesRetryAttempts(t *testing.T) {
+	t.Setenv("AWS_PROFILE", "")
+	t.Setenv("AWS_MAX_ATTEMPTS", "")
+	for _, test := range []struct {
+		name       string
+		maxRetries int32
+		want       int
+	}{
+		{name: "legacy default", want: 4},
+		{name: "configured retries", maxRetries: 7, want: 8},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			conf := &config.AWSBatch{
+				AWSConfig:         &config.AWSConfig{Region: "us-east-1", DisableAutoCredentialLoad: true, MaxRetries: test.maxRetries},
+				DisableReconciler: true,
+			}
+			backend, err := NewBackend(t.Context(), conf, nil, &noopEventWriter{}, logger.NewLogger("test", logger.DefaultConfig()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			client := backend.client.(*batch.Client)
+			if got := client.Options().RetryMaxAttempts; got != test.want {
+				t.Fatalf("retry attempts = %d, want %d", got, test.want)
+			}
+		})
+	}
+}

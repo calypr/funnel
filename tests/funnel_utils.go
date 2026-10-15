@@ -2,6 +2,7 @@ package tests
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -25,7 +26,6 @@ import (
 	"github.com/ohsu-comp-bio/funnel/util/dockerutil"
 	"github.com/ohsu-comp-bio/funnel/util/k8sutil"
 	"github.com/ohsu-comp-bio/funnel/util/rpc"
-	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"k8s.io/client-go/kubernetes"
 )

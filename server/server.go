@@ -2,6 +2,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net"
 	"net/http"
@@ -26,7 +27,6 @@ import (
 	"github.com/ohsu-comp-bio/funnel/webdash"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 )
 
@@ -154,7 +154,6 @@ func (s *Server) Serve(pctx context.Context) error {
 			PermitWithoutStream: true,             // allow pings when no active RPCs
 		}),
 		grpc.ChainUnaryInterceptor(
-			// API auth check.
 			auth.Interceptor,
 			newDebugInterceptor(s.Log),
 		),

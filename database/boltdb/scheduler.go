@@ -1,12 +1,12 @@
 package boltdb
 
 import (
+	"context"
 	"fmt"
 
-	bolt "go.etcd.io/bbolt"
 	"github.com/ohsu-comp-bio/funnel/compute/scheduler"
 	"github.com/ohsu-comp-bio/funnel/tes"
-	"golang.org/x/net/context"
+	bolt "go.etcd.io/bbolt"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"

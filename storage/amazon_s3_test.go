@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/ohsu-comp-bio/funnel/config"
@@ -160,6 +161,119 @@ func TestAmazonS3RegionDiscovery(t *testing.T) {
 			}
 			if region != "eu-west-1" {
 				t.Fatalf("region = %q", region)
+			}
+		})
+	}
+}
+
+func TestAmazonS3RegionDiscoveryDefaultsWhenHeaderMissing(t *testing.T) {
+	t.Setenv("AWS_PROFILE", "")
+	t.Setenv("AWS_MAX_ATTEMPTS", "")
+	t.Setenv("AWS_REGION", "")
+	t.Setenv("AWS_DEFAULT_REGION", "")
+	var uploads atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if authorization := r.Header.Get("Authorization"); authorization != "" && !strings.Contains(authorization, "/us-east-1/s3/") {
+			t.Errorf("signed request used wrong region: %q", authorization)
+		}
+		w.Header().Set("ETag", `"fixture"`)
+		w.Header().Set("Last-Modified", "Mon, 02 Jan 2006 15:04:05 GMT")
+		switch {
+		case r.Method == http.MethodHead && r.URL.Path == "/bucket":
+			w.WriteHeader(http.StatusOK)
+		case r.Method == http.MethodHead && r.URL.Path == "/bucket/object":
+			w.Header().Set("Content-Length", "7")
+			w.WriteHeader(http.StatusOK)
+		case r.Method == http.MethodGet && r.URL.Path == "/bucket/object":
+			w.Header().Set("Content-Length", "7")
+			if r.Header.Get("Range") != "" {
+				w.Header().Set("Content-Range", "bytes 0-6/7")
+				w.WriteHeader(http.StatusPartialContent)
+			}
+			_, _ = io.WriteString(w, "fixture")
+		case r.Method == http.MethodPut && r.URL.Path == "/bucket/object":
+			data, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Error(err)
+			}
+			if string(data) != "fixture" {
+				t.Errorf("uploaded %q, want fixture", data)
+			}
+			uploads.Add(1)
+			w.WriteHeader(http.StatusOK)
+		default:
+			t.Errorf("unexpected S3 request %s %s", r.Method, r.URL)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	store, err := NewAmazonS3(&config.AmazonS3Storage{AWSConfig: &config.AWSConfig{
+		Endpoint: server.URL,
+		Key:      "fixture",
+		Secret:   "secret",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stat, err := store.Stat(t.Context(), "s3://bucket/object")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stat.Size != 7 || stat.ETag != `"fixture"` {
+		t.Fatalf("stat = %#v, want fixture metadata", stat)
+	}
+
+	output := filepath.Join(t.TempDir(), "output")
+	if _, err := store.Get(t.Context(), "s3://bucket/object", output); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "fixture" {
+		t.Fatalf("download = %q, want fixture", got)
+	}
+
+	input := filepath.Join(t.TempDir(), "input")
+	if err := os.WriteFile(input, []byte("fixture"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Put(t.Context(), "s3://bucket/object", input); err != nil {
+		t.Fatal(err)
+	}
+	if got := uploads.Load(); got != 1 {
+		t.Fatalf("upload requests = %d, want 1", got)
+	}
+}
+
+func TestAmazonS3PreservesRetryAttempts(t *testing.T) {
+	t.Setenv("AWS_PROFILE", "")
+	for _, test := range []struct {
+		name        string
+		maxRetries  int32
+		maxAttempts string
+		want        int
+	}{
+		{name: "legacy default", want: 4},
+		{name: "configured retries", maxRetries: 7, want: 8},
+		{name: "SDK environment override", maxAttempts: "6", want: 6},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("AWS_MAX_ATTEMPTS", test.maxAttempts)
+			store, err := NewAmazonS3(&config.AmazonS3Storage{AWSConfig: &config.AWSConfig{
+				Region:     "us-east-1",
+				Key:        "fixture",
+				Secret:     "secret",
+				MaxRetries: test.maxRetries,
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if store.cfg.RetryMaxAttempts != test.want {
+				t.Fatalf("retry attempts = %d, want %d", store.cfg.RetryMaxAttempts, test.want)
 			}
 		})
 	}

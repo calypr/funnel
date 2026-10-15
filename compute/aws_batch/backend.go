@@ -19,11 +19,16 @@ import (
 	util "github.com/ohsu-comp-bio/funnel/util/aws"
 )
 
+const defaultBatchRetryMaxAttempts = 4
+
 // NewBackend returns a new local Backend instance.
 func NewBackend(ctx context.Context, conf *config.AWSBatch, reader tes.ReadOnlyServer, writer events.Writer, log *logger.Logger) (*Backend, error) {
 	sess, err := util.NewAWSConfig(ctx, conf.AWSConfig)
 	if err != nil {
 		return nil, fmt.Errorf("error occurred creating batch client: %v", err)
+	}
+	if conf.AWSConfig.MaxRetries <= 0 && sess.RetryMaxAttempts == 0 {
+		sess.RetryMaxAttempts = defaultBatchRetryMaxAttempts
 	}
 
 	b := &Backend{

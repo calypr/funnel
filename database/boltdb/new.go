@@ -3,10 +3,10 @@ package boltdb
 import (
 	"time"
 
-	bolt "go.etcd.io/bbolt"
 	"github.com/ohsu-comp-bio/funnel/compute/scheduler"
 	"github.com/ohsu-comp-bio/funnel/config"
 	"github.com/ohsu-comp-bio/funnel/util/fsutil"
+	bolt "go.etcd.io/bbolt"
 )
 
 // TODO these should probably be unexported names

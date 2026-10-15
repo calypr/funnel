@@ -24,6 +24,8 @@ import (
 // s3Protocol defines the s3 URL protocol
 const s3Protocol = "s3://"
 
+const defaultS3RetryMaxAttempts = 4
+
 // AmazonS3 provides access to an S3 object store.
 type AmazonS3 struct {
 	cfg            aws.Config
@@ -45,6 +47,9 @@ func NewAmazonS3(conf *config.AmazonS3Storage) (*AmazonS3, error) {
 	sess, err := util.NewAWSConfig(context.Background(), conf.AWSConfig)
 	if err != nil {
 		return nil, fmt.Errorf("error creating amazon s3 backend: %v", err)
+	}
+	if conf.AWSConfig.MaxRetries <= 0 && sess.RetryMaxAttempts == 0 {
+		sess.RetryMaxAttempts = defaultS3RetryMaxAttempts
 	}
 
 	var endpoint string
@@ -351,7 +356,10 @@ func (s3b *AmazonS3) bucketRegion(ctx context.Context, bucket string) (string, e
 		options.Credentials = nil
 	})
 	if err == nil {
-		return aws.ToString(result.BucketRegion), nil
+		if region := aws.ToString(result.BucketRegion); region != "" {
+			return region, nil
+		}
+		return "us-east-1", nil
 	}
 	var response *smithyhttp.ResponseError
 	if errors.As(err, &response) {

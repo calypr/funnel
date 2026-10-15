@@ -3,9 +3,10 @@ package scheduler
 import (
 	"time"
 
+	"context"
+
 	"github.com/ohsu-comp-bio/funnel/config"
 	"github.com/ohsu-comp-bio/funnel/tes"
-	"golang.org/x/net/context"
 )
 
 // UpdateNode helps scheduler database backend update a node when PutNode() is called.

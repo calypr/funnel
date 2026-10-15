@@ -15,6 +15,8 @@ import (
 	util "github.com/ohsu-comp-bio/funnel/util/aws"
 )
 
+const defaultBatchRetryMaxAttempts = 4
+
 type errResourceExists struct{}
 
 func (e errResourceExists) Error() string {
@@ -25,6 +27,9 @@ func newBatchSvc(conf *Config) (*batchsvc, error) {
 	sess, err := util.NewAWSConfig(context.Background(), conf.AWSConfig)
 	if err != nil {
 		return nil, fmt.Errorf("error occurred creating aws session: %v", err)
+	}
+	if conf.AWSConfig.MaxRetries <= 0 && sess.RetryMaxAttempts == 0 {
+		sess.RetryMaxAttempts = defaultBatchRetryMaxAttempts
 	}
 	return &batchsvc{
 		sess: sess,
@@ -42,9 +47,12 @@ func (b *batchsvc) CreateComputeEnvironment() (*types.ComputeEnvironmentDetail, 
 	ec2Cli := ec2.NewFromConfig(b.sess)
 	iamCli := iam.NewFromConfig(b.sess)
 
-	resp, _ := batchCli.DescribeComputeEnvironments(context.Background(), &batch.DescribeComputeEnvironmentsInput{
+	resp, err := batchCli.DescribeComputeEnvironments(context.Background(), &batch.DescribeComputeEnvironmentsInput{
 		ComputeEnvironments: []string{b.conf.ComputeEnv.Name},
 	})
+	if err != nil {
+		return nil, fmt.Errorf("error describing ComputeEnvironment: %w", err)
+	}
 	if len(resp.ComputeEnvironments) > 0 {
 		return &resp.ComputeEnvironments[0], errResourceExists{}
 	}
@@ -173,7 +181,7 @@ func (b *batchsvc) CreateComputeEnvironment() (*types.ComputeEnvironmentDetail, 
 		ComputeEnvironments: []string{b.conf.ComputeEnv.Name},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("error getting ComputeEnvironmentDetail: %v", err)
+		return nil, fmt.Errorf("error getting ComputeEnvironmentDetail: %w", err)
 	}
 	if len(resp.ComputeEnvironments) > 0 {
 		return &resp.ComputeEnvironments[0], nil
@@ -184,9 +192,12 @@ func (b *batchsvc) CreateComputeEnvironment() (*types.ComputeEnvironmentDetail, 
 func (b *batchsvc) CreateJobQueue() (*types.JobQueueDetail, error) {
 	batchCli := batch.NewFromConfig(b.sess)
 
-	resp, _ := batchCli.DescribeJobQueues(context.Background(), &batch.DescribeJobQueuesInput{
-		JobQueues: []string{conf.JobQueue.Name},
+	resp, err := batchCli.DescribeJobQueues(context.Background(), &batch.DescribeJobQueuesInput{
+		JobQueues: []string{b.conf.JobQueue.Name},
 	})
+	if err != nil {
+		return nil, fmt.Errorf("error describing JobQueue: %w", err)
+	}
 	if len(resp.JobQueues) > 0 {
 		return &resp.JobQueues[0], errResourceExists{}
 	}
@@ -205,16 +216,16 @@ func (b *batchsvc) CreateJobQueue() (*types.JobQueueDetail, error) {
 		Priority:                aws.Int32(int32(b.conf.JobQueue.Priority)),
 		State:                   "ENABLED",
 	}
-	_, err := batchCli.CreateJobQueue(context.Background(), input)
+	_, err = batchCli.CreateJobQueue(context.Background(), input)
 	if err != nil {
-		return nil, fmt.Errorf("error creating JobQueue: %v", err)
+		return nil, fmt.Errorf("error creating JobQueue: %w", err)
 	}
 
 	resp, err = batchCli.DescribeJobQueues(context.Background(), &batch.DescribeJobQueuesInput{
-		JobQueues: []string{conf.JobQueue.Name},
+		JobQueues: []string{b.conf.JobQueue.Name},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("error getting JobQueueDetail: %v", err)
+		return nil, fmt.Errorf("error getting JobQueueDetail: %w", err)
 	}
 	if len(resp.JobQueues) > 0 {
 		return &resp.JobQueues[0], nil
@@ -303,11 +314,14 @@ func (b *batchsvc) CreateJobDefinition(overwrite bool) (*types.JobDefinition, er
 
 	if !overwrite {
 		// TODO need paging if there are more than 100 revisions
-		resp, _ := batchCli.DescribeJobDefinitions(context.Background(), &batch.DescribeJobDefinitionsInput{
+		resp, err := batchCli.DescribeJobDefinitions(context.Background(), &batch.DescribeJobDefinitionsInput{
 			JobDefinitionName: aws.String(b.conf.JobDef.Name),
 			Status:            aws.String("ACTIVE"),
 			MaxResults:        aws.Int32(100),
 		})
+		if err != nil {
+			return nil, fmt.Errorf("error describing JobDefinition: %w", err)
+		}
 		if len(resp.JobDefinitions) > 0 {
 			jobDefs := resp.JobDefinitions
 			sort.Sort(byRevision(jobDefs))
@@ -402,7 +416,7 @@ func (b *batchsvc) CreateJobDefinition(overwrite bool) (*types.JobDefinition, er
 		MaxResults:        aws.Int32(100),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("error getting JobDefintion: %v", err)
+		return nil, fmt.Errorf("error getting JobDefintion: %w", err)
 	}
 	if len(resp.JobDefinitions) > 0 {
 		jobDefs := resp.JobDefinitions
