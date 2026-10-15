@@ -25,7 +25,12 @@ func runningPod(resourceVersion string) *corev1.Pod {
 			Namespace:       testNamespace,
 			ResourceVersion: resourceVersion,
 		},
-		Status: corev1.PodStatus{Phase: corev1.PodRunning},
+		Status: corev1.PodStatus{
+			Phase: corev1.PodRunning,
+			ContainerStatuses: []corev1.ContainerStatus{{
+				Name: "task-runner", State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
+			}},
+		},
 	}
 }
 
@@ -40,6 +45,7 @@ func terminatedPod(resourceVersion string, exitCode int32) *corev1.Pod {
 			Phase: corev1.PodRunning,
 			ContainerStatuses: []corev1.ContainerStatus{
 				{
+					Name: "task-runner",
 					State: corev1.ContainerState{
 						Terminated: &corev1.ContainerStateTerminated{ExitCode: exitCode},
 					},
@@ -97,14 +103,15 @@ func TestWaitForPodFinishReestablishesWatchOnTimeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pod, err := waitForPodFinish(ctx, clientset, testNamespace, testSelector)
+	pod, err := waitForPodFinish(ctx, clientset, testNamespace, testSelector, "task-runner")
 	if err != nil {
 		t.Fatalf("expected pod to finish, got error: %v", err)
 	}
 	if pod == nil {
 		t.Fatal("expected non-nil pod")
 	}
-	if len(pod.Status.ContainerStatuses) == 0 || pod.Status.ContainerStatuses[0].State.Terminated == nil {
+	status := findContainerStatus(pod, "task-runner")
+	if status == nil || status.State.Terminated == nil {
 		t.Fatal("expected terminated container status")
 	}
 
@@ -135,11 +142,11 @@ func TestWaitForPodFinishReturnsTerminatedPod(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pod, err := waitForPodFinish(ctx, clientset, testNamespace, testSelector)
+	pod, err := waitForPodFinish(ctx, clientset, testNamespace, testSelector, "task-runner")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if pod == nil || len(pod.Status.ContainerStatuses) == 0 {
+	if pod == nil || findContainerStatus(pod, "task-runner") == nil || findContainerStatus(pod, "task-runner").State.Terminated == nil {
 		t.Fatal("expected terminated pod")
 	}
 }
@@ -178,11 +185,11 @@ func TestWaitForPodFinishRestartsOnExpiredResourceVersion(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pod, err := waitForPodFinish(ctx, clientset, testNamespace, testSelector)
+	pod, err := waitForPodFinish(ctx, clientset, testNamespace, testSelector, "task-runner")
 	if err != nil {
 		t.Fatalf("expected watch to restart on expired resourceVersion, got error: %v", err)
 	}
-	if pod == nil || len(pod.Status.ContainerStatuses) == 0 {
+	if pod == nil || findContainerStatus(pod, "task-runner") == nil || findContainerStatus(pod, "task-runner").State.Terminated == nil {
 		t.Fatal("expected terminated pod after restart")
 	}
 

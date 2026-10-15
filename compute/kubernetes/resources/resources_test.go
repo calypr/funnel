@@ -201,7 +201,7 @@ func TestCreateJob(t *testing.T) {
 	conf := config.DefaultConfig()
 	conf.Kubernetes.JobsNamespace = jobsNamespace
 	conf.Kubernetes.WorkerTemplate = minimalWorkerTemplate
-	_, err := CreateJob(ctx, task, conf, fake.NewSimpleClientset(), l)
+	_, err := CreateJob(ctx, task, conf, fake.NewSimpleClientset(), l, nil)
 	if err != nil {
 		t.Errorf("CreateJob failed: %v", err)
 	}
@@ -324,7 +324,7 @@ func TestCreateJobWithNoResources(t *testing.T) {
 	conf := config.DefaultConfig()
 	conf.Kubernetes.JobsNamespace = jobsNamespace
 	conf.Kubernetes.WorkerTemplate = minimalWorkerTemplate
-	_, err := CreateJob(ctx, task, conf, fake.NewSimpleClientset(), l)
+	_, err := CreateJob(ctx, task, conf, fake.NewSimpleClientset(), l, nil)
 	if err != nil {
 		t.Errorf("CreateJob failed with nil resources: %v", err)
 	}

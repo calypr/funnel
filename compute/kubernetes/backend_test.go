@@ -30,7 +30,7 @@ type mockDatabase struct {
 func (m *mockDatabase) GetTask(_ context.Context, req *tes.GetTaskRequest) (*tes.Task, error) {
 	t, ok := m.tasks[req.Id]
 	if !ok {
-		return nil, fmt.Errorf("not found")
+		return nil, tes.ErrNotFound
 	}
 	return t, nil
 }
