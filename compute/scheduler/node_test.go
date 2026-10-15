@@ -19,7 +19,7 @@ func TestStopNode(t *testing.T) {
 	n := newTestNode(conf, t)
 
 	n.Client.On("GetNode", mock.Anything, mock.Anything, mock.Anything).
-		Return(&Node{}, nil)
+		Return(emptyNodeResponse, nil)
 
 	stop := n.Start()
 
@@ -84,7 +84,7 @@ func TestNoTasks(t *testing.T) {
 
 	// Tell the scheduler mock to return nothing
 	n.Client.On("GetNode", mock.Anything, mock.Anything, mock.Anything).
-		Return(&Node{}, nil)
+		Return(emptyNodeResponse, nil)
 
 	// Count the number of times the worker factory was called
 	var count atomic.Int32
