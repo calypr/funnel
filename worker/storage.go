@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -28,7 +29,8 @@ func FlattenInputs(ctx context.Context, inputs []*tes.Input, store storage.Stora
 			flat = append(flat, input)
 
 		case tes.Directory:
-			list, err := store.List(ctx, input.Url)
+			prefix := strings.TrimSuffix(input.Url, "/") + "/"
+			list, err := store.List(ctx, prefix)
 			if err != nil {
 				return nil, fmt.Errorf("listing directory: %s", err)
 			}
@@ -39,9 +41,14 @@ func FlattenInputs(ctx context.Context, inputs []*tes.Input, store storage.Stora
 			}
 
 			for _, obj := range list {
+				rel, ok := strings.CutPrefix(obj.URL, prefix)
+				if !ok || !filepath.IsLocal(rel) || rel == "." || strings.ContainsAny(rel, "\\\x00") {
+					return nil, fmt.Errorf("listed input %q is outside directory %q", obj.URL, input.Url)
+				}
+
 				flat = append(flat, &tes.Input{
 					Url:  obj.URL,
-					Path: filepath.Join(input.Path, strings.TrimPrefix(obj.URL, strings.TrimSuffix(input.Url, "/")+"/")),
+					Path: filepath.Join(input.Path, rel),
 				})
 			}
 		}
@@ -88,6 +95,9 @@ func FlattenOutputs(ctx context.Context, outputs []*tes.Output, store storage.St
 
 	var flat []*tes.Output
 	for _, output := range outputs {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		switch output.Type {
 		case tes.File:
 			flat = append(flat, output)
@@ -120,6 +130,9 @@ func FlattenOutputs(ctx context.Context, outputs []*tes.Output, store storage.St
 
 // UploadOutputs uploads the outputs.
 func UploadOutputs(ctx context.Context, outputs []*tes.Output, store storage.Storage, ev *events.TaskWriter, parallelLimit int) ([]*tes.OutputFileLog, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	flat, err := FlattenOutputs(ctx, outputs, store, ev)
 	if err != nil {
@@ -135,7 +148,7 @@ func UploadOutputs(ctx context.Context, outputs []*tes.Output, store storage.Sto
 	storage.Upload(ctx, store, uploads, parallelLimit)
 
 	var logs []*tes.OutputFileLog
-	var errs util.MultiError
+	var errs []error
 
 	for _, x := range uploads {
 		up := x.(*upload)
@@ -146,7 +159,7 @@ func UploadOutputs(ctx context.Context, outputs []*tes.Output, store storage.Sto
 		}
 	}
 
-	return logs, errs.ToError()
+	return logs, errors.Join(errs...)
 }
 
 type download struct {
