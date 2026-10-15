@@ -3,36 +3,29 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
-    "@material-ui/core": "^4.8.2",
-    "@material-ui/icons": "^4.5.1",
-    "classnames": "^2.5.1",
-    "react": "^19.2.5",
-    "react-app-rewired": "^2.2.1",
-    "react-dom": "^19.2.5",
-    "react-json-view": "^1.19.1",
-    "react-router-dom": "^7.17.0",
-    "react-scripts": "^5.0.1"
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@microlink/react-json-view": "^1.31.40",
+    "@mui/icons-material": "^9.5.0",
+    "@mui/material": "^9.5.0",
+    "prop-types": "^15.8.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-router-dom": "^7.18.4"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "NODE_ENV=production react-scripts build",
-    "build-dev": "NODE_ENV=development react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "start": "vite",
+    "build": "vite build",
+    "build-dev": "NODE_ENV=development vite build --mode development",
+    "test": "vitest run"
   },
-  "eslintConfig": {
-    "extends": "react-app"
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.1.2",
+    "jsdom": "^29.1.1",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.5"
   },
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
+  "engines": {
+    "node": "^22.13.0 || ^24.0.0 || >=26.0.0"
   }
 }
