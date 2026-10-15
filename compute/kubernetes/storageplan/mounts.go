@@ -5,6 +5,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/ohsu-comp-bio/funnel/storage"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 )
@@ -18,6 +19,42 @@ func validateAbsolutePath(value string) error {
 
 func pathsOverlap(a, b string) bool {
 	return a == b || strings.HasPrefix(a, strings.TrimSuffix(b, "/")+"/") || strings.HasPrefix(b, strings.TrimSuffix(a, "/")+"/")
+}
+
+type mountedWriteRoute struct {
+	claim string
+	mount corev1.VolumeMount
+}
+
+func validateMountedWriteRoutes(writes []storage.S3WriteMount, mounts []corev1.VolumeMount, volumes map[string]corev1.Volume) error {
+	routes := make([]mountedWriteRoute, 0, len(writes))
+	for _, write := range writes {
+		for _, mount := range mounts {
+			if mount.MountPath != write.Root {
+				continue
+			}
+			volume := volumes[mount.Name]
+			routes = append(routes, mountedWriteRoute{claim: volume.PersistentVolumeClaim.ClaimName, mount: mount})
+		}
+	}
+	for i, route := range routes {
+		for _, other := range routes[:i] {
+			if route.claim != other.claim {
+				continue
+			}
+			if route.mount.SubPathExpr != "" || other.mount.SubPathExpr != "" || subPathsOverlap(route.mount.SubPath, other.mount.SubPath) {
+				return fmt.Errorf("S3 mounted write routes on PVC %q have overlapping or unknown subPaths", route.claim)
+			}
+		}
+	}
+	return nil
+}
+
+func subPathsOverlap(a, b string) bool {
+	if a == "" || a == "." || b == "" || b == "." {
+		return true
+	}
+	return pathsOverlap(a, b)
 }
 
 func selectContainer(containers []corev1.Container, name, field string) (int, error) {

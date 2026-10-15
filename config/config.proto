@@ -306,6 +306,35 @@ message GenericS3Storage {
   // AWS Account ID, needed for S3 CSI Driver
   // https://github.com/awslabs/mountpoint-s3/blob/v1.20.0/doc/CONFIGURATION.md#data-encryption
   string AccountID = 8;
+  S3MountedRead MountedRead = 9;
+  S3MountedWrite MountedWrite = 10;
+}
+
+// S3MountedRead configures a read-only S3 prefix mounted into a Kubernetes worker.
+message S3MountedRead {
+  reserved 1;
+  reserved "WorkerMount";
+  // Prefix is bucket-relative. An empty prefix mounts the whole bucket.
+  string Prefix = 2;
+  string Volume = 3;
+  oneof MountView {
+    string SubPath = 4;
+  }
+}
+
+// S3MountedWrite configures output publication through a writable Kubernetes worker mount.
+message S3MountedWrite {
+  reserved 1;
+  reserved "WorkerMount";
+  // Prefix is bucket-relative. An empty prefix mounts the whole bucket.
+  string Prefix = 2;
+  // Timeout bounds object visibility polling after a worker copies output files.
+  // A nil value uses the default timeout.
+  google.protobuf.Duration Timeout = 3;
+  string Volume = 4;
+  oneof MountView {
+    string SubPath = 5;
+  }
 }
 
 // SwiftStorage configures the OpenStack Swift object storage backend.

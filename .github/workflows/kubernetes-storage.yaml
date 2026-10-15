@@ -1,0 +1,41 @@
+name: Kubernetes storage E2E
+
+on:
+  pull_request:
+  push:
+    branches: [develop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  storage-e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Install k3d
+        run: go install github.com/k3d-io/k3d/v5@v5.8.3
+      - name: Test PR binary with local-path PVCs and S3 artifacts
+        env:
+          FUNNEL_E2E_OUTPUT_DIR: ${{ runner.temp }}/funnel-storage-e2e
+        run: tests/kubernetes-storage/run.sh
+      - name: Upload test diagnostics
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          archive: true
+          name: kubernetes-storage-e2e
+          path: |
+            ${{ runner.temp }}/funnel-storage-e2e/*.log
+            ${{ runner.temp }}/funnel-storage-e2e/*.json
+            ${{ runner.temp }}/funnel-storage-e2e/*.txt
+            ${{ runner.temp }}/funnel-storage-e2e/pvs.yaml
+          if-no-files-found: warn

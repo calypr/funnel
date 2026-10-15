@@ -68,6 +68,8 @@ func NewWorker(ctx context.Context, conf *config.Config, log *logger.Logger, opt
 	}
 
 	// The executor always defaults to docker, unless explicitly set to kubernetes.
+	var readMounts []storage.S3ReadMount
+	var writeMounts []storage.S3WriteMount
 	var executor = worker.Executor{
 		Backend: "docker",
 	}
@@ -88,23 +90,33 @@ func NewWorker(ctx context.Context, conf *config.Config, log *logger.Logger, opt
 			}
 			conf = googleproto.Clone(conf).(*config.Config)
 			conf.Worker.WorkDir = plan.WorkDir
+			readMounts = plan.S3ReadMounts
+			writeMounts = plan.S3WriteMounts
 			executor.StoragePlan = plan
 			executor.JobsNamespace = plan.Namespace
 		} else if conf.Kubernetes.Storage != nil {
 			return nil, fmt.Errorf("explicit Kubernetes storage requires a submitted storage plan")
 		}
+
 	}
 
-	store, err := storage.NewMux(conf)
-	if err != nil {
-		return nil, fmt.Errorf("failed to instantiate Storage backend: %v", err)
+	if executor.StoragePlan == nil {
+		for _, backend := range conf.GenericS3 {
+			if backend != nil && (backend.MountedRead != nil || backend.MountedWrite != nil) {
+				return nil, fmt.Errorf("GenericS3 mounted access requires a submitted Kubernetes storage plan")
+			}
+		}
 	}
-	store.AttachLogger(log)
+	mux, err := storage.NewWorkerMux(conf, readMounts, writeMounts...)
+	if err != nil {
+		return nil, fmt.Errorf("creating worker storage backend: %w", err)
+	}
+	mux.AttachLogger(log)
 
 	return &worker.DefaultWorker{
 		Executor:    executor,
 		Conf:        conf.Worker,
-		Store:       store,
+		Store:       mux,
 		TaskReader:  reader,
 		EventWriter: writer,
 	}, nil

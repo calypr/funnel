@@ -1,0 +1,128 @@
+Compute: kubernetes
+Database: __DATABASE__
+EventWriters: [log]
+Logger:
+  Level: debug
+Server:
+  HostName: __SERVER__
+  HTTPPort: "8000"
+  RPCPort: "9090"
+RPCClient:
+  ServerAddress: __SERVER__:9090
+BoltDB:
+  Path: /database/funnel.db
+Worker:
+  WorkDir: /work
+  PollingRate: 1s
+  MaxParallelTransfers: 1
+AmazonS3:
+  Disabled: true
+GoogleStorage:
+  Disabled: true
+Swift:
+  Disabled: true
+FTPStorage:
+  Disabled: true
+GenericS3:
+  - Endpoint: http://minio:9000
+    Bucket: local
+    Region: us-east-1
+    Key: example
+    Secret: example-password
+    MountedRead:
+      Volume: references
+      SubPath: release-1
+      Prefix: references/
+__MOUNTED_WRITE__
+Kubernetes:
+  Namespace: funnel-storage-e2e
+  JobsNamespace: funnel-storage-e2e
+  WorkerImage: __IMAGE__
+  DisableReconciler: false
+  DisableJobCleanup: false
+  ReconcileRate: 1s
+  ConfigMapTemplate: ""
+  ServiceAccountTemplate: ""
+  RoleTemplate: ""
+  RoleBindingTemplate: ""
+  Storage:
+    WorkspaceVolume: workspace
+__WORKSPACE__
+      - name: references
+        persistentVolumeClaim:
+          claimName: references
+__OUTPUT_VOLUME__
+    volumeMounts:
+      - name: references
+        mountPath: /reference
+        subPath: release-1
+        readOnly: true
+      - name: references
+        mountPath: /other-reference
+        subPath: release-2
+        readOnly: true
+__OUTPUT_MOUNT__
+  WorkerTemplate: |
+    apiVersion: batch/v1
+    kind: Job
+    metadata:
+      name: {{.TaskId}}
+      namespace: {{.JobsNamespace}}
+      labels:
+        app: funnel-worker
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 180
+      template:
+        spec:
+          serviceAccountName: funnel
+          restartPolicy: Never
+          containers:
+            - name: worker
+              image: {{.Image}}
+              imagePullPolicy: IfNotPresent
+              args: [worker, run, --config, /config/worker.yaml, --taskID, "{{.TaskId}}"]
+              volumeMounts:
+                - name: config
+                  mountPath: /config
+                  readOnly: true
+          volumes:
+            - name: config
+              configMap:
+                name: __SERVER__
+  ExecutorTemplate: |
+    apiVersion: batch/v1
+    kind: Job
+    metadata:
+      name: {{.TaskId}}-{{.JobId}}
+      namespace: {{.JobsNamespace}}
+      labels:
+        app: funnel-executor
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 120
+      template:
+        spec:
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          containers:
+            - name: executor
+              image: {{.Image}}
+              imagePullPolicy: IfNotPresent
+              {{- if .UseShell}}
+              command: ["/bin/sh", "-c"]
+              args:
+                - {{printf "%q" (index .Command 0)}}
+              {{- else}}
+              command:
+                {{- range .Command}}
+                - {{printf "%q" .}}
+                {{- end}}
+              {{- end}}
+              workingDir: {{printf "%q" .Workdir}}
+              volumeMounts:
+                - name: ephemeral
+                  mountPath: /ephemeral
+          volumes:
+            - name: ephemeral
+              emptyDir: {}

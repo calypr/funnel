@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -39,6 +41,20 @@ Kubernetes:
         kind: PersistentVolume
         metadata:
           name: pv-{{.TaskId}}
+GenericS3:
+  - Endpoint: https://s3.example.test
+    Key: access
+    Secret: secret
+    Bucket: bucket
+    MountedRead:
+      Volume: task-data
+      SubPath: ""
+      Prefix: prefix/
+    MountedWrite:
+      Volume: task-data
+      SubPath: results
+      Prefix: results/
+      Timeout: 90s
 `)
 
 	got := EmptyConfig()
@@ -67,6 +83,23 @@ Kubernetes:
 		"metadata":   map[string]any{"name": "pv-{{.TaskId}}"},
 	})
 	want := &Config{
+		GenericS3: []*GenericS3Storage{{
+			Endpoint: "https://s3.example.test",
+			Key:      "access",
+			Secret:   "secret",
+			Bucket:   "bucket",
+			MountedWrite: &S3MountedWrite{
+				Volume:    "task-data",
+				MountView: &S3MountedWrite_SubPath{SubPath: "results"},
+				Prefix:    "results/",
+				Timeout:   durationpb.New(90 * time.Second),
+			},
+			MountedRead: &S3MountedRead{
+				Volume:    "task-data",
+				MountView: &S3MountedRead_SubPath{SubPath: ""},
+				Prefix:    "prefix/",
+			},
+		}},
 		Kubernetes: &Kubernetes{
 			Storage: &KubernetesStorage{
 				WorkspaceVolume:           "workspace",
@@ -116,6 +149,13 @@ func TestKubernetesStorageGobRoundTrip(t *testing.T) {
 		"values":  []any{"string", float64(4), true, nil, []any{"nested list"}},
 	})
 	want := &Config{
+		GenericS3: []*GenericS3Storage{{
+			MountedRead: &S3MountedRead{Volume: "task-data"},
+			MountedWrite: &S3MountedWrite{
+				Volume:    "task-data",
+				MountView: &S3MountedWrite_SubPath{SubPath: ""},
+			},
+		}},
 		Kubernetes: &Kubernetes{
 			Storage: &KubernetesStorage{
 				Volumes: []*structpb.Struct{volume},
@@ -134,6 +174,15 @@ func TestKubernetesStorageGobRoundTrip(t *testing.T) {
 	}
 	if !proto.Equal(&got, want) {
 		t.Fatalf("gob round-trip mismatch:\n got: %v\nwant: %v", &got, want)
+	}
+	if got.GenericS3[0].MountedRead.MountView != nil {
+		t.Fatal("absent read SubPath became present during gob round-trip")
+	}
+	if got.GenericS3[0].MountedWrite.GetSubPath() != "" {
+		t.Fatal("present empty write SubPath did not survive gob round-trip")
+	}
+	if _, present := got.GenericS3[0].MountedWrite.GetMountView().(*S3MountedWrite_SubPath); !present {
+		t.Fatal("empty write SubPath lost oneof presence during gob round-trip")
 	}
 }
 
@@ -202,6 +251,42 @@ func TestKubernetesSchemaFieldCompatibility(t *testing.T) {
 		}
 	}
 
+	readFields := (&S3MountedRead{}).ProtoReflect().Descriptor().Fields()
+	for name, number := range map[protoreflect.Name]protoreflect.FieldNumber{
+		"Prefix":  2,
+		"Volume":  3,
+		"SubPath": 4,
+	} {
+		field := readFields.ByName(name)
+		if field == nil || field.Number() != number {
+			t.Fatalf("S3MountedRead.%s field = %v, want %d", name, field, number)
+		}
+	}
+	writeFields := (&S3MountedWrite{}).ProtoReflect().Descriptor().Fields()
+	for name, number := range map[protoreflect.Name]protoreflect.FieldNumber{
+		"Prefix":  2,
+		"Timeout": 3,
+		"Volume":  4,
+		"SubPath": 5,
+	} {
+		field := writeFields.ByName(name)
+		if field == nil || field.Number() != number {
+			t.Fatalf("S3MountedWrite.%s field = %v, want %d", name, field, number)
+		}
+	}
+	for _, message := range []protoreflect.MessageDescriptor{
+		(&S3MountedRead{}).ProtoReflect().Descriptor(),
+		(&S3MountedWrite{}).ProtoReflect().Descriptor(),
+	} {
+		if !message.ReservedRanges().Has(1) || !message.ReservedNames().Has("WorkerMount") {
+			t.Errorf("%s must reserve WorkerMount field 1", message.Name())
+		}
+		subPath := message.Fields().ByName("SubPath")
+		if subPath == nil || subPath.ContainingOneof() == nil || subPath.ContainingOneof().Name() != "MountView" {
+			t.Errorf("%s.SubPath must retain presence in MountView oneof", message.Name())
+		}
+	}
+
 	fileMessages := configDescriptor.ParentFile().Messages()
 	for _, name := range []protoreflect.Name{"KubernetesStorageBinding", "KubernetesWorkerMount", "KubernetesStorageTemplates", "KubernetesMountedInput"} {
 		if fileMessages.ByName(name) != nil {
@@ -233,6 +318,16 @@ func TestOldKubernetesStorageShapesAreRejected(t *testing.T) {
     Bindings:
       - Name: data
         ExistingClaim: shared-data
+`,
+		"S3 worker mount": `GenericS3:
+  - MountedRead:
+      WorkerMount: data
+      Prefix: input/
+`,
+		"S3 write worker mount": `GenericS3:
+  - MountedWrite:
+      WorkerMount: data
+      Prefix: output/
 `,
 		"string volume object": `Kubernetes:
   Storage:

@@ -13,7 +13,7 @@ import (
 )
 
 func TestDocumentedNativeStorageConfigurations(t *testing.T) {
-	for _, file := range []string{"../../../website/content/docs/compute/kubernetes-storage.md"} {
+	for _, file := range []string{"../../../website/content/docs/compute/kubernetes-storage.md", "../../../website/content/docs/storage/mounted-inputs.md"} {
 		document, err := os.ReadFile(file)
 		if err != nil {
 			t.Fatal(err)

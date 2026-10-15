@@ -43,6 +43,9 @@ func (b *Backend) validateExistingStorage(ctx context.Context, plan *storageplan
 		if claim.Spec.VolumeMode != nil && *claim.Spec.VolumeMode == corev1.PersistentVolumeBlock {
 			return fmt.Errorf("existing storage claim %s/%s must use filesystem volume mode", plan.Namespace, name)
 		}
+		if err := plan.ValidateMountedWriteClaim(claim); err != nil {
+			return err
+		}
 		if volume.Name != plan.WorkspaceVolume {
 			continue
 		}

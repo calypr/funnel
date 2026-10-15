@@ -5,9 +5,12 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ohsu-comp-bio/funnel/config"
+	"github.com/ohsu-comp-bio/funnel/storage"
 	"github.com/ohsu-comp-bio/funnel/tes"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/structpb"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -70,6 +73,29 @@ func addMount(c *config.Config, volume, mountPath string, extra map[string]inter
 		mount[key] = value
 	}
 	c.Kubernetes.Storage.VolumeMounts = append(c.Kubernetes.Storage.VolumeMounts, object(mount))
+}
+
+func mountedS3(bucket, prefix, volume string) *config.GenericS3Storage {
+	return &config.GenericS3Storage{
+		Endpoint: "https://s3.example.test/custom/path",
+		Key:      "access-key", Secret: "access-secret", Bucket: bucket,
+		MountedRead: &config.S3MountedRead{Volume: volume, Prefix: prefix},
+	}
+}
+
+func mountedS3Write(bucket, prefix, volume string, timeout *durationpb.Duration) *config.GenericS3Storage {
+	backend := mountedS3(bucket, prefix, volume)
+	backend.MountedRead = nil
+	backend.MountedWrite = &config.S3MountedWrite{Volume: volume, Prefix: prefix, Timeout: timeout}
+	return backend
+}
+
+func withReadSubPath(backend *config.GenericS3Storage, subPath string) {
+	backend.MountedRead.MountView = &config.S3MountedRead_SubPath{SubPath: subPath}
+}
+
+func withWriteSubPath(backend *config.GenericS3Storage, subPath string) {
+	backend.MountedWrite.MountView = &config.S3MountedWrite_SubPath{SubPath: subPath}
 }
 
 const pvcTemplate = "apiVersion: v1\nkind: PersistentVolumeClaim\nmetadata:\n  name: workspace\nspec:\n  accessModes: [ReadWriteMany]\n  storageClassName: fast\n  resources:\n    requests:\n      storage: 5Gi\n"
@@ -139,6 +165,312 @@ func TestWorkspaceAllowsReadOnlyRootView(t *testing.T) {
 	if len(mounts) != 2 || mounts[0].ReadOnly || mounts[0].SubPath != "task-123" || !mounts[1].ReadOnly || mounts[1].SubPath != "" || mounts[1].MountPath != "/bucket" {
 		t.Fatalf("workspace and root view access changed: %+v", mounts)
 	}
+}
+
+func TestS3ReadMountTracksNativeMountPathAndSnapshot(t *testing.T) {
+	c := existingConfig()
+	addMount(c, "workspace", "/reference", map[string]interface{}{"readOnly": true, "subPathExpr": "reference-$(POD_NAME)"})
+	c.GenericS3 = []*config.GenericS3Storage{mountedS3("reference-bucket", "reference/", "workspace")}
+	p, err := Resolve(&tes.Task{Id: "task-123"}, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := storage.S3ReadMount{Endpoint: "https://s3.example.test/custom/path", Bucket: "reference-bucket", Prefix: "reference/", Root: "/reference"}
+	if len(p.S3ReadMounts) != 1 || p.S3ReadMounts[0] != want {
+		t.Fatalf("S3 read identity or native root changed: %+v", p.S3ReadMounts)
+	}
+	if len(p.WorkerMounts) != 1 || p.WorkerMounts[0].MountPath != "/reference" || p.WorkerMounts[0].SubPathExpr != "reference-$(POD_NAME)" || !p.WorkerMounts[0].ReadOnly {
+		t.Fatalf("native mount fields changed: %+v", p.WorkerMounts)
+	}
+	worker := testJob()
+	if err := p.ApplyWorker(worker, "/work", "task-123"); err != nil {
+		t.Fatal(err)
+	}
+	if mount := worker.Spec.Template.Spec.Containers[0].VolumeMounts[1]; mount.MountPath != "/reference" || mount.SubPathExpr != "reference-$(POD_NAME)" {
+		t.Fatalf("worker mount changed: %+v", mount)
+	}
+	snapshot, err := p.Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(snapshot, "access-key") || strings.Contains(snapshot, "access-secret") {
+		t.Fatalf("storage snapshot contains S3 credentials: %s", snapshot)
+	}
+	restored, err := Decode(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored.S3ReadMounts[0] != want || restored.WorkerMounts[0].SubPathExpr != "reference-$(POD_NAME)" {
+		t.Fatalf("snapshot lost S3 or mount identity: %+v", restored)
+	}
+}
+
+func TestS3MountSelectionByVolumeAndSubPath(t *testing.T) {
+	t.Run("unique volume without selector allows subPathExpr", func(t *testing.T) {
+		c := existingConfig()
+		addMount(c, "workspace", "/reference", map[string]interface{}{"subPathExpr": "pod-$(POD_NAME)"})
+		c.GenericS3 = []*config.GenericS3Storage{mountedS3("bucket", "prefix/", "workspace")}
+		p, err := Resolve(&tes.Task{Id: "task-123"}, c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if p.S3ReadMounts[0].Root != "/reference" {
+			t.Fatalf("selected root = %q", p.S3ReadMounts[0].Root)
+		}
+	})
+	t.Run("ambiguous volume without selector fails", func(t *testing.T) {
+		c := existingConfig()
+		addMount(c, "workspace", "/reference-a", map[string]interface{}{"subPath": "a"})
+		addMount(c, "workspace", "/reference-b", map[string]interface{}{"subPath": "b"})
+		c.GenericS3 = []*config.GenericS3Storage{mountedS3("bucket", "prefix/", "workspace")}
+		if _, err := Resolve(&tes.Task{Id: "task-123"}, c); err == nil || !strings.Contains(err.Error(), "specify SubPath") {
+			t.Fatalf("ambiguous S3 volume accepted: %v", err)
+		}
+	})
+	t.Run("explicit empty subPath selects root mount", func(t *testing.T) {
+		c := existingConfig()
+		addMount(c, "workspace", "/reference-root", nil)
+		addMount(c, "workspace", "/reference-child", map[string]interface{}{"subPath": "child"})
+		backend := mountedS3("bucket", "prefix/", "workspace")
+		withReadSubPath(backend, "")
+		c.GenericS3 = []*config.GenericS3Storage{backend}
+		p, err := Resolve(&tes.Task{Id: "task-123"}, c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if p.S3ReadMounts[0].Root != "/reference-root" {
+			t.Fatalf("empty selector selected wrong root: %+v", p.S3ReadMounts[0])
+		}
+	})
+	t.Run("selector rejects subPathExpr", func(t *testing.T) {
+		c := existingConfig()
+		addMount(c, "workspace", "/reference", map[string]interface{}{"subPathExpr": "pod-$(POD_NAME)"})
+		backend := mountedS3("bucket", "prefix/", "workspace")
+		withReadSubPath(backend, "")
+		c.GenericS3 = []*config.GenericS3Storage{backend}
+		if _, err := Resolve(&tes.Task{Id: "task-123"}, c); err == nil || !strings.Contains(err.Error(), "no static mount") {
+			t.Fatalf("dynamic mount matched static selector: %v", err)
+		}
+	})
+}
+
+func TestS3MountedReadValidationAndIdentityOrder(t *testing.T) {
+	c := existingConfig()
+	c.Kubernetes.Storage.VolumeClaimTemplates = []*structpb.Struct{object(map[string]interface{}{"metadata": map[string]interface{}{"name": "unused"}})}
+	c.GenericS3 = []*config.GenericS3Storage{mountedS3("bucket", "input/", "missing")}
+	if _, err := Resolve(&tes.Task{Id: "task-123"}, c); err == nil || !strings.Contains(err.Error(), "unknown worker volume") {
+		t.Fatalf("template parsing preceded S3 identity validation: %v", err)
+	}
+
+	tests := []struct {
+		name   string
+		change func(*config.Config)
+		want   string
+	}{
+		{"disabled", func(c *config.Config) {
+			b := mountedS3("bucket", "input/", "workspace")
+			b.Disabled = true
+			c.GenericS3 = []*config.GenericS3Storage{b}
+		}, "disabled or invalid"},
+		{"missing bucket", func(c *config.Config) { c.GenericS3 = []*config.GenericS3Storage{mountedS3("", "input/", "workspace")} }, "requires a bucket"},
+		{"unknown volume", func(c *config.Config) {
+			c.GenericS3 = []*config.GenericS3Storage{mountedS3("bucket", "input/", "missing")}
+		}, "unknown worker volume"},
+		{"invalid volume", func(c *config.Config) {
+			c.GenericS3 = []*config.GenericS3Storage{mountedS3("bucket", "input/", "bad/name")}
+		}, "invalid volume reference"},
+		{"duplicate API-only identity", func(c *config.Config) {
+			other := mountedS3("bucket", "", "")
+			other.MountedRead = nil
+			c.GenericS3 = []*config.GenericS3Storage{mountedS3("bucket", "input/", "workspace"), other}
+		}, "duplicate mounted S3 backend"},
+		{"duplicate endpoint and bucket", func(c *config.Config) {
+			c.GenericS3 = []*config.GenericS3Storage{mountedS3("bucket", "one/", "workspace"), mountedS3("bucket", "two/", "workspace")}
+		}, "duplicate mounted S3 backend"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := existingConfig()
+			tt.change(c)
+			if _, err := Resolve(&tes.Task{Id: "task-123"}, c); err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %v, want %q", err, tt.want)
+			}
+		})
+	}
+	for _, change := range []func(*config.Config){
+		func(c *config.Config) { c.Kubernetes.Storage = nil },
+		func(c *config.Config) { c.Kubernetes = nil },
+	} {
+		c := existingConfig()
+		c.GenericS3 = []*config.GenericS3Storage{mountedS3("bucket", "input/", "workspace")}
+		change(c)
+		if _, err := Resolve(&tes.Task{Id: "task-123"}, c); err == nil || !strings.Contains(err.Error(), "require Kubernetes.Storage") {
+			t.Fatalf("mounted read without Kubernetes.Storage accepted: %v", err)
+		}
+	}
+}
+
+func TestS3MountedWriteBehaviorAndValidation(t *testing.T) {
+	c := existingConfig()
+	addVolume(c, "results", "shared-results")
+	addMount(c, "results", "/outputs", map[string]interface{}{"subPath": "task-results"})
+	backend := mountedS3Write("results-bucket", "results/", "results", nil)
+	withWriteSubPath(backend, "task-results")
+	c.GenericS3 = []*config.GenericS3Storage{backend}
+	p, err := Resolve(&tes.Task{Id: "task-123"}, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := storage.S3WriteMount{Endpoint: "https://s3.example.test/custom/path", Bucket: "results-bucket", Prefix: "results/", Root: "/outputs", Timeout: 3 * time.Hour}
+	if len(p.S3WriteMounts) != 1 || p.S3WriteMounts[0] != want {
+		t.Fatalf("S3 write mount mismatch: %+v", p.S3WriteMounts)
+	}
+	snapshot, err := p.Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(snapshot, "access-key") || strings.Contains(snapshot, "access-secret") {
+		t.Fatalf("snapshot contains credentials: %s", snapshot)
+	}
+	decoded, err := Decode(snapshot)
+	if err != nil || decoded.S3WriteMounts[0] != want {
+		t.Fatalf("snapshot lost S3 write identity: %+v, %v", decoded, err)
+	}
+	wrongRoot := *decoded
+	wrongRoot.S3WriteMounts = append([]storage.S3WriteMount(nil), decoded.S3WriteMounts...)
+	wrongRoot.S3WriteMounts[0].Root = "/unmounted"
+	if _, err := wrongRoot.Encode(); err == nil || !strings.Contains(err.Error(), "writable worker mount") {
+		t.Fatalf("unmounted S3 write root accepted: %v", err)
+	}
+	for _, mutate := range []func(map[string]interface{}){
+		func(payload map[string]interface{}) {
+			mounts := payload["WorkerMounts"].([]interface{})
+			mounts[0].(map[string]interface{})["readOnly"] = true
+		},
+		func(payload map[string]interface{}) {
+			volumes := payload["Volumes"].([]interface{})
+			for _, item := range volumes {
+				volume := item.(map[string]interface{})
+				if volume["name"] == "results" {
+					volume["persistentVolumeClaim"].(map[string]interface{})["readOnly"] = true
+				}
+			}
+		},
+	} {
+		var payload map[string]interface{}
+		if err := json.Unmarshal([]byte(snapshot), &payload); err != nil {
+			t.Fatal(err)
+		}
+		mutate(payload)
+		invalid, err := json.Marshal(payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Decode(string(invalid)); err == nil || !strings.Contains(err.Error(), "writable worker mount") {
+			t.Fatalf("read-only S3 write snapshot accepted: %v", err)
+		}
+	}
+	backend.MountedWrite.Timeout = durationpb.New(45 * time.Minute)
+	p, err = Resolve(&tes.Task{Id: "task-123"}, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want.Timeout = 45 * time.Minute
+	if p.S3WriteMounts[0] != want {
+		t.Fatalf("custom timeout mismatch: %+v", p.S3WriteMounts)
+	}
+
+	for _, tc := range []struct {
+		name   string
+		change func(*config.Config)
+		want   string
+	}{
+		{"disabled backend", func(c *config.Config) {
+			b := mountedS3Write("bucket", "output/", "workspace", nil)
+			b.Disabled = true
+			c.GenericS3 = []*config.GenericS3Storage{b}
+		}, "disabled or invalid"},
+		{"missing bucket", func(c *config.Config) {
+			c.GenericS3 = []*config.GenericS3Storage{mountedS3Write("", "output/", "workspace", nil)}
+		}, "requires a bucket"},
+		{"unknown volume", func(c *config.Config) {
+			c.GenericS3 = []*config.GenericS3Storage{mountedS3Write("bucket", "output/", "missing", nil)}
+		}, "unknown worker volume"},
+		{"duplicate API-only identity", func(c *config.Config) {
+			other := mountedS3Write("bucket", "", "", nil)
+			other.MountedWrite = nil
+			c.GenericS3 = []*config.GenericS3Storage{mountedS3Write("bucket", "output/", "workspace", nil), other}
+		}, "duplicate mounted S3 backend"},
+		{"read-only mount", func(c *config.Config) {
+			c.Kubernetes.Storage.VolumeMounts[0] = object(map[string]interface{}{"name": "workspace", "mountPath": "/outputs", "readOnly": true})
+		}, "must be writable"},
+		{"zero timeout", func(c *config.Config) { c.GenericS3[0].MountedWrite.Timeout = durationpb.New(0) }, "must be positive"},
+		{"negative timeout", func(c *config.Config) { c.GenericS3[0].MountedWrite.Timeout = durationpb.New(-time.Second) }, "must be positive"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bad := existingConfig()
+			addMount(bad, "workspace", "/outputs", nil)
+			bad.GenericS3 = []*config.GenericS3Storage{mountedS3Write("bucket", "output/", "workspace", nil)}
+			tc.change(bad)
+			if _, err := Resolve(&tes.Task{Id: "task-123"}, bad); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+	for _, change := range []func(*config.Config){
+		func(c *config.Config) { c.Kubernetes.Storage = nil },
+		func(c *config.Config) { c.Kubernetes = nil },
+	} {
+		withoutStorage := existingConfig()
+		withoutStorage.GenericS3 = []*config.GenericS3Storage{mountedS3Write("bucket", "output/", "workspace", nil)}
+		change(withoutStorage)
+		if _, err := Resolve(&tes.Task{Id: "task-123"}, withoutStorage); err == nil || !strings.Contains(err.Error(), "require Kubernetes.Storage") {
+			t.Fatalf("mounted write without Kubernetes.Storage accepted: %v", err)
+		}
+	}
+}
+
+func TestS3MountedWriteRoutesRejectPhysicalPVCOverlap(t *testing.T) {
+	for _, pair := range [][2]string{{"results", "results/child"}, {"", "results"}, {".", "results"}, {"results", "."}} {
+		t.Run("overlapping subPaths "+pair[0]+" and "+pair[1], func(t *testing.T) {
+			c := existingConfig()
+			addVolume(c, "workspace-child", "shared-data")
+			addMount(c, "workspace", "/outputs/parent", map[string]interface{}{"subPath": pair[0]})
+			addMount(c, "workspace-child", "/outputs/child", map[string]interface{}{"subPath": pair[1]})
+			first, second := mountedS3Write("one", "out/", "workspace", nil), mountedS3Write("two", "out/", "workspace-child", nil)
+			withWriteSubPath(first, pair[0])
+			withWriteSubPath(second, pair[1])
+			c.GenericS3 = []*config.GenericS3Storage{first, second}
+			if _, err := Resolve(&tes.Task{Id: "task-123"}, c); err == nil || !strings.Contains(err.Error(), "overlap") {
+				t.Fatalf("overlapping write routes accepted: %v", err)
+			}
+		})
+	}
+
+	t.Run("unknown dynamic subPath sharing", func(t *testing.T) {
+		c := existingConfig()
+		addVolume(c, "workspace-child", "shared-data")
+		addMount(c, "workspace", "/outputs/dynamic", map[string]interface{}{"subPathExpr": "task-$(POD_NAME)"})
+		addMount(c, "workspace-child", "/outputs/static", map[string]interface{}{"subPath": "results"})
+		first, second := mountedS3Write("one", "out/", "workspace", nil), mountedS3Write("two", "out/", "workspace-child", nil)
+		withWriteSubPath(second, "results")
+		c.GenericS3 = []*config.GenericS3Storage{first, second}
+		if _, err := Resolve(&tes.Task{Id: "task-123"}, c); err == nil || !strings.Contains(err.Error(), "overlap") {
+			t.Fatalf("dynamic write route sharing accepted: %v", err)
+		}
+	})
+
+	t.Run("read and write may share one route", func(t *testing.T) {
+		c := existingConfig()
+		addMount(c, "workspace", "/outputs", map[string]interface{}{"subPath": "results"})
+		backend := mountedS3Write("one", "out/", "workspace", nil)
+		backend.MountedRead = &config.S3MountedRead{Volume: "workspace", Prefix: "in/", MountView: &config.S3MountedRead_SubPath{SubPath: "results"}}
+		withWriteSubPath(backend, "results")
+		c.GenericS3 = []*config.GenericS3Storage{backend}
+		if _, err := Resolve(&tes.Task{Id: "task-123"}, c); err != nil {
+			t.Fatalf("read and write on one route were rejected: %v", err)
+		}
+	})
 }
 
 func TestNamedContainerSelection(t *testing.T) {

@@ -10,7 +10,7 @@ menu:
 
 `Kubernetes.Storage` configures PVC-backed Kubernetes volumes for task workspaces and worker mounts. The `volumes` and `volumeMounts` fields use native Kubernetes objects, and configured volumes must use PVC sources. The `volumeClaimTemplates` and `persistentVolumeTemplates` fields contain native resource objects. `WorkspaceVolume` names the PVC-backed volume Funnel uses for the task workspace. `WorkerContainer` and `ExecutorContainer` select the containers that receive generated mounts when a Pod template has more than one regular container.
 
-When `Storage` is absent, Funnel keeps the existing `PVTemplate`, `PVCTemplate`, and Job template behavior. Explicit storage does not change TES inputs, outputs, or task paths.
+When `Storage` is absent, Funnel keeps the existing `PVTemplate`, `PVCTemplate`, and Job template behavior. Explicit storage does not change TES inputs, outputs, or task paths. Configured GenericS3 mounted reads and writes require `Kubernetes.Storage` and a submitted storage plan.
 
 ## Use an existing PVC
 
@@ -131,6 +131,10 @@ Kubernetes:
 
 Funnel adds `volumeMounts` to the selected worker container. It generates the workspace mount for the worker and executor. Extra worker mounts do not expose data automatically at TES input paths. A storage backend must still prepare those inputs. Worker mount paths cannot overlap the task workspace, each other, or mounts already in the Job template.
 
+GenericS3 `MountedRead` and `MountedWrite` select a worker mount by volume name and, optionally, its static `subPath`. If one `volumeMounts` entry uses the selected volume, omit `SubPath`. If several entries use that volume, set `SubPath` to the exact `volumeMounts[].subPath` value. Set `SubPath: ""` to select a static root mount. A mount that uses `subPathExpr` can be selected only when it is the unique mount for that volume and `SubPath` is absent.
+
+The selected mount's authored `mountPath` is the S3 root. Funnel does not append the selected `SubPath` or the S3 `Prefix` to that path. A write mount must be writable. The underlying claim must also permit writes.
+
 ## Configure Job templates
 
 With explicit storage, Funnel renders Job templates with `NeedsPVC: false` and adds resolved volumes and mounts afterward. Templates that already condition legacy storage on `NeedsPVC` keep their other settings. Remove template-defined volumes or mount paths that conflict with configured storage.
@@ -147,13 +151,13 @@ Funnel labels resources it creates and records the worker Job UID. Creation retr
 
 Provisioning checks the worker Job before and after each resource creation. If cancellation removes the Job during creation, Funnel deletes a late-created owned PV. A process crash, an ambiguous create response, or a failed compensating deletion can leave an orphan. Recovery requires an orphan cleanup sweep with PV scanning enabled by a PV template. An existing-claim-only configuration does not scan cluster-scoped PVs.
 
-Funnel records a version 4 plan in the Job's `funnel.calypr.org/storage-plan` annotation and supplies the same plan through `FUNNEL_KUBERNETES_STORAGE_PLAN`. The plan records resolved volumes, worker mounts, claim names, namespace, and work directory. It contains no credentials. Existing Jobs with version 4 plans remain compatible. Do not set the plan environment variable or annotation in templates.
+Funnel records a version 4 plan in the Job's `funnel.calypr.org/storage-plan` annotation and supplies the same plan through `FUNNEL_KUBERNETES_STORAGE_PLAN`. The plan records resolved volumes, worker mounts, S3 routes, claim names, namespace, and work directory. It contains no credentials. Existing Jobs with version 4 plans remain compatible. Do not set the plan environment variable or annotation in templates.
 
 If the annotation is missing, cleanup recovers the plan from the Job's worker environment. It validates the task and namespace before using that copy. Conflicting copies, invalid plans, or a storage-finalized Job with neither copy cause an error and retain the finalizer. Restore the correct plan before retrying cleanup in those cases.
 
+Cleanup validates resource ownership separately from S3 transfer routes. Version 4 plans with write-route overlaps rejected by newer workers can still be cleaned up. New submissions and workers reject those overlaps.
 
-
-The broader native storage migration changes the config schema. Migrate configurations to native objects and rebuild Go RPC plugins against the updated config package before exchanging configuration with them. This PVC naming change adds no config fields and requires no plugin rebuild by itself. The schema preserves `Kubernetes.ForbiddenPathPrefixes` at field 20 and uses `WorkerImage` at 24 and `Storage` at 25. It reserves `KubernetesStorage` field 2 and the names `Bindings` and `MountedInputs`. Kubernetes field numbers 21–23 and the names `PVCMode`, `StorageClassName`, `SharedPVCName`, and `S3FilesFilesystemId` are also reserved. Configuration with retired names fails parsing.
+The broader native storage migration changes the config schema. Migrate configurations to native objects and rebuild Go RPC plugins against the updated config package before exchanging configuration with them. This PVC naming change adds no config fields and requires no plugin rebuild by itself. The schema preserves `Kubernetes.ForbiddenPathPrefixes` at field 20 and uses `WorkerImage` at 24 and `Storage` at 25. It reserves `KubernetesStorage` field 2 and the names `Bindings` and `MountedInputs`. `MountedRead` and `MountedWrite` reserve field 1 and the name `WorkerMount`. Kubernetes field numbers 21–23 and the names `PVCMode`, `StorageClassName`, `SharedPVCName`, and `S3FilesFilesystemId` are also reserved. Configuration with retired names fails parsing.
 
 For configurations from PR #1454, replace `PVCMode: full` with native PV and PVC templates, `PVCMode: pvc` with a PVC template containing `spec.storageClassName`, and `PVCMode: shared` with `persistentVolumeClaim.claimName`. Keep `WorkerImage` as an independent field.
 
@@ -172,4 +176,4 @@ FUNNEL_KUBERNETES_TEST_KUBECONFIG=/path/to/test-kubeconfig \
   go test ./compute/kubernetes -run '^TestNativeStorageLive$' -v -count=1
 ```
 
-The test verifies real Kubernetes mounts and cleanup.
+The test verifies real Kubernetes mounts and cleanup. It does not certify an S3 CSI driver or asynchronous S3 output publication.

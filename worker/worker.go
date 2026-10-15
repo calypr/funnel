@@ -434,15 +434,13 @@ func (r *DefaultWorker) openStepLogs(mapper *FileMapper, s *stepWorker, d *tes.E
 func (r *DefaultWorker) validate(mapper *FileMapper) error {
 	// TODO need to switch on directory type and check list as well.
 	for _, input := range mapper.Inputs {
-		unsupported := r.Store.UnsupportedOperations(input.Url)
-		if unsupported.Get != nil {
-			return fmt.Errorf("Input download not supported by storage: %v", unsupported.Get)
+		if err := storage.CheckGet(r.Store, input.Url); err != nil {
+			return fmt.Errorf("Input download not supported by storage: %w", err)
 		}
 	}
 	for _, output := range mapper.Outputs {
-		unsupported := r.Store.UnsupportedOperations(output.Url)
-		if unsupported.Put != nil {
-			return fmt.Errorf("Output upload not supported by storage: %v", unsupported.Put)
+		if err := storage.CheckPut(r.Store, output.Url); err != nil {
+			return fmt.Errorf("Output upload not supported by storage: %w", err)
 		}
 	}
 	return nil

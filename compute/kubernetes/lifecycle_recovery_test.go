@@ -2,6 +2,7 @@ package kubernetes
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"slices"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	"github.com/ohsu-comp-bio/funnel/compute/kubernetes/storageplan"
 	"github.com/ohsu-comp-bio/funnel/events"
 	"github.com/ohsu-comp-bio/funnel/logger"
+	"github.com/ohsu-comp-bio/funnel/storage"
 	"github.com/ohsu-comp-bio/funnel/tes"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -320,6 +322,105 @@ func TestLifecycleStorageSnapshotRecoversFromWorkerEnv(t *testing.T) {
 	}
 	if _, err := client.CoreV1().PersistentVolumes().Get(ctx, "data-"+taskID, metav1.GetOptions{}); !apierrors.IsNotFound(err) {
 		t.Fatalf("recovered snapshot did not delete its owned PV: %v", err)
+	}
+}
+
+func TestLifecycleCancelRecoversOwnershipFromLegacyOverlappingRoutes(t *testing.T) {
+	ctx := context.Background()
+	taskID := "legacy-overlap"
+	jobUID := types.UID("legacy-job-uid")
+	plan := &storageplan.Plan{
+		Version:         4,
+		TaskID:          taskID,
+		Namespace:       "tasks",
+		WorkDir:         "/work",
+		WorkspaceVolume: "workspace",
+		WorkerContainer: "main",
+		Volumes: []corev1.Volume{
+			{Name: "workspace", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: taskID + "-workspace"}}},
+			{Name: "parent", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: taskID + "-workspace"}}},
+			{Name: "child", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: taskID + "-workspace"}}},
+		},
+		WorkerMounts: []corev1.VolumeMount{
+			{Name: "parent", MountPath: "/outputs/parent", SubPath: "."},
+			{Name: "child", MountPath: "/outputs/child", SubPath: "nested"},
+		},
+		OwnedClaims:  []string{taskID + "-workspace"},
+		OwnedVolumes: []string{"data-" + taskID},
+		S3WriteMounts: []storage.S3WriteMount{
+			{Endpoint: "https://s3.example.test", Bucket: "one", Root: "/outputs/parent", Timeout: time.Second},
+			{Endpoint: "https://s3.example.test", Bucket: "two", Root: "/outputs/child", Timeout: time.Second},
+		},
+	}
+	snapshotBytes, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot := string(snapshotBytes)
+	if _, err := storageplan.Decode(snapshot); err == nil {
+		t.Fatal("runnable storage plan accepted overlapping legacy write routes")
+	}
+
+	for _, tc := range []struct {
+		name               string
+		annotationSnapshot string
+	}{
+		{name: "matching annotation and worker copies", annotationSnapshot: snapshot},
+		{name: "worker environment fallback"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			job := &batchv1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: taskID, Namespace: "tasks", UID: jobUID,
+					Labels:      map[string]string{"app": "funnel-worker"},
+					Annotations: map[string]string{},
+					Finalizers:  []string{storageplan.Finalizer},
+				},
+				Spec: batchv1.JobSpec{Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{Containers: []corev1.Container{{
+					Name: "main", Env: []corev1.EnvVar{{Name: storageplan.Env, Value: snapshot}},
+				}}}}},
+			}
+			if tc.annotationSnapshot != "" {
+				job.Annotations[storageplan.Annotation] = tc.annotationSnapshot
+			}
+			ownedPV := &corev1.PersistentVolume{ObjectMeta: metav1.ObjectMeta{
+				Name: "data-" + taskID, UID: "owned-pv-uid",
+				Labels: map[string]string{
+					"app": "funnel", "taskId": taskID, "namespace": "tasks", storageOwnedLabel: "true",
+				},
+				Annotations: map[string]string{storageOwnerUIDAnnotation: string(jobUID)},
+			}}
+			operatorPV := &corev1.PersistentVolume{ObjectMeta: metav1.ObjectMeta{
+				Name: "operator-" + taskID, UID: "operator-pv-uid",
+				Labels: map[string]string{"app": "funnel", "taskId": taskID, "namespace": "tasks"},
+			}}
+			client := fake.NewSimpleClientset(job, ownedPV, operatorPV)
+			retainFinalizedJobsOnDelete(client, "tasks", nil)
+			backend := &Backend{client: client, conf: bindingConfig(t, createdStorage(t, true)), event: &noopEventWriter{}, log: logger.NewLogger("lifecycle", logger.DefaultConfig())}
+
+			if err := backend.Cancel(ctx, taskID); err != nil {
+				t.Fatalf("Cancel did not recover ownership from the old plan: %v", err)
+			}
+			if _, err := client.CoreV1().PersistentVolumes().Get(ctx, ownedPV.Name, metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+				t.Fatalf("cleanup did not delete the recorded owned PV: %v", err)
+			}
+			if _, err := client.CoreV1().PersistentVolumes().Get(ctx, operatorPV.Name, metav1.GetOptions{}); err != nil {
+				t.Fatalf("cleanup deleted or changed the operator PV: %v", err)
+			}
+			gotJob, err := client.BatchV1().Jobs("tasks").Get(ctx, taskID, metav1.GetOptions{})
+			if err != nil || slices.Contains(gotJob.Finalizers, storageplan.Finalizer) {
+				t.Fatalf("cleanup did not release the storage finalizer: job=%+v err=%v", gotJob, err)
+			}
+			var deletedPVs []string
+			for _, action := range client.Actions() {
+				if action.GetVerb() == "delete" && action.GetResource().Resource == "persistentvolumes" {
+					deletedPVs = append(deletedPVs, action.(k8stesting.DeleteAction).GetName())
+				}
+			}
+			if len(deletedPVs) != 1 || deletedPVs[0] != ownedPV.Name {
+				t.Fatalf("cleanup requested PV deletes %v, want only %q", deletedPVs, ownedPV.Name)
+			}
+		})
 	}
 }
 

@@ -21,9 +21,13 @@ import (
 
 // GenericS3 provides access to an S3 object store.
 type GenericS3 struct {
-	client   *minio.Client
-	endpoint string
-	kmskeyId string
+	client             *minio.Client
+	endpoint           string
+	kmskeyId           string
+	bucket             string
+	configuredEndpoint string
+	mountedRead        *mountedS3Reader
+	mountedWrite       *mountedS3Writer
 }
 
 // NewGenericS3 creates a new GenericS3 instance, given an endpoint URL
@@ -50,7 +54,7 @@ func NewGenericS3(conf *config.GenericS3Storage) (*GenericS3, error) {
 		return nil, fmt.Errorf("error creating generic s3 backend: %v", err)
 	}
 
-	return &GenericS3{client: client, endpoint: endpoint + "/", kmskeyId: conf.KmsKeyID}, nil
+	return &GenericS3{client: client, endpoint: endpoint + "/", kmskeyId: conf.KmsKeyID, bucket: conf.Bucket, configuredEndpoint: conf.Endpoint}, nil
 }
 
 // Returns true if a remote S3 object is a directory, false otherwise
@@ -80,6 +84,13 @@ func isDir(ctx context.Context, minioClient *minio.Client, bucketName, objectNam
 
 // Stat returns information about the object at the given storage URL.
 func (s3 *GenericS3) Stat(ctx context.Context, url string) (*Object, error) {
+	if raw, ok := s3.mountedURL(url); ok {
+		obj, err := s3.mountedRead.Stat(ctx, raw)
+		if obj != nil {
+			obj.URL = url
+		}
+		return obj, err
+	}
 	logger := logger.NewLogger("GenericS3", logger.DefaultConfig())
 	u, err := s3.parse(url)
 	if err != nil {
@@ -122,6 +133,13 @@ func (s3 *GenericS3) Stat(ctx context.Context, url string) (*Object, error) {
 
 // List lists the objects at the given url.
 func (s3 *GenericS3) List(ctx context.Context, url string) ([]*Object, error) {
+	if raw, ok := s3.mountedURL(url); ok {
+		objects, err := s3.mountedRead.List(ctx, raw)
+		for _, obj := range objects {
+			obj.URL = strings.TrimSuffix(url, "/") + strings.TrimPrefix(obj.URL, strings.TrimSuffix(raw, "/"))
+		}
+		return objects, err
+	}
 	u, err := s3.parse(url)
 	if err != nil {
 		return nil, err
@@ -164,6 +182,13 @@ func (s3 *GenericS3) List(ctx context.Context, url string) ([]*Object, error) {
 
 // Get copies an object from S3 to the host path.
 func (s3 *GenericS3) Get(ctx context.Context, url, path string) (*Object, error) {
+	if raw, ok := s3.mountedURL(url); ok {
+		obj, err := s3.mountedRead.Get(ctx, raw, path)
+		if obj != nil {
+			obj.URL = url
+		}
+		return obj, err
+	}
 	logger := logger.NewLogger("GenericS3", logger.DefaultConfig())
 	logger.Debug("genericS3: Get called", "url", url, "path", path)
 
@@ -270,9 +295,13 @@ func waitForLocalFile(ctx context.Context, path string) (os.FileInfo, error) {
 	}
 }
 
-// Put uploads a local file or directory and returns metadata from successful uploads.
-// Directory metadata contains the total size of all uploaded files.
+// Put publishes a local file through an API upload or a configured mounted write.
+// Mounted writes verify remote existence and size; API uploads require an upload response.
+// Directory publication returns aggregate metadata after every file succeeds.
 func (s3 *GenericS3) Put(ctx context.Context, url, path string) (*Object, error) {
+	if _, matched := s3.mountedWriteURL(url); matched {
+		return s3.putMounted(ctx, url, path)
+	}
 	u, err := s3.parse(url)
 	if err != nil {
 		return nil, err
@@ -336,6 +365,19 @@ func (s3 *GenericS3) Join(url, path string) (string, error) {
 // UnsupportedOperations describes which operations (Get, Put, etc) are not
 // supported for the given URL.
 func (s3 *GenericS3) UnsupportedOperations(url string) UnsupportedOperations {
+	unsupported := s3.apiUnsupportedOperations(url)
+	if raw, matched := s3.mountedURL(url); matched {
+		err := validateInputURL(raw)
+		unsupported.Get, unsupported.Stat, unsupported.List = err, err, err
+	}
+	if raw, matched := s3.mountedWriteURL(url); matched {
+		err := validateInputURL(raw)
+		unsupported.Put, unsupported.Join = err, err
+	}
+	return unsupported
+}
+
+func (s3 *GenericS3) apiUnsupportedOperations(url string) UnsupportedOperations {
 	u, err := s3.parse(url)
 	if err != nil {
 		return AllUnsupported(err)
@@ -374,4 +416,16 @@ func (s3 *GenericS3) parse(rawurl string) (*urlparts, error) {
 	}
 
 	return url, nil
+}
+
+func (s3 *GenericS3) mountedURL(raw string) (string, bool) {
+	if s3.mountedRead == nil {
+		return "", false
+	}
+	u, err := s3.parse(raw)
+	if err != nil {
+		return "", false
+	}
+	canonical := "s3://" + u.bucket + "/" + u.path
+	return canonical, inputPrefix(strings.TrimSuffix(canonical, "/"), s3.mountedRead.prefix)
 }
