@@ -1,15 +1,13 @@
 import React, { useState } from 'react';
 import PropTypes from 'prop-types';
-import { withStyles } from '@material-ui/core/styles';
-import Divider from '@material-ui/core/Divider';
-import Table from '@material-ui/core/Table';
-import TableBody from '@material-ui/core/TableBody';
-import TableCell from '@material-ui/core/TableCell';
-import TableRow from '@material-ui/core/TableRow';
-import Typography from '@material-ui/core/Typography';
-import classNames from 'classnames';
-import Checkbox from '@material-ui/core/Checkbox';
-import Tooltip from '@material-ui/core/Tooltip';
+import Divider from '@mui/material/Divider';
+import Table from '@mui/material/Table';
+import TableBody from '@mui/material/TableBody';
+import TableCell from '@mui/material/TableCell';
+import TableRow from '@mui/material/TableRow';
+import Typography from '@mui/material/Typography';
+import Checkbox from '@mui/material/Checkbox';
+import Tooltip from '@mui/material/Tooltip';
 
 import { formatDate, elapsedTime } from './utils';
 
@@ -35,8 +33,11 @@ const styles = {
   },
 };
 
+const keyCellSx = { ...styles.cell, ...styles.key };
+const valueCellSx = { ...styles.cell, ...styles.value };
+
 function TaskInfoRaw(props) {
-  const { classes, task } = props;
+  const { task } = props;
   const [showEnv, setShowEnv] = useState(false);
 
   const renderRow = (key, val, formatFunc) => {
@@ -49,9 +50,9 @@ function TaskInfoRaw(props) {
     }
     if ( key && val ) {
       return (
-        <TableRow key={key} className={classes.row}>
-          <TableCell className={classNames(classes.cell, classes.key)}><b>{key}</b></TableCell>
-          <TableCell className={classNames(classes.cell, classes.value)}>{val}</TableCell>
+        <TableRow key={key} sx={styles.row}>
+          <TableCell sx={keyCellSx}><b>{key}</b></TableCell>
+          <TableCell sx={valueCellSx}>{val}</TableCell>
         </TableRow>
       );
     }
@@ -72,9 +73,9 @@ function TaskInfoRaw(props) {
         s += ", preemptible";
       }
       return (
-        <TableRow key='Resources' className={classes.row}>
-          <TableCell className={classNames(classes.cell, classes.key)}><b>Resources</b></TableCell>
-          <TableCell className={classNames(classes.cell, classes.value)}>{s}</TableCell>
+        <TableRow key='Resources' sx={styles.row}>
+          <TableCell sx={keyCellSx}><b>Resources</b></TableCell>
+          <TableCell sx={valueCellSx}>{s}</TableCell>
         </TableRow>
       );
     }
@@ -98,14 +99,14 @@ function TaskInfoRaw(props) {
       return (
         <div style={{padding: defaultPadding}}>
           {renderTitle(title)}
-          <Table className={classes.table}>
+          <Table sx={styles.table}>
             <TableBody>
               {Object.keys(data).map(k => (
-               <TableRow key={k} className={classes.row}>
-                 <TableCell className={classNames(classes.cell, classes.key)}>
+               <TableRow key={k} sx={styles.row}>
+                 <TableCell sx={keyCellSx}>
                    <b>{k}</b>
                  </TableCell>
-                 <TableCell className={classNames(classes.cell, classes.value)}>
+                 <TableCell sx={valueCellSx}>
                    {data[k]}
                  </TableCell>
                </TableRow>
@@ -166,36 +167,36 @@ function TaskInfoRaw(props) {
         <div style={{padding: '40px 0px 0px 0px'}}>
           {renderTitle('Executors')}
           {executors.map((exec, index) => (
-            <Table className={classes.table}>
+            <Table sx={styles.table}>
               <TableBody>
-                <TableRow key='Cmd' className={classes.row}>
-                  <TableCell className={classNames(classes.cell, classes.key)}><b>Command</b></TableCell>
-                  <TableCell className={classNames(classes.cell, classes.value)}>{cmdString(exec.command)}</TableCell>
+                <TableRow key='Cmd' sx={styles.row}>
+                  <TableCell sx={keyCellSx}><b>Command</b></TableCell>
+                  <TableCell sx={valueCellSx}>{cmdString(exec.command)}</TableCell>
                 </TableRow>
-                <TableRow key='Image' className={classes.row}>
-                  <TableCell className={classNames(classes.cell, classes.key)}><b>Image</b></TableCell>
-                  <TableCell className={classNames(classes.cell, classes.value)}>{exec.image}</TableCell>
+                <TableRow key='Image' sx={styles.row}>
+                  <TableCell sx={keyCellSx}><b>Image</b></TableCell>
+                  <TableCell sx={valueCellSx}>{exec.image}</TableCell>
                 </TableRow>
-                <TableRow key='Env' className={classes.row}>
-                  <TableCell className={classNames(classes.cell, classes.key)}>
+                <TableRow key='Env' sx={styles.row}>
+                  <TableCell sx={keyCellSx}>
                     <b>Env</b>
                     <Tooltip title="Show environment variables">
                       <Checkbox
                         checked={showEnv}
                         onChange={() => setShowEnv(!showEnv)}
                         color="primary"
-                        inputProps={{ 'aria-label': 'Show environment variables' }}
+                        slotProps={{ input: { 'aria-label': 'Show environment variables' } }}
                       />
                     </Tooltip>
                   </TableCell>
-                  <TableCell className={classNames(classes.cell, classes.value)}>
+                  <TableCell sx={valueCellSx}>
                     {showEnv && exec.env && (
                       <Table size="small">
                         <TableBody>
                           {Object.entries(exec.env).map(([k, v]) => (
-                            <TableRow key={k} className={classes.row}>
-                              <TableCell className={classNames(classes.cell, classes.key)}><b>{k}</b></TableCell>
-                              <TableCell className={classNames(classes.cell, classes.value)}>{v}</TableCell>
+                            <TableRow key={k} sx={styles.row}>
+                              <TableCell sx={keyCellSx}><b>{k}</b></TableCell>
+                              <TableCell sx={valueCellSx}>{v}</TableCell>
                             </TableRow>
                           ))}
                         </TableBody>
@@ -255,7 +256,7 @@ function TaskInfoRaw(props) {
     }
     return(
       <div>
-        <Table className={classes.table}>
+        <Table sx={styles.table}>
           <TableBody>
             {renderRow('Name', task.name)}
             {renderRow('ID', task.id)}
@@ -303,5 +304,5 @@ TaskInfoRaw.propTypes = {
   task: PropTypes.object.isRequired,
 };
 
-const TaskInfo = withStyles(styles)(TaskInfoRaw);
+const TaskInfo = TaskInfoRaw;
 export { TaskInfo, styles };

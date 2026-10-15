@@ -1,19 +1,19 @@
 import React from 'react';
 import PropTypes from 'prop-types';
-import Typography from '@material-ui/core/Typography';
-import ReactJson from 'react-json-view';
+import Typography from '@mui/material/Typography';
+import ReactJson from '@microlink/react-json-view';
 import { Link, useParams } from "react-router-dom";
-import Table from '@material-ui/core/Table';
-import TableBody from '@material-ui/core/TableBody';
-import TableCell from '@material-ui/core/TableCell';
-import TableHead from '@material-ui/core/TableHead';
-import TableRow from '@material-ui/core/TableRow';
-import TableFooter from '@material-ui/core/TableFooter';
-import TablePagination from '@material-ui/core/TablePagination';
-import IconButton from '@material-ui/core/IconButton';
-import KeyboardArrowLeft from '@material-ui/icons/KeyboardArrowLeft';
-import KeyboardArrowRight from '@material-ui/icons/KeyboardArrowRight';
-import Paper from '@material-ui/core/Paper';
+import Table from '@mui/material/Table';
+import TableBody from '@mui/material/TableBody';
+import TableCell from '@mui/material/TableCell';
+import TableHead from '@mui/material/TableHead';
+import TableRow from '@mui/material/TableRow';
+import TableFooter from '@mui/material/TableFooter';
+import TablePagination from '@mui/material/TablePagination';
+import IconButton from '@mui/material/IconButton';
+import KeyboardArrowLeft from '@mui/icons-material/KeyboardArrowLeft';
+import KeyboardArrowRight from '@mui/icons-material/KeyboardArrowRight';
+import Paper from '@mui/material/Paper';
 
 import { NodeInfo } from './NodeInfo';
 import { SystemInfo } from './SystemInfo';
@@ -120,12 +120,12 @@ function TaskList({pageToken, setPageToken,
             <TableRow>
               <TablePagination
                 rowsPerPageOptions={[25, 50, 100, 250, 500]}
-                onChangePage={function(event, number) { return; }}
+                onPageChange={function(event, number) { return; }}
                 page={0}
                 count={0}
                 labelDisplayedRows={({ from, to, count }) => ""}
                 rowsPerPage={pageSize}
-                onChangeRowsPerPage={(event) => setPageSize(event.target.value)}
+                onRowsPerPageChange={(event) => setPageSize(Number(event.target.value))}
                 ActionsComponent={
                   (actions) => {
                     return (
