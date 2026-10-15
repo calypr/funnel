@@ -525,6 +525,10 @@
         "DisableJobCleanup": {
           "type": "boolean"
         },
+        "WorkerImage": {
+          "type": "string",
+          "description": "WorkerImage bypasses server pod image discovery when set."
+        },
         "NodeSelector": {
           "type": "object",
           "additionalProperties": {
@@ -553,6 +557,10 @@
             "type": "string"
           },
           "description": "ForbiddenPathPrefixes are container paths that user-submitted tasks are not\nallowed to mount inputs, outputs, volumes, or working directories into.\nMounting over these would expose or clobber sensitive host/kernel\ninterfaces. Funnel defaults to /dev, /proc, /sys, /run, and /var/run.\nA configured non-empty list replaces those defaults."
+        },
+        "Storage": {
+          "$ref": "#/definitions/configKubernetesStorage",
+          "description": "Storage bindings add native Kubernetes volume mounts to worker and\nexecutor pods. When absent, Funnel keeps its legacy per-task PVC behavior."
         }
       },
       "description": "Kubernetes describes the configuration for the Kubernetes compute backend."
@@ -568,6 +576,48 @@
         }
       },
       "description": "KubernetesResources describes default and maximum resource limits for Kubernetes tasks."
+    },
+    "configKubernetesStorage": {
+      "type": "object",
+      "properties": {
+        "WorkspaceVolume": {
+          "type": "string"
+        },
+        "WorkerContainer": {
+          "type": "string",
+          "description": "WorkerContainer selects the worker container receiving generated mounts\nand plan environment. It may be empty when the pod has one regular\ncontainer; set it when the pod has multiple regular containers."
+        },
+        "ExecutorContainer": {
+          "type": "string",
+          "description": "ExecutorContainer selects the executor container receiving generated\nmounts. It may be empty when the pod has one regular\ncontainer; set it when the pod has multiple regular containers."
+        },
+        "volumes": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "volumeMounts": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "volumeClaimTemplates": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          },
+          "description": "Each template metadata.name defines a logical volume. Funnel creates its\nPVC as <task ID>-<logical name> and supplies the volume automatically."
+        },
+        "persistentVolumeTemplates": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      },
+      "description": "KubernetesStorage describes native Kubernetes storage resources and mounts."
     },
     "configLocalStorage": {
       "type": "object",
@@ -1067,6 +1117,14 @@
         }
       },
       "additionalProperties": {}
+    },
+    "protobufNullValue": {
+      "type": "string",
+      "enum": [
+        "NULL_VALUE"
+      ],
+      "default": "NULL_VALUE",
+      "description": "`NullValue` is a singleton enumeration to represent the null value for the\n`Value` type union.\n\nThe JSON representation for `NullValue` is JSON `null`.\n\n - NULL_VALUE: Null value."
     },
     "rpcStatus": {
       "type": "object",
