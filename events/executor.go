@@ -138,8 +138,8 @@ func (ew *ExecutorWriter) Error(msg string, args ...interface{}) error {
 
 // LogTail returns stdout/err io.Writers which will track the
 // tail of the content (up to "size") and emit events.
-func (ew *ExecutorWriter) LogTail(ctx context.Context, size int64) (stdout, stderr io.Writer) {
-	return LogTail(ctx, ew.gen.taskID, ew.gen.attempt, ew.gen.index, size, ew.out)
+func (ew *ExecutorWriter) LogTail(ctx context.Context, size int64, wg *sync.WaitGroup) (stdout, stderr io.Writer) {
+	return LogTail(ctx, ew.gen.taskID, ew.gen.attempt, ew.gen.index, size, ew.out, wg)
 }
 
 // StreamLogTail returns stdout/err io.Writers which will track the
@@ -153,7 +153,7 @@ func (ew *ExecutorWriter) StreamLogTail(ctx context.Context, size int64, interva
 // LogTail returns stdout/err io.Writers which will track the
 // tail of the content (up to "size") and emit events once the ctx.Done
 // is closed.
-func LogTail(ctx context.Context, taskID string, attempt, index uint32, size int64, out Writer) (stdout, stderr io.Writer) {
+func LogTail(ctx context.Context, taskID string, attempt, index uint32, size int64, out Writer, wg *sync.WaitGroup) (stdout, stderr io.Writer) {
 	stdoutbuf := ring.NewBuffer(size)
 	stderrbuf := ring.NewBuffer(size)
 
@@ -172,13 +172,17 @@ func LogTail(ctx context.Context, taskID string, attempt, index uint32, size int
 		case Type_EXECUTOR_STDERR:
 			e = NewStderr(taskID, attempt, index, s)
 		}
-		return out.WriteEvent(ctx, e)
+		flushctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		return out.WriteEvent(flushctx, e)
 	}
 
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		<-ctx.Done()
 		flush(stdoutbuf, Type_EXECUTOR_STDOUT)
-		flush(stdoutbuf, Type_EXECUTOR_STDERR)
+		flush(stderrbuf, Type_EXECUTOR_STDERR)
 	}()
 
 	return stdoutbuf, stderrbuf

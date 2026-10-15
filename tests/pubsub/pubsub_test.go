@@ -49,7 +49,7 @@ func TestPubSubWorkerRun(t *testing.T) {
 	defer cancel()
 	// Task builder collects events into a task view.
 	task := &tes.Task{}
-	b := events.TaskBuilder{Task: task}
+	b := &events.TaskBuilder{Task: task}
 
 	var result *multierror.Error
 

@@ -46,7 +46,7 @@ func TestKafkaWorkerRun(t *testing.T) {
 	ctx := context.Background()
 	// Task builder collects events into a task view.
 	task := &tes.Task{}
-	b := events.TaskBuilder{Task: task}
+	b := &events.TaskBuilder{Task: task}
 	l := &events.Logger{Log: log}
 	m := &events.MultiWriter{b, l}
 

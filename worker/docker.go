@@ -122,7 +122,16 @@ func (docker DockerCommand) executeCommand(ctx context.Context, commandTemplate 
 	}
 
 	if usingCommand {
-		go docker.InspectContainer(ctx)
+		inspectCtx, cancel := context.WithCancel(ctx)
+		inspected := make(chan struct{})
+		go func() {
+			defer close(inspected)
+			docker.InspectContainer(inspectCtx)
+		}()
+		defer func() {
+			cancel()
+			<-inspected
+		}()
 
 		commandToExecute := docker.Command.ShellCommand
 		if len(commandToExecute) == 1 {
@@ -210,7 +219,11 @@ func (docker DockerCommand) GetImage() string {
 // inspectContainer inspects the docker container for metadata.
 func (docker *DockerCommand) InspectContainer(ctx context.Context) DockerCommand {
 	// Give the container time to start.
-	time.Sleep(2 * time.Second)
+	select {
+	case <-ctx.Done():
+		return DockerCommand{}
+	case <-time.After(2 * time.Second):
+	}
 
 	// Inspect the container for metadata
 	ticker := time.NewTicker(time.Second)
