@@ -7,16 +7,13 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/client"
 )
 
 // NewDockerClient returns a new docker client. This util handles
 // working around some client/server API version mismatch issues.
 func NewDockerClient() (*client.Client, error) {
-	dclient, err := client.NewClientWithOpts(
-		client.FromEnv,
-		client.WithAPIVersionNegotiation(),
-	)
+	dclient, err := client.New(client.FromEnv)
 	if err != nil {
 		return nil, err
 	}
@@ -28,7 +25,7 @@ func NewDockerClient() (*client.Client, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 		defer cancel()
 
-		_, err := dclient.ServerVersion(ctx)
+		_, err := dclient.ServerVersion(ctx, client.ServerVersionOptions{})
 		if err != nil {
 			re := regexp.MustCompile(`([0-9\.]+)`)
 			version := re.FindAllString(err.Error(), -1)

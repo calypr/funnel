@@ -14,10 +14,7 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	dockerTypes "github.com/docker/docker/api/types/events"
-	dockerFilters "github.com/docker/docker/api/types/filters"
-	docker "github.com/docker/docker/client"
+	docker "github.com/moby/moby/client"
 	runlib "github.com/ohsu-comp-bio/funnel/cmd/run"
 	servercmd "github.com/ohsu-comp-bio/funnel/cmd/server"
 	"github.com/ohsu-comp-bio/funnel/compute/scheduler"
@@ -182,20 +179,17 @@ func (f *Funnel) SwitchUser(username string) {
 // TODO probably could use docker.ContainerWait()
 // https://godoc.org/github.com/moby/moby/client#Client.ContainerWait
 func (f *Funnel) WaitForDockerDestroy(id string) {
-	fil := dockerFilters.NewArgs()
-	fil.Add("type", "container")
-	fil.Add("container", id)
-	fil.Add("event", "destroy")
+	fil := make(docker.Filters).Add("type", "container").Add("container", id).Add("event", "destroy")
 
-	s, err := f.Docker.Events(context.Background(), dockerTypes.ListOptions{
+	result := f.Docker.Events(context.Background(), docker.EventsListOptions{
 		Since:   string(f.startTime),
 		Filters: fil,
 	})
 	for {
 		select {
-		case e := <-err:
+		case e := <-result.Err:
 			panic(e)
-		case <-s:
+		case <-result.Messages:
 			return
 		}
 	}
@@ -442,11 +436,11 @@ func (f *Funnel) StartServerInDocker(containerName, imageName string, extraArgs 
 
 func (f *Funnel) findTestServerContainers() []string {
 	res := []string{}
-	containers, err := f.Docker.ContainerList(context.Background(), container.ListOptions{})
+	containers, err := f.Docker.ContainerList(context.Background(), docker.ContainerListOptions{})
 	if err != nil {
 		panic(err)
 	}
-	for _, c := range containers {
+	for _, c := range containers.Items {
 		for _, n := range c.Names {
 			if strings.Contains(n, "funnel-test-server-") {
 				res = append(res, n)
@@ -458,7 +452,7 @@ func (f *Funnel) findTestServerContainers() []string {
 
 func (f *Funnel) killTestServerContainers(ids []string) {
 	for _, n := range ids {
-		err := f.Docker.ContainerStop(context.Background(), strings.TrimPrefix(n, "/"), container.StopOptions{})
+		_, err := f.Docker.ContainerStop(context.Background(), strings.TrimPrefix(n, "/"), docker.ContainerStopOptions{})
 		if err != nil {
 			panic(err)
 		}

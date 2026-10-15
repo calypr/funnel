@@ -17,7 +17,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/golang/gddo/httputil"
-	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/ohsu-comp-bio/funnel/compute/scheduler"
 	"github.com/ohsu-comp-bio/funnel/config"
@@ -154,12 +153,10 @@ func (s *Server) Serve(pctx context.Context) error {
 			MinTime:             10 * time.Second, // min interval between client pings
 			PermitWithoutStream: true,             // allow pings when no active RPCs
 		}),
-		grpc.UnaryInterceptor(
-			grpc_middleware.ChainUnaryServer(
-				// API auth check.
-				auth.Interceptor,
-				newDebugInterceptor(s.Log),
-			),
+		grpc.ChainUnaryInterceptor(
+			// API auth check.
+			auth.Interceptor,
+			newDebugInterceptor(s.Log),
 		),
 	)
 

@@ -9,9 +9,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/request"
-	"github.com/aws/aws-sdk-go/service/batch"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/batch"
+	"github.com/aws/aws-sdk-go-v2/service/batch/types"
 	"github.com/ohsu-comp-bio/funnel/config"
 	"github.com/ohsu-comp-bio/funnel/events"
 	"github.com/ohsu-comp-bio/funnel/logger"
@@ -21,13 +21,13 @@ import (
 
 // NewBackend returns a new local Backend instance.
 func NewBackend(ctx context.Context, conf *config.AWSBatch, reader tes.ReadOnlyServer, writer events.Writer, log *logger.Logger) (*Backend, error) {
-	sess, err := util.NewAWSSession(conf.AWSConfig)
+	sess, err := util.NewAWSConfig(ctx, conf.AWSConfig)
 	if err != nil {
 		return nil, fmt.Errorf("error occurred creating batch client: %v", err)
 	}
 
 	b := &Backend{
-		client:   batch.New(sess),
+		client:   batch.NewFromConfig(sess),
 		conf:     conf,
 		event:    writer,
 		database: reader,
@@ -44,9 +44,9 @@ func NewBackend(ctx context.Context, conf *config.AWSBatch, reader tes.ReadOnlyS
 // client is an interface for AWS Batch operations.
 // It allows for mocking in tests.
 type client interface {
-	SubmitJob(input *batch.SubmitJobInput) (*batch.SubmitJobOutput, error)
-	CancelJob(input *batch.CancelJobInput) (*batch.CancelJobOutput, error)
-	DescribeJobsWithContext(ctx context.Context, input *batch.DescribeJobsInput, opts ...request.Option) (*batch.DescribeJobsOutput, error)
+	SubmitJob(ctx context.Context, input *batch.SubmitJobInput, opts ...func(*batch.Options)) (*batch.SubmitJobOutput, error)
+	CancelJob(ctx context.Context, input *batch.CancelJobInput, opts ...func(*batch.Options)) (*batch.CancelJobOutput, error)
+	DescribeJobs(ctx context.Context, input *batch.DescribeJobsInput, opts ...func(*batch.Options)) (*batch.DescribeJobsOutput, error)
 }
 
 // Backend represents the local backend.
@@ -64,7 +64,7 @@ type Backend struct {
 func (b *Backend) WriteEvent(ctx context.Context, ev *events.Event) error {
 	switch ev.Type {
 	case events.Type_TASK_CREATED:
-		return b.Submit(ev.GetTask())
+		return b.submit(ctx, ev.GetTask())
 
 	case events.Type_TASK_STATE:
 		if ev.GetState() == tes.State_CANCELED {
@@ -81,29 +81,31 @@ func (b *Backend) Close() {
 
 // Submit submits a task to the AWS batch service.
 func (b *Backend) Submit(task *tes.Task) error {
-	ctx := context.Background()
+	return b.submit(context.Background(), task)
+}
 
+func (b *Backend) submit(ctx context.Context, task *tes.Task) error {
 	req := &batch.SubmitJobInput{
 		// JobDefinition: aws.String(b.jobDef),
 		JobDefinition: aws.String(b.conf.JobDefinition),
 		JobName:       aws.String(safeJobName(task.Name)),
 		JobQueue:      aws.String(b.conf.JobQueue),
-		Parameters: map[string]*string{
+		Parameters: map[string]string{
 			// Include the taskID in the job parameters. This gets used by
 			// the funnel 'worker run' cmd.
-			"taskID": aws.String(task.Id),
+			"taskID": task.Id,
 		},
-		ContainerOverrides: &batch.ContainerOverrides{},
+		ContainerOverrides: &types.ContainerOverrides{},
 	}
 
 	// convert ram from GB to MiB
 	if task.Resources != nil {
 		ram := int64(task.Resources.RamGb * 953.674)
 		if ram > 0 {
-			req.ContainerOverrides.Memory = aws.Int64(ram)
-			req.ContainerOverrides.ResourceRequirements = []*batch.ResourceRequirement{
+			req.ContainerOverrides.Memory = aws.Int32(int32(ram))
+			req.ContainerOverrides.ResourceRequirements = []types.ResourceRequirement{
 				{
-					Type:  aws.String("MEMORY"),
+					Type:  types.ResourceTypeMemory,
 					Value: aws.String(strconv.FormatInt(ram, 10)),
 				},
 			}
@@ -111,11 +113,11 @@ func (b *Backend) Submit(task *tes.Task) error {
 
 		vcpus := int64(task.Resources.CpuCores)
 		if vcpus > 0 {
-			req.ContainerOverrides.Vcpus = aws.Int64(vcpus)
+			req.ContainerOverrides.Vcpus = aws.Int32(int32(vcpus))
 		}
 	}
 
-	resp, err := b.client.SubmitJob(req)
+	resp, err := b.client.SubmitJob(ctx, req)
 	if err != nil {
 		b.event.WriteEvent(ctx, events.NewState(task.Id, tes.SystemError))
 		b.event.WriteEvent(
@@ -153,7 +155,7 @@ func (b *Backend) Cancel(ctx context.Context, taskID string) error {
 		return fmt.Errorf("no AWS Batch ID found in metadata for task %s", taskID)
 	}
 
-	_, err = b.client.CancelJob(&batch.CancelJobInput{
+	_, err = b.client.CancelJob(ctx, &batch.CancelJobInput{
 		JobId:  aws.String(backendID),
 		Reason: aws.String("User requested cancel"),
 	})
@@ -202,12 +204,12 @@ ReconcileLoop:
 					pageToken = lresp.NextPageToken
 
 					tmap := make(map[string]*tes.Task)
-					var jobs []*string
+					var jobs []string
 					for _, t := range lresp.Tasks {
 						jobid := getAWSTaskID(t)
 						if jobid != "" {
 							tmap[jobid] = t
-							jobs = append(jobs, aws.String(jobid))
+							jobs = append(jobs, jobid)
 						}
 					}
 
@@ -218,17 +220,17 @@ ReconcileLoop:
 						continue
 					}
 
-					resp, err := b.client.DescribeJobsWithContext(ctx, &batch.DescribeJobsInput{
+					resp, err := b.client.DescribeJobs(ctx, &batch.DescribeJobsInput{
 						Jobs: jobs,
 					})
 					if err != nil {
-						b.log.Error("Calling DescribeJobsWithContext", err)
+						b.log.Error("Calling DescribeJobs", err)
 						continue ReconcileLoop
 					}
 
 					for _, j := range resp.Jobs {
 						task := tmap[*j.JobId]
-						jstate := *j.Status
+						jstate := j.Status
 
 						if jstate == "FAILED" {
 							b.event.WriteEvent(ctx, events.NewState(task.Id, tes.SystemError))

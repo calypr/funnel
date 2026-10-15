@@ -2,12 +2,13 @@ package util
 
 import (
 	"context"
+	"errors"
 	"time"
 
-	"github.com/cenkalti/backoff"
+	"github.com/cenkalti/backoff/v7"
 )
 
-// Retrier is a wrapper around "github.com/cenkalti/backoff".ExponentialBackOff
+// Retrier is a wrapper around "github.com/cenkalti/backoff/v7".ExponentialBackOff
 type Retrier struct {
 	InitialInterval     time.Duration
 	MaxInterval         time.Duration
@@ -22,7 +23,7 @@ type Retrier struct {
 
 // NewRetrier creates a new Retrier instance using default values.
 func NewRetrier() *Retrier {
-	// based on https://github.com/cenkalti/backoff/blob/master/exponential.go#L74
+	// based on https://github.com/cenkalti/backoff/v7/blob/master/exponential.go#L59
 	return &Retrier{
 		InitialInterval:     time.Millisecond * 500,
 		MaxInterval:         time.Second * 60,
@@ -36,8 +37,41 @@ func NewRetrier() *Retrier {
 
 // Retry the function f until it does not return error or BackOff stops.
 func (r *Retrier) Retry(ctx context.Context, f func() error) error {
-	b := backoff.WithContext(r.withTries(), ctx)
-	return backoff.RetryNotify(func() error { return r.checkErr(f()) }, b, r.notify)
+	maxTries := r.MaxTries
+	if maxTries < 1 || r.MaxElapsedTime < 0 {
+		maxTries = 1
+	}
+
+	r.backoff = &backoff.ExponentialBackOff{
+		InitialInterval:     r.InitialInterval,
+		MaxInterval:         r.MaxInterval,
+		Multiplier:          r.Multiplier,
+		RandomizationFactor: r.RandomizationFactor,
+	}
+
+	_, err := backoff.Retry(ctx, func() (struct{}, error) {
+		return struct{}{}, r.checkErr(f())
+	},
+		backoff.WithBackOff(r.backoff),
+		backoff.WithMaxTries(uint(maxTries)),
+		backoff.WithMaxElapsedTime(r.MaxElapsedTime),
+		backoff.WithNotify(r.notify),
+	)
+	if err == nil {
+		return nil
+	}
+
+	retryErr := backoff.AsRetryError(err)
+	if retryErr == nil {
+		return err
+	}
+	if errors.Is(retryErr.Cause, backoff.ErrPermanent) {
+		return retryErr.LastErr
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return ctxErr
+	}
+	return retryErr.LastErr
 }
 
 func (r *Retrier) notify(err error, d time.Duration) {
@@ -49,29 +83,10 @@ func (r *Retrier) notify(err error, d time.Duration) {
 func (r *Retrier) checkErr(err error) error {
 	switch {
 	case err != nil && r.ShouldRetry != nil && !r.ShouldRetry(err):
-		return &backoff.PermanentError{Err: err}
+		return backoff.Permanent(err)
 	case err != nil:
 		return err
 	default:
 		return nil
 	}
-}
-
-func (r *Retrier) withTries() backoff.BackOff {
-	r.backoff = &backoff.ExponentialBackOff{
-		InitialInterval:     r.InitialInterval,
-		MaxInterval:         r.MaxInterval,
-		Multiplier:          r.Multiplier,
-		RandomizationFactor: r.RandomizationFactor,
-		MaxElapsedTime:      r.MaxElapsedTime,
-		Clock:               backoff.SystemClock,
-	}
-
-	max := r.MaxTries - 1
-	if max < 0 {
-		max = 0
-	}
-
-	// Cap the number of retry attempts.
-	return backoff.WithMaxRetries(r.backoff, uint64(max))
 }
