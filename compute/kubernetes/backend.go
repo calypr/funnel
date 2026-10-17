@@ -170,6 +170,14 @@ func (b *Backend) Submit(ctx context.Context, task *tes.Task, config *config.Con
 	return nil
 }
 
+// rollbackTask cancels a task after failed resource creation. Cancellation is
+// best-effort during rollback, so a failure is logged, not propagated.
+func (b *Backend) rollbackTask(taskID string, cause error) {
+	if err := b.Cancel(context.Background(), taskID); err != nil {
+		b.log.Error("failed to roll back task after resource creation error", "taskID", taskID, "rollbackError", err, "cause", cause)
+	}
+}
+
 func (b *Backend) taskCanceled(ctx context.Context, taskID string) (bool, error) {
 	if b.database == nil {
 		return false, nil
@@ -255,7 +263,7 @@ func (b *Backend) createResources(ctx context.Context, task *tes.Task, config *c
 		b.log.Debug("creating Worker ConfigMap", "taskID", task.Id)
 		err = resources.CreateConfigMap(timeoutCtx, task.Id, config, b.client, b.log, ownerRef)
 		if err != nil {
-			_ = b.Cancel(context.Background(), task.Id)
+			b.rollbackTask(task.Id, err)
 			return fmt.Errorf("creating Worker ConfigMap: %w", err)
 		}
 	}
@@ -287,7 +295,7 @@ func (b *Backend) createResources(ctx context.Context, task *tes.Task, config *c
 			}
 			err = resources.CreateServiceAccount(timeoutCtx, task, config, b.client, b.log, saOwnerRef)
 			if err != nil {
-				_ = b.Cancel(context.Background(), task.Id)
+				b.rollbackTask(task.Id, err)
 				return fmt.Errorf("creating Worker ServiceAccount: %w", err)
 			}
 		} else {
@@ -299,7 +307,7 @@ func (b *Backend) createResources(ctx context.Context, task *tes.Task, config *c
 		b.log.Debug("creating Worker Role", "taskID", task.Id)
 		err = resources.CreateRole(timeoutCtx, task, config, b.client, b.log, ownerRef)
 		if err != nil {
-			_ = b.Cancel(context.Background(), task.Id)
+			b.rollbackTask(task.Id, err)
 			return fmt.Errorf("creating Worker Role: %w", err)
 		}
 	}
@@ -308,7 +316,7 @@ func (b *Backend) createResources(ctx context.Context, task *tes.Task, config *c
 		b.log.Debug("creating Worker RoleBinding", "taskID", task.Id)
 		err = resources.CreateRoleBinding(timeoutCtx, task, config, b.client, b.log, ownerRef)
 		if err != nil {
-			_ = b.Cancel(context.Background(), task.Id)
+			b.rollbackTask(task.Id, err)
 			return fmt.Errorf("creating Worker RoleBinding: %w", err)
 		}
 	}
@@ -328,7 +336,7 @@ func (b *Backend) createResources(ctx context.Context, task *tes.Task, config *c
 		diskGb := task.GetResources().GetDiskGb()
 		err = resources.CreatePV(timeoutCtx, task.Id, diskGb, config, b.client, b.log)
 		if err != nil {
-			_ = b.Cancel(context.Background(), task.Id)
+			b.rollbackTask(task.Id, err)
 			return fmt.Errorf("creating Worker PV: %w", err)
 		}
 
@@ -336,7 +344,7 @@ func (b *Backend) createResources(ctx context.Context, task *tes.Task, config *c
 		b.log.Debug("creating Worker PVC", "taskID", task.Id)
 		err = resources.CreatePVC(timeoutCtx, task.Id, diskGb, config, b.client, b.log, ownerRef)
 		if err != nil {
-			_ = b.Cancel(context.Background(), task.Id)
+			b.rollbackTask(task.Id, err)
 			return fmt.Errorf("creating Worker PVC: %w", err)
 		}
 	}
