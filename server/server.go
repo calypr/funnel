@@ -17,14 +17,13 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/golang/gddo/httputil"
+	"github.com/calypr/funnel/compute/scheduler"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/webdash"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	"github.com/ohsu-comp-bio/funnel/compute/scheduler"
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/events"
-	"github.com/ohsu-comp-bio/funnel/logger"
-	"github.com/ohsu-comp-bio/funnel/tes"
-	"github.com/ohsu-comp-bio/funnel/webdash"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
@@ -76,7 +75,7 @@ func customErrorHandler(ctx context.Context, mux *runtime.ServeMux, marshaler ru
 	st, ok := status.FromError(err)
 	if !ok {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(fallback))
+		_, _ = w.Write([]byte(fallback))
 		return
 	}
 
@@ -103,10 +102,10 @@ func customErrorHandler(ctx context.Context, mux *runtime.ServeMux, marshaler ru
 	jErr := JSONError{Error: st.Message()}
 	jErrBytes, mErr := marshaler.Marshal(jErr)
 	if mErr != nil {
-		w.Write([]byte(fallback))
+		_, _ = w.Write([]byte(fallback))
 		return
 	}
-	w.Write(jErrBytes)
+	_, _ = w.Write(jErrBytes)
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
@@ -124,7 +123,7 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(health)
+	_ = json.NewEncoder(w).Encode(health)
 }
 
 type JSONError struct {
@@ -305,7 +304,11 @@ func (s *Server) Serve(pctx context.Context) error {
 
 	<-ctx.Done()
 	grpcServer.GracefulStop()
-	httpServer.Shutdown(context.TODO())
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	_ = httpServer.Shutdown(shutdownCtx)
+	shutdownCancel()
+	// Wait for CreateTask's in-flight compute backend submissions.
+	s.Tasks.(*TaskService).Close()
 
 	return srverr
 }
@@ -347,7 +350,7 @@ func negotiate(req *http.Request) string {
 	// may be served at the same path.
 	// In Go 1.10 we'll be able to move to a core library for this,
 	// https://github.com/golang/go/issues/19307
-	switch httputil.NegotiateContentType(req, []string{"text/*", "text/html"}, "text/*") {
+	switch negotiateContentType(req, []string{"text/*", "text/html"}, "text/*") {
 	case "text/html":
 		return "html"
 	default:
@@ -375,7 +378,7 @@ func messageHandler(next http.Handler) http.Handler {
 			}
 			w.WriteHeader(rec.Code)
 			response := map[string]string{"message": msg}
-			json.NewEncoder(w).Encode(response)
+			_ = json.NewEncoder(w).Encode(response)
 			return // Important: return here to prevent writing the original response
 		}
 
@@ -384,6 +387,6 @@ func messageHandler(next http.Handler) http.Handler {
 			w.Header()[k] = v
 		}
 		w.WriteHeader(rec.Code)
-		w.Write(rec.Body.Bytes())
+		_, _ = w.Write(rec.Body.Bytes())
 	})
 }

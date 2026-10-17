@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 
 	"dario.cat/mergo"
-	"github.com/ohsu-comp-bio/funnel/config"
+	"github.com/calypr/funnel/config"
 	"google.golang.org/protobuf/proto"
 )
 

@@ -4,18 +4,16 @@ package examples
 import (
 	"path"
 	"strings"
-
-	intern "github.com/ohsu-comp-bio/funnel/examples/internal"
 )
 
 var examples = buildExamples()
 
 func buildExamples() map[string]string {
 	examples := map[string]string{}
-	for _, n := range intern.AssetNames() {
+	for _, n := range AssetNames() {
 		sn := path.Base(n)
 		sn = strings.TrimSuffix(sn, path.Ext(sn))
-		b := intern.MustAsset(n)
+		b := MustAsset(n)
 		examples[sn] = string(b)
 	}
 	return examples

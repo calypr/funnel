@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/tes"
 	"google.golang.org/protobuf/proto"
 )
 

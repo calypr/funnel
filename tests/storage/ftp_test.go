@@ -6,11 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ohsu-comp-bio/funnel/events"
-	"github.com/ohsu-comp-bio/funnel/storage"
-	"github.com/ohsu-comp-bio/funnel/tes"
-	"github.com/ohsu-comp-bio/funnel/tests"
-	"github.com/ohsu-comp-bio/funnel/worker"
+	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/storage"
+	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/tests"
+	"github.com/calypr/funnel/worker"
 )
 
 func TestFTPStorage(t *testing.T) {

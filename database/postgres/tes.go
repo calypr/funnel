@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ohsu-comp-bio/funnel/server"
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/server"
+	"github.com/calypr/funnel/tes"
 )
 
 // trimUnusedExecutorLogs removes trailing executor log entries that correspond

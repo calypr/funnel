@@ -4,8 +4,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/ohsu-comp-bio/funnel/logger"
-	"github.com/ohsu-comp-bio/funnel/tests"
+	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/tests"
 )
 
 var fun *tests.Funnel

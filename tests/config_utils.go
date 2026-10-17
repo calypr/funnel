@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/logger"
-	"github.com/ohsu-comp-bio/funnel/util/fsutil"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/util/fsutil"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
@@ -72,7 +72,7 @@ func TestifyConfig(conf *config.Config) *config.Config {
 
 	storageDir, _ := os.MkdirTemp("./test_tmp", "funnel-test-storage-")
 	wd, _ := os.Getwd()
-	fsutil.EnsureDir(storageDir)
+	_ = fsutil.EnsureDir(storageDir)
 
 	conf.LocalStorage = &config.LocalStorage{
 		AllowedDirs: []string{storageDir, wd},
@@ -99,7 +99,7 @@ func RandomPortConfig(conf *config.Config) *config.Config {
 
 // TempDirConfig returns a modified config with workdir and db path set to a temp. directory.
 func TempDirConfig(conf *config.Config) *config.Config {
-	os.MkdirAll("./test_tmp", os.ModePerm)
+	_ = os.MkdirAll("./test_tmp", os.ModePerm)
 	f, _ := os.MkdirTemp("./test_tmp", "funnel-test-")
 	conf.Worker.WorkDir = f
 	conf.BoltDB.Path = path.Join(f, "funnel.db")

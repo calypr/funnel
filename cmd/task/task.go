@@ -6,8 +6,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ohsu-comp-bio/funnel/cmd/util"
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/cmd/util"
+	"github.com/calypr/funnel/tes"
 	"github.com/spf13/cobra"
 )
 

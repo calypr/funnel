@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kr/pretty"
+	"github.com/k0kubun/pp"
 
-	"github.com/ohsu-comp-bio/funnel/tes"
-	"github.com/ohsu-comp-bio/funnel/tests"
+	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/tests"
 	"github.com/prometheus/common/expfmt"
 )
 
@@ -73,5 +73,5 @@ func TestMetrics(t *testing.T) {
 			}
 		}
 	}
-	pretty.Println(met["funnel_tasks_state_count"].Metric)
+	pp.Println(met["funnel_tasks_state_count"].Metric)
 }

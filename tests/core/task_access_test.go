@@ -5,10 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/server"
-	"github.com/ohsu-comp-bio/funnel/tes"
-	"github.com/ohsu-comp-bio/funnel/tests"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/server"
+	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/tests"
 	"google.golang.org/grpc/status"
 )
 

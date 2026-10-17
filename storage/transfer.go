@@ -3,8 +3,9 @@ package storage
 import (
 	"context"
 
-	"github.com/gammazero/workerpool"
-	"github.com/ohsu-comp-bio/funnel/util/fsutil"
+	"sync"
+
+	"github.com/calypr/funnel/util/fsutil"
 )
 
 // Transfer defines the interface of a single storage upload or download request.
@@ -24,10 +25,18 @@ type Transfer interface {
 // Transfer events (started, failed, finished, etc) are communicated
 // via the Transfer interface.
 func Download(ctx context.Context, store Storage, transfers []Transfer, parallelLimit int) {
-	wp := workerpool.New(parallelLimit)
+	if parallelLimit < 1 {
+		parallelLimit = 1
+	}
+	sem := make(chan struct{}, parallelLimit)
+	var wg sync.WaitGroup
 	for _, x := range transfers {
 		x := x
-		wp.Submit(func() {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
 			x.Started()
 			var obj *Object
 			err := fsutil.EnsurePath(x.Path())
@@ -39,9 +48,9 @@ func Download(ctx context.Context, store Storage, transfers []Transfer, parallel
 			} else {
 				x.Finished(obj)
 			}
-		})
+		}()
 	}
-	wp.StopWait()
+	wg.Wait()
 }
 
 // Upload uploads a list of transfers to storage, in parallel.
@@ -49,10 +58,18 @@ func Download(ctx context.Context, store Storage, transfers []Transfer, parallel
 // Transfer events (started, failed, finished, etc) are communicated
 // via the Transfer interface.
 func Upload(ctx context.Context, store Storage, transfers []Transfer, parallelLimit int) {
-	wp := workerpool.New(parallelLimit)
+	if parallelLimit < 1 {
+		parallelLimit = 1
+	}
+	sem := make(chan struct{}, parallelLimit)
+	var wg sync.WaitGroup
 	for _, x := range transfers {
 		x := x
-		wp.Submit(func() {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
 			x.Started()
 			obj, err := store.Put(ctx, x.URL(), x.Path())
 			if err != nil {
@@ -60,7 +77,7 @@ func Upload(ctx context.Context, store Storage, transfers []Transfer, parallelLi
 			} else {
 				x.Finished(obj)
 			}
-		})
+		}()
 	}
-	wp.StopWait()
+	wg.Wait()
 }

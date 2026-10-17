@@ -3,9 +3,9 @@ package scheduler
 import (
 	"context"
 
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/events"
-	util "github.com/ohsu-comp-bio/funnel/util/rpc"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/events"
+	util "github.com/calypr/funnel/util/rpc"
 	"google.golang.org/grpc"
 )
 

@@ -10,9 +10,9 @@ import (
 	pathlib "path"
 	"strings"
 
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/util/fsutil"
 	"github.com/jlaffaye/ftp"
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/util/fsutil"
 )
 
 // FTP provides read access to public URLs.
@@ -135,8 +135,8 @@ func connect(url string, conf *config.FTPStorage) (*ftpclient, error) {
 }
 
 func (b *ftpclient) Close() {
-	b.client.Logout()
-	b.client.Quit()
+	_ = b.client.Logout()
+	_ = b.client.Quit()
 }
 
 // Stat returns information about the object at the given storage URL.

@@ -7,8 +7,8 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/calypr/funnel/config"
 	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/retry"
-	"github.com/ohsu-comp-bio/funnel/config"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"

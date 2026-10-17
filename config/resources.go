@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/tes"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 

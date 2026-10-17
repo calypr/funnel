@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ohsu-comp-bio/funnel/compute/kubernetes/storageplan"
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/logger"
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/compute/kubernetes/storageplan"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/tes"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 

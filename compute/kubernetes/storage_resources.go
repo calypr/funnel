@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ohsu-comp-bio/funnel/compute/kubernetes/storageplan"
+	"github.com/calypr/funnel/compute/kubernetes/storageplan"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"

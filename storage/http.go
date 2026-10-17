@@ -9,8 +9,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/util/fsutil"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/util/fsutil"
 )
 
 // HTTP provides read access to public URLs.

@@ -5,10 +5,10 @@ import (
 	"os"
 	"time"
 
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/logger"
-	"github.com/ohsu-comp-bio/funnel/util"
-	"github.com/ohsu-comp-bio/funnel/util/fsutil"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/util"
+	"github.com/calypr/funnel/util/fsutil"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -98,7 +98,9 @@ func (n *NodeProcess) Run(ctx context.Context) error {
 			n.client.Close()
 
 			// The workers get 10 seconds to finish up.
-			n.workers.Wait(time.Second * 10)
+			if werr := n.workers.Wait(time.Second * 10); werr != nil {
+				n.log.Error("workers did not finish before shutdown deadline", "error", werr)
+			}
 			return nil
 
 		case <-ticker.C:

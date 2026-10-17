@@ -3,7 +3,7 @@ package worker
 import (
 	"io"
 
-	"github.com/ohsu-comp-bio/funnel/events"
+	"github.com/calypr/funnel/events"
 )
 
 type Command struct {

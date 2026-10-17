@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ohsu-comp-bio/funnel/compute/scheduler"
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/tests"
+	"github.com/calypr/funnel/compute/scheduler"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/tests"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 

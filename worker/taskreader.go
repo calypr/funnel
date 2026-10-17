@@ -3,7 +3,7 @@ package worker
 import (
 	"context"
 
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/tes"
 )
 
 // GenericTaskReader provides read access to tasks.

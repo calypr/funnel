@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/ohsu-comp-bio/funnel/events"
-	"github.com/ohsu-comp-bio/funnel/server"
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/server"
+	"github.com/calypr/funnel/tes"
 	bolt "go.etcd.io/bbolt"
 	"google.golang.org/protobuf/proto"
 )
@@ -38,12 +38,17 @@ func (taskBolt *BoltDB) WriteEvent(ctx context.Context, req *events.Event) error
 		}
 		// Combine task storage and queueing into single transaction to avoid BoltDB write lock contention
 		err = taskBolt.db.Update(func(tx *bolt.Tx) error {
-			tx.Bucket(TaskBucket).Put(idBytes, taskString)
-			tx.Bucket(TaskState).Put(idBytes, []byte(tes.State_QUEUED.String()))
-			tx.Bucket(TaskOwner).Put(idBytes, []byte(server.GetUsername(ctx)))
+			if err := tx.Bucket(TaskBucket).Put(idBytes, taskString); err != nil {
+				return err
+			}
+			if err := tx.Bucket(TaskState).Put(idBytes, []byte(tes.State_QUEUED.String())); err != nil {
+				return err
+			}
+			if err := tx.Bucket(TaskOwner).Put(idBytes, []byte(server.GetUsername(ctx))); err != nil {
+				return err
+			}
 			// Queue task in same transaction to avoid double-locking
-			tx.Bucket(TasksQueued).Put(idBytes, []byte{})
-			return nil
+			return tx.Bucket(TasksQueued).Put(idBytes, []byte{})
 		})
 		if err != nil {
 			return fmt.Errorf("error storing and queueing task: %s", err)
@@ -147,8 +152,7 @@ func (taskBolt *BoltDB) WriteEvent(ctx context.Context, req *events.Event) error
 		}
 
 		err = taskBolt.db.Update(func(tx *bolt.Tx) error {
-			tx.Bucket(SysLogs).Put(idBytes, logbytes)
-			return nil
+			return tx.Bucket(SysLogs).Put(idBytes, logbytes)
 		})
 		if err != nil {
 			return err
@@ -177,7 +181,9 @@ func (taskBolt *BoltDB) WriteEvent(ctx context.Context, req *events.Event) error
 			if merr != nil {
 				return merr
 			}
-			tx.Bucket(TaskBucket).Put([]byte(req.Id), taskBytes)
+			if err := tx.Bucket(TaskBucket).Put([]byte(req.Id), taskBytes); err != nil {
+				return err
+			}
 			return nil
 		})
 	}
@@ -213,20 +219,23 @@ func transitionTaskState(tx *bolt.Tx, id string, target tes.State) error {
 
 	case Canceled, Complete, ExecutorError, SystemError:
 		// Remove from queue
-		tx.Bucket(TasksQueued).Delete(idBytes)
+		if err := tx.Bucket(TasksQueued).Delete(idBytes); err != nil {
+			return err
+		}
 
 	case Running, Initializing:
 		if current != Unknown && current != Queued && current != Initializing {
 			return fmt.Errorf("Unexpected transition from %s to %s", current.String(), target.String())
 		}
-		tx.Bucket(TasksQueued).Delete(idBytes)
+		if err := tx.Bucket(TasksQueued).Delete(idBytes); err != nil {
+			return err
+		}
 
 	default:
 		return fmt.Errorf("Unknown target state: %s", target.String())
 	}
 
-	tx.Bucket(TaskState).Put(idBytes, []byte(target.String()))
-	return nil
+	return tx.Bucket(TaskState).Put(idBytes, []byte(target.String()))
 }
 
 func updateTaskLogs(tx *bolt.Tx, id string, tl *tes.TaskLog) error {

@@ -6,12 +6,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ncw/swift"
-	"github.com/ohsu-comp-bio/funnel/events"
-	"github.com/ohsu-comp-bio/funnel/storage"
-	"github.com/ohsu-comp-bio/funnel/tes"
-	"github.com/ohsu-comp-bio/funnel/tests"
-	"github.com/ohsu-comp-bio/funnel/worker"
+	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/storage"
+	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/tests"
+	"github.com/calypr/funnel/worker"
+	"github.com/ncw/swift/v2"
 )
 
 func TestSwiftStorage(t *testing.T) {
@@ -215,7 +215,7 @@ func newSwiftTest() (*swiftTest, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = conn.Authenticate()
+	err = conn.Authenticate(context.Background())
 	if err != nil {
 		return nil, err
 	}
@@ -223,19 +223,19 @@ func newSwiftTest() (*swiftTest, error) {
 }
 
 func (sw *swiftTest) createBucket(bucket string) error {
-	return sw.client.ContainerCreate(bucket, nil)
+	return sw.client.ContainerCreate(context.Background(), bucket, nil)
 }
 
 func (sw *swiftTest) deleteBucket(bucket string) error {
-	objs, err := sw.client.ObjectsAll(bucket, nil)
+	objs, err := sw.client.ObjectsAll(context.Background(), bucket, nil)
 	if err != nil {
 		return err
 	}
 	for _, obj := range objs {
-		err = sw.client.ObjectDelete(bucket, obj.Name)
+		err = sw.client.ObjectDelete(context.Background(), bucket, obj.Name)
 		if err != nil {
 			return err
 		}
 	}
-	return sw.client.ContainerDelete(bucket)
+	return sw.client.ContainerDelete(context.Background(), bucket)
 }

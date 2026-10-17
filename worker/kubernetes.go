@@ -11,10 +11,12 @@ import (
 	"text/template"
 	"time"
 
-	k8sbackend "github.com/ohsu-comp-bio/funnel/compute/kubernetes"
-	"github.com/ohsu-comp-bio/funnel/compute/kubernetes/storageplan"
-	"github.com/ohsu-comp-bio/funnel/logger"
-	"github.com/ohsu-comp-bio/funnel/tes"
+	k8sbackend "github.com/calypr/funnel/compute/kubernetes"
+	"github.com/calypr/funnel/compute/kubernetes/storageplan"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/tes"
 	v1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -252,7 +254,9 @@ func (kcmd KubernetesCommand) Run(ctx context.Context) error {
 		// allow restarts.
 		if err.Error() == "jobs.batch \""+job.Name+"\" already exists" {
 			logger.Debug("Executor job already exists: recreating it", "jobName", job.Name)
-			deleteJob(ctx, clientset, client, job.Name, kcmd.JobsNamespace)
+			if derr := deleteJob(ctx, clientset, client, job.Name, kcmd.JobsNamespace); derr != nil {
+				logger.Debug("failed to delete existing job before recreate", "jobName", job.Name, "error", derr)
+			}
 			_, err = client.Create(ctx, job, metav1.CreateOptions{})
 			if err != nil {
 				return &K8sSystemErr{
@@ -387,7 +391,9 @@ func (kcmd KubernetesCommand) Stop() error {
 	jobName := fmt.Sprintf("%s-%d", kcmd.TaskId, kcmd.JobId)
 
 	backgroundDeletion := metav1.DeletePropagationBackground
-	err = clientset.BatchV1().Jobs(kcmd.JobsNamespace).Delete(context.TODO(), jobName, metav1.DeleteOptions{
+	// Stop runs during worker cancellation, so the delete must not derive from
+	// an already-canceled context.
+	err = clientset.BatchV1().Jobs(kcmd.JobsNamespace).Delete(context.Background(), jobName, metav1.DeleteOptions{
 		PropagationPolicy: &backgroundDeletion,
 	})
 
@@ -617,4 +623,48 @@ func getKubernetesClientset() (*kubernetes.Clientset, error) {
 
 	clientset, err := kubernetes.NewForConfig(kubeconfig)
 	return clientset, err
+}
+
+// newKubernetesCommand validates and applies the executor resource limits,
+// publishes the effective resources as an event, and assembles the
+// KubernetesCommand for one executor of the task.
+func (r *DefaultWorker) newKubernetesCommand(ctx context.Context, event *events.TaskWriter, task *tes.Task, d *tes.Executor, i int, command Command, resources *tes.Resources) (*KubernetesCommand, error) {
+	resources, err := config.ValidateResources(resources, r.Executor.Resources)
+	if err != nil {
+		return nil, err
+	}
+
+	// Store the effective resources back to the task
+	task.Resources = resources
+
+	resourceLimits := config.GetResourceLimits(r.Executor.Resources)
+
+	// Best-effort: the resources event is informational.
+	_ = r.EventWriter.WriteEvent(ctx, events.NewResources(task.Id, task.Resources))
+
+	kcmd := &KubernetesCommand{
+		StoragePlan:    r.Executor.StoragePlan,
+		TaskId:         task.Id,
+		JobId:          i,
+		StdinFile:      d.Stdin,
+		StdoutFile:     d.Stdout,
+		StderrFile:     d.Stderr,
+		TaskTemplate:   r.Executor.Template,
+		Namespace:      r.Executor.Namespace,
+		JobsNamespace:  r.Executor.JobsNamespace,
+		Resources:      resources,
+		ResourceLimits: resourceLimits,
+		Command:        command,
+		NeedsPVC:       len(task.GetInputs()) > 0 || len(task.GetOutputs()) > 0 || len(task.GetVolumes()) > 0,
+		NodeSelector:   r.Executor.NodeSelector,
+		Tolerations:    r.Executor.Tolerations,
+		ServiceAccount: fmt.Sprintf("funnel-worker-sa-%s-%s", r.Executor.JobsNamespace, task.Id),
+	}
+
+	// Override ServiceAccountName if provided in Task Tags
+	if saName, exists := task.Tags["_WORKER_SA"]; exists && saName != "" {
+		kcmd.ServiceAccount = saName
+	}
+
+	return kcmd, nil
 }

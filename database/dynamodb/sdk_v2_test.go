@@ -11,8 +11,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
-	"github.com/ohsu-comp-bio/funnel/events"
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/tes"
 )
 
 func fixtureDB(t *testing.T, request func(string, map[string]json.RawMessage) string) *DynamoDB {

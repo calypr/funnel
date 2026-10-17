@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ohsu-comp-bio/funnel/tes"
-	"github.com/ohsu-comp-bio/funnel/util/fsutil"
+	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/util/fsutil"
 	proto "google.golang.org/protobuf/proto"
 )
 
@@ -119,7 +119,9 @@ func (mapper *FileMapper) CopyInputsToScratch(scratchDir string) error {
 			if err := os.MkdirAll(scratchTarget, 0755); err != nil {
 				return fmt.Errorf("failed to create scratch directory: %w", err)
 			}
-			copyDir(input.Path, scratchTarget)
+			if err := copyDir(input.Path, scratchTarget); err != nil {
+				return fmt.Errorf("failed to copy scratch input %s: %w", input.Path, err)
+			}
 		} else {
 			// Ensure the scratch target directory exists
 			if err := os.MkdirAll(path.Dir(scratchTarget), 0755); err != nil {
@@ -176,7 +178,7 @@ func (mapper *FileMapper) CopyOutputsToWorkDir(scratchDir string) error {
 				if err = os.MkdirAll(output.Path, 0755); err != nil {
 					return fmt.Errorf("failed to create output path: %w", err)
 				}
-				copyDir(src, output.Path)
+				_ = copyDir(src, output.Path)
 				// If output is a file
 			} else {
 				// Ensure the scratch target directory exists

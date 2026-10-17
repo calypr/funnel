@@ -12,7 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/batch/types"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
-	util "github.com/ohsu-comp-bio/funnel/util/aws"
+	util "github.com/calypr/funnel/util/aws"
 )
 
 const defaultBatchRetryMaxAttempts = 4

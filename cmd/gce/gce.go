@@ -6,12 +6,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ohsu-comp-bio/funnel/cmd/node"
-	"github.com/ohsu-comp-bio/funnel/cmd/server"
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/config/gce"
-	"github.com/ohsu-comp-bio/funnel/logger"
-	"github.com/ohsu-comp-bio/funnel/util"
+	"github.com/calypr/funnel/cmd/node"
+	"github.com/calypr/funnel/cmd/server"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/config/gce"
+	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/util"
 	"github.com/spf13/cobra"
 )
 

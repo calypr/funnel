@@ -3,7 +3,7 @@ package events
 import (
 	"context"
 
-	"github.com/ohsu-comp-bio/funnel/util"
+	"github.com/calypr/funnel/util"
 )
 
 type retrier struct {

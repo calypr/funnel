@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	badger "github.com/dgraph-io/badger/v2"
-	"github.com/ohsu-comp-bio/funnel/events"
-	"github.com/ohsu-comp-bio/funnel/server"
-	"github.com/ohsu-comp-bio/funnel/tes"
-	"github.com/ohsu-comp-bio/funnel/util"
+	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/server"
+	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/util"
+	badger "github.com/dgraph-io/badger/v4"
 	proto "google.golang.org/protobuf/proto"
 )
 

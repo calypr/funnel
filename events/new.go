@@ -3,7 +3,7 @@ package events
 import (
 	"time"
 
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/tes"
 )
 
 // NewTaskCreated creates a state change event.

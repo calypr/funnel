@@ -7,7 +7,7 @@ import (
 
 	"context"
 
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/tes"
 )
 
 // Cancel runs the "task cancel" CLI command, which connects to the server,

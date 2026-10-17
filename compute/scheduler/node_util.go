@@ -5,8 +5,8 @@ import (
 
 	"context"
 
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/tes"
 )
 
 // UpdateNode helps scheduler database backend update a node when PutNode() is called.

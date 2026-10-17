@@ -7,10 +7,9 @@ import (
 	"slices"
 	"time"
 
-	"github.com/hashicorp/go-multierror"
-	"github.com/ohsu-comp-bio/funnel/compute/kubernetes/resources"
-	"github.com/ohsu-comp-bio/funnel/compute/kubernetes/storageplan"
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/compute/kubernetes/resources"
+	"github.com/calypr/funnel/compute/kubernetes/storageplan"
+	"github.com/calypr/funnel/tes"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	batchv1 "k8s.io/api/batch/v1"
@@ -113,23 +112,23 @@ func (b *Backend) cleanResources(ctx context.Context, taskId string) error {
 	var errs error
 
 	if storageErr != nil {
-		errs = multierror.Append(errs, storageErr)
+		errs = errors.Join(errs, storageErr)
 	} else if plan != nil && len(plan.OwnedVolumes) > 0 {
 		// Keep the Job snapshot until every PV delete request is acknowledged.
 		// Kubernetes' PV protection then waits for dependent PVCs to disappear.
 		if err := b.deleteBoundVolumes(ctx, taskId, plan.Namespace, plan.OwnedVolumes, ownerUID); err != nil {
-			errs = multierror.Append(errs, err)
+			errs = errors.Join(errs, err)
 		}
 	}
 
 	b.log.Debug("deleting Job", "taskID", taskId)
 	err := resources.DeleteJob(ctx, b.conf, taskId, b.client, b.log)
 	if err != nil {
-		errs = multierror.Append(errs, err)
+		errs = errors.Join(errs, err)
 		b.log.Error("deleting Job", "error", err)
 		if storageErr != nil {
 			if err := resources.DeleteExecutorJobs(ctx, b.conf, taskId, b.client, b.log); err != nil {
-				errs = multierror.Append(errs, err)
+				errs = errors.Join(errs, err)
 			}
 		}
 	} else if errs == nil && plan != nil && len(plan.OwnedVolumes) > 0 {
@@ -153,14 +152,14 @@ func (b *Backend) cleanResources(ctx context.Context, taskId string) error {
 
 	if storageErr == nil && ((plan == nil && b.conf.Kubernetes.Storage == nil) || b.conf.Kubernetes.ServiceAccountTemplate != "") {
 		if err := resources.DeleteServiceAccount(ctx, taskId, b.conf.Kubernetes.JobsNamespace, b.client, b.log, saOpts); err != nil {
-			errs = multierror.Append(errs, err)
+			errs = errors.Join(errs, err)
 			b.log.Error("deleting Worker ServiceAccount", "taskID", taskId, "error", err)
 		}
 	}
 
 	if storageErr == nil && plan == nil && b.conf.Kubernetes.Storage == nil {
 		if err := resources.DeletePV(ctx, taskId, b.conf.Kubernetes.JobsNamespace, b.client, b.log); err != nil {
-			errs = multierror.Append(errs, err)
+			errs = errors.Join(errs, err)
 			b.log.Error("deleting Worker PV", "error", err)
 		}
 	}

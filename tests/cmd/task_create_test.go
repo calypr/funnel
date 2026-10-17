@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	taskCmd "github.com/ohsu-comp-bio/funnel/cmd/task"
-	"github.com/ohsu-comp-bio/funnel/tests"
+	taskCmd "github.com/calypr/funnel/cmd/task"
+	"github.com/calypr/funnel/tests"
 )
 
 func TestCreateStdin(t *testing.T) {

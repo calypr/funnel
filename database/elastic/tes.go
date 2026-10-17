@@ -8,10 +8,10 @@ import (
 
 	"google.golang.org/protobuf/encoding/protojson"
 
+	"github.com/calypr/funnel/server"
+	"github.com/calypr/funnel/tes"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/types"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/types/enums/sortorder"
-	"github.com/ohsu-comp-bio/funnel/server"
-	"github.com/ohsu-comp-bio/funnel/tes"
 )
 
 // Custom unmarshaller where unknown JSON properties do not cause an error.
@@ -49,7 +49,11 @@ func (es *Elastic) getTask(ctx context.Context, req *tes.GetTaskRequest) (*tes.T
 
 	if userInfo := server.GetUser(ctx); !userInfo.CanSeeAllTasks() {
 		partial := TaskOwner{}
-		_ = json.Unmarshal(res.Source_, &partial)
+		if err := json.Unmarshal(res.Source_, &partial); err != nil {
+			// An undecodable owner must not silently pass or fail the
+			// authorization check below.
+			return nil, "", "", fmt.Errorf("elastic get task owner: %w", err)
+		}
 		if !userInfo.IsAccessible(partial.Owner) {
 			return nil, "", "", tes.ErrNotPermitted
 		}

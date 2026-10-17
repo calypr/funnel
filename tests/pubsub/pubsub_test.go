@@ -6,13 +6,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hashicorp/go-multierror"
-	workerCmd "github.com/ohsu-comp-bio/funnel/cmd/worker"
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/events"
-	"github.com/ohsu-comp-bio/funnel/logger"
-	"github.com/ohsu-comp-bio/funnel/tes"
-	"github.com/ohsu-comp-bio/funnel/tests"
+	"errors"
+
+	workerCmd "github.com/calypr/funnel/cmd/worker"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/tests"
 )
 
 var log = logger.NewLogger("pubsub-worker-test", logger.DefaultConfig())
@@ -51,14 +52,14 @@ func TestPubSubWorkerRun(t *testing.T) {
 	task := &tes.Task{}
 	b := &events.TaskBuilder{Task: task}
 
-	var result *multierror.Error
+	var result error
 
 	// Read events from pubsub, write into task builder.
 	subname := "test-pubsub-" + tests.RandomString(10)
 	go func() {
 		err := events.ReadPubSub(ctx, conf.PubSub, subname, b)
 		if err != nil {
-			result = multierror.Append(result, err)
+			result = errors.Join(result, err)
 		}
 	}()
 

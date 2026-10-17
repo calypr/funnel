@@ -19,6 +19,11 @@ func TestRetrier(t *testing.T) {
 	}
 	bg := context.Background()
 
+	var delays []time.Duration
+	r.Notify = func(err error, d time.Duration) {
+		delays = append(delays, d)
+	}
+
 	i := 0
 	r.Retry(bg, func() error {
 		i++
@@ -27,17 +32,17 @@ func TestRetrier(t *testing.T) {
 	if i != 3 {
 		t.Error("unexpected number of retries", i)
 	}
-	next := r.backoff.NextBackOff()
-	if next != time.Millisecond*40 {
-		t.Error("unexpected next backoff", next)
+	// backoff starts at InitialInterval and doubles each attempt
+	if len(delays) != 2 || delays[0] != time.Millisecond*10 || delays[1] != time.Millisecond*20 {
+		t.Error("unexpected backoff delays", delays)
 	}
 
 	r.Retry(bg, func() error {
 		return nil
 	})
-	next = r.backoff.NextBackOff()
-	if next != time.Millisecond*10 {
-		t.Error("unexpected next backoff", next)
+	// a successful retry resets the interval
+	if len(delays) != 2 {
+		t.Error("expected no notification on success", delays)
 	}
 }
 

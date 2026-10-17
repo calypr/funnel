@@ -11,8 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kr/pretty"
-	"github.com/logrusorgru/aurora"
+	"github.com/k0kubun/pp"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/term"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -66,21 +65,20 @@ func (f *textFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 		}
 	}
 
-	var levelColor aurora.Color
+	var colorize func(string) string
 
 	switch entry.Level {
 	case logrus.DebugLevel:
-		levelColor = aurora.MagentaFg
+		colorize = ansiBoldMagenta
 	case logrus.WarnLevel:
-		levelColor = aurora.YellowFg
+		colorize = ansiBoldYellow
 	case logrus.ErrorLevel, logrus.FatalLevel, logrus.PanicLevel:
-		levelColor = aurora.RedFg
+		colorize = ansiBoldRed
 	default:
-		levelColor = aurora.CyanFg
+		colorize = ansiBoldCyan
 	}
-	nsColor := levelColor | aurora.BoldFm
 
-	fmt.Fprintf(b, "%s%-20s %s\n", f.Indent, aurora.Colorize(ns, nsColor), entry.Message)
+	fmt.Fprintf(b, "%s%-20s %s\n", f.Indent, colorize(ns), entry.Message)
 
 	for _, k := range f.sortKeys(entry) {
 		v := entry.Data[k]
@@ -107,12 +105,12 @@ func (f *textFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 			} else if b, err := jsonmar.Marshal(x); err == nil {
 				v = string(b)
 			} else {
-				v = pretty.Sprint(x)
+				v = pp.Sprint(x)
 			}
 		case fmt.Stringer:
 		case error:
 		default:
-			v = pretty.Sprint(x)
+			v = pp.Sprint(x)
 		}
 
 		if vString, ok := v.(string); ok {
@@ -125,7 +123,7 @@ func (f *textFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 			v = strings.Join(vParts, "\n"+strings.Repeat(" ", keyPadding))
 		}
 
-		fmt.Fprintf(b, "%s%-20s %v\n", f.Indent, aurora.Colorize(k, levelColor), v)
+		fmt.Fprintf(b, "%s%-20s %v\n", f.Indent, colorize(k), v)
 	}
 
 	b.WriteByte('\n')

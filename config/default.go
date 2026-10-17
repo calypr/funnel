@@ -6,9 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alecthomas/units"
-	intern "github.com/ohsu-comp-bio/funnel/config/internal"
-	"github.com/ohsu-comp-bio/funnel/logger"
+	"github.com/calypr/funnel/logger"
 	durationpb "google.golang.org/protobuf/types/known/durationpb"
 )
 
@@ -187,7 +185,7 @@ func DefaultConfig() *Config {
 		},
 		Swift: &SwiftStorage{
 			MaxRetries:     20,
-			ChunkSizeBytes: int64(500 * units.MB),
+			ChunkSizeBytes: int64(500 * 1000 * 1000),
 		},
 		HTCondor:   &HPCBackend{},
 		Slurm:      &HPCBackend{},
@@ -207,22 +205,22 @@ func DefaultConfig() *Config {
 	// compute
 	reconcile := durationpb.New(time.Minute * 10)
 
-	htcondorTemplate := intern.MustAsset("config/htcondor-template.txt")
+	htcondorTemplate := MustAsset("config/htcondor-template.txt")
 	c.HTCondor.Template = string(htcondorTemplate)
 	c.HTCondor.ReconcileRate = reconcile
 	c.HTCondor.DisableReconciler = true
 
-	slurmTemplate := intern.MustAsset("config/slurm-template.txt")
+	slurmTemplate := MustAsset("config/slurm-template.txt")
 	c.Slurm.Template = string(slurmTemplate)
 	c.Slurm.ReconcileRate = reconcile
 	c.Slurm.DisableReconciler = true
 
-	pbsTemplate := intern.MustAsset("config/pbs-template.txt")
+	pbsTemplate := MustAsset("config/pbs-template.txt")
 	c.PBS.Template = string(pbsTemplate)
 	c.PBS.ReconcileRate = reconcile
 	c.PBS.DisableReconciler = true
 
-	geTemplate := intern.MustAsset("config/gridengine-template.txt")
+	geTemplate := MustAsset("config/gridengine-template.txt")
 	c.GridEngine.Template = string(geTemplate)
 
 	c.AWSBatch.JobDefinition = "funnel-job-def"
@@ -245,10 +243,10 @@ var examples = buildExamples()
 
 func buildExamples() map[string]string {
 	examples := map[string]string{}
-	for _, n := range intern.AssetNames() {
+	for _, n := range AssetNames() {
 		sn := path.Base(n)
 		sn = strings.TrimSuffix(sn, path.Ext(sn))
-		b := intern.MustAsset(n)
+		b := MustAsset(n)
 		examples[sn] = string(b)
 	}
 	return examples

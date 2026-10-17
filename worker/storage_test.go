@@ -4,11 +4,27 @@ import (
 	"context"
 	"testing"
 
-	"github.com/go-test/deep"
-	"github.com/ohsu-comp-bio/funnel/events"
-	"github.com/ohsu-comp-bio/funnel/storage"
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/storage"
+	"github.com/calypr/funnel/tes"
+	"github.com/stretchr/testify/assert"
+	"google.golang.org/protobuf/proto"
 )
+
+// protoSlicesEqual reports whether two slices of protobuf messages are equal
+// (proto.Equal per element). testify's DeepEqual trips over protobuf
+// implementation internals, so protos must be compared with proto.Equal.
+func protoSlicesEqual[T proto.Message](want, got []T) bool {
+	if len(want) != len(got) {
+		return false
+	}
+	for i := range want {
+		if !proto.Equal(want[i], got[i]) {
+			return false
+		}
+	}
+	return true
+}
 
 type fakelist struct {
 	list []*storage.Object
@@ -52,7 +68,5 @@ func TestFlattenInputs(t *testing.T) {
 		{Url: "s3://bkt/path/to/two.txt", Path: "/inputs/foo/to/two.txt"},
 	}
 
-	for _, diff := range deep.Equal(flat, expected) {
-		t.Error(diff)
-	}
+	assert.True(t, protoSlicesEqual(expected, flat))
 }

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/tes"
 )
 
 // Base64TaskReader reads a task from a base64 encoded string.

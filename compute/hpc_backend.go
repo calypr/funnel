@@ -11,11 +11,11 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/events"
-	"github.com/ohsu-comp-bio/funnel/logger"
-	"github.com/ohsu-comp-bio/funnel/tes"
-	"github.com/ohsu-comp-bio/funnel/util/fsutil"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/util/fsutil"
 )
 
 // HPCBackend represents an HPCBackend such as HtCondor, Slurm, Grid Engine, etc.
@@ -73,15 +73,19 @@ func (b *HPCBackend) Submit(ctx context.Context, task *tes.Task) error {
 
 	err = cmd.Run()
 	if err != nil {
-		b.Event.WriteEvent(ctx, events.NewState(task.Id, tes.SystemError))
-		b.Event.WriteEvent(
+		if werr := b.Event.WriteEvent(ctx, events.NewState(task.Id, tes.SystemError)); werr != nil {
+			b.Log.Error("writing SystemError event", "taskID", task.Id, "error", werr)
+		}
+		if werr := b.Event.WriteEvent(
 			ctx,
 			events.NewSystemLog(
 				task.Id, 0, 0, "error",
 				"error submitting task to "+b.Name,
 				map[string]string{"error": err.Error(), "stderr": stderr.String(), "stdout": stdout.String()},
 			),
-		)
+		); werr != nil {
+			b.Log.Error("writing submit-failure log event", "taskID", task.Id, "error", werr)
+		}
 		return err
 	}
 
@@ -187,8 +191,10 @@ ReconcileLoop:
 						}
 
 						if t.TESState == tes.SystemError {
-							b.Event.WriteEvent(ctx, events.NewState(task.Id, tes.SystemError))
-							b.Event.WriteEvent(
+							if werr := b.Event.WriteEvent(ctx, events.NewState(task.Id, tes.SystemError)); werr != nil {
+								b.Log.Error("writing SystemError event", "taskID", task.Id, "error", werr)
+							}
+							if werr := b.Event.WriteEvent(
 								ctx,
 								events.NewSystemLog(
 									task.Id, 0, 0, "error",
@@ -199,9 +205,11 @@ ReconcileLoop:
 										b.Name + "_state": t.State,
 									},
 								),
-							)
+							); werr != nil {
+								b.Log.Error("writing system-error log event", "taskID", task.Id, "error", werr)
+							}
 							if t.Remove {
-								exec.Command(b.CancelCmd, t.ID).Run()
+								_ = exec.Command(b.CancelCmd, t.ID).Run()
 							}
 						}
 					}

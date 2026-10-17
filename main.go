@@ -4,9 +4,9 @@ import (
 	"errors"
 	"os"
 
-	"github.com/ohsu-comp-bio/funnel/cmd"
-	"github.com/ohsu-comp-bio/funnel/logger"
-	"github.com/ohsu-comp-bio/funnel/worker"
+	"github.com/calypr/funnel/cmd"
+	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/worker"
 )
 
 func main() {

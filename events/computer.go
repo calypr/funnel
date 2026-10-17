@@ -3,7 +3,7 @@ package events
 import (
 	"context"
 
-	tes "github.com/ohsu-comp-bio/funnel/tes"
+	tes "github.com/calypr/funnel/tes"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

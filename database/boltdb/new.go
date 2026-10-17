@@ -1,11 +1,13 @@
 package boltdb
 
 import (
+	"fmt"
 	"time"
 
-	"github.com/ohsu-comp-bio/funnel/compute/scheduler"
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/util/fsutil"
+	"github.com/calypr/funnel/compute/scheduler"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/util/fsutil"
 	bolt "go.etcd.io/bbolt"
 )
 
@@ -50,20 +52,23 @@ var SysLogs = []byte("system-logs")
 // Data is stored/retrieved from the BoltDB key-value database.
 type BoltDB struct {
 	scheduler.UnimplementedSchedulerServiceServer
-	db *bolt.DB
+	db  *bolt.DB
+	log *logger.Logger
 }
 
 // NewBoltDB returns a new instance of BoltDB, accessing the database at
 // the given path, and including the given ServerConfig.
 func NewBoltDB(conf *config.BoltDB) (*BoltDB, error) {
-	fsutil.EnsurePath(conf.Path)
+	if err := fsutil.EnsurePath(conf.Path); err != nil {
+		return nil, fmt.Errorf("creating boltdb directory: %w", err)
+	}
 	db, err := bolt.Open(conf.Path, 0600, &bolt.Options{
 		Timeout: time.Second * 5,
 	})
 	if err != nil {
 		return nil, err
 	}
-	return &BoltDB{db: db}, nil
+	return &BoltDB{db: db, log: logger.NewLogger("BoltDB", logger.DefaultConfig())}, nil
 }
 
 // Init creates the required BoltDB buckets
@@ -71,34 +76,54 @@ func (taskBolt *BoltDB) Init() error {
 	// Check to make sure all the required buckets have been created
 	return taskBolt.db.Update(func(tx *bolt.Tx) error {
 		if tx.Bucket(TaskBucket) == nil {
-			tx.CreateBucket(TaskBucket)
+			if _, err := tx.CreateBucket(TaskBucket); err != nil {
+				return err
+			}
 		}
 		if tx.Bucket(TasksQueued) == nil {
-			tx.CreateBucket(TasksQueued)
+			if _, err := tx.CreateBucket(TasksQueued); err != nil {
+				return err
+			}
 		}
 		if tx.Bucket(TaskOwner) == nil {
-			tx.CreateBucket(TaskOwner)
+			if _, err := tx.CreateBucket(TaskOwner); err != nil {
+				return err
+			}
 		}
 		if tx.Bucket(TaskState) == nil {
-			tx.CreateBucket(TaskState)
+			if _, err := tx.CreateBucket(TaskState); err != nil {
+				return err
+			}
 		}
 		if tx.Bucket(TasksLog) == nil {
-			tx.CreateBucket(TasksLog)
+			if _, err := tx.CreateBucket(TasksLog); err != nil {
+				return err
+			}
 		}
 		if tx.Bucket(ExecutorLogs) == nil {
-			tx.CreateBucket(ExecutorLogs)
+			if _, err := tx.CreateBucket(ExecutorLogs); err != nil {
+				return err
+			}
 		}
 		if tx.Bucket(ExecutorStdout) == nil {
-			tx.CreateBucket(ExecutorStdout)
+			if _, err := tx.CreateBucket(ExecutorStdout); err != nil {
+				return err
+			}
 		}
 		if tx.Bucket(ExecutorStderr) == nil {
-			tx.CreateBucket(ExecutorStderr)
+			if _, err := tx.CreateBucket(ExecutorStderr); err != nil {
+				return err
+			}
 		}
 		if tx.Bucket(Nodes) == nil {
-			tx.CreateBucket(Nodes)
+			if _, err := tx.CreateBucket(Nodes); err != nil {
+				return err
+			}
 		}
 		if tx.Bucket(SysLogs) == nil {
-			tx.CreateBucket(SysLogs)
+			if _, err := tx.CreateBucket(SysLogs); err != nil {
+				return err
+			}
 		}
 		return nil
 	})

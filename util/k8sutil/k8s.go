@@ -3,7 +3,7 @@ package k8sutil
 import (
 	"fmt"
 
-	"github.com/ohsu-comp-bio/funnel/config"
+	"github.com/calypr/funnel/config"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 )

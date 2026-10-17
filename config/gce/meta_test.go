@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/ohsu-comp-bio/funnel/config"
+	"github.com/calypr/funnel/config"
 )
 
 func loadTestData(name string) []byte {

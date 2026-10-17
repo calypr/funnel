@@ -9,11 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alecthomas/units"
-	"github.com/ncw/swift"
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/util"
-	"github.com/ohsu-comp-bio/funnel/util/fsutil"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/util"
+	"github.com/calypr/funnel/util/fsutil"
+	"github.com/ncw/swift/v2"
 )
 
 const swiftProtocol = "swift://"
@@ -46,10 +45,10 @@ func NewSwift(conf *config.SwiftStorage) (*Swift, error) {
 	}
 
 	var chunkSize int64
-	if conf.ChunkSizeBytes < int64(100*units.MB) {
-		chunkSize = int64(500 * units.MB)
-	} else if conf.ChunkSizeBytes > int64(5*units.GB) {
-		chunkSize = int64(5 * units.GB)
+	if conf.ChunkSizeBytes < int64(100*1000*1000) {
+		chunkSize = int64(500 * 1000 * 1000)
+	} else if conf.ChunkSizeBytes > int64(5*1000*1000*1000) {
+		chunkSize = int64(5 * 1000 * 1000 * 1000)
 	} else {
 		chunkSize = conf.ChunkSizeBytes
 	}
@@ -102,7 +101,7 @@ func (sw *Swift) Stat(ctx context.Context, url string) (*Object, error) {
 		return nil, err
 	}
 
-	info, _, err := sw.conn.Object(u.bucket, u.path)
+	info, _, err := sw.conn.Object(ctx, u.bucket, u.path)
 	if err != nil {
 		return nil, &swiftError{"getting object info", url, err}
 	}
@@ -122,7 +121,7 @@ func (sw *Swift) List(ctx context.Context, url string) ([]*Object, error) {
 		return nil, err
 	}
 
-	objs, err := sw.conn.ObjectsAll(u.bucket, &swift.ObjectsOpts{
+	objs, err := sw.conn.ObjectsAll(ctx, u.bucket, &swift.ObjectsOpts{
 		Prefix: u.path,
 	})
 	if err != nil {
@@ -157,7 +156,7 @@ func (sw *Swift) Get(ctx context.Context, url, path string) (*Object, error) {
 		return nil, err
 	}
 
-	f, _, err := sw.conn.ObjectOpen(u.bucket, u.path, checkHash, headers)
+	f, _, err := sw.conn.ObjectOpen(ctx, u.bucket, u.path, checkHash, headers)
 	if err != nil {
 		return nil, &swiftError{"initiating download", url, err}
 	}
@@ -202,10 +201,10 @@ func (sw *Swift) Put(ctx context.Context, url, path string) (*Object, error) {
 	var headers swift.Headers
 
 	fSize := fsutil.FileSize(path)
-	if fSize < int64(5*units.GB) {
-		writer, err = sw.conn.ObjectCreate(u.bucket, u.path, checkHash, hash, contentType, headers)
+	if fSize < int64(5*1000*1000*1000) {
+		writer, err = sw.conn.ObjectCreate(ctx, u.bucket, u.path, checkHash, hash, contentType, headers)
 	} else {
-		writer, err = sw.conn.StaticLargeObjectCreateFile(&swift.LargeObjectOpts{
+		writer, err = sw.conn.StaticLargeObjectCreateFile(ctx, &swift.LargeObjectOpts{
 			Container:  u.bucket,
 			ObjectName: u.path,
 			CheckHash:  checkHash,
@@ -246,7 +245,7 @@ func (sw *Swift) UnsupportedOperations(url string) UnsupportedOperations {
 	if err != nil {
 		return AllUnsupported(err)
 	}
-	_, _, err = sw.conn.Container(u.bucket)
+	_, _, err = sw.conn.Container(context.Background(), u.bucket)
 	if err != nil {
 		return AllUnsupported(&swiftError{"looking for bucket", url, err})
 	}

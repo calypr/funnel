@@ -7,7 +7,7 @@
 package config
 
 import (
-	logger "github.com/ohsu-comp-bio/funnel/logger"
+	logger "github.com/calypr/funnel/logger"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	durationpb "google.golang.org/protobuf/types/known/durationpb"
@@ -3854,7 +3854,7 @@ const file_config_config_proto_rawDesc = "" +
 	"\x05Value\x18\x03 \x01(\tR\x05Value\x12\x16\n" +
 	"\x06Effect\x18\x04 \x01(\tR\x06Effect\x121\n" +
 	"\x11TolerationSeconds\x18\x05 \x01(\x03H\x00R\x11TolerationSeconds\x88\x01\x01B\x14\n" +
-	"\x12_TolerationSecondsB(Z&github.com/ohsu-comp-bio/funnel/configb\x06proto3"
+	"\x12_TolerationSecondsB!Z\x1fgithub.com/calypr/funnel/configb\x06proto3"
 
 var (
 	file_config_config_proto_rawDescOnce sync.Once

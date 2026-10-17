@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"cloud.google.com/go/datastore"
-	"github.com/ohsu-comp-bio/funnel/config"
+	"github.com/calypr/funnel/config"
 	"google.golang.org/api/option"
 )
 

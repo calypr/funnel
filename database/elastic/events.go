@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/server"
+	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/util"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/types"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/types/enums/result"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/types/enums/scriptlanguage"
-	"github.com/ohsu-comp-bio/funnel/events"
-	"github.com/ohsu-comp-bio/funnel/server"
-	"github.com/ohsu-comp-bio/funnel/tes"
-	"github.com/ohsu-comp-bio/funnel/util"
 )
 
 var updateTaskLogs = `

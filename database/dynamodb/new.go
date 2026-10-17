@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
-	"github.com/ohsu-comp-bio/funnel/config"
-	util "github.com/ohsu-comp-bio/funnel/util/aws"
+	"github.com/calypr/funnel/config"
+	util "github.com/calypr/funnel/util/aws"
 )
 
 const defaultDynamoDBRetryMaxAttempts = 11

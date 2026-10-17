@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ohsu-comp-bio/funnel/events"
-	"github.com/ohsu-comp-bio/funnel/tests"
+	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/tests"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )

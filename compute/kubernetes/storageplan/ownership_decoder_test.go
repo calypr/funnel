@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ohsu-comp-bio/funnel/storage"
+	"github.com/calypr/funnel/storage"
 	corev1 "k8s.io/api/core/v1"
 )
 

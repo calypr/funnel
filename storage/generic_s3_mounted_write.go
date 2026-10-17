@@ -11,7 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/minio/minio-go/v7"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
+	awss3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
 // S3WriteMount records an explicit destination and its publication deadline.
@@ -207,14 +209,18 @@ func (s3 *GenericS3) waitForMountedOutput(ctx context.Context, raw string, expec
 			return nil, fmt.Errorf("waiting for mounted output %s: %w", raw, err)
 		}
 		// Query S3 directly; GenericS3.Stat can read the mount instead.
-		info, err := s3.client.StatObject(ctx, u.bucket, u.path, minio.StatObjectOptions{})
+		info, err := s3.client(ctx, u.bucket).HeadObject(ctx, &awss3.HeadObjectInput{
+			Bucket: aws.String(u.bucket),
+			Key:    aws.String(u.path),
+		})
 		if err != nil {
-			response := minio.ToErrorResponse(err)
-			if response.StatusCode != 404 && response.StatusCode != 429 && response.StatusCode < 500 {
+			var nf *awss3types.NotFound
+			var ns *awss3types.NoSuchBucket
+			if !(errors.As(err, &nf) || errors.As(err, &ns)) {
 				return nil, fmt.Errorf("checking mounted output %s: %w", raw, err)
 			}
-		} else if info.Size == expected {
-			return &Object{URL: raw, Name: u.path, Size: info.Size, ETag: info.ETag, LastModified: info.LastModified}, nil
+		} else if aws.ToInt64(info.ContentLength) == expected {
+			return &Object{URL: raw, Name: u.path, Size: aws.ToInt64(info.ContentLength), ETag: unquoteETag(aws.ToString(info.ETag)), LastModified: aws.ToTime(info.LastModified)}, nil
 		}
 		timer := time.NewTimer(s3.mountedWrite.pollInterval)
 		select {

@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ohsu-comp-bio/funnel/compute/kubernetes/storageplan"
-	"github.com/ohsu-comp-bio/funnel/events"
-	"github.com/ohsu-comp-bio/funnel/logger"
-	"github.com/ohsu-comp-bio/funnel/storage"
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/compute/kubernetes/storageplan"
+	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/storage"
+	"github.com/calypr/funnel/tes"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	batchv1 "k8s.io/api/batch/v1"
@@ -547,3 +547,73 @@ func (*lifecycleSequencedDatabase) ListTasks(context.Context, *tes.ListTasksRequ
 }
 
 func (*lifecycleSequencedDatabase) Close() {}
+
+// recordingEventWriter captures state events so tests can assert on them.
+type recordingEventWriter struct {
+	states []tes.State
+}
+
+func (r *recordingEventWriter) WriteEvent(_ context.Context, ev *events.Event) error {
+	if state := ev.GetState(); state != tes.State_UNKNOWN {
+		r.states = append(r.states, state)
+	}
+	return nil
+}
+
+func (r *recordingEventWriter) Close() {}
+
+// multiStateDatabase lists the same task under every non-terminal state,
+// simulating the task transitioning between two state listings within a
+// single reconcile pass.
+type multiStateDatabase struct {
+	task *tes.Task
+}
+
+func (m *multiStateDatabase) GetTask(_ context.Context, req *tes.GetTaskRequest) (*tes.Task, error) {
+	return m.task, nil
+}
+
+func (m *multiStateDatabase) ListTasks(_ context.Context, req *tes.ListTasksRequest) (*tes.ListTasksResponse, error) {
+	if req.State == tes.State_QUEUED || req.State == tes.State_INITIALIZING || req.State == tes.State_RUNNING {
+		return &tes.ListTasksResponse{Tasks: []*tes.Task{m.task}}, nil
+	}
+	return &tes.ListTasksResponse{}, nil
+}
+
+func (m *multiStateDatabase) Close() {}
+
+// TestReconcileStateTransitionNotSystemError covers the race where a task
+// transitions between two non-terminal states (e.g. INITIALIZING to RUNNING)
+// within a single reconcile pass. The task is listed under both states, and
+// the second sighting must not be treated as a missing Job — that wrote a
+// SYSTEM_ERROR and canceled a healthy running task.
+func TestReconcileStateTransitionNotSystemError(t *testing.T) {
+	ctx := context.Background()
+	taskID := "state-transition-task"
+	conf := bindingConfig(t, nil)
+
+	client := bindingClient()
+	_, err := client.BatchV1().Jobs("tasks").Create(ctx, &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{Name: taskID, Namespace: "tasks", Labels: map[string]string{"app": "funnel-worker"}},
+	}, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	event := &recordingEventWriter{}
+	backend := &Backend{
+		client:   client,
+		conf:     conf,
+		event:    event,
+		log:      logger.NewLogger("lifecycle", logger.DefaultConfig()),
+		database: &multiStateDatabase{task: &tes.Task{Id: taskID, State: tes.State_RUNNING}},
+	}
+
+	backend.reconcileOnce(ctx, false)
+
+	for _, s := range event.states {
+		if s == tes.State_SYSTEM_ERROR {
+			t.Fatalf("healthy running task was written SYSTEM_ERROR after a double state listing: %v", event.states)
+		}
+	}
+}

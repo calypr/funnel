@@ -2,7 +2,7 @@ syntax= "proto3";
 
 package logger;
 
-option go_package = "github.com/ohsu-comp-bio/funnel/logger";
+option go_package = "github.com/calypr/funnel/logger";
 
 message JSONFormatConfig {
   bool DisableTimestamp = 1;

@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"dario.cat/mergo"
-	"github.com/ohsu-comp-bio/funnel/config"
+	"github.com/calypr/funnel/config"
 )
 
 // WithMetadataConfig loads config from a GCE VM environment, in particular

@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/tes"
 )
 
 // Helper for float comparison

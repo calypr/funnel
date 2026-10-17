@@ -2,10 +2,11 @@ package run
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 
-	"github.com/kballard/go-shellquote"
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/util/shellwords"
 	"github.com/spf13/cobra"
 )
 
@@ -22,7 +23,7 @@ var Cmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		err := Run(args)
 		if err != nil {
-			cmd.Usage()
+			_ = cmd.Usage()
 			return err
 		}
 		return err
@@ -34,9 +35,9 @@ func init() {
 	Cmd.SetUsageTemplate(usage)
 }
 
-// ParseString calls shellquote.Split(s) and passes those args to Parse().
+// ParseString calls shellwords.Split(s) and passes those args to Parse().
 func ParseString(s string) ([]*tes.Task, error) {
-	args, err := shellquote.Split(s)
+	args, err := shellwords.Split(s)
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +55,11 @@ func Parse(args []string) ([]*tes.Task, error) {
 
 	// Scatter all vals into tasks
 	tasks := []*tes.Task{}
-	for _, v := range scatter(vals) {
+	scattered, err := scatter(vals)
+	if err != nil {
+		return nil, err
+	}
+	for _, v := range scattered {
 		// Parse inputs, outputs, environ, and tags from flagVals
 		// and update the task.
 		task, err := valsToTask(v)
@@ -86,7 +91,11 @@ func Run(args []string) error {
 	}
 
 	// Scatter all vals into tasks
-	for _, v := range scatter(vals) {
+	scattered, serr := scatter(vals)
+	if serr != nil {
+		return serr
+	}
+	for _, v := range scattered {
 		// Parse inputs, outputs, environ, and tags from flagVals
 		// and update the task.
 		task, err := valsToTask(v)
@@ -102,25 +111,36 @@ func Run(args []string) error {
 
 // scatter reads each line from each scatter file, extending "base" flagVals
 // with per-scatter vals from each line.
-func scatter(base flagVals) []flagVals {
+func scatter(base flagVals) ([]flagVals, error) {
 	if len(base.scatterFiles) == 0 {
-		return []flagVals{base}
+		return []flagVals{base}, nil
 	}
 
 	out := []flagVals{}
 
 	for _, sc := range base.scatterFiles {
 		// Read each line of the scatter file.
-		fh, _ := os.Open(sc)
+		fh, err := os.Open(sc)
+		if err != nil {
+			return nil, fmt.Errorf("opening scatter file %s: %w", sc, err)
+		}
 		scanner := bufio.NewScanner(fh)
 		for scanner.Scan() {
 			// Per-scatter flags
-			sp, _ := shellquote.Split(scanner.Text())
+			sp, err := shellwords.Split(scanner.Text())
+			if err != nil {
+				fh.Close()
+				return nil, fmt.Errorf("parsing scatter file %s: %w", sc, err)
+			}
 			tv := base
-			parseTaskArgs(&tv, sp)
+			if err := parseTaskArgs(&tv, sp); err != nil {
+				fh.Close()
+				return nil, fmt.Errorf("parsing scatter file %s: %w", sc, err)
+			}
 			// Parse scatter file flags into new flagVals
 			out = append(out, tv)
 		}
+		fh.Close()
 	}
-	return out
+	return out, nil
 }

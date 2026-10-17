@@ -7,8 +7,8 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/events"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/events"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ohsu-comp-bio/funnel/config"
+	"github.com/calypr/funnel/config"
 	"github.com/stretchr/testify/mock"
 	"google.golang.org/protobuf/types/known/durationpb"
 )

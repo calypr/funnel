@@ -1,7 +1,7 @@
 package scheduler
 
 import (
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/tes"
 )
 
 // DefaultPredicates is a list of Predicate functions that check

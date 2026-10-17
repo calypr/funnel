@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ohsu-comp-bio/funnel/config"
+	"github.com/calypr/funnel/config"
 )
 
 func publicationS3(t *testing.T, handler http.HandlerFunc) *GenericS3 {

@@ -1,7 +1,7 @@
 package scheduler
 
 import (
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/tes"
 )
 
 // Offer describes a node offered by a scheduler for a task.

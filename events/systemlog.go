@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/ohsu-comp-bio/funnel/util"
+	"github.com/calypr/funnel/util"
 )
 
 // SystemLogGenerator is a type that emulates the logger interface

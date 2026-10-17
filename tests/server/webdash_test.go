@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ohsu-comp-bio/funnel/tests"
+	"github.com/calypr/funnel/tests"
 )
 
 func TestWebdash(t *testing.T) {

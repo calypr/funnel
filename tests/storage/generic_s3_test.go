@@ -6,14 +6,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/credentials"
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/events"
-	"github.com/ohsu-comp-bio/funnel/storage"
-	"github.com/ohsu-comp-bio/funnel/tes"
-	"github.com/ohsu-comp-bio/funnel/tests"
-	"github.com/ohsu-comp-bio/funnel/worker"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awscfg "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/storage"
+	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/tests"
+	"github.com/calypr/funnel/worker"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
@@ -265,28 +267,36 @@ func TestGenericS3Storage(t *testing.T) {
 }
 
 type minioTest struct {
-	client *minio.Client
+	client *s3.Client
 	fcli   *storage.GenericS3
 }
 
 func newMinioTest(conf *config.GenericS3Storage) (*minioTest, error) {
 	endpoint := conf.Endpoint
-	secure := strings.HasPrefix(endpoint, "https")
 	// Remove scheme from endpoint if present
-	if secure {
+	if strings.HasPrefix(endpoint, "https://") {
 		endpoint = strings.TrimPrefix(endpoint, "https://")
 	} else {
 		endpoint = strings.TrimPrefix(endpoint, "http://")
 	}
 
-	client, err := minio.New(endpoint, &minio.Options{
-		Creds:  credentials.NewStaticV4(conf.Key, conf.Secret, ""),
-		Secure: secure,
-		Region: conf.Region,
-	})
+	region := conf.Region
+	if region == "" {
+		region = "us-east-1"
+	}
+
+	awsConfig, err := awscfg.LoadDefaultConfig(context.Background(),
+		awscfg.WithRegion(region),
+		awscfg.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(conf.Key, conf.Secret, "")),
+	)
 	if err != nil {
 		return nil, err
 	}
+
+	client := s3.NewFromConfig(awsConfig, func(o *s3.Options) {
+		o.BaseEndpoint = aws.String("http://" + endpoint)
+		o.UsePathStyle = true
+	})
 
 	fcli, err := storage.NewGenericS3(conf)
 	if err != nil {
@@ -297,20 +307,34 @@ func newMinioTest(conf *config.GenericS3Storage) (*minioTest, error) {
 }
 
 func (b *minioTest) createBucket(bucket string) error {
-	return b.client.MakeBucket(context.Background(), bucket, minio.MakeBucketOptions{})
+	_, err := b.client.CreateBucket(context.Background(), &s3.CreateBucketInput{
+		Bucket: aws.String(bucket),
+	})
+	return err
 }
 
 func (b *minioTest) deleteBucket(bucket string) error {
 	ctx := context.Background()
-	recursive := true
-	for obj := range b.client.ListObjects(ctx, bucket, minio.ListObjectsOptions{Recursive: recursive}) {
-		if obj.Err != nil {
-			return obj.Err
-		}
-		err := b.client.RemoveObject(ctx, bucket, obj.Key, minio.RemoveObjectOptions{})
+	pages := s3.NewListObjectsV2Paginator(b.client, &s3.ListObjectsV2Input{
+		Bucket: aws.String(bucket),
+	})
+	for pages.HasMorePages() {
+		page, err := pages.NextPage(ctx)
 		if err != nil {
 			return err
 		}
+		for _, obj := range page.Contents {
+			_, err := b.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+				Bucket: aws.String(bucket),
+				Key:    obj.Key,
+			})
+			if err != nil {
+				return err
+			}
+		}
 	}
-	return b.client.RemoveBucket(ctx, bucket)
+	_, err := b.client.DeleteBucket(ctx, &s3.DeleteBucketInput{
+		Bucket: aws.String(bucket),
+	})
+	return err
 }

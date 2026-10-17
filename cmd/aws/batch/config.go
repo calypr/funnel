@@ -3,7 +3,7 @@ package batch
 import (
 	"time"
 
-	"github.com/ohsu-comp-bio/funnel/config"
+	"github.com/calypr/funnel/config"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 

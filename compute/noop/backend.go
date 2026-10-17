@@ -4,8 +4,8 @@ package noop
 import (
 	"context"
 
-	"github.com/ohsu-comp-bio/funnel/events"
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/tes"
 )
 
 // NewBackend returns a new noop Backend instance.

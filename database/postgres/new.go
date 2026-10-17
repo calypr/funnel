@@ -1,16 +1,18 @@
 package postgres
 
 import (
+	"errors"
+
 	"context"
 	"fmt"
 	"net/url"
 	"time"
 
+	"github.com/calypr/funnel/compute/scheduler"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/util"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/ohsu-comp-bio/funnel/compute/scheduler"
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/util"
 )
 
 // Postgres provides a PostgreSQL database server backend.
@@ -120,7 +122,9 @@ func createResources(ctx context.Context, conf *config.Postgres) error {
 	// Database
 	createDB := fmt.Sprintf("CREATE DATABASE %s OWNER %s", conf.Database, conf.User)
 	var dbExists int
-	conn.QueryRow(ctx, "SELECT 1 FROM pg_database WHERE datname=$1", conf.Database).Scan(&dbExists)
+	if err := conn.QueryRow(ctx, "SELECT 1 FROM pg_database WHERE datname=$1", conf.Database).Scan(&dbExists); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("checking for existing app database: %w", err)
+	}
 	if dbExists != 1 {
 		if _, err := conn.Exec(ctx, createDB); err != nil {
 			return fmt.Errorf("failed to create app database: %w", err)

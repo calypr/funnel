@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/ohsu-comp-bio/funnel/logger"
+	"github.com/calypr/funnel/logger"
 )
 
 // Logger writes events to a funnel logger.

@@ -14,11 +14,11 @@ import (
 	"cloud.google.com/go/batch/apiv1/batchpb"
 	"cloud.google.com/go/logging"
 	logadmin "cloud.google.com/go/logging/apiv2"
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/events"
-	"github.com/ohsu-comp-bio/funnel/logger"
-	"github.com/ohsu-comp-bio/funnel/storage"
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/storage"
+	"github.com/calypr/funnel/tes"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
@@ -337,15 +337,19 @@ func (b *Backend) Submit(task *tes.Task) error {
 	resp, err := b.client.CreateJob(context.Background(), req)
 
 	if err != nil {
-		b.event.WriteEvent(ctx, events.NewState(task.Id, tes.SystemError))
-		b.event.WriteEvent(
+		if werr := b.event.WriteEvent(ctx, events.NewState(task.Id, tes.SystemError)); werr != nil {
+			b.log.Error("writing SystemError event", "taskID", task.Id, "error", werr)
+		}
+		if werr := b.event.WriteEvent(
 			ctx,
 			events.NewSystemLog(
 				task.Id, 0, 0, "error",
 				"error submitting task to GCP Batch",
 				map[string]string{"error": err.Error()},
 			),
-		)
+		); werr != nil {
+			b.log.Error("writing submit-failure log event", "taskID", task.Id, "error", werr)
+		}
 		return err
 	}
 
@@ -457,9 +461,11 @@ ReconcileLoop:
 							if b.loggingAdminClient != nil {
 								if logs, err := b.fetchLogs(ctx, task.Id, j.Uid); err == nil {
 									for _, log := range logs {
-										b.event.WriteEvent(ctx, events.NewSystemLog(
+										if werr := b.event.WriteEvent(ctx, events.NewSystemLog(
 											task.Id, 0, 0, log.Level, log.Msg, log.Fields,
-										))
+										)); werr != nil {
+											b.log.Error("writing cloud log event", "taskID", task.Id, "error", werr)
+										}
 									}
 								} else {
 									b.log.Debug("Could not fetch logs for failed job",
@@ -470,7 +476,9 @@ ReconcileLoop:
 							}
 
 							if task.State != tes.ExecutorError {
-								b.event.WriteEvent(ctx, events.NewState(task.Id, tes.ExecutorError))
+								if werr := b.event.WriteEvent(ctx, events.NewState(task.Id, tes.ExecutorError)); werr != nil {
+									b.log.Error("writing ExecutorError event", "taskID", task.Id, "error", werr)
+								}
 
 								// Get failure reason from status events if available
 								var failureReason string
@@ -486,7 +494,7 @@ ReconcileLoop:
 									failureReason = "GCP Batch job in FAILED state"
 								}
 
-								b.event.WriteEvent(
+								if werr := b.event.WriteEvent(
 									ctx,
 									events.NewSystemLog(
 										task.Id, 0, 0, "error",
@@ -497,7 +505,9 @@ ReconcileLoop:
 											"gcpbatch_state": j.Status.State.String(),
 										},
 									),
-								)
+								); werr != nil {
+									b.log.Error("writing failure-reason log event", "taskID", task.Id, "error", werr)
+								}
 							}
 						}
 
@@ -508,9 +518,11 @@ ReconcileLoop:
 							if b.loggingAdminClient != nil {
 								if logs, err := b.fetchLogs(ctx, task.Id, j.Uid); err == nil {
 									for _, log := range logs {
-										b.event.WriteEvent(ctx, events.NewSystemLog(
+										if werr := b.event.WriteEvent(ctx, events.NewSystemLog(
 											task.Id, 0, 0, log.Level, log.Msg, log.Fields,
-										))
+										)); werr != nil {
+											b.log.Error("writing cloud log event", "taskID", task.Id, "error", werr)
+										}
 									}
 								} else {
 									b.log.Debug("Could not fetch logs for completed job",
@@ -521,7 +533,9 @@ ReconcileLoop:
 							}
 
 							if task.State != tes.Complete {
-								b.event.WriteEvent(ctx, events.NewState(task.Id, tes.Complete))
+								if werr := b.event.WriteEvent(ctx, events.NewState(task.Id, tes.Complete)); werr != nil {
+									b.log.Error("writing Complete state event", "taskID", task.Id, "error", werr)
+								}
 							}
 						}
 
@@ -532,9 +546,11 @@ ReconcileLoop:
 							if b.loggingAdminClient != nil {
 								if logs, err := b.fetchLogs(ctx, task.Id, j.Uid); err == nil {
 									for _, log := range logs {
-										b.event.WriteEvent(ctx, events.NewSystemLog(
+										if werr := b.event.WriteEvent(ctx, events.NewSystemLog(
 											task.Id, 0, 0, log.Level, log.Msg, log.Fields,
-										))
+										)); werr != nil {
+											b.log.Error("writing cloud log event", "taskID", task.Id, "error", werr)
+										}
 									}
 								} else {
 									b.log.Debug("Could not fetch logs for running job",
@@ -545,7 +561,9 @@ ReconcileLoop:
 							}
 
 							if task.State != tes.Running {
-								b.event.WriteEvent(ctx, events.NewState(task.Id, tes.Running))
+								if werr := b.event.WriteEvent(ctx, events.NewState(task.Id, tes.Running)); werr != nil {
+									b.log.Error("writing Running state event", "taskID", task.Id, "error", werr)
+								}
 							}
 						}
 					}

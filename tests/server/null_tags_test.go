@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ohsu-comp-bio/funnel/tests"
+	"github.com/calypr/funnel/tests"
 )
 
 func TestCreateTaskWithNullTagValue(t *testing.T) {

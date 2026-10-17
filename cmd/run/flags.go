@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ohsu-comp-bio/funnel/cmd/util"
+	"github.com/calypr/funnel/cmd/util"
 	"github.com/spf13/pflag"
 )
 
@@ -158,7 +158,9 @@ func parseTopLevelArgs(vals *flagVals, args []string) error {
 		shCmd := flags.Args()[0]
 		args = append([]string{"--sh", shCmd}, args...)
 	}
-	parseTaskArgs(vals, args)
+	if err := parseTaskArgs(vals, args); err != nil {
+		return err
+	}
 
 	if len(vals.execs) == 0 {
 		return fmt.Errorf("you must specify a command to run")
@@ -170,10 +172,12 @@ func parseTopLevelArgs(vals *flagVals, args []string) error {
 	return nil
 }
 
-func parseTaskArgs(vals *flagVals, args []string) {
+func parseTaskArgs(vals *flagVals, args []string) error {
 	fl := newFlags(vals)
-	fl.Parse(args)
-	buildExecs(fl, vals, args)
+	if err := fl.Parse(args); err != nil {
+		return err
+	}
+	return buildExecs(fl, vals, args)
 }
 
 // Visit flags to determine commands + stdin/out/err
@@ -181,11 +185,10 @@ func parseTaskArgs(vals *flagVals, args []string) {
 //
 // This is done so that multiple TES.Executors can be described by one
 // "funnel run" command line.
-// TODO possibly just remove this.
-func buildExecs(flags *pflag.FlagSet, vals *flagVals, args []string) {
+func buildExecs(flags *pflag.FlagSet, vals *flagVals, args []string) error {
 	vals.execs = nil
 	var exec *executor
-	flags.ParseAll(args, func(f *pflag.Flag, value string) error {
+	if err := flags.ParseAll(args, func(f *pflag.Flag, value string) error {
 		switch f.Name {
 		case "sh", "exec":
 			if exec != nil {
@@ -206,8 +209,11 @@ func buildExecs(flags *pflag.FlagSet, vals *flagVals, args []string) {
 			exec.stdin = value
 		}
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
 	if exec != nil {
 		vals.execs = append(vals.execs, *exec)
 	}
+	return nil
 }

@@ -2,11 +2,12 @@ package run
 
 import (
 	"fmt"
+	"os"
 	"sync"
 
 	"context"
 
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/tes"
 )
 
 type taskGroup struct {
@@ -57,7 +58,9 @@ func (tg *taskGroup) _run(task *tes.Task, wait bool, waitFor []string) error {
 
 	if len(waitFor) > 0 {
 		for _, tid := range waitFor {
-			tg.client.WaitForTask(context.Background(), tid)
+			if err := tg.client.WaitForTask(context.Background(), tid); err != nil {
+				fmt.Fprintf(os.Stderr, "[WARN] waiting for task %s: %v\n", tid, err)
+			}
 		}
 	}
 
