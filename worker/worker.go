@@ -388,8 +388,6 @@ func (r *DefaultWorker) runExecutors(ctx context.Context, event *events.TaskWrit
 			err := s.Run(ctx)
 
 			if err != nil {
-				// Check if it's a Kubernetes system error
-				// TODO: Change this to check the exit code
 				var k8sSystemErr *K8sSystemErr
 				var execErr *K8sExecutorErr
 
@@ -400,9 +398,18 @@ func (r *DefaultWorker) runExecutors(ctx context.Context, event *events.TaskWrit
 				// K8s Executor error
 				case errors.As(err, &execErr):
 					run.execerr = err
-				// Local (Docker) Executor error
 				default:
-					run.execerr = err
+					// Local (Docker) executor: classify by exit code. If the
+					// container ran and exited (an exec.ExitError we can
+					// extract a code from), the failure belongs to the task's
+					// executor. Errors with no exit code at all — the docker
+					// binary missing, a failure to start the driver — are the
+					// worker's environment failing, i.e. a system error.
+					if _, codeErr := getExitCode(err); codeErr == nil {
+						run.execerr = err
+					} else {
+						run.syserr = err
+					}
 				}
 
 				// If this executor declared that its errors should be ignored,

@@ -112,9 +112,9 @@ func (s *Scheduler) Schedule(ctx context.Context) error {
 				s.Log.Error("writing assignment event", "taskID", task.Id, "error", err)
 			}
 
-			// TODO this is important! write a test for this line.
-			//      when a task is assigned, its state is immediately Initializing
-			//      even before the node has received it.
+			// The task's state is written INITIALIZING below, immediately upon
+			// assignment — before the node has received it. Covered by
+			// TestScheduleAssignsTaskAndMarksInitializing.
 			offer.Node.TaskIds = append(offer.Node.TaskIds, task.Id)
 			_, err = s.Nodes.PutNode(ctx, offer.Node)
 			if err != nil {

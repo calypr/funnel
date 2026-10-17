@@ -23,9 +23,10 @@ func (s *stepWorker) Run(ctx context.Context) error {
 	defer wg.Wait()
 	_ = s.Event.StartTime(time.Now())
 
-	// subctx helps ensure that these goroutines are cleaned up,
-	// even when the task is canceled.
-	subctx, cleanup := context.WithCancel(context.Background())
+	// subctx is rooted at the caller's context so the command goroutine is
+	// cleaned up both when the task is canceled and if this Run exits while
+	// the command is still running. cleanup() covers the normal-return path.
+	subctx, cleanup := context.WithCancel(ctx)
 	defer cleanup()
 
 	done := make(chan error, 1)
