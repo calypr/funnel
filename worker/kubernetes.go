@@ -391,7 +391,9 @@ func (kcmd KubernetesCommand) Stop() error {
 	jobName := fmt.Sprintf("%s-%d", kcmd.TaskId, kcmd.JobId)
 
 	backgroundDeletion := metav1.DeletePropagationBackground
-	err = clientset.BatchV1().Jobs(kcmd.JobsNamespace).Delete(context.TODO(), jobName, metav1.DeleteOptions{
+	// Stop runs during worker cancellation, so the delete must not derive from
+	// an already-canceled context.
+	err = clientset.BatchV1().Jobs(kcmd.JobsNamespace).Delete(context.Background(), jobName, metav1.DeleteOptions{
 		PropagationPolicy: &backgroundDeletion,
 	})
 

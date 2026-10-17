@@ -304,7 +304,9 @@ func (s *Server) Serve(pctx context.Context) error {
 
 	<-ctx.Done()
 	grpcServer.GracefulStop()
-	_ = httpServer.Shutdown(context.TODO())
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	_ = httpServer.Shutdown(shutdownCtx)
+	shutdownCancel()
 	// Wait for CreateTask's in-flight compute backend submissions.
 	s.Tasks.(*TaskService).Close()
 

@@ -1,6 +1,8 @@
 package events
 
 import (
+	"log"
+
 	"context"
 
 	"github.com/IBM/sarama"
@@ -68,7 +70,8 @@ func NewKafkaReader(ctx context.Context, conf *config.Kafka, w Writer) (*KafkaRe
 		return nil, err
 	}
 
-	// TODO better handling of partition and offset.
+	// This reader consumes only partition 0 from the newest offset; multi-partition
+	// topics need consumer-group rebalancing before they can be used here.
 	p, err := con.ConsumePartition(conf.Topic, 0, sarama.OffsetNewest)
 	if err != nil {
 		return nil, err
@@ -79,7 +82,7 @@ func NewKafkaReader(ctx context.Context, conf *config.Kafka, w Writer) (*KafkaRe
 			ev := &Event{}
 			err := Unmarshal(msg.Value, ev)
 			if err != nil {
-				// TODO
+				log.Printf("kafka: dropping malformed event message at offset %d: %v", msg.Offset, err)
 				continue
 			}
 			_ = w.WriteEvent(context.Background(), ev)

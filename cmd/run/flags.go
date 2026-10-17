@@ -185,7 +185,6 @@ func parseTaskArgs(vals *flagVals, args []string) error {
 //
 // This is done so that multiple TES.Executors can be described by one
 // "funnel run" command line.
-// TODO possibly just remove this.
 func buildExecs(flags *pflag.FlagSet, vals *flagVals, args []string) error {
 	vals.execs = nil
 	var exec *executor
