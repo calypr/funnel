@@ -3,10 +3,10 @@ package elastic
 import (
 	"context"
 
-	"github.com/elastic/go-elasticsearch/v8"
-	"github.com/elastic/go-elasticsearch/v8/typedapi/types"
 	"github.com/calypr/funnel/compute/scheduler"
 	"github.com/calypr/funnel/config"
+	"github.com/elastic/go-elasticsearch/v8"
+	"github.com/elastic/go-elasticsearch/v8/typedapi/types"
 )
 
 var (

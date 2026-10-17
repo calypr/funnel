@@ -1,6 +1,8 @@
 package postgres
 
 import (
+	"errors"
+
 	"context"
 	"fmt"
 	"net/url"
@@ -120,7 +122,9 @@ func createResources(ctx context.Context, conf *config.Postgres) error {
 	// Database
 	createDB := fmt.Sprintf("CREATE DATABASE %s OWNER %s", conf.Database, conf.User)
 	var dbExists int
-	conn.QueryRow(ctx, "SELECT 1 FROM pg_database WHERE datname=$1", conf.Database).Scan(&dbExists)
+	if err := conn.QueryRow(ctx, "SELECT 1 FROM pg_database WHERE datname=$1", conf.Database).Scan(&dbExists); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("checking for existing app database: %w", err)
+	}
 	if dbExists != 1 {
 		if _, err := conn.Exec(ctx, createDB); err != nil {
 			return fmt.Errorf("failed to create app database: %w", err)

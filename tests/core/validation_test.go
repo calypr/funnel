@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/calypr/funnel/tes"
-	"github.com/stretchr/testify/assert"
 	"github.com/calypr/funnel/tests"
+	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/status"
 )
 

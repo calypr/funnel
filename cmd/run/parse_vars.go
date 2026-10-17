@@ -8,8 +8,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/calypr/funnel/util/shellwords"
 	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/util/shellwords"
 )
 
 // ErrKeyFmt describes an error in input/output/env/tag flag formatting

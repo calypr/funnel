@@ -82,7 +82,7 @@ func NewKafkaReader(ctx context.Context, conf *config.Kafka, w Writer) (*KafkaRe
 				// TODO
 				continue
 			}
-			w.WriteEvent(context.Background(), ev)
+			_ = w.WriteEvent(context.Background(), ev)
 		}
 	}()
 

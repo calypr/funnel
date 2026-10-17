@@ -140,7 +140,7 @@ func (db *MongoDB) Close() {
 	if db.active {
 		ctx, cancel := db.context()
 		defer cancel()
-		db.client.Disconnect(ctx)
+		_ = db.client.Disconnect(ctx)
 	}
 	db.active = false
 }

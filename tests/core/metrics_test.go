@@ -73,5 +73,5 @@ func TestMetrics(t *testing.T) {
 			}
 		}
 	}
-		pp.Println(met["funnel_tasks_state_count"].Metric)
+	pp.Println(met["funnel_tasks_state_count"].Metric)
 }

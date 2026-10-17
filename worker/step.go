@@ -21,7 +21,7 @@ type stepWorker struct {
 func (s *stepWorker) Run(ctx context.Context) error {
 	var wg sync.WaitGroup
 	defer wg.Wait()
-	s.Event.StartTime(time.Now())
+	_ = s.Event.StartTime(time.Now())
 
 	// subctx helps ensure that these goroutines are cleaned up,
 	// even when the task is canceled.
@@ -64,18 +64,18 @@ func (s *stepWorker) Run(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			// Likely the task was canceled.
-			s.Command.Stop()
+			_ = s.Command.Stop()
 			<-done
-			s.Event.EndTime(time.Now())
+			_ = s.Event.EndTime(time.Now())
 			return ctx.Err()
 
 		case result := <-done:
-			s.Event.EndTime(time.Now())
+			_ = s.Event.EndTime(time.Now())
 			exitcode, err := getExitCode(result)
 			if err != nil {
-				s.Event.Error(err.Error())
+				_ = s.Event.Error(err.Error())
 			} else {
-				s.Event.ExitCode(exitcode)
+				_ = s.Event.ExitCode(exitcode)
 			}
 			return result
 		}

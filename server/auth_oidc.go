@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v4/jwt"
 	"github.com/calypr/funnel/config"
+	"github.com/lestrrat-go/jwx/v4/jwt"
 	"golang.org/x/oauth2"
 )
 
@@ -112,7 +112,7 @@ func (c *OidcConfig) initJwks() {
 	_, err = cache.Refresh(ctx2)
 
 	if err != nil {
-		cache.Shutdown(ctx)
+		_ = cache.Shutdown(ctx)
 		fmt.Printf("[ERROR] Failed to fetch JWKS (%s) of the OIDC service "+
 			"(%s): %s\n", jwksUrl, c.local.ServiceConfigURL, err)
 		os.Exit(1)

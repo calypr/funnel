@@ -106,7 +106,8 @@ func (b *Backend) Submit(task *tes.Task) error {
 	}
 
 	go func() {
-		w.Run(ctx)
+		// The worker reports its own errors via the event stream.
+		_ = w.Run(ctx)
 		w.Close()
 	}()
 

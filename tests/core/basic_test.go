@@ -7,13 +7,14 @@ import (
 	"testing"
 	"time"
 
+	"sync"
+
 	workerCmd "github.com/calypr/funnel/cmd/worker"
 	"github.com/calypr/funnel/events"
 	"github.com/calypr/funnel/tes"
 	"github.com/calypr/funnel/tests"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"sync"
 )
 
 func TestHelloWorld(t *testing.T) {

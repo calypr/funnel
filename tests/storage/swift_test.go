@@ -6,12 +6,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ncw/swift/v2"
 	"github.com/calypr/funnel/events"
 	"github.com/calypr/funnel/storage"
 	"github.com/calypr/funnel/tes"
 	"github.com/calypr/funnel/tests"
 	"github.com/calypr/funnel/worker"
+	"github.com/ncw/swift/v2"
 )
 
 func TestSwiftStorage(t *testing.T) {

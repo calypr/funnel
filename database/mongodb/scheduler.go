@@ -64,7 +64,8 @@ func (db *MongoDB) PutNode(ctx context.Context, node *scheduler.Node) (*schedule
 	mctx, cancel = db.wrap(ctx)
 	defer cancel()
 
-	db.GetTask(ctx, &tes.GetTaskRequest{Id: "foo"})
+	// Warm the connection pool; the result is intentionally unused.
+	_, _ = db.GetTask(ctx, &tes.GetTaskRequest{Id: "foo"})
 	err = scheduler.UpdateNode(mctx, db, node, &existing)
 	if err != nil {
 		return nil, err

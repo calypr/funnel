@@ -1,6 +1,8 @@
 package node
 
 import (
+	"fmt"
+
 	"context"
 	"os"
 	"os/signal"
@@ -25,7 +27,9 @@ func Run(ctx context.Context, conf *config.Config, log *logger.Logger) error {
 		if err != nil {
 			return err
 		}
-		w.Run(ctx)
+		if err := w.Run(ctx); err != nil {
+			return fmt.Errorf("worker run failed: %w", err)
+		}
 		return nil
 	}
 
@@ -51,7 +55,9 @@ func Run(ctx context.Context, conf *config.Config, log *logger.Logger) error {
 	}()
 	signal.Notify(hupsig, syscall.SIGHUP)
 
-	n.Run(runctx)
+	if err := n.Run(runctx); err != nil {
+		return fmt.Errorf("node run failed: %w", err)
+	}
 
 	return nil
 }

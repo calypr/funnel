@@ -98,7 +98,9 @@ func (n *NodeProcess) Run(ctx context.Context) error {
 			n.client.Close()
 
 			// The workers get 10 seconds to finish up.
-			n.workers.Wait(time.Second * 10)
+			if werr := n.workers.Wait(time.Second * 10); werr != nil {
+				n.log.Error("workers did not finish before shutdown deadline", "error", werr)
+			}
 			return nil
 
 		case <-ticker.C:

@@ -54,13 +54,13 @@ func newJWKSCacheWithInterval(ctx context.Context, jwksURL string, minInterval t
 		httprc.WithMinInterval(minInterval),
 	)
 	if err != nil {
-		ctrl.Shutdown(time.Second)
+		_ = ctrl.Shutdown(time.Second)
 		return nil, fmt.Errorf("failed to create JWKS resource: %w", err)
 	}
 	if err := ctrl.Add(ctx, r,
 		httprc.WithWaitReady(false),
 	); err != nil {
-		ctrl.Shutdown(time.Second)
+		_ = ctrl.Shutdown(time.Second)
 		return nil, fmt.Errorf("failed to register JWKS %q: %w", jwksURL, err)
 	}
 	return &jwksCache{url: jwksURL, ctrl: ctrl, r: r}, nil

@@ -15,7 +15,6 @@ import (
 	"text/template"
 	"time"
 
-	docker "github.com/moby/moby/client"
 	runlib "github.com/calypr/funnel/cmd/run"
 	servercmd "github.com/calypr/funnel/cmd/server"
 	"github.com/calypr/funnel/compute/scheduler"
@@ -26,6 +25,7 @@ import (
 	"github.com/calypr/funnel/util/dockerutil"
 	"github.com/calypr/funnel/util/k8sutil"
 	"github.com/calypr/funnel/util/rpc"
+	docker "github.com/moby/moby/client"
 	"google.golang.org/grpc"
 	"k8s.io/client-go/kubernetes"
 )
@@ -120,7 +120,7 @@ func (f *Funnel) Cleanup() {
 // StartServer starts the server
 func (f *Funnel) StartServer() {
 	go func() {
-		f.Srv.Run(context.Background())
+		_ = f.Srv.Run(context.Background())
 	}()
 
 	err := f.PollForServerStart()
@@ -375,8 +375,8 @@ func (f *Funnel) StartServerInDocker(containerName, imageName string, extraArgs 
 
 	// write config file
 	configPath, _ := filepath.Abs(filepath.Join(f.Conf.Worker.WorkDir, "config.yml"))
-	config.ToYamlFile(f.Conf, configPath)
-	os.Chmod(configPath, 0644)
+	_ = config.ToYamlFile(f.Conf, configPath)
+	_ = os.Chmod(configPath, 0644)
 
 	httpPort, _ := strconv.ParseInt(f.Conf.Server.HTTPPort, 0, 32)
 	rpcPort, _ := strconv.ParseInt(f.Conf.Server.RPCPort, 0, 32)

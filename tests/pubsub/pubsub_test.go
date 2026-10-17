@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"errors"
+
 	workerCmd "github.com/calypr/funnel/cmd/worker"
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/events"

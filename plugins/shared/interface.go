@@ -4,11 +4,11 @@ import (
 	"context"
 	"net/rpc"
 
-	"github.com/hashicorp/go-hclog"
-	"github.com/hashicorp/go-plugin"
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/plugins/proto"
 	"github.com/calypr/funnel/tes"
+	"github.com/hashicorp/go-hclog"
+	"github.com/hashicorp/go-plugin"
 	"google.golang.org/grpc"
 )
 

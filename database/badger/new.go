@@ -3,9 +3,9 @@ package badger
 import (
 	"fmt"
 
-	badger "github.com/dgraph-io/badger/v4"
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/util/fsutil"
+	badger "github.com/dgraph-io/badger/v4"
 )
 
 // Badger provides a task database based on the Badger embedded database.

@@ -185,7 +185,7 @@ func DefaultConfig() *Config {
 		},
 		Swift: &SwiftStorage{
 			MaxRetries:     20,
-			ChunkSizeBytes: int64(500 * 1000*1000),
+			ChunkSizeBytes: int64(500 * 1000 * 1000),
 		},
 		HTCondor:   &HPCBackend{},
 		Slurm:      &HPCBackend{},

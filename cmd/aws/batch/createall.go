@@ -44,7 +44,9 @@ var createCmd = &cobra.Command{
 
 		if funnelConfigFile != "" {
 			funnelConf := config.EmptyConfig()
-			config.ParseFile(funnelConfigFile, funnelConf)
+			if err := config.ParseFile(funnelConfigFile, funnelConf); err != nil {
+				return fmt.Errorf("parsing funnel config %s: %w", funnelConfigFile, err)
+			}
 			conf.Funnel = funnelConf
 		}
 

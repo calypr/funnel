@@ -40,4 +40,3 @@ func EnsurePath(p string) error {
 	dir := path.Dir(p)
 	return EnsureDir(dir)
 }
-

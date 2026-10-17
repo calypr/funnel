@@ -7,11 +7,11 @@ import (
 
 	batch "cloud.google.com/go/batch/apiv1"
 	"cloud.google.com/go/batch/apiv1/batchpb"
-	"github.com/googleapis/gax-go/v2"
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/events"
 	"github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/tes"
+	"github.com/googleapis/gax-go/v2"
 )
 
 // Test helper function: extractGCSPath

@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/elastic/go-elasticsearch/v8/typedapi/types"
-	"github.com/elastic/go-elasticsearch/v8/typedapi/types/enums/result"
-	"github.com/elastic/go-elasticsearch/v8/typedapi/types/enums/scriptlanguage"
 	"github.com/calypr/funnel/events"
 	"github.com/calypr/funnel/server"
 	"github.com/calypr/funnel/tes"
 	"github.com/calypr/funnel/util"
+	"github.com/elastic/go-elasticsearch/v8/typedapi/types"
+	"github.com/elastic/go-elasticsearch/v8/typedapi/types/enums/result"
+	"github.com/elastic/go-elasticsearch/v8/typedapi/types/enums/scriptlanguage"
 )
 
 var updateTaskLogs = `

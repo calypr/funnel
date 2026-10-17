@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"io"
 
-	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/calypr/funnel/tes"
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 

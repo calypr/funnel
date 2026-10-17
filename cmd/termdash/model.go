@@ -4,8 +4,8 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/calypr/funnel/tes"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 const refreshInterval = time.Second
