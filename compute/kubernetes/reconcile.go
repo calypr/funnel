@@ -220,7 +220,14 @@ func (b *Backend) reconcileOnce(ctx context.Context, disableCleanup bool) {
 
 	// Page through all non-terminal Funnel tasks and reconcile against K8s Jobs.
 	// Matched jobs are removed from k8sJobs so any remainder can be identified as orphaned.
+	//
+	// A task can be listed under two states in one pass: it may transition
+	// (e.g. INITIALIZING to RUNNING) between the two ListTasks calls. The
+	// matched set dedupes those sightings so the second listing cannot be
+	// mistaken for a job that vanished — a false "job not found" here cancels
+	// a healthy running task.
 	nonTerminalStates := []tes.State{tes.State_QUEUED, tes.State_INITIALIZING, tes.State_RUNNING}
+	matched := make(map[string]bool)
 	for _, state := range nonTerminalStates {
 		pageToken := ""
 		for {
@@ -234,9 +241,12 @@ func (b *Backend) reconcileOnce(ctx context.Context, disableCleanup bool) {
 				break
 			}
 			for _, task := range lresp.Tasks {
-				fmt.Println("DEBUG: Reconciling task", task.Id, "with state", task.State)
+				if matched[task.Id] {
+					continue
+				}
 				j, exists := k8sJobs[task.Id]
 				delete(k8sJobs, task.Id) // matched — remove so it isn't treated as orphaned
+				matched[task.Id] = true
 				if exists {
 					b.reconcileJob(ctx, j, disableCleanup)
 				} else {
