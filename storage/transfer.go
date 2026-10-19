@@ -15,7 +15,7 @@ type Transfer interface {
 	URL() string
 	Path() string
 	Started()
-	Finished(obj *Object)
+	Finished(obj []*Object)
 	Failed(err error)
 }
 
@@ -37,7 +37,7 @@ func Download(ctx context.Context, store Storage, transfers []Transfer, parallel
 			if err != nil {
 				x.Failed(err)
 			} else {
-				x.Finished(obj)
+				x.Finished([]*Object{obj})
 			}
 		})
 	}
@@ -54,11 +54,11 @@ func Upload(ctx context.Context, store Storage, transfers []Transfer, parallelLi
 		x := x
 		wp.Submit(func() {
 			x.Started()
-			obj, err := store.Put(ctx, x.URL(), x.Path())
+			objs, err := store.Put(ctx, x.URL(), x.Path())
 			if err != nil {
 				x.Failed(err)
 			} else {
-				x.Finished(obj)
+				x.Finished(objs)
 			}
 		})
 	}

@@ -54,7 +54,7 @@ func TestAmazonS3Storage(t *testing.T) {
 	inFileURL := protocol + testBucket + "/" + fPath
 	_, err = worker.UploadOutputs(ctx, []*tes.Output{
 		{Url: inFileURL, Path: fPath},
-	}, store, ev, parallelXfer)
+	}, store, ev, parallelXfer, "")
 	if err != nil {
 		t.Fatal("error uploading test file:", err)
 	}
@@ -64,7 +64,7 @@ func TestAmazonS3Storage(t *testing.T) {
 	inDirURL := protocol + testBucket + "/" + dPath
 	_, err = worker.UploadOutputs(ctx, []*tes.Output{
 		{Url: inDirURL, Path: dPath, Type: tes.Directory},
-	}, store, ev, parallelXfer)
+	}, store, ev, parallelXfer, "")
 	if err != nil {
 		t.Fatal("error uploading test directory:", err)
 	}

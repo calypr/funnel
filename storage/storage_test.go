@@ -89,7 +89,7 @@ func TestUrlParsing(t *testing.T) {
 		t.Error("Error creating generic S3 backend:", err)
 	}
 
-	url, err := b.parse("s3://s3.amazonaws.com/1000genomes/README.analysis_history")
+	url, err := b.Parse("s3://s3.amazonaws.com/1000genomes/README.analysis_history")
 	if err != nil {
 		t.Error("unexpected error", err)
 	}
@@ -104,7 +104,7 @@ func TestUrlParsing(t *testing.T) {
 		t.Error("wrong key")
 	}
 
-	url, err = b.parse("s3://1000genomes/README.analysis_history")
+	url, err = b.Parse("s3://1000genomes/README.analysis_history")
 	if err != nil {
 		t.Error("unexpected error", err)
 	}
@@ -119,12 +119,12 @@ func TestUrlParsing(t *testing.T) {
 		t.Error("wrong key")
 	}
 
-	url, err = b.parse("gs://1000genomes/README.analysis_history")
+	url, err = b.Parse("gs://1000genomes/README.analysis_history")
 	if _, ok := err.(*ErrUnsupportedProtocol); !ok {
 		t.Error("expected ErrUnsupportedProtocol")
 	}
 
-	url, err = b.parse("s3://")
+	url, err = b.Parse("s3://")
 	if _, ok := err.(*ErrInvalidURL); !ok {
 		t.Error("expected ErrInvalidURL")
 	}

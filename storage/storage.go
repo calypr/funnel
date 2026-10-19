@@ -22,7 +22,7 @@ type Storage interface {
 
 	// Put a single object to storage URL, from a local file path.
 	// Returns the Object that was created in storage.
-	Put(ctx context.Context, url, path string) (*Object, error)
+	Put(ctx context.Context, url, path string) ([]*Object, error)
 
 	// Join a directory URL with a subpath.
 	Join(url, path string) (string, error)
@@ -83,4 +83,8 @@ func AllUnsupported(err error) UnsupportedOperations {
 
 type urlparts struct {
 	bucket, path string
+}
+
+func (u urlparts) GetBucket() string {
+	return u.bucket
 }

@@ -60,7 +60,6 @@ type Backend struct {
 }
 
 // WriteEvent writes an event to the compute backend.
-// Currently, only TASK_CREATED is handled, which calls Submit.
 func (b *Backend) WriteEvent(ctx context.Context, ev *events.Event) error {
 	switch ev.Type {
 	case events.Type_TASK_CREATED:

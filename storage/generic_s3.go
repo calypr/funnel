@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	neturl "net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,9 +22,10 @@ import (
 
 // GenericS3 provides access to an S3 object store.
 type GenericS3 struct {
-	client   *minio.Client
-	endpoint string
-	kmskeyId string
+	client        *minio.Client
+	endpoint      string
+	kmskeyId      string
+	MountedBucket string
 }
 
 // NewGenericS3 creates a new GenericS3 instance, given an endpoint URL
@@ -35,7 +37,6 @@ func NewGenericS3(conf *config.GenericS3Storage) (*GenericS3, error) {
 		endpoint = s3util.ParseEndpoint(conf.Endpoint)
 	}
 
-	logger := logger.NewLogger("GenericS3", logger.DefaultConfig())
 	logger.Debug("generics3: connecting to endpoint", "endpoint", endpoint)
 
 	client, err := minio.New(
@@ -50,11 +51,32 @@ func NewGenericS3(conf *config.GenericS3Storage) (*GenericS3, error) {
 		return nil, fmt.Errorf("error creating generic s3 backend: %v", err)
 	}
 
-	return &GenericS3{client, endpoint + "/", conf.KmsKeyID}, nil
+	return &GenericS3{client, endpoint + "/", conf.KmsKeyID, conf.Bucket}, nil
+}
+
+// `The MountedBucket` logic assumes that there is a mounted volume (S3 mountpoint or
+// S3Files), which should be the case when Funnel is deployed through Kubernetes and the
+// task has inputs/outputs. If this assumption causes issues, we can add a config flag to
+// enable/disable this logic.
+// Note: this is currently only implemented for GenericS3, not for AmazonS3.
+func (s3 *GenericS3) IsThisBucketMounted(bucketName string) bool {
+	return bucketName == s3.MountedBucket
+}
+
+func (s3 *GenericS3) GetLocalMountedPath(url string) string {
+	return "/opt/funnel/funnel-work-dir/" + strings.TrimPrefix(url, "s3://"+s3.MountedBucket+"/")
 }
 
 // Returns true if a remote S3 object is a directory, false otherwise
-func isDir(ctx context.Context, minioClient *minio.Client, bucketName, objectName string) (bool, error) {
+func (s3 *GenericS3) isDir(ctx context.Context, minioClient *minio.Client, url string, bucketName string, objectName string) (bool, error) {
+	if s3.IsThisBucketMounted(bucketName) { // skip call to S3 if bucket is mounted
+		fileInfo, err := os.Stat(s3.GetLocalMountedPath(url))
+		if err != nil {
+			return false, err
+		}
+		return fileInfo.IsDir(), nil
+	}
+
 	// Check if the objectName ends with '/' - often used to represent 'folders'
 	if strings.HasSuffix(objectName, "/") {
 		return true, nil
@@ -80,10 +102,19 @@ func isDir(ctx context.Context, minioClient *minio.Client, bucketName, objectNam
 
 // Stat returns information about the object at the given storage URL.
 func (s3 *GenericS3) Stat(ctx context.Context, url string) (*Object, error) {
-	logger := logger.NewLogger("GenericS3", logger.DefaultConfig())
-	u, err := s3.parse(url)
+	u, err := s3.Parse(url)
 	if err != nil {
 		return nil, err
+	}
+
+	if s3.IsThisBucketMounted(u.bucket) { // skip call to S3 if bucket is mounted
+		local := &Local{}
+		obj, err := local.Stat(ctx, s3.GetLocalMountedPath(url))
+		if err != nil {
+			return nil, err
+		}
+		obj.URL = url // overwrite the local path returned by `Stat`, set it to the original url
+		return obj, nil
 	}
 
 	opts := minio.GetObjectOptions{}
@@ -94,7 +125,7 @@ func (s3 *GenericS3) Stat(ctx context.Context, url string) (*Object, error) {
 		return nil, fmt.Errorf("genericS3: getting object %s in bucket %s: %s", u.path, u.bucket, err)
 	}
 
-	isDir, err := isDir(ctx, s3.client, u.bucket, u.path)
+	isDir, err := s3.isDir(ctx, s3.client, url, u.bucket, u.path)
 	if err != nil {
 		return nil, fmt.Errorf("genericS3: stat object %s in bucket %s: %s", u.path, u.bucket, err)
 	}
@@ -122,26 +153,39 @@ func (s3 *GenericS3) Stat(ctx context.Context, url string) (*Object, error) {
 
 // List lists the objects at the given url.
 func (s3 *GenericS3) List(ctx context.Context, url string) ([]*Object, error) {
-	u, err := s3.parse(url)
+	u, err := s3.Parse(url)
 	if err != nil {
 		return nil, err
 	}
 
-	// Recursively list all objects.
 	var objects []*Object
-	recursive := true
-	for info := range s3.client.ListObjects(ctx, u.bucket, minio.ListObjectsOptions{Prefix: u.path, Recursive: recursive}) {
-		// check if key represents a directory
-		if strings.HasSuffix(info.Key, "/") {
-			continue
+
+	if s3.IsThisBucketMounted(u.bucket) { // skip call to S3 if bucket is mounted
+		local := &Local{}
+		objects, err = local.List(ctx, s3.GetLocalMountedPath(url))
+		if err != nil {
+			return nil, err
 		}
-		objects = append(objects, &Object{
-			URL:          "s3://" + u.bucket + "/" + info.Key,
-			Name:         info.Key,
-			ETag:         info.ETag,
-			LastModified: info.LastModified,
-			Size:         info.Size,
-		})
+	} else {
+		// Recursively list all objects.
+		recursive := true
+		listRes := s3.client.ListObjects(ctx, u.bucket, minio.ListObjectsOptions{Prefix: u.path, Recursive: recursive})
+		for info := range listRes {
+			if info.Err != nil {
+				return nil, info.Err
+			}
+			// check if key represents a directory
+			if strings.HasSuffix(info.Key, "/") {
+				continue
+			}
+			objects = append(objects, &Object{
+				URL:          "s3://" + u.bucket + "/" + info.Key,
+				Name:         info.Key,
+				ETag:         info.ETag,
+				LastModified: info.LastModified,
+				Size:         info.Size,
+			})
+		}
 	}
 
 	return objects, nil
@@ -149,22 +193,42 @@ func (s3 *GenericS3) List(ctx context.Context, url string) ([]*Object, error) {
 
 // Get copies an object from S3 to the host path.
 func (s3 *GenericS3) Get(ctx context.Context, url, path string) (*Object, error) {
-	logger := logger.NewLogger("GenericS3", logger.DefaultConfig())
-	logger.Debug("genericS3: Get called", "url", url, "path", path)
+	logger.Debug("genericS3: 'Get' called", "url", url, "path", path)
 
 	obj, err := s3.Stat(ctx, url)
 	if err != nil {
 		return nil, err
 	}
 
-	u, err := s3.parse(url)
+	u, err := s3.Parse(url)
 	if err != nil {
 		return nil, err
 	}
 
-	isDir, err := isDir(ctx, s3.client, u.bucket, u.path)
+	// _GetObject: utility function that either copies a file from the mounted bucket, or downloads it if the source is not the mounted S3 bucket
+	_GetObject := func(sourcePath string, destPath string) error {
+		if s3.IsThisBucketMounted(u.bucket) { // skip call to S3 if bucket is mounted
+			// TODO (MIDRC-1353) Add "funnel-temp-files" prefix back to separate temp files from the rest
+			logger.Debug("genericS3: getting input from mounted bucket", "sourcePath", sourcePath)
+			// use the path to the mounted bucket instead of the file's S3 URL
+			localMountedPath := s3.GetLocalMountedPath(url)
+			err = copyFile(ctx, localMountedPath, path)
+			if err != nil {
+				return fmt.Errorf("genericS3: failed to copy file %s to %s: %v", localMountedPath, path, err)
+			}
+		} else {
+			logger.Debug("genericS3: not getting input from mounted bucket, input URL does not match", "sourcePath", sourcePath)
+			err = download(ctx, s3.client, u.bucket, sourcePath, destPath, s3.kmskeyId)
+			if err != nil {
+				return fmt.Errorf("genericS3: getting object %s: %v", url, err)
+			}
+		}
+		return nil
+	}
+
+	isDir, err := s3.isDir(ctx, s3.client, url, u.bucket, u.path)
 	if err != nil {
-		logger.Debug("genericS3: checking directory", "bucket", u.bucket, "path", u.path)
+		logger.Debug("genericS3: error while checking directory", "bucket", u.bucket, "path", u.path, "err", err)
 		return nil, fmt.Errorf("genericS3: getting object from isDir %s: %v", url, err)
 	}
 	if isDir {
@@ -178,15 +242,15 @@ func (s3 *GenericS3) Get(ctx context.Context, url, path string) (*Object, error)
 			if err != nil {
 				return nil, fmt.Errorf("genericS3: computing relative path for %s: %v", obj.Name, err)
 			}
-			err = download(ctx, s3.client, u.bucket, obj.Name, filepath.Join(path, relPath), s3.kmskeyId)
+			err = _GetObject(obj.Name, filepath.Join(path, relPath))
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("genericS3: getting nested object %s: %v", url, err)
 			}
 		}
 	} else {
-		err = download(ctx, s3.client, u.bucket, u.path, path, s3.kmskeyId)
+		err = _GetObject(u.path, path)
 		if err != nil {
-			return nil, fmt.Errorf("genericS3: getting object from download %s: %v", url, err)
+			return nil, err
 		}
 	}
 
@@ -264,8 +328,8 @@ func download(ctx context.Context, client *minio.Client, bucket, objectPath, fil
 
 // Put copies an object (file) from the host path to S3.
 // Update Put function to be able to upload directories (a la Get() function)
-func (s3 *GenericS3) Put(ctx context.Context, url, path string) (*Object, error) {
-	u, err := s3.parse(url)
+func (s3 *GenericS3) Put(ctx context.Context, url, path string) ([]*Object, error) {
+	u, err := s3.Parse(url)
 	if err != nil {
 		return nil, err
 	}
@@ -303,6 +367,30 @@ func (s3 *GenericS3) Put(ctx context.Context, url, path string) (*Object, error)
 		return nil, fmt.Errorf("genericS3: putting object %s: %v", url, err)
 	}
 
+	// _PutObject: utility function that either copies a file to the mounted bucket, or uploads it
+	// if the destination is not the mounted S3 bucket
+	_PutObject := func(sourcePath string, destPath string) error {
+		if s3.IsThisBucketMounted(u.bucket) { // skip call to S3 if bucket is mounted
+			// TODO (MIDRC-1353) Add "funnel-temp-files" prefix back to separate temp files from the rest
+			logger.Debug("genericS3: outputting to mounted bucket", "destPath", destPath)
+			// use the path to the mounted bucket instead of the file's S3 URL
+			localMountedPath := s3.GetLocalMountedPath(destPath)
+			err = copyFile(ctx, sourcePath, localMountedPath)
+			if err != nil {
+				return fmt.Errorf("genericS3: failed to copy file %s to %s: %v", sourcePath, localMountedPath, err)
+			}
+		} else {
+			logger.Debug("genericS3: not outputting to mounted bucket, output URL does not match", "destPath", destPath)
+			_, err = s3.client.FPutObject(ctx, u.bucket, destPath, sourcePath, opts)
+			if err != nil {
+				return fmt.Errorf("genericS3: putting object %s: %v", url, err)
+			}
+		}
+		return nil
+	}
+
+	objs := []*Object{}
+
 	// Check if the path is a directory
 	if fileInfo.IsDir() {
 		// Walk the directory and upload all files and subdirectories
@@ -317,10 +405,19 @@ func (s3 *GenericS3) Put(ctx context.Context, url, path string) (*Object, error)
 					return err
 				}
 				uploadPath := filepath.Join(u.path, relativePath)
-				_, err = s3.client.FPutObject(ctx, u.bucket, uploadPath, filePath, opts)
+				err = _PutObject(filePath, uploadPath)
 				if err != nil {
 					return fmt.Errorf("genericS3: putting nested object %s: %v", url, err)
 				}
+				fullUrl, err := neturl.JoinPath(url, relativePath)
+				if err != nil {
+					return fmt.Errorf("genericS3: generating url for nested object %s %s: %v", url, relativePath, err)
+				}
+				obj, err := s3.Stat(ctx, fullUrl)
+				if err != nil {
+					return err
+				}
+				objs = append(objs, obj)
 			}
 			return nil
 		})
@@ -328,15 +425,18 @@ func (s3 *GenericS3) Put(ctx context.Context, url, path string) (*Object, error)
 			return nil, err
 		}
 	} else {
-		_, err = s3.client.FPutObject(ctx, u.bucket, u.path, path, opts)
+		err := _PutObject(path, u.path)
 		if err != nil {
-			return nil, fmt.Errorf("genericS3: putting object %s: %v", url, err)
+			return nil, err
 		}
+		obj, err := s3.Stat(ctx, url)
+		if err != nil {
+			return nil, err
+		}
+		objs = append(objs, obj)
 	}
 
-	obj, err := s3.Stat(ctx, url)
-
-	return obj, err
+	return objs, nil
 }
 
 // Join joins the given URL with the given subpath.
@@ -347,9 +447,12 @@ func (s3 *GenericS3) Join(url, path string) (string, error) {
 // UnsupportedOperations describes which operations (Get, Put, etc) are not
 // supported for the given URL.
 func (s3 *GenericS3) UnsupportedOperations(url string) UnsupportedOperations {
-	u, err := s3.parse(url)
+	u, err := s3.Parse(url)
 	if err != nil {
 		return AllUnsupported(err)
+	}
+	if s3.IsThisBucketMounted(u.bucket) { // skip call to S3 if bucket is mounted
+		return AllSupported()
 	}
 	ok, err := s3.client.BucketExists(context.Background(), u.bucket)
 	if err != nil {
@@ -363,7 +466,7 @@ func (s3 *GenericS3) UnsupportedOperations(url string) UnsupportedOperations {
 	return AllSupported()
 }
 
-func (s3 *GenericS3) parse(rawurl string) (*urlparts, error) {
+func (s3 *GenericS3) Parse(rawurl string) (*urlparts, error) {
 	if !strings.HasPrefix(rawurl, s3Protocol) {
 		return nil, &ErrUnsupportedProtocol{"genericS3"}
 	}

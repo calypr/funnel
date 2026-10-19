@@ -18,8 +18,6 @@ import (
 
 // WriteEvent creates an event for the server to handle.
 func (db *Postgres) WriteEvent(ctx context.Context, req *events.Event) error {
-	logger := logger.NewLogger("postgres", logger.DefaultConfig())
-
 	ctx, cancel := db.context()
 	defer cancel()
 

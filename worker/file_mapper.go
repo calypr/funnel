@@ -152,7 +152,7 @@ func (mapper *FileMapper) CopyOutputsToWorkDir(scratchDir string) error {
 		fmt.Println(err)
 	}
 
-	// Copy the input file or directory to the scratch target
+	// Copy the output file or directory to the scratch target
 	for _, output := range mapper.Outputs {
 		scratchTarget := filepath.Join(scratchAbsDir, output.Path)
 
@@ -177,8 +177,7 @@ func (mapper *FileMapper) CopyOutputsToWorkDir(scratchDir string) error {
 					return fmt.Errorf("failed to create output path: %w", err)
 				}
 				copyDir(src, output.Path)
-				// If output is a file
-			} else {
+			} else { // If output is a file
 				// Ensure the scratch target directory exists
 				if err = os.MkdirAll(path.Dir(parentDir), 0755); err != nil {
 					return fmt.Errorf("failed to create output path: %w", err)

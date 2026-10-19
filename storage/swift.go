@@ -182,7 +182,7 @@ func (sw *Swift) Get(ctx context.Context, url, path string) (*Object, error) {
 }
 
 // Put copies an object (file) from the host path to storage.
-func (sw *Swift) Put(ctx context.Context, url, path string) (*Object, error) {
+func (sw *Swift) Put(ctx context.Context, url, path string) ([]*Object, error) {
 
 	u, err := sw.parse(url)
 	if err != nil {
@@ -231,7 +231,11 @@ func (sw *Swift) Put(ctx context.Context, url, path string) (*Object, error) {
 		return nil, &swiftError{"closing file", url, closeErr}
 	}
 
-	return sw.Stat(ctx, url)
+	obj, err := sw.Stat(ctx, url)
+	if err != nil {
+		return nil, err
+	}
+	return []*Object{obj}, nil
 }
 
 // Join joins the given URL with the given subpath.

@@ -25,7 +25,7 @@ func (f Fake) Get(ctx context.Context, url, path string) (*Object, error) {
 
 // Put a single object to storage URL, from a local file path.
 // Returns the Object that was created in storage.
-func (f Fake) Put(ctx context.Context, url, path string) (*Object, error) {
+func (f Fake) Put(ctx context.Context, url, path string) ([]*Object, error) {
 	return nil, nil
 }
 

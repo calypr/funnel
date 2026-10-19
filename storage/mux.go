@@ -14,7 +14,7 @@ import (
 type operation int
 
 const (
-	getOp operation = iota
+	GetOp operation = iota
 	putOp
 	listOp
 	statOp
@@ -97,7 +97,7 @@ func NewMux(conf *config.Config) (*Mux, error) {
 
 // Stat returns information about the object at the given storage URL.
 func (mux *Mux) Stat(ctx context.Context, url string) (*Object, error) {
-	backend, err := mux.findBackend(url, statOp)
+	backend, err := mux.FindBackend(url, statOp)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +106,7 @@ func (mux *Mux) Stat(ctx context.Context, url string) (*Object, error) {
 
 // List lists the objects at the given url.
 func (mux *Mux) List(ctx context.Context, url string) ([]*Object, error) {
-	backend, err := mux.findBackend(url, listOp)
+	backend, err := mux.FindBackend(url, listOp)
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +116,7 @@ func (mux *Mux) List(ctx context.Context, url string) ([]*Object, error) {
 // Get downloads a file from a storage system at the given "url".
 // The file is downloaded to the given local "path".
 func (mux *Mux) Get(ctx context.Context, url, path string) (*Object, error) {
-	backend, err := mux.findBackend(url, getOp)
+	backend, err := mux.FindBackend(url, GetOp)
 	if err != nil {
 		return nil, err
 	}
@@ -125,8 +125,8 @@ func (mux *Mux) Get(ctx context.Context, url, path string) (*Object, error) {
 
 // Put uploads a file to a storage system at the given "url".
 // The file is uploaded from the given local "path".
-func (mux *Mux) Put(ctx context.Context, url, path string) (*Object, error) {
-	backend, err := mux.findBackend(url, putOp)
+func (mux *Mux) Put(ctx context.Context, url, path string) ([]*Object, error) {
+	backend, err := mux.FindBackend(url, putOp)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +135,7 @@ func (mux *Mux) Put(ctx context.Context, url, path string) (*Object, error) {
 
 // Join joins the given URL with the given subpath.
 func (mux *Mux) Join(url, path string) (string, error) {
-	backend, err := mux.findBackend(url, joinOp)
+	backend, err := mux.FindBackend(url, joinOp)
 	if err != nil {
 		return "", err
 	}
@@ -146,28 +146,28 @@ func (mux *Mux) Join(url, path string) (string, error) {
 // supported for the given URL.
 func (mux *Mux) UnsupportedOperations(url string) UnsupportedOperations {
 	unsupported := UnsupportedOperations{}
-	b, err := mux.findBackend(url, getOp)
+	b, err := mux.FindBackend(url, GetOp)
 	if err != nil {
 		unsupported.Get = err
 	} else {
 		unsupported.Get = b.UnsupportedOperations(url).Get
 	}
 
-	b, err = mux.findBackend(url, putOp)
+	b, err = mux.FindBackend(url, putOp)
 	if err != nil {
 		unsupported.Put = err
 	} else {
 		unsupported.Put = b.UnsupportedOperations(url).Put
 	}
 
-	b, err = mux.findBackend(url, listOp)
+	b, err = mux.FindBackend(url, listOp)
 	if err != nil {
 		unsupported.List = err
 	} else {
 		unsupported.List = b.UnsupportedOperations(url).List
 	}
 
-	b, err = mux.findBackend(url, statOp)
+	b, err = mux.FindBackend(url, statOp)
 	if err != nil {
 		unsupported.Stat = err
 	} else {
@@ -189,7 +189,7 @@ func (mux *Mux) AttachLogger(log *logger.Logger) {
 	}
 }
 
-func (mux *Mux) findBackend(url string, op operation) (Storage, error) {
+func (mux *Mux) FindBackend(url string, op operation) (Storage, error) {
 	var found = 0
 	var useBackend Storage
 	var err error
@@ -198,7 +198,7 @@ func (mux *Mux) findBackend(url string, op operation) (Storage, error) {
 	for _, backend := range mux.Backends {
 		unsupported := backend.UnsupportedOperations(url)
 		switch op {
-		case getOp:
+		case GetOp:
 			err = unsupported.Get
 		case putOp:
 			err = unsupported.Put

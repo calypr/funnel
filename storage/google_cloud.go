@@ -155,7 +155,7 @@ func (gs *GoogleCloud) Get(ctx context.Context, url, path string) (*Object, erro
 }
 
 // Put copies an object (file) from the host path to GS.
-func (gs *GoogleCloud) Put(ctx context.Context, url, path string) (*Object, error) {
+func (gs *GoogleCloud) Put(ctx context.Context, url, path string) ([]*Object, error) {
 	u, err := gs.parse(url)
 	if err != nil {
 		return nil, err
@@ -175,7 +175,12 @@ func (gs *GoogleCloud) Put(ctx context.Context, url, path string) (*Object, erro
 	if err != nil {
 		return nil, fmt.Errorf("googleStorage: uploading object %s: %v", url, err)
 	}
-	return gs.Stat(ctx, url)
+
+	o, err := gs.Stat(ctx, url)
+	if err != nil {
+		return nil, err
+	}
+	return []*Object{o}, nil
 }
 
 // Join joins the given URL with the given subpath.

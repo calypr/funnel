@@ -227,7 +227,7 @@ func (s3b *AmazonS3) Get(ctx context.Context, url, path string) (*Object, error)
 }
 
 // Put copies an object (file) from the host path to S3.
-func (s3b *AmazonS3) Put(ctx context.Context, url, path string) (*Object, error) {
+func (s3b *AmazonS3) Put(ctx context.Context, url, path string) ([]*Object, error) {
 	u, region, err := s3b.parse(url)
 	if err != nil {
 		return nil, err
@@ -272,7 +272,12 @@ func (s3b *AmazonS3) Put(ctx context.Context, url, path string) (*Object, error)
 	if copyErr != nil {
 		return nil, fmt.Errorf("amazonS3: copying file: %v", copyErr)
 	}
-	return s3b.Stat(ctx, url)
+
+	obj, err := s3b.Stat(ctx, url)
+	if err != nil {
+		return nil, err
+	}
+	return []*Object{obj}, nil
 }
 
 // Join joins the given URL with the given subpath.

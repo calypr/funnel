@@ -5,11 +5,6 @@ ENV GOPATH=/go
 ENV PATH="/go/bin:${PATH}"
 
 WORKDIR /go/src/github.com/ohsu-comp-bio/funnel
-COPY go.* .
-RUN go mod download
-COPY . .
-RUN apk add --no-cache bash build-base git protobuf protobuf-dev
-RUN --mount=type=cache,target=/root/.cache/go-build make build
 
 # download nerdctl (Docker-compatible CLI for containerd)
 ARG NERDCTL_VERSION=2.2.1
@@ -17,6 +12,12 @@ ARG TARGETARCH=amd64
 RUN wget -qO /tmp/nerdctl.tgz \
       "https://github.com/containerd/nerdctl/releases/download/v${NERDCTL_VERSION}/nerdctl-${NERDCTL_VERSION}-linux-${TARGETARCH}.tar.gz" && \
     tar -xz -C /tmp -f /tmp/nerdctl.tgz nerdctl
+
+RUN apk add --no-cache bash build-base git protobuf protobuf-dev
+COPY go.* .
+RUN go mod download
+COPY . .
+RUN --mount=type=cache,target=/root/.cache/go-build make build
 
 # final stage
 FROM alpine

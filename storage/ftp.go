@@ -46,7 +46,7 @@ func (b *FTP) Get(ctx context.Context, url, path string) (*Object, error) {
 }
 
 // Put is not supported by FTP storage.
-func (b *FTP) Put(ctx context.Context, url string, hostPath string) (*Object, error) {
+func (b *FTP) Put(ctx context.Context, url string, hostPath string) ([]*Object, error) {
 	client, err := connect(url, b.conf)
 	if err != nil {
 		return nil, err
@@ -201,7 +201,7 @@ func (b *ftpclient) Get(ctx context.Context, url, path string) (*Object, error) 
 	return obj, err
 }
 
-func (b *ftpclient) Put(ctx context.Context, url string, hostPath string) (*Object, error) {
+func (b *ftpclient) Put(ctx context.Context, url string, hostPath string) ([]*Object, error) {
 
 	u, err := urllib.Parse(url)
 	if err != nil {
@@ -242,7 +242,11 @@ func (b *ftpclient) Put(ctx context.Context, url string, hostPath string) (*Obje
 		return nil, fmt.Errorf("ftpStorage: uploading file for %q: %v", url, err)
 	}
 
-	return b.Stat(ctx, url)
+	obj, err := b.Stat(ctx, url)
+	if err != nil {
+		return nil, err
+	}
+	return []*Object{obj}, nil
 }
 
 func isUnavailable(err error) bool {

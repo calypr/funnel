@@ -88,11 +88,12 @@ func NewWorker(ctx context.Context, conf *config.Config, log *logger.Logger, opt
 	}
 
 	return &worker.DefaultWorker{
-		Executor:    executor,
-		Conf:        conf.Worker,
-		Store:       store,
-		TaskReader:  reader,
-		EventWriter: writer,
+		Executor:            executor,
+		Conf:                conf.Worker,
+		S3FilesFilesystemId: conf.Kubernetes.S3FilesFilesystemId,
+		Store:               store,
+		TaskReader:          reader,
+		EventWriter:         writer,
 	}, nil
 }
 

@@ -108,7 +108,7 @@ func (b *HTTP) Get(ctx context.Context, url, path string) (*Object, error) {
 }
 
 // Put is not supported by HTTP storage.
-func (b *HTTP) Put(ctx context.Context, url string, hostPath string) (*Object, error) {
+func (b *HTTP) Put(ctx context.Context, url string, hostPath string) ([]*Object, error) {
 	return nil, fmt.Errorf("httpStorage: Put operation is not supported")
 }
 

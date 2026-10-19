@@ -41,7 +41,7 @@ func (r *Retrier) Get(ctx context.Context, url, path string) (obj *Object, err e
 }
 
 // Put copies an object (file) from the host path to S3.
-func (r *Retrier) Put(ctx context.Context, url, path string) (obj *Object, err error) {
+func (r *Retrier) Put(ctx context.Context, url, path string) (obj []*Object, err error) {
 	err = r.Retry(ctx, func() error {
 		obj, err = r.Backend.Put(ctx, url, path)
 		return err
