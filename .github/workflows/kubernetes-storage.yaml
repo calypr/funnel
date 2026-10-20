@@ -22,7 +22,16 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Install k3d
-        run: go install github.com/k3d-io/k3d/v5@v5.8.3
+        run: |
+          install_dir="$RUNNER_TEMP/k3d-v5.8.3"
+          mkdir -p "$install_dir"
+          curl --fail --silent --show-error --location --retry 3 --max-time 60 \
+            https://github.com/k3d-io/k3d/releases/download/v5.8.3/k3d-linux-amd64 \
+            --output "$install_dir/k3d"
+          echo "dbaa79a76ace7f4ca230a1ff41dc7d8a5036a8ad0309e9c54f9bf3836dbe853e  $install_dir/k3d" | sha256sum --check
+          chmod +x "$install_dir/k3d"
+          "$install_dir/k3d" version
+          echo "$install_dir" >> "$GITHUB_PATH"
       - name: Test PR binary with local-path PVCs and S3 artifacts
         env:
           FUNNEL_E2E_OUTPUT_DIR: ${{ runner.temp }}/funnel-storage-e2e
