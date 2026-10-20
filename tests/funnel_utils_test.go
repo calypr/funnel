@@ -71,7 +71,7 @@ func TestWaitForDockerDestroy(t *testing.T) {
 
 			cli, err := docker.New(
 				docker.WithHost("tcp://"+strings.TrimPrefix(server.URL, "http://")),
-				docker.WithVersion("1.44"),
+				docker.WithAPIVersion("1.44"),
 			)
 			if err != nil {
 				t.Fatal(err)
