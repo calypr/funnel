@@ -662,11 +662,11 @@ func (b *Backend) writeSystemError(ctx context.Context, jobName string, errAttri
 		}
 	}
 
-	b.event.WriteEvent(ctx, events.NewState(jobName, tes.SystemError))
 	b.event.WriteEvent(ctx, events.NewSystemLog(
 		jobName, 0, 0, "error", additionalMessage,
 		errAttributes,
 	))
+	b.event.WriteEvent(ctx, events.NewState(jobName, tes.SystemError))
 }
 
 func (b *Backend) reconcileJob(ctx context.Context, j *v1.Job, disableCleanup bool) {
