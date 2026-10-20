@@ -31,7 +31,7 @@ CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go test -c ./storage -o "$scratch/storag
 network=$(docker network create "funnel-mountpoint-$(basename "$scratch")")
 minio=$(docker run -d --network "$network" --network-alias minio \
   -e MINIO_ROOT_USER=funnel-test -e MINIO_ROOT_PASSWORD=funnel-test-secret \
-  quay.io/minio/minio:RELEASE.2025-03-12T18-04-18Z server /data)
+  docker.io/bitnamilegacy/minio@sha256:953d489a81cc4de7975f90e07202189c4325da39b0b92470b6a13c7ea99e36cd minio server /tmp/data)
 docker run --rm --network "$network" --entrypoint /bin/sh \
   bitnamilegacy/minio-client:2025.7.21-debian-12-r3 -c '
     attempt=0
