@@ -14,7 +14,7 @@ import (
 
 	"context"
 
-	"github.com/ohsu-comp-bio/funnel/util"
+	"github.com/calypr/funnel/util"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 

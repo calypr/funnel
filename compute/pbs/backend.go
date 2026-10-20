@@ -8,11 +8,11 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/ohsu-comp-bio/funnel/compute"
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/events"
-	"github.com/ohsu-comp-bio/funnel/logger"
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/compute"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/tes"
 )
 
 // NewBackend returns a new PBS (Portable Batch System) HPCBackend instance.

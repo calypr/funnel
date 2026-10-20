@@ -12,13 +12,13 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager"
-	transfertypes "github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager/types"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
-	"github.com/ohsu-comp-bio/funnel/config"
-	util "github.com/ohsu-comp-bio/funnel/util/aws"
-	s3util "github.com/ohsu-comp-bio/funnel/util/s3"
+	"github.com/calypr/funnel/config"
+	util "github.com/calypr/funnel/util/aws"
+	s3util "github.com/calypr/funnel/util/s3"
 )
 
 // s3Protocol defines the s3 URL protocol
@@ -39,7 +39,7 @@ type AmazonS3 struct {
 	customerKey          *string
 	customerKeyMD5       *string
 	kmsKeyID             *string
-	serverSideEncryption transfertypes.ServerSideEncryption
+	serverSideEncryption types.ServerSideEncryption
 }
 
 // NewAmazonS3 creates an AmazonS3 session instance
@@ -62,7 +62,7 @@ func NewAmazonS3(conf *config.AmazonS3Storage) (*AmazonS3, error) {
 	var customerKey *string
 	var customerKeyMD5 *string
 	var kmsKeyID *string
-	var serverSideEncryption transfertypes.ServerSideEncryption
+	var serverSideEncryption types.ServerSideEncryption
 
 	if conf.SSE != nil && conf.SSE.CustomerKeyFile != "" && conf.SSE.KMSKey != "" {
 		return nil, fmt.Errorf("invalid SSE config: can't provide both Customer and KMS keys")
@@ -81,7 +81,7 @@ func NewAmazonS3(conf *config.AmazonS3Storage) (*AmazonS3, error) {
 	}
 
 	if conf.SSE != nil && conf.SSE.KMSKey != "" {
-		serverSideEncryption = transfertypes.ServerSideEncryptionAwsKms
+		serverSideEncryption = types.ServerSideEncryptionAwsKms
 		kmsKeyID = aws.String(conf.SSE.KMSKey)
 	}
 
@@ -193,7 +193,11 @@ func (s3b *AmazonS3) Get(ctx context.Context, url, path string) (*Object, error)
 		return nil, err
 	}
 
-	manager := s3b.transfers(region)
+	client := s3b.client(region)
+	downloader := manager.NewDownloader(client, func(d *manager.Downloader) {
+		d.PartSize = 5 * 1024 * 1024
+		d.Concurrency = 1
+	})
 
 	// Create a file to write the S3 Object contents to.
 	hf, err := os.Create(path)
@@ -201,24 +205,22 @@ func (s3b *AmazonS3) Get(ctx context.Context, url, path string) (*Object, error)
 		return nil, fmt.Errorf("amazonS3: creating file: %v", err)
 	}
 
-	getInput := &transfermanager.DownloadObjectInput{
-		WriterAt:             hf,
+	getInput := &s3.GetObjectInput{
 		Bucket:               aws.String(u.bucket),
 		Key:                  aws.String(u.path),
 		SSECustomerAlgorithm: s3b.customerAlgorithm,
 		SSECustomerKey:       s3b.customerKey,
 		SSECustomerKeyMD5:    s3b.customerKeyMD5,
 	}
-	var copyErr error
-	_, copyErr = manager.DownloadObject(ctx, getInput)
+	_, copyErr := downloader.Download(ctx, hf, getInput)
 	if copyErr != nil {
 		if s3b.customerKey != nil {
-			getInput = &transfermanager.DownloadObjectInput{
-				WriterAt: hf,
-				Bucket:   aws.String(u.bucket),
-				Key:      aws.String(u.path),
+			// the file may not be encrypted => retry without sse-c keys
+			getInput = &s3.GetObjectInput{
+				Bucket: aws.String(u.bucket),
+				Key:    aws.String(u.path),
 			}
-			_, copyErr = manager.DownloadObject(ctx, getInput)
+			_, copyErr = downloader.Download(ctx, hf, getInput)
 		}
 	}
 	closeErr := hf.Close()
@@ -238,7 +240,10 @@ func (s3b *AmazonS3) Put(ctx context.Context, url, path string) (*Object, error)
 		return nil, err
 	}
 
-	manager := s3b.transfers(region)
+	client := s3b.client(region)
+	uploader := manager.NewUploader(client, func(u *manager.Uploader) {
+		u.PartSize = 5 * 1024 * 1024
+	})
 
 	var hf *os.File
 	// If path contains a wildcard, then handle globbing
@@ -261,7 +266,7 @@ func (s3b *AmazonS3) Put(ctx context.Context, url, path string) (*Object, error)
 	}
 	defer hf.Close()
 
-	uploadInput := &transfermanager.UploadObjectInput{
+	uploadInput := &s3.PutObjectInput{
 		Bucket:               aws.String(u.bucket),
 		Key:                  aws.String(u.path),
 		Body:                 hf,
@@ -269,10 +274,10 @@ func (s3b *AmazonS3) Put(ctx context.Context, url, path string) (*Object, error)
 		SSECustomerKey:       s3b.customerKey,
 		SSECustomerKeyMD5:    s3b.customerKeyMD5,
 		ServerSideEncryption: s3b.serverSideEncryption,
-		SSEKMSKeyID:          s3b.kmsKeyID,
+		SSEKMSKeyId:          s3b.kmsKeyID,
 	}
 
-	_, copyErr := manager.UploadObject(ctx, uploadInput)
+	_, copyErr := uploader.Upload(ctx, uploadInput)
 	if copyErr != nil {
 		return nil, fmt.Errorf("amazonS3: copying file: %v", copyErr)
 	}
@@ -342,16 +347,6 @@ func (s3b *AmazonS3) client(region string) *s3.Client {
 		options.UsePathStyle = s3b.forcePathStyle
 		options.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
 		options.ResponseChecksumValidation = aws.ResponseChecksumValidationWhenRequired
-	})
-}
-
-func (s3b *AmazonS3) transfers(region string) *transfermanager.Client {
-	return transfermanager.New(s3b.client(region), func(options *transfermanager.Options) {
-		options.PartSizeBytes = 5 * 1024 * 1024
-		options.MultipartUploadThreshold = 5 * 1024 * 1024
-		options.GetObjectType = transfertypes.GetObjectRanges
-		options.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
-		options.DisableChecksumValidation = true
 	})
 }
 

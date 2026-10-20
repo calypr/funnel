@@ -13,9 +13,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/aws/smithy-go"
-	"github.com/ohsu-comp-bio/funnel/events"
-	"github.com/ohsu-comp-bio/funnel/tes"
-	"github.com/ohsu-comp-bio/funnel/util"
+	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/util"
 )
 
 // WriteEvent creates an event for the server to handle.

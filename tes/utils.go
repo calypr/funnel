@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/getlantern/deepcopy"
-	"github.com/rs/xid"
+	"github.com/google/uuid"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 )
 
 // Marshaler marshals tasks to indented JSON.
@@ -70,7 +70,11 @@ const (
 // GenerateID generates a task ID string.
 // IDs are globally unique and sortable.
 func GenerateID() string {
-	id := xid.New()
+	id, err := uuid.NewUUID()
+	if err != nil {
+		// fall back to the random v4 UUID if the time-based one fails
+		return uuid.NewString()
+	}
 	return id.String()
 }
 
@@ -117,8 +121,7 @@ func TerminalState(s State) bool {
 
 // GetBasicView returns the basic view of a task.
 func (task *Task) GetBasicView() *Task {
-	view := &Task{}
-	deepcopy.Copy(view, task)
+	view := proto.Clone(task).(*Task)
 
 	// remove contents from inputs
 	for _, v := range view.Inputs {

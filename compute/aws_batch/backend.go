@@ -12,11 +12,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/batch"
 	"github.com/aws/aws-sdk-go-v2/service/batch/types"
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/events"
-	"github.com/ohsu-comp-bio/funnel/logger"
-	"github.com/ohsu-comp-bio/funnel/tes"
-	util "github.com/ohsu-comp-bio/funnel/util/aws"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/tes"
+	util "github.com/calypr/funnel/util/aws"
 )
 
 const defaultBatchRetryMaxAttempts = 4
@@ -124,15 +124,19 @@ func (b *Backend) submit(ctx context.Context, task *tes.Task) error {
 
 	resp, err := b.client.SubmitJob(ctx, req)
 	if err != nil {
-		b.event.WriteEvent(ctx, events.NewState(task.Id, tes.SystemError))
-		b.event.WriteEvent(
+		if werr := b.event.WriteEvent(ctx, events.NewState(task.Id, tes.SystemError)); werr != nil {
+			b.log.Error("writing SystemError event", "taskID", task.Id, "error", werr)
+		}
+		if werr := b.event.WriteEvent(
 			ctx,
 			events.NewSystemLog(
 				task.Id, 0, 0, "error",
 				"error submitting task to AWSBatch",
 				map[string]string{"error": err.Error()},
 			),
-		)
+		); werr != nil {
+			b.log.Error("writing submit-failure log event", "taskID", task.Id, "error", werr)
+		}
 		return err
 	}
 
@@ -238,15 +242,19 @@ ReconcileLoop:
 						jstate := j.Status
 
 						if jstate == "FAILED" {
-							b.event.WriteEvent(ctx, events.NewState(task.Id, tes.SystemError))
-							b.event.WriteEvent(
+							if werr := b.event.WriteEvent(ctx, events.NewState(task.Id, tes.SystemError)); werr != nil {
+								b.log.Error("writing SystemError event", "taskID", task.Id, "error", werr)
+							}
+							if werr := b.event.WriteEvent(
 								ctx,
 								events.NewSystemLog(
 									task.Id, 0, 0, "error",
 									"AWSBatch job in FAILED state",
 									map[string]string{"error": *j.StatusReason, "awsbatch_id": *j.JobId},
 								),
-							)
+							); werr != nil {
+								b.log.Error("writing FAILED-state log event", "taskID", task.Id, "error", werr)
+							}
 						}
 					}
 

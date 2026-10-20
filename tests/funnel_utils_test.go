@@ -14,11 +14,11 @@ import (
 	"testing"
 	"time"
 
+	servercmd "github.com/calypr/funnel/cmd/server"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/server"
 	docker "github.com/moby/moby/client"
-	servercmd "github.com/ohsu-comp-bio/funnel/cmd/server"
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/logger"
-	"github.com/ohsu-comp-bio/funnel/server"
 )
 
 func TestWaitForDockerDestroy(t *testing.T) {

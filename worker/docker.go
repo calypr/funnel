@@ -14,9 +14,9 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/google/shlex"
-	"github.com/ohsu-comp-bio/funnel/events"
-	tes "github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/events"
+	tes "github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/util/shellwords"
 )
 
 // DockerCommand is responsible for configuring and running a docker container.
@@ -71,17 +71,17 @@ func (docker DockerCommand) Run(ctx context.Context) error {
 	// Sync docker API version info.
 	err := docker.SyncAPIVersion()
 	if err != nil {
-		docker.Event.Error("failed to sync docker client API version", err)
+		_ = docker.Event.Error("failed to sync docker client API version", err)
 	}
 
 	err = docker.executeCommand(ctx, docker.PullCommand, false)
 	if err != nil {
-		docker.Event.Error("failed to pull docker image using command", err, docker.PullCommand)
+		_ = docker.Event.Error("failed to pull docker image using command", err, docker.PullCommand)
 	}
 
 	err = docker.executeCommand(ctx, docker.RunCommand, true)
 	if err != nil {
-		docker.Event.Error("failed to run docker container", err)
+		_ = docker.Event.Error("failed to run docker container", err)
 	}
 
 	return err
@@ -89,10 +89,10 @@ func (docker DockerCommand) Run(ctx context.Context) error {
 
 // Stop stops the container.
 func (docker DockerCommand) Stop() error {
-	docker.Event.Info("Stopping container", "container", docker.Name)
+	_ = docker.Event.Info("Stopping container", "container", docker.Name)
 	err := docker.executeCommand(context.Background(), docker.StopCommand, false)
 	if err != nil {
-		docker.Event.Error("failed to stop docker container", err)
+		_ = docker.Event.Error("failed to stop docker container", err)
 		return err
 	}
 	return nil
@@ -116,7 +116,7 @@ func (docker DockerCommand) executeCommand(ctx context.Context, commandTemplate 
 		return fmt.Errorf("failed to execute template for command: %w", err)
 	}
 
-	cmdParts, err := shlex.Split(cmdBuffer.String())
+	cmdParts, err := shellwords.Split(cmdBuffer.String())
 	if err != nil {
 		return fmt.Errorf("failed to parse command: %w", err)
 	}
@@ -164,7 +164,7 @@ func (docker DockerCommand) executeCommand(ctx context.Context, commandTemplate 
 	}
 
 	if usingCommand {
-		docker.Event.Info("Running command", "cmd", cmd.String())
+		_ = docker.Event.Info("Running command", "cmd", cmd.String())
 	}
 	return cmd.Run()
 }
@@ -241,7 +241,7 @@ func (docker *DockerCommand) InspectContainer(ctx context.Context) DockerCommand
 				meta := []DockerCommand{}
 				err = json.Unmarshal(out, &meta)
 				if err == nil && len(meta) == 1 {
-					docker.Event.Info("container metadata",
+					_ = docker.Event.Info("container metadata",
 						"containerID", meta[0].Id,
 						"containerName", meta[0].Name,
 						"containerImageHash", meta[0].Image)

@@ -1,13 +1,14 @@
 package mongodb
 
 import (
+	"context"
+	"errors"
 	"fmt"
 
-	"context"
-
-	"github.com/ohsu-comp-bio/funnel/server"
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/server"
+	"github.com/calypr/funnel/tes"
 	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
@@ -39,11 +40,20 @@ func (db *MongoDB) GetTask(ctx context.Context, req *tes.GetTaskRequest) (*tes.T
 
 	result := db.tasks().FindOne(mctx, bson.M{"id": req.Id}, opts)
 	if result.Err() != nil {
-		return nil, tes.ErrNotFound
+		// Only a missing document is a 404; transport and server errors
+		// must surface as failures, not as missing tasks.
+		if errors.Is(result.Err(), mongo.ErrNoDocuments) {
+			return nil, tes.ErrNotFound
+		}
+		return nil, fmt.Errorf("mongo get task: %w", result.Err())
 	}
 
 	var owner TaskOwner
-	_ = result.Decode(&owner)
+	if err := result.Decode(&owner); err != nil {
+		// An undecodable owner must not silently pass or fail the
+		// authorization check below.
+		return nil, fmt.Errorf("mongo get task owner: %w", err)
+	}
 	if !server.GetUser(ctx).IsAccessible(owner.Owner) {
 		return nil, tes.ErrNotPermitted
 	}

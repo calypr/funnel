@@ -8,11 +8,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ohsu-comp-bio/funnel/events"
-	"github.com/ohsu-comp-bio/funnel/storage"
-	"github.com/ohsu-comp-bio/funnel/tes"
-	"github.com/ohsu-comp-bio/funnel/util"
-	"github.com/ohsu-comp-bio/funnel/util/fsutil"
+	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/storage"
+	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/util"
+	"github.com/calypr/funnel/util/fsutil"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -35,7 +35,7 @@ func FlattenInputs(ctx context.Context, inputs []*tes.Input, store storage.Stora
 			}
 
 			if len(list) == 0 {
-				ev.Warn("download source directory is empty", "url", input.Url)
+				_ = ev.Warn("download source directory is empty", "url", input.Url)
 				continue
 			}
 
@@ -113,7 +113,7 @@ func FlattenOutputs(ctx context.Context, outputs []*tes.Output, store storage.St
 		}
 
 		if len(list) == 0 {
-			ev.Warn("upload source directory is empty", "url", output.Url)
+			_ = ev.Warn("upload source directory is empty", "url", output.Url)
 			continue
 		}
 
@@ -179,13 +179,13 @@ func (d *download) Path() string {
 	return d.in.Path
 }
 func (d *download) Started() {
-	d.ev.Info("download started", "url", d.in.Url)
+	_ = d.ev.Info("download started", "url", d.in.Url)
 }
 func (d *download) Finished(obj *storage.Object) {
-	d.ev.Info("download finished", "url", d.in.Url, "size", obj.Size, "etag", obj.ETag)
+	_ = d.ev.Info("download finished", "url", d.in.Url, "size", obj.Size, "etag", obj.ETag)
 }
 func (d *download) Failed(err error) {
-	d.ev.Error("download failed", "url", d.in.Url, "error", err)
+	_ = d.ev.Error("download failed", "url", d.in.Url, "error", err)
 	d.cancel()
 	d.err = err
 }
@@ -204,7 +204,7 @@ func (u *upload) Path() string {
 	return u.out.Path
 }
 func (u *upload) Started() {
-	u.ev.Info("upload started", "url", u.out.Url)
+	_ = u.ev.Info("upload started", "url", u.out.Url)
 }
 func (u *upload) Finished(obj *storage.Object) {
 	u.log = &tes.OutputFileLog{
@@ -212,17 +212,17 @@ func (u *upload) Finished(obj *storage.Object) {
 		Path:      u.out.Path,
 		SizeBytes: fmt.Sprintf("%d", obj.Size),
 	}
-	u.ev.Info("upload finished", "url", obj.URL, "etag", obj.ETag, "size", obj.Size)
+	_ = u.ev.Info("upload finished", "url", obj.URL, "etag", obj.ETag, "size", obj.Size)
 }
 func (u *upload) Failed(err error) {
 	u.err = err
-	u.ev.Error("upload failed", "url", u.out.Url, "error", err)
+	_ = u.ev.Error("upload failed", "url", u.out.Url, "error", err)
 }
 
 // fixLinks walks the output paths, fixing cases where a symlink is
 // broken because it's pointing to a path inside a container volume.
 func fixLinks(mapper *FileMapper, basepath string) {
-	filepath.Walk(basepath, func(p string, f os.FileInfo, err error) error {
+	_ = filepath.Walk(basepath, func(p string, f os.FileInfo, err error) error {
 		if err != nil {
 			// There's an error, so be safe and give up on this file
 			return nil
@@ -257,7 +257,7 @@ func fixLinks(mapper *FileMapper, basepath string) {
 					if err != nil {
 						return nil
 					}
-					os.Symlink(mapped, p)
+					_ = os.Symlink(mapped, p)
 				}
 			}
 		}

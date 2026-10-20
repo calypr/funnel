@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ohsu-comp-bio/funnel/logger"
+	"github.com/calypr/funnel/logger"
 )
 
 func TestServeReturnsHTTPBindErrorAndReleasesRPCListener(t *testing.T) {

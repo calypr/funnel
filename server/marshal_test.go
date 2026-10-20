@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/tes"
 )
 
 func TestNormalizeNilTagValues_RemovesNullTagValues(t *testing.T) {

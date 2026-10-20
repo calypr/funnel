@@ -5,7 +5,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/tes"
 )
 
 func TestTaskBuilderConcurrentEvents(t *testing.T) {

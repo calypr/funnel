@@ -5,8 +5,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/go-test/deep"
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/tes"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestMapTask(t *testing.T) {
@@ -132,12 +132,9 @@ func TestMapTask(t *testing.T) {
 		},
 	}
 
-	if diff := deep.Equal(f.Inputs, ei); diff != nil {
+	if !assert.True(t, protoSlicesEqual(ei, f.Inputs)) {
 		t.Log("Expected", fmt.Sprintf("%+v", ei))
 		t.Log("Actual", fmt.Sprintf("%+v", f.Inputs))
-		for _, d := range diff {
-			t.Log("Diff", d)
-		}
 		t.Fatal("unexpected mapper inputs")
 	}
 
@@ -149,12 +146,9 @@ func TestMapTask(t *testing.T) {
 		t.Fatal("unexpected content")
 	}
 
-	if diff := deep.Equal(f.Outputs, eo); diff != nil {
+	if !assert.True(t, protoSlicesEqual(eo, f.Outputs)) {
 		t.Log("Expected", fmt.Sprintf("%+v", eo))
 		t.Log("Actual", fmt.Sprintf("%+v", f.Outputs))
-		for _, d := range diff {
-			t.Log("Diff", d)
-		}
 		t.Fatal("unexpected mapper outputs")
 	}
 
@@ -166,21 +160,15 @@ func TestMapTask(t *testing.T) {
 		fmt.Println("Actual volume:", vol)
 	}
 
-	if diff := deep.Equal(f.Volumes, ev); diff != nil {
+	if !assert.Equal(t, ev, f.Volumes) {
 		t.Log("Expected", fmt.Sprintf("%+v", ev))
 		t.Log("Actual", fmt.Sprintf("%+v", f.Volumes))
-		for _, d := range diff {
-			t.Log("Diff", d)
-		}
 		t.Fatal("unexpected mapper volumes")
 	}
 
-	if diff := deep.Equal(f.InputVolumes, eiv); diff != nil {
+	if !assert.Equal(t, eiv, f.InputVolumes) {
 		t.Log("Expected", fmt.Sprintf("%+v", eiv))
 		t.Log("Actual", fmt.Sprintf("%+v", f.InputVolumes))
-		for _, d := range diff {
-			t.Log("Diff", d)
-		}
 		t.Fatal("unexpected mapper input volumes")
 	}
 

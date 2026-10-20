@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/tes"
 	"github.com/sirupsen/logrus"
 )
 

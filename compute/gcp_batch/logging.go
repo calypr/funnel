@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/logging/apiv2/loggingpb"
-	"github.com/ohsu-comp-bio/funnel/events"
+	"github.com/calypr/funnel/events"
 	"google.golang.org/api/iterator"
 )
 

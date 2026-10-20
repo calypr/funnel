@@ -15,9 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jwx-go/jwkfetch/v4"
-	"github.com/lestrrat-go/httprc/v3"
-	"github.com/ohsu-comp-bio/funnel/config"
+	"github.com/calypr/funnel/config"
 )
 
 func TestParseJwtSubjectValidatesOIDCTokens(t *testing.T) {
@@ -46,7 +44,7 @@ func TestParseJwtSubjectValidatesOIDCTokens(t *testing.T) {
 	defer server.Close()
 
 	ctx := context.Background()
-	cache, err := jwkfetch.NewCache(ctx, httprc.NewClient())
+	cache, err := newJWKSCacheWithInterval(ctx, server.URL, time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,16 +57,7 @@ func TestParseJwtSubjectValidatesOIDCTokens(t *testing.T) {
 	})
 	refreshCtx, refreshCancel := context.WithTimeout(ctx, 5*time.Second)
 	defer refreshCancel()
-	if err := cache.Register(refreshCtx, server.URL,
-		jwkfetch.WithMinInterval(time.Hour),
-		jwkfetch.WithWaitReady(true),
-	); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := cache.Fetch(ctx, server.URL); err != nil {
-		t.Fatalf("registered JWKS cache is not ready for token validation: %v", err)
-	}
-	if _, err := cache.Refresh(refreshCtx, server.URL); err != nil {
+	if _, err := cache.Refresh(refreshCtx); err != nil {
 		t.Fatal(err)
 	}
 	fetchesBeforeValidation := jwksRequests.Load()

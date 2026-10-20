@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/ohsu-comp-bio/funnel/config"
-	ex "github.com/ohsu-comp-bio/funnel/examples"
+	"github.com/calypr/funnel/config"
+	ex "github.com/calypr/funnel/examples"
 	"github.com/spf13/cobra"
 )
 

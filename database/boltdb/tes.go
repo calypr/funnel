@@ -7,8 +7,8 @@ import (
 
 	"context"
 
-	"github.com/ohsu-comp-bio/funnel/server"
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/server"
+	"github.com/calypr/funnel/tes"
 	bolt "go.etcd.io/bbolt"
 	"google.golang.org/protobuf/proto"
 )
@@ -35,7 +35,9 @@ func loadTask(tx *bolt.Tx, id string, task *tes.Task, ctx context.Context) error
 	}
 
 	if task != nil {
-		proto.Unmarshal(b, task)
+		if err := proto.Unmarshal(b, task); err != nil {
+			return fmt.Errorf("unmarshaling task %s: %w", id, err)
+		}
 		task.State = getTaskState(tx, id)
 	}
 
@@ -57,7 +59,9 @@ func loadBasicTaskView(tx *bolt.Tx, id string, task *tes.Task, ctx context.Conte
 		return err
 	}
 
-	loadTaskLogs(tx, task)
+	if err := loadTaskLogs(tx, task); err != nil {
+		return err
+	}
 
 	// remove content from inputs
 	for _, v := range task.Inputs {
@@ -72,7 +76,9 @@ func loadFullTaskView(tx *bolt.Tx, id string, task *tes.Task, ctx context.Contex
 	if err != nil {
 		return err
 	}
-	loadTaskLogs(tx, task)
+	if err := loadTaskLogs(tx, task); err != nil {
+		return err
+	}
 
 	// Load executor stdout/err
 	for _, tl := range task.Logs {
@@ -103,23 +109,28 @@ func loadFullTaskView(tx *bolt.Tx, id string, task *tes.Task, ctx context.Contex
 	return nil
 }
 
-func loadTaskLogs(tx *bolt.Tx, task *tes.Task) {
+func loadTaskLogs(tx *bolt.Tx, task *tes.Task) error {
 	tasklog := &tes.TaskLog{}
 	task.Logs = []*tes.TaskLog{tasklog}
 
 	b := tx.Bucket(TasksLog).Get([]byte(task.Id))
 	if b != nil {
-		proto.Unmarshal(b, tasklog)
+		if err := proto.Unmarshal(b, tasklog); err != nil {
+			return fmt.Errorf("unmarshaling task log for %s: %w", task.Id, err)
+		}
 	}
 
 	for i := range task.Executors {
 		o := tx.Bucket(ExecutorLogs).Get([]byte(fmt.Sprint(task.Id, i)))
 		if o != nil {
 			var execlog tes.ExecutorLog
-			proto.Unmarshal(o, &execlog)
+			if err := proto.Unmarshal(o, &execlog); err != nil {
+				return fmt.Errorf("unmarshaling executor log for %s: %w", task.Id, err)
+			}
 			tasklog.Logs = append(tasklog.Logs, &execlog)
 		}
 	}
+	return nil
 }
 
 // GetTask gets a task, which describes a running task
@@ -170,7 +181,7 @@ func (taskBolt *BoltDB) ListTasks(ctx context.Context, req *tes.ListTasksRequest
 	viewMode := tes.View(tes.View_value[view])
 	pageSize := tes.GetPageSize(req.GetPageSize())
 
-	taskBolt.db.View(func(tx *bolt.Tx) error {
+	if err := taskBolt.db.View(func(tx *bolt.Tx) error {
 		c := tx.Bucket(TaskBucket).Cursor()
 
 		i := 0
@@ -220,7 +231,9 @@ func (taskBolt *BoltDB) ListTasks(ctx context.Context, req *tes.ListTasksRequest
 			i++
 		}
 		return nil
-	})
+	}); err != nil {
+		taskBolt.log.Error("listing tasks", "error", err)
+	}
 
 	out := tes.ListTasksResponse{
 		Tasks: tasks,

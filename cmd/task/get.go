@@ -6,7 +6,7 @@ import (
 
 	"context"
 
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/tes"
 )
 
 // Get runs the "task get" CLI command, which connects to the server,

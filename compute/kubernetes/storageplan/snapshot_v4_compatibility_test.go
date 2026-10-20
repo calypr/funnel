@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ohsu-comp-bio/funnel/storage"
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/storage"
+	"github.com/calypr/funnel/tes"
 	corev1 "k8s.io/api/core/v1"
 )
 

@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"cloud.google.com/go/datastore"
-	"github.com/ohsu-comp-bio/funnel/server"
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/server"
+	"github.com/calypr/funnel/tes"
 	"google.golang.org/api/iterator"
 )
 
