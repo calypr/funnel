@@ -37,8 +37,8 @@ type Plan struct {
 	WorkspaceVolume   string
 	WorkerContainer   string
 	ExecutorContainer string
-	S3ReadMounts      []storage.S3ReadMount
-	S3WriteMounts     []storage.S3WriteMount
+	S3ReadMounts      []storage.S3ReadMount  `json:"S3ReadMounts,omitempty"`
+	S3WriteMounts     []storage.S3WriteMount `json:"S3WriteMounts,omitempty"`
 	Volumes           []corev1.Volume
 	WorkerMounts      []corev1.VolumeMount
 	OwnedClaims       []string
