@@ -146,6 +146,7 @@ func initServer(t *testing.T, taskAccess string) *tests.Funnel {
 	}
 
 	f := tests.NewFunnel(c)
+	t.Cleanup(f.Cleanup)
 	f.StartServer()
 	return f
 }

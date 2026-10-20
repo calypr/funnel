@@ -714,6 +714,7 @@ func TestPagination(t *testing.T) {
 	c := tests.DefaultConfig()
 	c.Compute = "noop"
 	f := tests.NewFunnel(c)
+	t.Cleanup(f.Cleanup)
 	f.StartServer()
 	ctx := context.Background()
 
@@ -790,6 +791,7 @@ func TestSmallPaginationAndSortOrder(t *testing.T) {
 	c := tests.DefaultConfig()
 	c.Compute = "noop"
 	f := tests.NewFunnel(c)
+	t.Cleanup(f.Cleanup)
 	f.StartServer()
 	ctx := context.Background()
 
