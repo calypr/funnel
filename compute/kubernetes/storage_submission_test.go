@@ -505,6 +505,88 @@ func TestStorageOrphanCleanupUsesFinalizedJobAfterConfigChange(t *testing.T) {
 	}
 }
 
+func TestCleanOrphanedResourcesFindsNonFinalizedWorkerJobs(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		task      *tes.Task
+		wantClean bool
+	}{
+		{name: "orphan", wantClean: true},
+		{name: "active", task: &tes.Task{Id: "dynamic-claim-task", State: tes.State_RUNNING}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			const taskID = "dynamic-claim-task"
+			client := bindingClient()
+			conf := bindingConfig(t, createdStorage(t, false))
+			backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logger.DefaultConfig())}
+			if err := backend.Submit(ctx, &tes.Task{Id: taskID}, conf); err != nil {
+				t.Fatal(err)
+			}
+			job, err := client.BatchV1().Jobs("tasks").Get(ctx, taskID, metav1.GetOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(job.Finalizers) != 0 {
+				t.Fatalf("dynamic-claim Job unexpectedly has finalizers: %v", job.Finalizers)
+			}
+			plan, err := storageplan.Decode(job.Annotations[storageplan.Annotation])
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(plan.OwnedVolumes) != 0 {
+				t.Fatalf("dynamic-claim Job unexpectedly owns PVs: %v", plan.OwnedVolumes)
+			}
+			claimName := taskID + "-workspace"
+			claim, err := client.CoreV1().PersistentVolumeClaims("tasks").Get(ctx, claimName, metav1.GetOptions{})
+			if err != nil || len(claim.OwnerReferences) != 1 || claim.OwnerReferences[0].UID != job.UID {
+				t.Fatalf("PVC must be owned by its worker Job: claim=%v error=%v", claim, err)
+			}
+
+			tasks := map[string]*tes.Task{}
+			if tc.task != nil {
+				tasks[taskID] = tc.task
+			}
+			backend.database = &mockDatabase{tasks: tasks}
+			// The fake client does not garbage-collect dependents from Job owner references.
+			client.PrependReactor("delete", "jobs", func(k8stesting.Action) (bool, runtime.Object, error) {
+				object, err := client.Tracker().List(
+					corev1.SchemeGroupVersion.WithResource("persistentvolumeclaims"),
+					corev1.SchemeGroupVersion.WithKind("PersistentVolumeClaim"),
+					"tasks",
+				)
+				if err != nil {
+					return true, nil, err
+				}
+				for _, claim := range object.(*corev1.PersistentVolumeClaimList).Items {
+					for _, owner := range claim.OwnerReferences {
+						if owner.UID == job.UID {
+							if err := client.Tracker().Delete(corev1.SchemeGroupVersion.WithResource("persistentvolumeclaims"), "tasks", claim.Name); err != nil {
+								return true, nil, err
+							}
+						}
+					}
+				}
+				return false, nil, nil
+			})
+
+			backend.CleanOrphanedResources(ctx)
+
+			_, jobErr := client.BatchV1().Jobs("tasks").Get(ctx, taskID, metav1.GetOptions{})
+			_, claimErr := client.CoreV1().PersistentVolumeClaims("tasks").Get(ctx, claimName, metav1.GetOptions{})
+			if tc.wantClean {
+				if !apierrors.IsNotFound(jobErr) || !apierrors.IsNotFound(claimErr) {
+					t.Fatalf("orphan Job and its owned PVC must be cleaned: job error=%v, PVC error=%v", jobErr, claimErr)
+				}
+				return
+			}
+			if jobErr != nil || claimErr != nil {
+				t.Fatalf("active task resources must remain: job error=%v, PVC error=%v", jobErr, claimErr)
+			}
+		})
+	}
+}
+
 func TestStorageNamespaceOverrideRejectedBeforeCreation(t *testing.T) {
 	client := bindingClient()
 	conf := bindingConfig(t, existingStorage(t, "shared"))

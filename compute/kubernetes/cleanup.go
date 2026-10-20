@@ -178,17 +178,12 @@ func (b *Backend) CleanOrphanedResources(ctx context.Context) {
 	namespace := b.conf.Kubernetes.JobsNamespace
 	taskIDs := make(map[string]struct{})
 
-	// Finalized Jobs preserve ownership even if current configuration no longer
-	// provisions PVs, or a task plugin selected a different storage binding.
 	jobs, err := b.client.BatchV1().Jobs(namespace).List(ctx, metav1.ListOptions{LabelSelector: "app=funnel-worker"})
 	if err != nil {
-		b.log.Error("CleanOrphanedResources: listing storage Jobs", "error", err)
+		b.log.Error("CleanOrphanedResources: listing worker Jobs", "error", err)
 	} else {
 		for _, job := range jobs.Items {
-			if !slices.Contains(job.Finalizers, storageplan.Finalizer) {
-				continue
-			}
-			if job.DeletionTimestamp != nil {
+			if slices.Contains(job.Finalizers, storageplan.Finalizer) && job.DeletionTimestamp != nil {
 				if err := b.cleanResources(ctx, job.Name); err != nil {
 					b.log.Error("completing storage cleanup", "taskID", job.Name, "error", err)
 				}
