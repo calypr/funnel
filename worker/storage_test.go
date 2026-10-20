@@ -103,16 +103,14 @@ func TestUploadOutputsFileTypedDirectory(t *testing.T) {
 		"s3://bucket/outputs/nested/one.txt": "first file\n",
 		"s3://bucket/outputs/nested/two.txt": "second file\n",
 	}
-	if diff := deep.Equal(store.uploaded, wantUploads); diff != nil {
-		t.Fatalf("uploaded files differ: %v", diff)
-	}
+	assert.Equal(t, wantUploads, store.uploaded)
 
 	wantLogs := []*tes.OutputFileLog{
 		{Url: "s3://bucket/outputs/nested/one.txt", Path: filepath.Join(root, "nested/one.txt"), SizeBytes: "11"},
 		{Url: "s3://bucket/outputs/nested/two.txt", Path: filepath.Join(root, "nested/two.txt"), SizeBytes: "12"},
 	}
-	if diff := deep.Equal(logs, wantLogs); diff != nil {
-		t.Fatalf("output logs differ: %v", diff)
+	if !protoSlicesEqual(wantLogs, logs) {
+		t.Fatalf("output logs = %v, want %v", logs, wantLogs)
 	}
 	if output.Url != "s3://bucket/outputs" || output.Path != root || output.Type != tes.File {
 		t.Fatalf("declared output was mutated: %+v", output)
