@@ -9,9 +9,14 @@ import (
 	"github.com/calypr/funnel/tes"
 )
 
+type taskClient interface {
+	ListTasks(context.Context, *tes.ListTasksRequest) (*tes.ListTasksResponse, error)
+	GetTask(context.Context, *tes.GetTaskRequest) (*tes.Task, error)
+}
+
 // TaskSource fetches tasks from a Funnel server, tracking pagination state.
 type TaskSource struct {
-	client   *tes.Client
+	client   taskClient
 	pageSize int32
 	pPage    []string
 	cPage    string
@@ -27,40 +32,43 @@ func NewTaskSource(tesHTTPServerAddress string, pageSize int32) (*TaskSource, er
 	return &TaskSource{client: cli, pageSize: pageSize}, nil
 }
 
-// listTasks fetches a raw page of tasks, updating pagination tokens. Token
-// reads and writes hold the lock so a slow refresh cannot clobber page state
-// chosen by navigation during the fetch.
+// listTasks fetches a raw page and commits pagination state after a successful
+// response.
 func (ts *TaskSource) listTasks(previous, next bool) ([]*tes.Task, error) {
-	ts.lock.Lock()
-	token := ts.nPage
+	ts.lock.RLock()
+	pPage := append([]string(nil), ts.pPage...)
+	cPage := ts.cPage
+	nPage := ts.nPage
+	ts.lock.RUnlock()
+
 	if next && !previous {
-		if token != "" {
-			if ts.cPage != "" {
-				ts.pPage = append(ts.pPage, ts.cPage)
+		if nPage != "" {
+			if cPage != "" {
+				pPage = append(pPage, cPage)
 			}
-			ts.cPage = token
+			cPage = nPage
 		}
 	} else if previous && !next {
-		if len(ts.pPage) > 0 {
-			ts.cPage = ts.pPage[len(ts.pPage)-1]
-			ts.pPage = ts.pPage[:len(ts.pPage)-1]
+		if len(pPage) > 0 {
+			cPage = pPage[len(pPage)-1]
+			pPage = pPage[:len(pPage)-1]
 		} else {
-			ts.cPage = ""
+			cPage = ""
 		}
 	}
-	pageToken := ts.cPage
-	ts.lock.Unlock()
 
 	resp, err := ts.client.ListTasks(context.Background(), &tes.ListTasksRequest{
 		View:      tes.View_BASIC.String(),
 		PageSize:  ts.pageSize,
-		PageToken: pageToken,
+		PageToken: cPage,
 	})
 	if err != nil {
 		return nil, err
 	}
 
 	ts.lock.Lock()
+	ts.pPage = pPage
+	ts.cPage = cPage
 	ts.nPage = resp.NextPageToken
 	ts.lock.Unlock()
 	return resp.Tasks, nil
@@ -72,9 +80,6 @@ func (ts *TaskSource) List(previous, next bool, sortField string, sortReversed, 
 	if err != nil {
 		return nil, err
 	}
-
-	ts.lock.Lock()
-	defer ts.lock.Unlock()
 
 	tasks = sortTasks(tasks, sortField, sortReversed)
 	tasks = filterTasks(tasks, allTasks, filter)

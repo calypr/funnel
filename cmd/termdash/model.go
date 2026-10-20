@@ -23,6 +23,14 @@ const (
 // tickMsg drives the auto-refresh loop.
 type tickMsg time.Time
 
+type listAction uint8
+
+const (
+	listCurrent listAction = iota
+	listPrevious
+	listNext
+)
+
 // fetchedListMsg carries a refreshed task list.
 type fetchedListMsg struct {
 	tasks []*tes.Task
@@ -53,6 +61,9 @@ type dashboard struct {
 	allTasks   bool
 	showHeader bool
 
+	listInFlight bool
+	pendingLists []listAction
+
 	// expanded view
 	expandedID   string
 	expandedJSON []string
@@ -76,20 +87,54 @@ func newDashboard(server string) (*dashboard, error) {
 }
 
 func (d *dashboard) Init() tea.Cmd {
-	return tea.Batch(fetchList(d, false, false), tick())
+	return tea.Batch(d.requestList(listCurrent), tick())
 }
 
 func tick() tea.Cmd {
 	return tea.Tick(refreshInterval, func(t time.Time) tea.Msg { return tickMsg(t) })
 }
 
-func fetchList(d *dashboard, prev, next bool) tea.Cmd {
-	src := d.source
-	sortField, reversed, allTasks, filter := d.sortField, d.reversed, d.allTasks, d.filter
+func fetchList(src *TaskSource, action listAction, sortField string, reversed, allTasks bool, filter string) tea.Cmd {
 	return func() tea.Msg {
-		tasks, err := src.List(prev, next, sortField, reversed, allTasks, filter)
+		tasks, err := src.List(action == listPrevious, action == listNext, sortField, reversed, allTasks, filter)
 		return fetchedListMsg{tasks: tasks, err: err}
 	}
+}
+
+func (d *dashboard) requestList(action listAction) tea.Cmd {
+	if d.listInFlight {
+		if action == listCurrent {
+			for _, pending := range d.pendingLists {
+				if pending == listCurrent {
+					return nil
+				}
+			}
+		}
+		d.pendingLists = append(d.pendingLists, action)
+		return nil
+	}
+
+	return d.startList(action)
+}
+
+func (d *dashboard) startList(action listAction) tea.Cmd {
+	if action == listPrevious && d.source.PreviousPageToken() == "" ||
+		action == listNext && d.source.NextPageToken() == "" {
+		return nil
+	}
+	d.listInFlight = true
+	return fetchList(d.source, action, d.sortField, d.reversed, d.allTasks, d.filter)
+}
+
+func (d *dashboard) nextListCmd() tea.Cmd {
+	for len(d.pendingLists) > 0 {
+		action := d.pendingLists[0]
+		d.pendingLists = d.pendingLists[1:]
+		if cmd := d.startList(action); cmd != nil {
+			return cmd
+		}
+	}
+	return nil
 }
 
 func fetchTask(src *TaskSource, id string) tea.Cmd {
@@ -109,11 +154,12 @@ func (d *dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		var cmd tea.Cmd
 		if d.mode == modeList {
-			cmd = fetchList(d, false, false)
+			cmd = d.requestList(listCurrent)
 		}
 		return d, tea.Batch(cmd, tick())
 
 	case fetchedListMsg:
+		d.listInFlight = false
 		if msg.err != nil {
 			d.err = msg.err.Error()
 		} else {
@@ -128,7 +174,7 @@ func (d *dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			d.clampOffset()
 		}
-		return d, nil
+		return d, d.nextListCmd()
 
 	case fetchedTaskMsg:
 		if msg.err != nil {
@@ -180,25 +226,25 @@ func (d *dashboard) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return d, fetchTask(d.source, t.Id)
 		}
 	case "n":
-		if d.source.NextPageToken() != "" {
-			return d, fetchList(d, false, true)
+		if d.listInFlight || d.source.NextPageToken() != "" {
+			return d, d.requestList(listNext)
 		}
 	case "p":
-		if d.source.PreviousPageToken() != "" {
-			return d, fetchList(d, true, false)
+		if d.listInFlight || d.source.PreviousPageToken() != "" {
+			return d, d.requestList(listPrevious)
 		}
 	case "f":
 		d.mode = modeFilter
 		d.filterBuf = d.filter
 	case "a":
 		d.allTasks = !d.allTasks
-		return d, fetchList(d, false, false)
+		return d, d.requestList(listCurrent)
 	case "s":
 		d.mode = modeSort
 		d.sortCursor = indexOf(SortFields(), d.sortField)
 	case "r":
 		d.reversed = !d.reversed
-		return d, fetchList(d, false, false)
+		return d, d.requestList(listCurrent)
 	case "H":
 		d.showHeader = !d.showHeader
 	case "h", "?":
@@ -215,14 +261,14 @@ func (d *dashboard) updateFilter(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		d.filter = d.filterBuf
 		d.mode = modeList
 		d.selected = ""
-		return d, fetchList(d, false, false)
+		return d, d.requestList(listCurrent)
 	case "esc":
 		// clear the filter entirely, matching old behavior
 		d.filter = ""
 		d.filterBuf = ""
 		d.mode = modeList
 		d.selected = ""
-		return d, fetchList(d, false, false)
+		return d, d.requestList(listCurrent)
 	case "backspace":
 		if len(d.filterBuf) > 0 {
 			d.filterBuf = d.filterBuf[:len(d.filterBuf)-1]
@@ -253,7 +299,7 @@ func (d *dashboard) updateSort(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		d.sortField = fields[d.sortCursor]
 		d.mode = modeList
-		return d, fetchList(d, false, false)
+		return d, d.requestList(listCurrent)
 	case "esc", "q", "ctrl+c":
 		d.mode = modeList
 	}
