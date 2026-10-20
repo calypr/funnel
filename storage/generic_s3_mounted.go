@@ -217,7 +217,7 @@ func (s *mountedS3Reader) Get(ctx context.Context, raw, destination string) (*Ob
 		return nil, fmt.Errorf("open mounted input destination directory: %w", err)
 	}
 	defer destinationRoot.Close()
-	err = writeRootFileAtomically(ctx, destinationRoot, filepath.Base(destination), func(target *os.File) error {
+	err = writeRootDownloadedFile(ctx, destinationRoot, filepath.Base(destination), func(target *os.File) error {
 		size, err := io.Copy(target, inputReader{ctx: ctx, source: source})
 		if err != nil {
 			return err
