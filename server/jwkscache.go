@@ -39,7 +39,7 @@ func (jwksTransformer) Transform(_ context.Context, res *http.Response) (jwk.Set
 	return set, nil
 }
 
-// newJWKSCache starts background refreshing of the JWKS at the given URL.
+// newJWKSCache fetches the JWKS and starts background refreshing at the given URL.
 // Callers must invoke Shutdown when done.
 func newJWKSCache(ctx context.Context, jwksURL string) (*jwksCache, error) {
 	return newJWKSCacheWithInterval(ctx, jwksURL, 15*time.Minute)
@@ -57,9 +57,9 @@ func newJWKSCacheWithInterval(ctx context.Context, jwksURL string, minInterval t
 		_ = ctrl.Shutdown(time.Second)
 		return nil, fmt.Errorf("failed to create JWKS resource: %w", err)
 	}
-	if err := ctrl.Add(ctx, r,
-		httprc.WithWaitReady(false),
-	); err != nil {
+	initCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if err := ctrl.Add(initCtx, r); err != nil {
 		_ = ctrl.Shutdown(time.Second)
 		return nil, fmt.Errorf("failed to register JWKS %q: %w", jwksURL, err)
 	}

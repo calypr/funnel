@@ -98,23 +98,10 @@ func (c *OidcConfig) initJwks() {
 	jwksUrl := c.remote.JwksURI
 	ctx := context.Background()
 
-	ctx2, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
 	cache, err := newJWKSCache(ctx, jwksUrl)
 	if err != nil {
 		fmt.Printf("[ERROR] Failed to create JWKS cache for the OIDC service (%s): %s\n",
 			c.local.ServiceConfigURL, err)
-		os.Exit(1)
-	}
-
-	// Init JWKS cache:
-	_, err = cache.Refresh(ctx2)
-
-	if err != nil {
-		_ = cache.Shutdown(ctx)
-		fmt.Printf("[ERROR] Failed to fetch JWKS (%s) of the OIDC service "+
-			"(%s): %s\n", jwksUrl, c.local.ServiceConfigURL, err)
 		os.Exit(1)
 	}
 
