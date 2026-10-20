@@ -6,13 +6,13 @@ Set `FUNNEL_E2E_OUTPUT_DIR` to retain task JSON, server logs, and cluster
 resources at a known path. It uses a separate kubeconfig.
 
 The `Go Tests` workflow runs `go test -race ./...` on pushes.
-The `Kubernetes storage E2E` workflow runs on pull requests targeting `develop`
-and pushes to `develop`. It runs this script.
+The `Kubernetes storage E2E` workflow runs on all pull requests and pushes to
+`develop`. It runs this script.
 
-The script runs `TestNativeStorageLive` against its disposable cluster before
-the TES end-to-end test. It builds the checked-out Funnel source into a
-container and imports that image into k3d. It does not deploy a published
-Funnel chart or image.
+The script runs `TestNativeStorageLive` and `TestNativeStoragePermissionsLive`
+against its disposable cluster before the TES end-to-end test. It builds the
+checked-out Funnel source into a container and imports that image into k3d. It
+does not deploy a published Funnel chart or image.
 
 The native test uses a nondefault `standard` StorageClass backed by k3d's
 `rancher.io/local-path` provisioner. The script still checks that `local-path`
@@ -44,6 +44,10 @@ is local to the executor Pod, not a substitute for the shared workspace.
 
 - Dynamic PVC templates generate task-specific claims and logical volumes.
 - An existing PVC works as the task workspace and survives task cleanup.
+- An explicit task-owned PV/PVC pair runs through the real TES API under a
+  server ServiceAccount with PV create, get, and delete access but no PV list
+  access. The test checks S3 outputs and waits for the worker Job, PVC, and PV
+  to disappear through normal cleanup.
 - A mounted reference selects the correct `subPath`. Its file exists only
   on the PVC, so an accidental S3 fallback cannot satisfy the test.
 - An unmatched input downloads through GenericS3 from MinIO.
