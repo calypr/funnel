@@ -55,6 +55,9 @@ func TestParseJwtSubjectValidatesOIDCTokens(t *testing.T) {
 			t.Errorf("shut down JWKS cache: %v", err)
 		}
 	})
+	if _, err := cache.Fetch(ctx, server.URL); err != nil {
+		t.Fatalf("new JWKS cache is not ready for token validation: %v", err)
+	}
 	refreshCtx, refreshCancel := context.WithTimeout(ctx, 5*time.Second)
 	defer refreshCancel()
 	if _, err := cache.Refresh(refreshCtx); err != nil {
