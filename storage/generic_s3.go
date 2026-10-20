@@ -229,7 +229,7 @@ func download(ctx context.Context, client *minio.Client, bucket, objectPath, fil
 	defer obj.Close()
 
 	logger.Debug("genericS3: staging local file", "filePath", filePath)
-	err = writeFileAtomically(ctx, filePath, func(outFile *os.File) error {
+	err = writeDownloadedFile(ctx, filePath, func(outFile *os.File) error {
 		logger.Debug("genericS3: io.Copy", "outFile", outFile.Name(), "obj", obj)
 		if _, err := io.Copy(outFile, obj); err != nil {
 			return fmt.Errorf("failed writing file: %w", err)
