@@ -211,6 +211,23 @@ class StorageE2E(unittest.TestCase):
         if objects.strip():
             raise AssertionError("Mounted-read fixture unexpectedly exists in S3")
 
+    def test_hello_world(self):
+        with server("hello-world") as url:
+            task_id = request(url, "/v1/tasks", {
+                "name": "hello world",
+                "executors": [{
+                    "image": "alpine:3.21",
+                    "command": ["sh", "-ec", "echo hello world"],
+                }],
+            })["id"]
+            task = finished(url, task_id, "COMPLETE")
+            stdout = [
+                executor_log.get("stdout", "")
+                for task_log in task.get("logs", [])
+                for executor_log in task_log.get("logs", [])
+            ]
+            self.assertEqual(stdout, ["hello world\n"], task)
+
     def task(self, prefix, gate=True):
         command = """set -eu
 cat /inputs/api.txt /inputs/reference.txt > /ephemeral/combined

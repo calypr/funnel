@@ -9,7 +9,7 @@ output_dir="$(cd "$output_dir" && pwd)"
 export FUNNEL_E2E_OUTPUT_DIR="$output_dir"
 cluster="funnel-storage-${RANDOM}"
 export KUBECONFIG="$output_dir/kubeconfig"
-export FUNNEL_E2E_IMAGE="funnel-storage-e2e:local"
+export FUNNEL_E2E_IMAGE="funnel-storage-e2e:${cluster#funnel-storage-}"
 
 cleanup() {
   status=$?
@@ -23,6 +23,7 @@ cleanup() {
     done < <(kubectl -n funnel-storage-e2e get pods -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null)
   fi
   k3d cluster delete "$cluster" || true
+  docker image rm "$FUNNEL_E2E_IMAGE" >/dev/null 2>&1 || true
   exit "$status"
 }
 trap cleanup EXIT
@@ -37,6 +38,9 @@ mkdir -p "$output_dir/image"
 CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -o "$output_dir/image/funnel" .
 docker build -t "$FUNNEL_E2E_IMAGE" -f tests/kubernetes-storage/Dockerfile "$output_dir/image"
 k3d cluster create "$cluster" --image rancher/k3s:v1.31.5-k3s1 --wait \
+  --k3s-arg '--kubelet-arg=eviction-hard=nodefs.available<1Gi,imagefs.available<1Gi,nodefs.inodesFree<1%,imagefs.inodesFree<1%@server:0' \
+  --k3s-arg '--kubelet-arg=image-gc-high-threshold=99@server:0' \
+  --k3s-arg '--kubelet-arg=image-gc-low-threshold=98@server:0' \
   --kubeconfig-update-default=false --kubeconfig-switch-context=false
 k3d kubeconfig get "$cluster" > "$KUBECONFIG"
 k3d image import "$FUNNEL_E2E_IMAGE" -c "$cluster"
@@ -49,4 +53,4 @@ FUNNEL_KUBERNETES_TEST_KUBECONFIG="$KUBECONFIG" \
 kubectl create namespace funnel-storage-e2e
 kubectl -n funnel-storage-e2e apply -f tests/kubernetes-storage/minio.yaml
 kubectl -n funnel-storage-e2e rollout status deployment/minio --timeout=180s
-python3 -u tests/kubernetes-storage/test_storage.py 2>&1 | tee "$output_dir/tests.log"
+python3 -u tests/kubernetes-storage/test_storage.py "$@" 2>&1 | tee "$output_dir/tests.log"
