@@ -21,7 +21,7 @@ func (w *eventCollector) Close() {}
 
 func TestLogTailWriterOwnsBytesAfterWrite(t *testing.T) {
 	chunks := make(chan []byte)
-	writer := &logTailWriter{ch: chunks}
+	writer := &logTailWriter{ch: chunks, done: make(chan struct{})}
 	written := make(chan struct{})
 	go func() {
 		defer close(written)
@@ -35,6 +35,42 @@ func TestLogTailWriterOwnsBytesAfterWrite(t *testing.T) {
 	<-written
 	if got := string(chunk); got != "original log" {
 		t.Fatalf("log chunk = %q, want original log", got)
+	}
+}
+
+func TestLogTailWriterUnblocksInflightWriteWhenConsumerStops(t *testing.T) {
+	done := make(chan struct{})
+	writer := &logTailWriter{ch: make(chan []byte), done: done}
+	started := make(chan struct{})
+	result := make(chan struct {
+		n   int
+		err error
+	}, 1)
+	go func() {
+		close(started)
+		data := []byte("late")
+		n, err := writer.Write(data)
+		result <- struct {
+			n   int
+			err error
+		}{n, err}
+	}()
+	<-started
+
+	select {
+	case <-result:
+		t.Fatal("Write returned without a receiver or a stopped consumer")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(done)
+	select {
+	case got := <-result:
+		if got.n != len("late") || got.err != nil {
+			t.Fatalf("Write = %d, %v, want %d, nil", got.n, got.err, len("late"))
+		}
+	case <-time.After(time.Second):
+		t.Fatal("in-flight Write stayed blocked after consumer shutdown")
 	}
 }
 

@@ -203,6 +203,7 @@ func StreamLogTail(ctx context.Context, taskID string, attempt, index uint32, si
 	stderrbuf := ring.NewBuffer(size)
 	stdoutch := make(chan []byte)
 	stderrch := make(chan []byte)
+	inputDone := make(chan struct{})
 	// Buffer event channel to handle bursts and prevent silent drops
 	eventch := make(chan *Event, 100)
 	// Used as an immediate timeout for flush()
@@ -279,6 +280,7 @@ func StreamLogTail(ctx context.Context, taskID string, attempt, index uint32, si
 
 	// input writes and flush routine.
 	go func() {
+		defer close(inputDone)
 		// The ticker helps ensure content gets flushed at a regular
 		// interval, so nothing is buffered for too long.
 		ticker := time.NewTicker(interval)
@@ -311,14 +313,18 @@ func StreamLogTail(ctx context.Context, taskID string, attempt, index uint32, si
 		}
 	}()
 
-	return &logTailWriter{stdoutch}, &logTailWriter{stderrch}
+	return &logTailWriter{ch: stdoutch, done: inputDone}, &logTailWriter{ch: stderrch, done: inputDone}
 }
 
 type logTailWriter struct {
-	ch chan<- []byte
+	ch   chan<- []byte
+	done <-chan struct{}
 }
 
 func (l *logTailWriter) Write(p []byte) (n int, err error) {
-	l.ch <- append([]byte(nil), p...)
+	select {
+	case l.ch <- append([]byte(nil), p...):
+	case <-l.done:
+	}
 	return len(p), nil
 }
