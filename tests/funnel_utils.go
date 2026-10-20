@@ -15,6 +15,7 @@ import (
 	"text/template"
 	"time"
 
+	cerrdefs "github.com/containerd/errdefs"
 	docker "github.com/moby/moby/client"
 	runlib "github.com/ohsu-comp-bio/funnel/cmd/run"
 	servercmd "github.com/ohsu-comp-bio/funnel/cmd/server"
@@ -54,9 +55,8 @@ type Funnel struct {
 	Srv       *servercmd.Server
 
 	// Internal
-	startTime string
-	rate      time.Duration
-	conn      *grpc.ClientConn
+	rate time.Duration
+	conn *grpc.ClientConn
 }
 
 // NewFunnel creates a new funnel test server with some test
@@ -95,7 +95,6 @@ func NewFunnel(conf *config.Config) *Funnel {
 		Server:     srv.Server,
 		Srv:        srv,
 		Scheduler:  srv.Scheduler,
-		startTime:  fmt.Sprintf("%d", time.Now().Unix()),
 		rate:       time.Millisecond * 500,
 	}
 }
@@ -173,24 +172,28 @@ func (f *Funnel) SwitchUser(username string) {
 	panic("Cannot switch to an undefined user: " + username)
 }
 
-// WaitForDockerDestroy waits for a "destroy" event
-// from docker for the given container ID
-//
-// TODO probably could use docker.ContainerWait()
-// https://godoc.org/github.com/moby/moby/client#Client.ContainerWait
-func (f *Funnel) WaitForDockerDestroy(id string) {
-	fil := make(docker.Filters).Add("type", "container").Add("container", id).Add("event", "destroy")
+const dockerDestroyWaitTimeout = 30 * time.Second
 
-	result := f.Docker.Events(context.Background(), docker.EventsListOptions{
-		Since:   string(f.startTime),
-		Filters: fil,
-	})
+// WaitForDockerDestroy waits until Docker no longer has the container.
+func (f *Funnel) WaitForDockerDestroy(id string) {
+	ctx, cancel := context.WithTimeout(context.Background(), dockerDestroyWaitTimeout)
+	defer cancel()
+	ticker := time.NewTicker(f.rate)
+	defer ticker.Stop()
+
 	for {
-		select {
-		case e := <-result.Err:
-			panic(e)
-		case <-result.Messages:
+		_, err := f.Docker.ContainerInspect(ctx, id, docker.ContainerInspectOptions{})
+		if cerrdefs.IsNotFound(err) {
 			return
+		}
+		if err != nil {
+			panic(fmt.Errorf("failed to inspect Docker container %s while waiting for deletion: %w", id, err))
+		}
+
+		select {
+		case <-ctx.Done():
+			panic(fmt.Errorf("timed out waiting for Docker container %s to be deleted: %w", id, ctx.Err()))
+		case <-ticker.C:
 		}
 	}
 }
