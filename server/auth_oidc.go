@@ -111,18 +111,9 @@ func (c *OidcConfig) initJwks() {
 	defer cancel()
 	if err := cache.Register(ctx2, jwksUrl,
 		jwkfetch.WithMinInterval(15*time.Minute),
-		jwkfetch.WithWaitReady(false),
+		jwkfetch.WithWaitReady(true),
 	); err != nil {
 		fmt.Printf("[ERROR] Failed to register JWKS (%s) of the OIDC service "+
-			"(%s): %s\n", jwksUrl, c.local.ServiceConfigURL, err)
-		os.Exit(1)
-	}
-
-	// Init JWKS cache:
-	_, err = cache.Refresh(ctx2, jwksUrl)
-
-	if err != nil {
-		fmt.Printf("[ERROR] Failed to fetch JWKS (%s) of the OIDC service "+
 			"(%s): %s\n", jwksUrl, c.local.ServiceConfigURL, err)
 		os.Exit(1)
 	}
