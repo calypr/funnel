@@ -23,6 +23,7 @@ import (
 func NewClient(address string) (*Client, error) {
 	user := os.Getenv("FUNNEL_SERVER_USER")
 	password := os.Getenv("FUNNEL_SERVER_PASSWORD")
+	token := os.Getenv("FUNNEL_SERVER_TOKEN")
 
 	re := regexp.MustCompile("^(.+://)?(.[^/]+)(.+)?$")
 	endpoint := re.ReplaceAllString(address, "$1$2")
@@ -44,6 +45,7 @@ func NewClient(address string) (*Client, error) {
 		Marshaler: &Marshaler,
 		User:      user,
 		Password:  password,
+		Token:     token,
 	}, nil
 }
 
@@ -54,6 +56,7 @@ type Client struct {
 	Marshaler *protojson.MarshalOptions
 	User      string
 	Password  string
+	Token     string
 }
 
 // GetTask returns the raw bytes from GET /v1/tasks/{id}
@@ -62,7 +65,7 @@ func (c *Client) GetTask(ctx context.Context, req *GetTaskRequest) (*Task, error
 	u := c.address + "/v1/tasks/" + req.Id + "?view=" + req.View
 	hreq, _ := http.NewRequest("GET", u, nil)
 	hreq = hreq.WithContext(ctx)
-	hreq.SetBasicAuth(c.User, c.Password)
+	c.setCredentials(hreq)
 	body, err := util.CheckHTTPResponse(c.client.Do(hreq))
 	if err != nil {
 		return nil, err
@@ -98,7 +101,7 @@ func (c *Client) ListTasks(ctx context.Context, req *ListTasksRequest) (*ListTas
 	u := c.address + "/v1/tasks?" + v.Encode()
 	hreq, _ := http.NewRequest("GET", u, nil)
 	hreq = hreq.WithContext(ctx)
-	hreq.SetBasicAuth(c.User, c.Password)
+	c.setCredentials(hreq)
 	body, err := util.CheckHTTPResponse(c.client.Do(hreq))
 	if err != nil {
 		return nil, err
@@ -129,7 +132,7 @@ func (c *Client) CreateTask(ctx context.Context, task *Task) (*CreateTaskRespons
 	hreq, _ := http.NewRequest("POST", u, bytes.NewReader(b))
 	hreq = hreq.WithContext(ctx)
 	hreq.Header.Add("Content-Type", "application/json")
-	hreq.SetBasicAuth(c.User, c.Password)
+	c.setCredentials(hreq)
 	body, err := util.CheckHTTPResponse(c.client.Do(hreq))
 	if err != nil {
 		return nil, err
@@ -165,7 +168,7 @@ func (c *Client) CancelTaskWithMessage(ctx context.Context, req *CancelTaskReque
 	hreq, _ := http.NewRequest("POST", u, nil)
 	hreq = hreq.WithContext(ctx)
 	hreq.Header.Add("Content-Type", "application/json")
-	hreq.SetBasicAuth(c.User, c.Password)
+	c.setCredentials(hreq)
 
 	// Execute request and capture response
 	httpResp, err := c.client.Do(hreq)
@@ -212,7 +215,7 @@ func (c *Client) GetServiceInfo(ctx context.Context, req *GetServiceInfoRequest)
 	u := c.address + "/v1/service-info"
 	hreq, _ := http.NewRequest("GET", u, nil)
 	hreq = hreq.WithContext(ctx)
-	hreq.SetBasicAuth(c.User, c.Password)
+	c.setCredentials(hreq)
 	body, err := util.CheckHTTPResponse(c.client.Do(hreq))
 	if err != nil {
 		return nil, err
@@ -255,4 +258,14 @@ func (c *Client) WaitForTask(ctx context.Context, taskIDs ...string) error {
 		}
 	}
 	return nil
+}
+
+// setCredentials authenticates the request with the Bearer token
+// (FUNNEL_SERVER_TOKEN) when available, otherwise with Basic credentials.
+func (c *Client) setCredentials(request *http.Request) {
+	if c.Token != "" {
+		request.Header.Add("Authorization", "Bearer "+c.Token)
+	} else if c.User != "" && c.Password != "" {
+		request.SetBasicAuth(c.User, c.Password)
+	}
 }

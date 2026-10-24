@@ -3,9 +3,11 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"runtime/debug"
 	"strings"
 
 	"time"
@@ -18,6 +20,7 @@ import (
 
 	"github.com/golang/gddo/httputil"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
+	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/ohsu-comp-bio/funnel/compute/scheduler"
 	"github.com/ohsu-comp-bio/funnel/config"
@@ -147,7 +150,7 @@ func (s *Server) Serve(pctx context.Context) error {
 		return err
 	}
 
-	auth := NewAuthentication(s.BasicAuth, s.OidcAuth, s.TaskAccess)
+	auth := NewAuthentication(s.BasicAuth, s.OidcAuth, s.TaskAccess, s.Log)
 
 	grpcServer := grpc.NewServer(
 		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
@@ -156,8 +159,15 @@ func (s *Server) Serve(pctx context.Context) error {
 		}),
 		grpc.UnaryInterceptor(
 			grpc_middleware.ChainUnaryServer(
+				// Recover from panics in any of the interceptors/handlers below,
+				// converting them into a gRPC Internal error instead of crashing
+				// the whole server process.
+				newRecoveryInterceptor(s.Log),
 				// API auth check.
 				auth.Interceptor,
+				// Audit log of all API requests. Must come after the auth
+				// check, which establishes the user making the request.
+				newAuditInterceptor(s.Log),
 				newDebugInterceptor(s.Log),
 			),
 		),
@@ -390,4 +400,17 @@ func messageHandler(next http.Handler) http.Handler {
 		w.WriteHeader(rec.Code)
 		w.Write(rec.Body.Bytes())
 	})
+}
+
+// Return a gRPC interceptor that recovers from panics in the interceptors and
+// handlers chained after it. The panic value and stack trace are logged, and
+// the client gets a generic Internal error without internal details.
+func newRecoveryInterceptor(log *logger.Logger) grpc.UnaryServerInterceptor {
+	return grpc_recovery.UnaryServerInterceptor(
+		grpc_recovery.WithRecoveryHandler(func(p interface{}) error {
+			log.Error("recovered from panic in gRPC handler",
+				"panic", fmt.Sprint(p), "stack", string(debug.Stack()))
+			return status.Error(codes.Internal, "internal server error")
+		}),
+	)
 }
