@@ -338,7 +338,7 @@ func TestCreateJob_DefaultBackoffLimit(t *testing.T) {
 		Resources: &tes.Resources{CpuCores: 1},
 	}
 
-	if _, err := resources.CreateJob(context.Background(), task, baseJobConfig(jobTemplate), client, unitTestLog); err != nil {
+	if _, err := resources.CreateJob(context.Background(), task, baseJobConfig(jobTemplate), client, unitTestLog, nil); err != nil {
 		t.Fatalf("CreateJob: %v", err)
 	}
 
@@ -366,7 +366,7 @@ func TestCreateJob_BackoffLimitFromBackendParameters(t *testing.T) {
 		},
 	}
 
-	if _, err := resources.CreateJob(context.Background(), task, baseJobConfig(jobTemplate), client, unitTestLog); err != nil {
+	if _, err := resources.CreateJob(context.Background(), task, baseJobConfig(jobTemplate), client, unitTestLog, nil); err != nil {
 		t.Fatalf("CreateJob: %v", err)
 	}
 
@@ -393,7 +393,7 @@ func TestCreateJob_BackoffLimitInvalidValueFallsBackToDefault(t *testing.T) {
 		},
 	}
 
-	if _, err := resources.CreateJob(context.Background(), task, baseJobConfig(jobTemplate), client, unitTestLog); err != nil {
+	if _, err := resources.CreateJob(context.Background(), task, baseJobConfig(jobTemplate), client, unitTestLog, nil); err != nil {
 		t.Fatalf("CreateJob: %v", err)
 	}
 
@@ -420,7 +420,7 @@ func TestCreateJob_NegativeBackoffLimitFallsBackToDefault(t *testing.T) {
 		},
 	}
 
-	if _, err := resources.CreateJob(context.Background(), task, baseJobConfig(jobTemplate), client, unitTestLog); err != nil {
+	if _, err := resources.CreateJob(context.Background(), task, baseJobConfig(jobTemplate), client, unitTestLog, nil); err != nil {
 		t.Fatalf("CreateJob: %v", err)
 	}
 
@@ -446,7 +446,7 @@ func TestCreateJob_TaskNameLabelIsSanitized(t *testing.T) {
 		Resources: &tes.Resources{CpuCores: 1},
 	}
 
-	if _, err := resources.CreateJob(context.Background(), task, baseJobConfig(jobTemplate), client, unitTestLog); err != nil {
+	if _, err := resources.CreateJob(context.Background(), task, baseJobConfig(jobTemplate), client, unitTestLog, nil); err != nil {
 		t.Fatalf("CreateJob: %v", err)
 	}
 

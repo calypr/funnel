@@ -30,7 +30,7 @@ type mockDatabase struct {
 func (m *mockDatabase) GetTask(_ context.Context, req *tes.GetTaskRequest) (*tes.Task, error) {
 	t, ok := m.tasks[req.Id]
 	if !ok {
-		return nil, fmt.Errorf("not found")
+		return nil, tes.ErrNotFound
 	}
 	return t, nil
 }
@@ -712,6 +712,23 @@ func (c *capturingEventWriter) WriteEvent(_ context.Context, ev *events.Event) e
 
 func (c *capturingEventWriter) Close() {}
 
+type systemErrorSnapshotWriter struct {
+	builder        *events.TaskBuilder
+	logsAtTerminal []string
+}
+
+func (w *systemErrorSnapshotWriter) WriteEvent(ctx context.Context, ev *events.Event) error {
+	if err := w.builder.WriteEvent(ctx, ev); err != nil {
+		return err
+	}
+	if ev.Type == events.Type_TASK_STATE && ev.GetState() == tes.SystemError {
+		w.logsAtTerminal = append([]string(nil), w.builder.Task.GetTaskLog(0).SystemLogs...)
+	}
+	return nil
+}
+
+func (w *systemErrorSnapshotWriter) Close() {}
+
 func (c *capturingEventWriter) hasSystemError(taskID string) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -824,6 +841,27 @@ func TestReconcile_ZeroStatusFailedCreate(t *testing.T) {
 
 	if !evWriter.hasSystemError(taskID) {
 		t.Errorf("expected SYSTEM_ERROR event for task %s, got events: %+v", taskID, evWriter.events)
+	}
+}
+
+func TestWriteSystemErrorPublishesDiagnosticWithTerminalState(t *testing.T) {
+	const taskID = "test-system-error-diagnostic"
+
+	writer := &systemErrorSnapshotWriter{
+		builder: &events.TaskBuilder{Task: &tes.Task{Id: taskID, State: tes.Queued}},
+	}
+	backend := &Backend{
+		event: writer,
+		database: &mockReadOnlyServer{tasks: []*tes.Task{
+			{Id: taskID, State: tes.Queued},
+		}},
+		log: logger.NewLogger("test", logger.DefaultConfig()),
+	}
+
+	backend.writeSystemError(context.Background(), taskID, map[string]string{"error": "storage is read-only"}, "storage validation failed")
+
+	if len(writer.logsAtTerminal) != 1 || !strings.Contains(writer.logsAtTerminal[0], "storage validation failed") || !strings.Contains(writer.logsAtTerminal[0], "storage is read-only") {
+		t.Fatalf("SYSTEM_ERROR became observable with diagnostics %q", writer.logsAtTerminal)
 	}
 }
 

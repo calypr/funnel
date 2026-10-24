@@ -4,6 +4,7 @@ package kubernetes
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -16,14 +17,15 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
-	"github.com/hashicorp/go-multierror"
 	"github.com/ohsu-comp-bio/funnel/compute/kubernetes/resources"
+	"github.com/ohsu-comp-bio/funnel/compute/kubernetes/storageplan"
 	"github.com/ohsu-comp-bio/funnel/config"
 	"github.com/ohsu-comp-bio/funnel/events"
 	"github.com/ohsu-comp-bio/funnel/logger"
 	"github.com/ohsu-comp-bio/funnel/plugins/proto"
 	"github.com/ohsu-comp-bio/funnel/tes"
 	"github.com/ohsu-comp-bio/funnel/util/k8sutil"
+	googleproto "google.golang.org/protobuf/proto"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -98,27 +100,25 @@ func (b Backend) CheckBackendParameterSupport(task *tes.Task) error {
 }
 
 // WriteEvent writes an event to the compute backend.
-// Currently, only TASK_CREATED is handled, which calls Submit.
+// Task creation resolves plugin configuration; cancellation uses recorded resources.
 func (b *Backend) WriteEvent(ctx context.Context, ev *events.Event) error {
-	// TODO: Should this be moved to the switch statement so it's only run on TASK_CREATED?
-	var taskConfig *config.Config = b.conf
-	b.log.Debug("taskConfig", "before plugin", taskConfig.Safe())
-	if b.conf.Plugins != nil {
-		resp, ok := ctx.Value("pluginResponse").(*proto.JobResponse)
-		if !ok {
-			return fmt.Errorf("Failed to unmarshal plugin response %v", ctx.Value("pluginResponse"))
-		}
-
-		// TODO: Test that plugin response is being correctly set in taskConfig after this merge
-		err := mergo.Merge(taskConfig, resp.Config, mergo.WithOverride)
-		if err != nil {
-			return fmt.Errorf("Failed to merge plugin config %v", err)
-		}
-	}
-	b.log.Debug("taskConfig", "after plugin", taskConfig.Safe())
-
 	switch ev.Type {
 	case events.Type_TASK_CREATED:
+		taskConfig := googleproto.Clone(b.conf).(*config.Config)
+		b.log.Debug("taskConfig", "before plugin", taskConfig.Safe())
+		if b.conf.Plugins != nil {
+			resp, ok := ctx.Value("pluginResponse").(*proto.JobResponse)
+			if !ok {
+				return fmt.Errorf("missing or invalid plugin job response")
+			}
+
+			err := mergo.Merge(taskConfig, resp.Config, mergo.WithOverride)
+			if err != nil {
+				return fmt.Errorf("merging plugin config: %w", err)
+			}
+		}
+		b.log.Debug("taskConfig", "after plugin", taskConfig.Safe())
+
 		res := b.Submit(ctx, ev.GetTask(), taskConfig)
 		return res
 	case events.Type_TASK_STATE:
@@ -135,24 +135,54 @@ func (b *Backend) Close() {
 
 // Submit creates both the PVC and the worker job with better error handling
 func (b *Backend) Submit(ctx context.Context, task *tes.Task, config *config.Config) error {
-	err := b.createResources(ctx, task, config)
-
+	canceled, err := b.taskCanceled(ctx, task.Id)
 	if err != nil {
-		b.log.Error("Error creating resources, writing SystemError event", "error", err, "task ID", task.Id)
-		_ = b.event.WriteEvent(ctx, events.NewState(task.Id, tes.SystemError))
-		_ = b.event.WriteEvent(
-			context.Background(),
-			events.NewSystemLog(
-				task.Id, 0, 0, "error",
-				"Kubernetes job in FAILED state",
-				map[string]string{"error": err.Error()},
-			),
-		)
+		return fmt.Errorf("checking task state before Kubernetes submission: %w", err)
+	}
+	if canceled {
+		b.log.Debug("skipping Kubernetes submission for canceled task", "taskID", task.Id)
+		return nil
+	}
 
-		return fmt.Errorf("creating Worker resources: %v", err)
+	createErr := b.createResources(ctx, task, config)
+	canceled, stateErr := b.taskCanceled(ctx, task.Id)
+	if stateErr != nil {
+		if createErr == nil {
+			b.log.Error("deferring task reconciliation because its state is unavailable after submission", "taskID", task.Id, "error", stateErr)
+			return nil
+		}
+		return errors.Join(fmt.Errorf("creating Worker resources: %w", createErr), fmt.Errorf("checking task state after Kubernetes submission: %w", stateErr))
+	}
+	if canceled {
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer cancel()
+		if cleanupErr := b.cleanResources(cleanupCtx, task.Id); cleanupErr != nil {
+			b.log.Error("cleaning up resources after task cancellation during submission", "taskID", task.Id, "error", cleanupErr)
+		}
+		return nil
+	}
+
+	if createErr != nil {
+		b.log.Error("Error creating resources, writing SystemError event", "error", createErr, "task ID", task.Id)
+		b.writeSystemError(ctx, task.Id, map[string]string{"error": createErr.Error()}, "Kubernetes job in FAILED state")
+		return fmt.Errorf("creating Worker resources: %w", createErr)
 	}
 
 	return nil
+}
+
+func (b *Backend) taskCanceled(ctx context.Context, taskID string) (bool, error) {
+	if b.database == nil {
+		return false, nil
+	}
+	task, err := b.database.GetTask(ctx, &tes.GetTaskRequest{Id: taskID, View: tes.View_MINIMAL.String()})
+	if err != nil {
+		return false, fmt.Errorf("reading task %q: %w", taskID, err)
+	}
+	if task == nil {
+		return false, fmt.Errorf("reading task %q: database returned no task", taskID)
+	}
+	return task.State == tes.State_CANCELED, nil
 }
 
 // Cancel removes tasks that are pending kubernetes v1/batch jobs.
@@ -166,6 +196,18 @@ func (b *Backend) Cancel(ctx context.Context, taskID string) error {
 
 // createResources creates the resources needed for a task.
 func (b *Backend) createResources(ctx context.Context, task *tes.Task, config *config.Config) error {
+	plan, err := storageplan.Resolve(task, config)
+	if err != nil {
+		return fmt.Errorf("resolving task storage: %w", err)
+	}
+	if config.Kubernetes.JobsNamespace != b.conf.Kubernetes.JobsNamespace {
+		return fmt.Errorf("per-task configuration cannot change Kubernetes.JobsNamespace")
+	}
+	if plan != nil {
+		if err := b.validateExistingStorage(ctx, plan); err != nil {
+			return fmt.Errorf("validating bound storage: %w", err)
+		}
+	}
 	// Create context with optional timeout
 	var timeoutCtx context.Context = ctx
 	var timeout time.Duration
@@ -180,9 +222,8 @@ func (b *Backend) createResources(ctx context.Context, task *tes.Task, config *c
 	// Create Worker Job first so its UID can be used as an owner reference on
 	// all subordinate namespaced resources, enabling automatic K8s GC cleanup.
 	b.log.Debug("creating Worker Job", "taskID", task.Id)
-	job, err := resources.CreateJob(timeoutCtx, task, config, b.client, b.log)
+	job, err := resources.CreateJob(timeoutCtx, task, config, b.client, b.log, plan)
 	if err != nil {
-		_ = b.Cancel(context.Background(), task.Id)
 		return fmt.Errorf("creating Worker Job: %w", err)
 	}
 
@@ -195,6 +236,18 @@ func (b *Backend) createResources(ctx context.Context, task *tes.Task, config *c
 		UID:                job.UID,
 		BlockOwnerDeletion: &blockOwnerDeletion,
 		Controller:         &isController,
+	}
+
+	if plan != nil {
+		if err := b.createBoundStorage(timeoutCtx, task.Id, config.Kubernetes.JobsNamespace, plan, *ownerRef); err != nil {
+			cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+			defer cancel()
+			cleanupErr := b.Cancel(cleanupCtx, task.Id)
+			if cleanupErr != nil {
+				cleanupErr = fmt.Errorf("rolling back task %q storage: %w", task.Id, cleanupErr)
+			}
+			return errors.Join(fmt.Errorf("creating bound storage: %w", err), cleanupErr)
+		}
 	}
 
 	// Create ConfigMap (only when a template is configured; deployments using a
@@ -263,7 +316,7 @@ func (b *Backend) createResources(ctx context.Context, task *tes.Task, config *c
 
 	// If the task has inputs, outputs, or declared volumes, create a PVC so
 	// executor pods can share data via PVC subPath mounts.
-	if len(task.Inputs) > 0 || len(task.Outputs) > 0 || len(task.Volumes) > 0 {
+	if plan == nil && (len(task.Inputs) > 0 || len(task.Outputs) > 0 || len(task.Volumes) > 0) {
 		b.log.Debug("creating Worker PV", "taskID", task.Id)
 
 		// Check to make sure required configs are present
@@ -290,45 +343,6 @@ func (b *Backend) createResources(ctx context.Context, task *tes.Task, config *c
 	}
 
 	return nil
-}
-
-// cleanResources deletes the resources created for a task.
-func (b *Backend) cleanResources(ctx context.Context, taskId string) error {
-	var errs error
-
-	// Delete Job
-	b.log.Debug("deleting Job", "taskID", taskId)
-	err := resources.DeleteJob(ctx, b.conf, taskId, b.client, b.log)
-	if err != nil {
-		errs = multierror.Append(errs, err)
-		b.log.Error("deleting Job", "error", err)
-	}
-
-	// Determine the ServiceAccount for this task.
-	// Default to the conventional task-scoped name; override if the task
-	// specifies an externally-managed SA via the _WORKER_SA tag.
-	saOpts := &resources.DeleteServiceAccountOptions{}
-	if b.database != nil {
-		if task, err := b.database.GetTask(ctx, &tes.GetTaskRequest{Id: taskId, View: tes.View_FULL.String()}); err == nil {
-			if workerSA := task.Tags["_WORKER_SA"]; workerSA != "" {
-				saOpts.ServiceAccountName = workerSA
-				saOpts.SharedSA = true
-			}
-		}
-	}
-
-	if err := resources.DeleteServiceAccount(ctx, taskId, b.conf.Kubernetes.JobsNamespace, b.client, b.log, saOpts); err != nil {
-		errs = multierror.Append(errs, err)
-		b.log.Error("deleting Worker ServiceAccount", "taskID", taskId, "error", err)
-	}
-
-	// Delete PV
-	err = resources.DeletePV(ctx, taskId, b.conf.Kubernetes.JobsNamespace, b.client, b.log)
-	if err != nil {
-		errs = multierror.Append(errs, err)
-		b.log.Error("deleting Worker PV", "error", err)
-	}
-	return errs
 }
 
 // isJobDone reports whether the job has finished — either succeeded
@@ -607,11 +621,13 @@ func (b *Backend) cleanBacklog(ctx context.Context, disableCleanup bool) {
 		// Orphaned jobs (Active) whose task no longer exists in the Funnel DB — left over from a previous deployment or server crash.
 		if s.Active > 0 {
 			_, err := b.database.GetTask(ctx, &tes.GetTaskRequest{Id: taskID, View: tes.View_MINIMAL.String()})
-			if err != nil {
+			if isTaskNotFoundError(err) {
 				b.log.Info("backlog cleanup: deleting orphaned active job with no matching task", "taskID", taskID)
 				if err := b.cleanResources(ctx, taskID); err != nil {
 					b.log.Error("backlog cleanup: failed to clean orphaned resources", "taskID", taskID, "error", err)
 				}
+			} else if err != nil {
+				b.log.Error("backlog cleanup: checking task state", "taskID", taskID, "error", err)
 			}
 		}
 	}
@@ -634,16 +650,33 @@ func (b *Backend) writeSystemError(ctx context.Context, jobName string, errAttri
 	if additionalMessage == "" {
 		additionalMessage = "Kubernetes job in FAILED state"
 	}
+	if b.database != nil {
+		task, err := b.database.GetTask(ctx, &tes.GetTaskRequest{Id: jobName, View: tes.View_MINIMAL.String()})
+		if err != nil {
+			b.log.Error("reconcile: cannot confirm task state before writing SYSTEM_ERROR", "taskID", jobName, "error", err)
+			return
+		}
+		if task == nil || task.State == tes.State_CANCELED {
+			b.log.Debug("skipping SYSTEM_ERROR for canceled or missing task", "taskID", jobName)
+			return
+		}
+	}
 
-	b.event.WriteEvent(ctx, events.NewState(jobName, tes.SystemError))
 	b.event.WriteEvent(ctx, events.NewSystemLog(
 		jobName, 0, 0, "error", additionalMessage,
 		errAttributes,
 	))
+	b.event.WriteEvent(ctx, events.NewState(jobName, tes.SystemError))
 }
 
 func (b *Backend) reconcileJob(ctx context.Context, j *v1.Job, disableCleanup bool) {
 	jobName := j.Name
+	if j.DeletionTimestamp != nil && slices.Contains(j.Finalizers, storageplan.Finalizer) {
+		if err := b.cleanResources(ctx, jobName); err != nil {
+			b.log.Error("reconcile: completing storage cleanup", "taskID", jobName, "error", err)
+		}
+		return
+	}
 	status := j.Status
 	schedulingTimeout := b.conf.Kubernetes.Timeout.GetDuration()
 
@@ -804,6 +837,27 @@ func (b *Backend) reconcileOnce(ctx context.Context, disableCleanup bool) {
 
 	// Any jobs still in k8sJobs were not matched to any Funnel task — orphaned or in terminal states.
 	for taskID, job := range k8sJobs {
+		if job.DeletionTimestamp != nil && slices.Contains(job.Finalizers, storageplan.Finalizer) {
+			b.reconcileJob(ctx, job, disableCleanup)
+			continue
+		}
+		if b.database != nil {
+			task, taskErr := b.database.GetTask(ctx, &tes.GetTaskRequest{Id: taskID, View: tes.View_MINIMAL.String()})
+			if taskErr == nil && task != nil && task.State == tes.State_CANCELED {
+				if err := b.cleanResources(ctx, taskID); err != nil {
+					b.log.Error("reconcile: retrying canceled task cleanup", "taskID", taskID, "error", err)
+				}
+				continue
+			}
+			if taskErr == nil && task == nil {
+				b.log.Error("reconcile: database returned no task for unmatched Job", "taskID", taskID)
+				continue
+			}
+			if taskErr != nil && !isTaskNotFoundError(taskErr) {
+				b.log.Error("reconcile: checking task state for unmatched Job", "taskID", taskID, "error", taskErr)
+				continue
+			}
+		}
 		b.log.Debug("reconcile: Task is either orphaned or in a terminal state", "taskID", taskID)
 		if !b.isJobDone(job.Status) {
 			b.log.Debug("reconcile: K8s hasn't given up yet — still within backoffLimit, retrying.", "taskID", taskID, "failed", job.Status.Failed, "backoffLimit", *job.Spec.BackoffLimit)
@@ -854,85 +908,18 @@ func extractTaskIDFromExecutorJobName(name string) string {
 func (b *Backend) isResourceCleanupNeeded(ctx context.Context, taskID string) (bool, error) {
 	task, err := b.database.GetTask(ctx, &tes.GetTaskRequest{Id: taskID, View: tes.View_MINIMAL.String()})
 	if err != nil {
-		return true, nil
+		if isTaskNotFoundError(err) {
+			return true, nil
+		}
+		return false, fmt.Errorf("checking task state for cleanup: %w", err)
+	}
+	if task == nil {
+		return false, fmt.Errorf("checking task state for cleanup: database returned no task")
 	}
 	switch task.State {
 	case tes.State_COMPLETE, tes.State_EXECUTOR_ERROR, tes.State_SYSTEM_ERROR, tes.State_CANCELED:
 		return true, nil
 	default:
 		return false, nil
-	}
-}
-
-// CleanOrphanedResources deletes any Funnel-managed Kubernetes resources that are not associated
-// with an active task in the database.
-//
-// This is intended to be called as a one-shot operation (e.g. from a Kubernetes CronJob) rather
-// than as a long-running goroutine, so that cleanup is decoupled from the Funnel server lifecycle
-// and multiple server replicas do not race to clean the same resources simultaneously.
-func (b *Backend) CleanOrphanedResources(ctx context.Context) {
-	b.log.Info("starting orphaned resource cleanup")
-	namespace := b.conf.Kubernetes.JobsNamespace
-	taskIDs := make(map[string]struct{})
-
-	// Collect task IDs from resources that cleanResources manages directly.
-	// ConfigMaps, PVCs, Roles, and RoleBindings are now owned by the Job via ownerReferences
-	// and are garbage-collected by Kubernetes automatically — they are intentionally excluded here.
-
-	// PVs (cluster-scoped; cannot be owned by a namespaced Job, so must be cleaned explicitly)
-	pvs, err := b.client.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{LabelSelector: fmt.Sprintf("app=funnel,namespace=%s", namespace)})
-	if err != nil {
-		b.log.Error("CleanOrphanedResources: listing PVs", "error", err)
-	} else {
-		for _, r := range pvs.Items {
-			if id, ok := r.Labels["taskId"]; ok {
-				taskIDs[id] = struct{}{}
-			}
-		}
-	}
-
-	// ServiceAccounts (shared SAs are not owned by a Job; task-scoped SAs may also be orphaned
-	// if they were created before ownerRef support was added)
-	sas, err := b.client.CoreV1().ServiceAccounts(namespace).List(ctx, metav1.ListOptions{LabelSelector: "app=funnel"})
-	if err != nil {
-		b.log.Error("CleanOrphanedResources: listing ServiceAccounts", "error", err)
-	} else {
-		for _, r := range sas.Items {
-			if id, ok := r.Labels["taskId"]; ok {
-				taskIDs[id] = struct{}{}
-			}
-		}
-	}
-
-	// Executor Jobs (label app=funnel-executor; named {taskID}-{index}).
-	// These are not owned by the worker Job, so they must be discovered and cleaned explicitly.
-	executorJobs, err := b.client.BatchV1().Jobs(namespace).List(ctx, metav1.ListOptions{LabelSelector: "app=funnel-executor"})
-	if err != nil {
-		b.log.Error("backlog cleanup: listing executor jobs", err)
-	} else {
-		for _, j := range executorJobs.Items {
-			if taskID := extractTaskIDFromExecutorJobName(j.Name); taskID != "" {
-				taskIDs[taskID] = struct{}{}
-			}
-		}
-	}
-
-	for taskID := range taskIDs {
-		needsCleanup, err := b.isResourceCleanupNeeded(ctx, taskID)
-		if err != nil {
-			b.log.Error("CleanOrphanedResources: checking task state", "taskID", taskID, "error", err)
-			continue
-		}
-		if !needsCleanup {
-			continue
-		}
-		b.log.Info("CleanOrphanedResources: cleaning up resources for task", "taskID", taskID)
-		if err := b.cleanResources(ctx, taskID); err != nil {
-			b.log.Error("CleanOrphanedResources: failed to clean resources", "taskID", taskID, "error", err)
-		}
-
-		// Brief pause between deletions to avoid hammering the K8s API server under high orphan counts.
-		// TODO: consider batching (e.g. 1s per 10 tasks if any performance delays are observed).
-		time.Sleep(500 * time.Millisecond)
 	}
 }
