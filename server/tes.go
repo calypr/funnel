@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"context"
+
 	"github.com/ohsu-comp-bio/funnel/config"
 	"github.com/ohsu-comp-bio/funnel/events"
 	"github.com/ohsu-comp-bio/funnel/logger"
@@ -14,7 +16,6 @@ import (
 	"github.com/ohsu-comp-bio/funnel/tes"
 	"github.com/ohsu-comp-bio/funnel/util/server"
 	"github.com/ohsu-comp-bio/funnel/version"
-	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"

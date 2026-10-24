@@ -5,8 +5,9 @@ import (
 	"io"
 	"strings"
 
+	"context"
+
 	"github.com/ohsu-comp-bio/funnel/tes"
-	"golang.org/x/net/context"
 )
 
 // List runs the "task list" CLI command, which connects to the server,

@@ -1,8 +1,9 @@
 package task
 
 import (
+	"context"
+
 	"github.com/ohsu-comp-bio/funnel/tes"
-	"golang.org/x/net/context"
 )
 
 // Wait runs the "task wait" CLI command, which polls the server,

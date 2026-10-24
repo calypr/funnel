@@ -2,21 +2,23 @@ package dockerutil
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"os"
 	"regexp"
 	"time"
 
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/client"
 )
+
+var dockerServerAPIVersionPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)server API version:\s*([0-9]+\.[0-9]+)`),
+	regexp.MustCompile(`(?i)maximum supported API version is\s*([0-9]+\.[0-9]+)`),
+}
 
 // NewDockerClient returns a new docker client. This util handles
 // working around some client/server API version mismatch issues.
 func NewDockerClient() (*client.Client, error) {
-	dclient, err := client.NewClientWithOpts(
-		client.FromEnv,
-		client.WithAPIVersionNegotiation(),
-	)
+	dclient, err := client.New(client.FromEnv)
 	if err != nil {
 		return nil, err
 	}
@@ -28,18 +30,26 @@ func NewDockerClient() (*client.Client, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 		defer cancel()
 
-		_, err := dclient.ServerVersion(ctx)
+		_, err := dclient.ServerVersion(ctx, client.ServerVersionOptions{})
 		if err != nil {
-			re := regexp.MustCompile(`([0-9\.]+)`)
-			version := re.FindAllString(err.Error(), -1)
-			if version == nil {
-				return nil, errors.New("Can't connect docker client")
+			version := dockerServerAPIVersion(err.Error())
+			if version == "" {
+				return nil, fmt.Errorf("can't connect Docker client: %w", err)
 			}
-			// Error message example:
-			//   Error getting metadata for container: Error response from daemon: client is newer than server (client API version: 1.26, server API version: 1.24)
-			os.Setenv("DOCKER_API_VERSION", version[1])
+			if err := os.Setenv("DOCKER_API_VERSION", version); err != nil {
+				return nil, fmt.Errorf("setting Docker API version %q: %w", version, err)
+			}
 			return NewDockerClient()
 		}
 	}
 	return dclient, nil
+}
+
+func dockerServerAPIVersion(message string) string {
+	for _, pattern := range dockerServerAPIVersionPatterns {
+		if match := pattern.FindStringSubmatch(message); len(match) == 2 {
+			return match[1]
+		}
+	}
+	return ""
 }
