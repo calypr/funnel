@@ -35,13 +35,22 @@ func CreatePVC(ctx context.Context, taskId string, diskGb float64, conf *config.
 		s3Region = conf.GenericS3[0].Region
 	}
 
+	// StorageClassName is only set in PVCModePVC: the template then requests
+	// dynamic provisioning instead of statically binding to the task's PV.
+	var storageClassName string
+	if conf.Kubernetes.GetPVCModeOrDefault() == config.PVCModePVC {
+		storageClassName = conf.Kubernetes.GetStorageClassName()
+	}
+
 	var buf bytes.Buffer
 	err = t.Execute(&buf, map[string]interface{}{
-		"TaskId":    taskId,
-		"Namespace": jobNamespace,
-		"Bucket":    s3Bucket,
-		"Region":    s3Region,
-		"DiskGb":    diskGb,
+		"TaskId":           taskId,
+		"PVCName":          conf.Kubernetes.PVCNameForTask(taskId),
+		"Namespace":        jobNamespace,
+		"Bucket":           s3Bucket,
+		"Region":           s3Region,
+		"DiskGb":           diskGb,
+		"StorageClassName": storageClassName,
 	})
 	if err != nil {
 		return fmt.Errorf("%v", err)

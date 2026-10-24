@@ -91,5 +91,5 @@ spec:
       {{- if .NeedsPVC }} # Start: Conditional PVC Volume Definition
       - name: funnel-storage-{{.TaskId}}
         persistentVolumeClaim:
-          claimName: funnel-worker-pvc-{{.TaskId}}
+          claimName: {{.PVCName}}
       {{- end }} # End: Conditional PVC Volume Definition

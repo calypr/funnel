@@ -2780,8 +2780,26 @@ type Kubernetes struct {
 	// interfaces. Funnel defaults to /dev, /proc, /sys, /run, and /var/run.
 	// A configured non-empty list replaces those defaults.
 	ForbiddenPathPrefixes []string `protobuf:"bytes,20,rep,name=ForbiddenPathPrefixes,proto3" json:"ForbiddenPathPrefixes,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	// PVCMode controls how per-task storage is provisioned. One of:
+	//   "full"   - a dedicated PV + PVC per task (PVTemplate/PVCTemplate,
+	//              statically bound, S3 CSI-backed). Default/upstream behavior.
+	//   "pvc"    - only a dedicated PVC per task (PVCTemplate), dynamically
+	//              provisioned via StorageClassName. No cluster-scoped PV is
+	//              created, so no ClusterRole is required.
+	//   "shared" - nothing is created per task; worker/executor jobs mount a
+	//              single pre-existing PVC (SharedPVCName), isolated by subPath.
+	// An empty value is treated as "full".
+	PVCMode string `protobuf:"bytes,21,opt,name=PVCMode,proto3" json:"PVCMode,omitempty"`
+	// StorageClass for the dynamically-provisioned PVC when PVCMode is "pvc".
+	StorageClassName string `protobuf:"bytes,22,opt,name=StorageClassName,proto3" json:"StorageClassName,omitempty"`
+	// Name of the pre-existing PVC mounted by every task when PVCMode is
+	// "shared". Defaults to "funnel-pvc".
+	SharedPVCName string `protobuf:"bytes,23,opt,name=SharedPVCName,proto3" json:"SharedPVCName,omitempty"`
+	// WorkerImage optionally overrides the container image of the Worker Job.
+	// When empty, the image of the running Funnel server pod is used.
+	WorkerImage   string `protobuf:"bytes,24,opt,name=WorkerImage,proto3" json:"WorkerImage,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Kubernetes) Reset() {
@@ -2952,6 +2970,34 @@ func (x *Kubernetes) GetForbiddenPathPrefixes() []string {
 		return x.ForbiddenPathPrefixes
 	}
 	return nil
+}
+
+func (x *Kubernetes) GetPVCMode() string {
+	if x != nil {
+		return x.PVCMode
+	}
+	return ""
+}
+
+func (x *Kubernetes) GetStorageClassName() string {
+	if x != nil {
+		return x.StorageClassName
+	}
+	return ""
+}
+
+func (x *Kubernetes) GetSharedPVCName() string {
+	if x != nil {
+		return x.SharedPVCName
+	}
+	return ""
+}
+
+func (x *Kubernetes) GetWorkerImage() string {
+	if x != nil {
+		return x.WorkerImage
+	}
+	return ""
 }
 
 // KubernetesResources describes default and maximum resource limits for Kubernetes tasks.
@@ -3468,7 +3514,7 @@ const file_config_config_proto_rawDesc = "" +
 	"\bDisabled\x18\x01 \x01(\bR\bDisabled\x12/\n" +
 	"\aTimeout\x18\x02 \x01(\v2\x15.config.TimeoutConfigR\aTimeout\x12\x12\n" +
 	"\x04User\x18\x03 \x01(\tR\x04User\x12\x1a\n" +
-	"\bPassword\x18\x04 \x01(\tR\bPassword\"\xe6\a\n" +
+	"\bPassword\x18\x04 \x01(\tR\bPassword\"\xf4\b\n" +
 	"\n" +
 	"Kubernetes\x12\x1a\n" +
 	"\bExecutor\x18\x01 \x01(\tR\bExecutor\x12&\n" +
@@ -3493,7 +3539,11 @@ const file_config_config_proto_rawDesc = "" +
 	"\vTolerations\x18\x11 \x03(\v2\x12.config.TolerationR\vTolerations\x129\n" +
 	"\tResources\x18\x12 \x01(\v2\x1b.config.KubernetesResourcesR\tResources\x12/\n" +
 	"\aTimeout\x18\x13 \x01(\v2\x15.config.TimeoutConfigR\aTimeout\x124\n" +
-	"\x15ForbiddenPathPrefixes\x18\x14 \x03(\tR\x15ForbiddenPathPrefixes\x1a?\n" +
+	"\x15ForbiddenPathPrefixes\x18\x14 \x03(\tR\x15ForbiddenPathPrefixes\x12\x18\n" +
+	"\aPVCMode\x18\x15 \x01(\tR\aPVCMode\x12*\n" +
+	"\x10StorageClassName\x18\x16 \x01(\tR\x10StorageClassName\x12$\n" +
+	"\rSharedPVCName\x18\x17 \x01(\tR\rSharedPVCName\x12 \n" +
+	"\vWorkerImage\x18\x18 \x01(\tR\vWorkerImage\x1a?\n" +
 	"\x11NodeSelectorEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"{\n" +

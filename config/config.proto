@@ -367,6 +367,25 @@ message Kubernetes {
   // interfaces. Funnel defaults to /dev, /proc, /sys, /run, and /var/run.
   // A configured non-empty list replaces those defaults.
   repeated string ForbiddenPathPrefixes = 20;
+
+  // PVCMode controls how per-task storage is provisioned. One of:
+  //   "full"   - a dedicated PV + PVC per task (PVTemplate/PVCTemplate,
+  //              statically bound, S3 CSI-backed). Default/upstream behavior.
+  //   "pvc"    - only a dedicated PVC per task (PVCTemplate), dynamically
+  //              provisioned via StorageClassName. No cluster-scoped PV is
+  //              created, so no ClusterRole is required.
+  //   "shared" - nothing is created per task; worker/executor jobs mount a
+  //              single pre-existing PVC (SharedPVCName), isolated by subPath.
+  // An empty value is treated as "full".
+  string PVCMode = 21;
+  // StorageClass for the dynamically-provisioned PVC when PVCMode is "pvc".
+  string StorageClassName = 22;
+  // Name of the pre-existing PVC mounted by every task when PVCMode is
+  // "shared". Defaults to "funnel-pvc".
+  string SharedPVCName = 23;
+  // WorkerImage optionally overrides the container image of the Worker Job.
+  // When empty, the image of the running Funnel server pod is used.
+  string WorkerImage = 24;
 }
 
 // KubernetesResources describes default and maximum resource limits for Kubernetes tasks.

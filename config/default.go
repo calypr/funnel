@@ -197,6 +197,7 @@ func DefaultConfig() *Config {
 		GCPBatch:   &GCPBatch{},
 		Kubernetes: &Kubernetes{
 			ForbiddenPathPrefixes: []string{"/dev", "/proc", "/sys", "/run", "/var/run"},
+			PVCMode:               PVCModeFull,
 		},
 		GoogleStorage: &GoogleCloudStorage{},
 		PubSub:        &PubSub{},

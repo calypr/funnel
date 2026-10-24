@@ -55,6 +55,10 @@ func CreateJob(ctx context.Context, task *tes.Task, conf *config.Config, client 
 	if len(pods.Items) > 0 && len(pods.Items[0].Spec.Containers) > 0 {
 		image = pods.Items[0].Spec.Containers[0].Image
 	}
+	// An explicitly configured WorkerImage takes precedence.
+	if conf.Kubernetes.GetWorkerImage() != "" {
+		image = conf.Kubernetes.GetWorkerImage()
+	}
 
 	res := task.GetResources()
 	if res == nil {
@@ -83,6 +87,7 @@ func CreateJob(ctx context.Context, task *tes.Task, conf *config.Config, client 
 		"Image":              image,
 		"BackoffLimit":       backoffLimit,
 		"NeedsPVC":           len(task.Inputs) > 0 || len(task.Outputs) > 0 || len(task.Volumes) > 0,
+		"PVCName":            conf.Kubernetes.PVCNameForTask(task.Id),
 		"NodeSelector":       conf.Kubernetes.NodeSelector,
 		"Tolerations":        conf.Kubernetes.Tolerations,
 		"ServiceAccountName": fmt.Sprintf("funnel-worker-sa-%s-%s", conf.Kubernetes.JobsNamespace, task.Id),

@@ -57,6 +57,10 @@ type Executor struct {
 	Tolerations []map[string]interface{}
 	// Resources specifies the default resource requirements for Kubernetes jobs.
 	Resources *config.KubernetesResources
+	// PVCMode mirrors config.Kubernetes.PVCMode ("full", "pvc", or "shared")
+	PVCMode string
+	// SharedPVCName mirrors config.Kubernetes.SharedPVCName
+	SharedPVCName string
 }
 
 // Run runs the Worker.
@@ -246,6 +250,8 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 					ResourceLimits: resourceLimits,
 					Command:        command,
 					NeedsPVC:       len(task.GetInputs()) > 0 || len(task.GetOutputs()) > 0 || len(task.GetVolumes()) > 0,
+					PVCMode:        r.Executor.PVCMode,
+					SharedPVCName:  r.Executor.SharedPVCName,
 					NodeSelector:   r.Executor.NodeSelector,
 					Tolerations:    r.Executor.Tolerations,
 					ServiceAccount: fmt.Sprintf("funnel-worker-sa-%s-%s", r.Executor.JobsNamespace, task.Id),

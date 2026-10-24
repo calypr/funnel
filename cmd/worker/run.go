@@ -85,6 +85,8 @@ func NewWorker(ctx context.Context, conf *config.Config, log *logger.Logger, opt
 		executor.Resources = conf.Kubernetes.Resources
 		executor.NodeSelector = conf.Kubernetes.NodeSelector
 		executor.Tolerations = convertK8sTolerations(conf.Kubernetes.Tolerations)
+		executor.PVCMode = conf.Kubernetes.PVCMode
+		executor.SharedPVCName = conf.Kubernetes.SharedPVCName
 	}
 
 	return &worker.DefaultWorker{
