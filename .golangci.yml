@@ -36,4 +36,4 @@ formatters:
       - ".*\\.pb\\.gw\\.go"
 
 run:
-  timeout: 3m
+  timeout: 10m

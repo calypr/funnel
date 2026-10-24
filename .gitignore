@@ -29,3 +29,6 @@ website/go.mod
 website/go.sum
 website/resources
 
+/.gen3-local/
+/gen3-code-vigil
+/gen3-gitops-ci

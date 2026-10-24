@@ -3,7 +3,6 @@ package worker
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -88,31 +87,35 @@ func FlattenOutputs(ctx context.Context, outputs []*tes.Output, store storage.St
 
 	var flat []*tes.Output
 	for _, output := range outputs {
-		switch output.Type {
-		case tes.File:
-			flat = append(flat, output)
-
-		case tes.Directory:
-			list, err := fsutil.WalkFiles(output.Path)
-			if err != nil {
-				return nil, fmt.Errorf("walking directory: %s", err)
-			}
-
-			if len(list) == 0 {
-				ev.Warn("upload source directory is empty", "url", output.Url)
+		if output.Type == tes.File {
+			info, err := os.Stat(output.Path)
+			if err != nil || !info.IsDir() {
+				flat = append(flat, output)
 				continue
 			}
+		} else if output.Type != tes.Directory {
+			continue
+		}
 
-			for _, f := range list {
-				u, err := store.Join(output.Url, f.Rel)
-				if err != nil {
-					return nil, fmt.Errorf("joining storage url: %s", err)
-				}
-				flat = append(flat, &tes.Output{
-					Url:  u,
-					Path: f.Abs,
-				})
+		list, err := fsutil.WalkFiles(output.Path)
+		if err != nil {
+			return nil, fmt.Errorf("walking directory: %s", err)
+		}
+
+		if len(list) == 0 {
+			ev.Warn("upload source directory is empty", "url", output.Url)
+			continue
+		}
+
+		for _, f := range list {
+			u, err := store.Join(output.Url, f.Rel)
+			if err != nil {
+				return nil, fmt.Errorf("joining storage url: %s", err)
 			}
+			flat = append(flat, &tes.Output{
+				Url:  u,
+				Path: f.Abs,
+			})
 		}
 	}
 	return flat, nil
@@ -250,7 +253,7 @@ func fixLinks(mapper *FileMapper, basepath string) {
 }
 
 // resolveWildcards resolves any wildcards/globs in the output paths.
-func resolveWildcards(mapper *FileMapper) error {
+func resolveWildcards(mapper *FileMapper, store storage.Storage) error {
 	var outputs []*tes.Output
 
 	for _, output := range mapper.Outputs {
@@ -267,11 +270,13 @@ func resolveWildcards(mapper *FileMapper) error {
 
 				// Construct URL by:
 				// - removing the mapper.WorkDir from the output.Path
-				// - then removing the PathPrefix
-				// - then joining the output.URL
+				// - then removing the PathPrefix and the leading slash
+				// - then joining the output.URL with the storage backend's
+				//   Join, as for DIRECTORY outputs, so the file name is
+				//   encoded the way that backend expects
 				globPath := strings.TrimPrefix(glob, mapper.WorkDir)
 				fixPath := strings.TrimPrefix(globPath, output.PathPrefix)
-				out.Url, err = url.JoinPath(output.Url, fixPath)
+				out.Url, err = store.Join(output.Url, strings.TrimPrefix(fixPath, "/"))
 				if err != nil {
 					return fmt.Errorf("failed to join URL: %v", err)
 				}

@@ -1,30 +1,250 @@
 name: Gen3 Integration Tests
 
-on: pull_request
+on:
+  pull_request:
+  workflow_dispatch:
 
 permissions:
-  id-token: write
   contents: read
-  pull-requests: write
-  issues: write
+
+concurrency:
+  group: gen3-integration-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   integration_tests:
-    name: Integration tests
-    uses: uc-cdis/.github/.github/workflows/integration_tests.yaml@master
-    with:
-      QUAY_ORG: ohsu-comp-bio
-      EXTERNAL_TO_CTDS: "true"
+    name: Integration tests / integration_tests
+    runs-on: ubuntu-24.04-arm
+    env:
+      TEST_REPO: ${{ github.workspace }}/gen3-code-vigil
+      TEST_REPO_SHA: 87da170a9a1cb099cfd1aded9402bc323201d6bc
+      WORKING_DIR: gen3-code-vigil/gen3-integration-tests
+      GEN3_GITOPS_REPO: ${{ github.workspace }}/gen3-gitops-ci
+      GITOPS_REPO: ${{ github.workspace }}/gen3-gitops-ci
+      GEN3_GITOPS_SHA: 19a687205de78d985416f44ad89c79bd2e66dab8
+      GEN3_CHART_VERSION: 0.3.110
+      GEN3_VALUES_FILE: ${{ github.workspace }}/tests/gen3/values-ci.yaml
+      GEN3_PYTHON_VERSION: "3.13.16"
+      NXF_VER: "26.10.1"
       SERVICE_TO_TEST: gen3_workflow
-      SETUP_SCRIPT_1: https://raw.githubusercontent.com/uc-cdis/gen3-workflow/refs/heads/master/.github/workflows/integration_tests_on_kind/ci_start_kind_cluster.sh
-      SETUP_SCRIPT_2: https://raw.githubusercontent.com/uc-cdis/gen3-workflow/refs/heads/master/.github/workflows/integration_tests_on_kind/ci_override_config_and_start_minio.sh
-      SETUP_SCRIPT_3: https://raw.githubusercontent.com/uc-cdis/gen3-workflow/refs/heads/master/.github/workflows/integration_tests_on_kind/ci_expose_kind_cluster.sh
-    secrets:
-      CI_TEST_ORCID_USERID: ""
-      CI_TEST_ORCID_PASSWORD: ""
-      CI_TEST_RAS_EMAIL: ""
-      CI_TEST_RAS_PASSWORD: ""
-      CI_TEST_RAS_2_EMAIL: ""
-      CI_TEST_RAS_2_PASSWORD: ""
-      CI_SLACK_BOT_TOKEN: ""
-      CI_SLACK_CHANNEL_ID: ""
+      REPO: funnel
+      REPO_FN: calypr/funnel
+      BRANCH: ${{ github.head_ref || github.ref_name }}
+      PR_NUM: ${{ github.event.pull_request.number || github.run_number }}
+      COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      RUN_NUM: ${{ github.run_number }}
+      RUN_ID: ${{ github.run_id }}
+      ATTEMPT_NUM: ${{ github.run_attempt }}
+      GH_WORKSPACE: ${{ github.workspace }}
+      CI_ENV: default
+      HELM_BRANCH: master
+      QUAY_ORG: ohsu-comp-bio
+      QUAY_REPO: funnel
+      EXTERNAL_TO_CTDS: "true"
+      HOSTNAME: localhost:8000
+      HOSTNAME_PROTOCOL: http
+      NAMESPACE: gen3-${{ github.run_id }}
+      FUNNEL_CI_BUILD_PLATFORM: linux/arm64
+      FUNNEL_CI_PYTEST_WORKERS: "4"
+      FUNNEL_CI_ARTIFACTS_DIR: ${{ github.workspace }}/logs/gen3-ci
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_EC2_METADATA_DISABLED: "true"
+
+    steps:
+      - name: Record lifecycle start
+        shell: bash
+        run: |
+          started_epoch=$(date +%s)
+          deadline_epoch=0
+          state_dir="$RUNNER_TEMP/funnel-gen3-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -p "$state_dir"
+          rm -f "$state_dir/kind-ready"
+          printf '%s\n' "$started_epoch" > "$RUNNER_TEMP/funnel-gen3-started-epoch"
+          printf '%s\n' "$deadline_epoch" > "$RUNNER_TEMP/funnel-gen3-deadline-epoch"
+          {
+            printf 'FUNNEL_CI_STARTED_EPOCH=%s\n' "$started_epoch"
+            printf 'FUNNEL_CI_DEADLINE_EPOCH=%s\n' "$deadline_epoch"
+            printf 'FUNNEL_CI_STATE_DIR=%s\n' "$state_dir"
+            printf 'FUNNEL_CI_KUBECONFIG=%s/kubeconfig\n' "$state_dir"
+            printf 'KUBECONFIG=%s/kubeconfig\n' "$state_dir"
+            printf 'FUNNEL_CI_KIND_CLUSTER_NAME=kind-cluster\n'
+            printf 'FUNNEL_CI_KIND_READY_FILE=%s/kind-ready\n' "$state_dir"
+            printf 'FUNNEL_CI_GO_CACHE_DIR=%s/funnel-gen3-go-cache\n' "$RUNNER_TEMP"
+            printf 'POETRY_VIRTUALENVS_PATH=%s/gen3-poetry-venvs\n' "$RUNNER_TEMP"
+            printf 'POETRY_CACHE_DIR=%s/gen3-poetry-cache\n' "$RUNNER_TEMP"
+            printf 'UV_CACHE_DIR=%s/gen3-uv-cache\n' "$RUNNER_TEMP"
+            printf 'NXF_HOME=%s/gen3-nextflow-cache\n' "$RUNNER_TEMP"
+            printf 'FUNNEL_CI_FIXTURE_CACHE_DIR=%s/gen3-fixture-cache\n' "$RUNNER_TEMP"
+            printf 'FUNNEL_CI_TEST_IMAGE_CACHE_DIR=%s/gen3-test-image-cache\n' "$RUNNER_TEMP"
+          } >> "$GITHUB_ENV"
+
+      - name: Checkout Funnel
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Checkout pinned integration tests
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: uc-cdis/gen3-code-vigil
+          ref: ${{ env.TEST_REPO_SHA }}
+          path: gen3-code-vigil
+          persist-credentials: false
+
+      - name: Checkout pinned Gen3 GitOps
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: uc-cdis/gen3-gitops
+          ref: ${{ env.GEN3_GITOPS_SHA }}
+          path: gen3-gitops-ci
+          persist-credentials: false
+
+      - name: Set up Java
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
+        with:
+          python-version: ${{ env.GEN3_PYTHON_VERSION }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.0.0
+        with:
+          version: 0.11.15
+          enable-cache: false
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@bda439f5f36b99b262ebdcd3613869bddb064c8e # v5.0.0
+        with:
+          version: v1.35.0
+
+      - name: Set up Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v4.3.1
+
+      - name: Prepare dependency caches
+        shell: bash
+        run: |
+          mkdir -p "$FUNNEL_CI_GO_CACHE_DIR" "$POETRY_VIRTUALENVS_PATH" \
+            "$POETRY_CACHE_DIR" "$UV_CACHE_DIR"
+
+      - name: Restore Go and Python dependency caches
+        id: restore-dependencies
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ runner.temp }}/funnel-gen3-go-cache
+            ${{ runner.temp }}/gen3-poetry-venvs
+            ${{ runner.temp }}/gen3-poetry-cache
+            ${{ runner.temp }}/gen3-uv-cache
+            ${{ runner.temp }}/gen3-nextflow-cache
+          key: funnel-gen3-deps-${{ runner.os }}-${{ runner.arch }}-${{ env.TEST_REPO_SHA }}-${{ hashFiles('gen3-code-vigil/gen3-integration-tests/poetry.lock') }}-${{ env.FUNNEL_CI_BUILD_PLATFORM }}-${{ hashFiles('Dockerfile', 'tests/gen3/image-build/Dockerfile', 'go.mod', 'go.sum') }}-py${{ env.GEN3_PYTHON_VERSION }}
+          restore-keys: |
+            funnel-gen3-deps-${{ runner.os }}-${{ runner.arch }}-${{ env.TEST_REPO_SHA }}-${{ hashFiles('gen3-code-vigil/gen3-integration-tests/poetry.lock') }}-
+            funnel-gen3-deps-${{ runner.os }}-${{ runner.arch }}-${{ env.TEST_REPO_SHA }}-
+
+      - name: Restore immutable fixture images
+        id: restore-fixtures
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.FUNNEL_CI_FIXTURE_CACHE_DIR }}
+          key: gen3-fixtures-v4-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tests/gen3/fixture-images.json', 'tests/gen3/csi-images-arm64.yaml', 'tests/gen3/values-ci.yaml') }}
+
+      - name: Restore native task images
+        id: restore-test-images
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.FUNNEL_CI_TEST_IMAGE_CACHE_DIR }}
+          key: gen3-task-images-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tests/gen3/arborist-image/**', 'tests/gen3/awshelper-image/**', 'tests/gen3/dicom-image/**', 'tests/gen3/canary-image/**', 'tests/gen3/prepare-test-tools.sh') }}
+          restore-keys: |
+            gen3-task-images-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Install Kind
+        shell: bash
+        run: |
+          curl --fail --silent --show-error --location --retry 3 --max-time 30 \
+            https://kind.sigs.k8s.io/dl/v0.31.0/kind-linux-arm64 \
+            --output "$RUNNER_TEMP/kind"
+          sudo install -m 0755 "$RUNNER_TEMP/kind" /usr/local/bin/kind
+
+      - name: Install yq
+        shell: bash
+        run: |
+          curl --fail --silent --show-error --location --retry 3 --max-time 30 \
+            https://github.com/mikefarah/yq/releases/download/v4.45.2/yq_linux_arm64 \
+            --output "$RUNNER_TEMP/yq"
+          sudo install -m 0755 "$RUNNER_TEMP/yq" /usr/local/bin/yq
+
+      - name: Verify plain and Gen3 Helm rendering
+        run: bash tests/gen3/test-post-renderer.sh
+
+      - name: Verify shared workflow fixture initialization
+        run: python3 tests/gen3/test-shared-workflow-fixture.py
+
+      - name: Verify port-forward process ownership
+        run: bash tests/gen3/test-port-forward.sh
+
+      - name: Run Gen3 integration lifecycle
+        id: lifecycle
+        shell: bash
+        run: bash tests/gen3/run-integration.sh
+
+      - name: Preserve lifecycle start record
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p "$FUNNEL_CI_ARTIFACTS_DIR"
+          for record in started-epoch deadline-epoch; do
+            source="$RUNNER_TEMP/funnel-gen3-$record"
+            if [[ -f "$source" ]]; then
+              cp "$source" "$FUNNEL_CI_ARTIFACTS_DIR/$record"
+            fi
+          done
+
+      - name: Upload redacted Gen3 lifecycle artifacts
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gen3-integration-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            logs/gen3-ci/
+          if-no-files-found: warn
+          compression-level: 1
+          retention-days: 14
+
+      - name: Save Go and Python dependency caches
+        if: always() && steps.lifecycle.outputs.cache_ready == 'true' && steps.restore-dependencies.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        timeout-minutes: 1
+        continue-on-error: true
+        with:
+          path: |
+            ${{ runner.temp }}/funnel-gen3-go-cache
+            ${{ runner.temp }}/gen3-poetry-venvs
+            ${{ runner.temp }}/gen3-poetry-cache
+            ${{ runner.temp }}/gen3-uv-cache
+            ${{ runner.temp }}/gen3-nextflow-cache
+          key: funnel-gen3-deps-${{ runner.os }}-${{ runner.arch }}-${{ env.TEST_REPO_SHA }}-${{ hashFiles('gen3-code-vigil/gen3-integration-tests/poetry.lock') }}-${{ env.FUNNEL_CI_BUILD_PLATFORM }}-${{ hashFiles('Dockerfile', 'tests/gen3/image-build/Dockerfile', 'go.mod', 'go.sum') }}-py${{ env.GEN3_PYTHON_VERSION }}
+
+      - name: Save immutable fixture images
+        if: always() && steps.lifecycle.outputs.fixture_cache_ready == 'true' && steps.restore-fixtures.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        timeout-minutes: 1
+        continue-on-error: true
+        with:
+          path: ${{ env.FUNNEL_CI_FIXTURE_CACHE_DIR }}
+          key: gen3-fixtures-v4-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tests/gen3/fixture-images.json', 'tests/gen3/csi-images-arm64.yaml', 'tests/gen3/values-ci.yaml') }}
+
+      - name: Save native task images
+        if: always() && steps.lifecycle.outputs.test_images_ready == 'true' && steps.restore-test-images.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        timeout-minutes: 1
+        continue-on-error: true
+        with:
+          path: ${{ env.FUNNEL_CI_TEST_IMAGE_CACHE_DIR }}
+          key: gen3-task-images-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tests/gen3/arborist-image/**', 'tests/gen3/awshelper-image/**', 'tests/gen3/dicom-image/**', 'tests/gen3/canary-image/**', 'tests/gen3/prepare-test-tools.sh') }}

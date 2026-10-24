@@ -12,6 +12,7 @@ import (
 	"dario.cat/mergo"
 	v1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
@@ -736,6 +737,26 @@ func (b *Backend) reconcileJob(ctx context.Context, j *v1.Job, disableCleanup bo
 	}
 }
 
+func (b *Backend) reconcileMissingJob(ctx context.Context, task *tes.Task, disableCleanup bool) {
+	job, err := b.client.BatchV1().Jobs(b.conf.Kubernetes.JobsNamespace).Get(ctx, task.Id, metav1.GetOptions{})
+	if err == nil {
+		b.reconcileJob(ctx, job, disableCleanup)
+		return
+	}
+	if !apierrors.IsNotFound(err) {
+		b.log.Error("reconcile: getting worker job absent from initial list", "taskID", task.Id, "error", err)
+		return
+	}
+
+	switch task.State {
+	case tes.State_QUEUED:
+		b.log.Debug("reconcile: worker job not created for queued task yet", "taskID", task.Id)
+	case tes.State_INITIALIZING, tes.State_RUNNING:
+		b.log.Debug("reconcile: job not found for started task", "taskID", task.Id)
+		b.writeSystemError(ctx, task.Id, map[string]string{"error": "job not found"}, "Kubernetes job not found for task")
+	}
+}
+
 // reconcileOnce performs a single reconciliation pass.
 func (b *Backend) reconcileOnce(ctx context.Context, disableCleanup bool) {
 	k8sJobs, err := b.listAllWorkerJobs(ctx)
@@ -747,6 +768,7 @@ func (b *Backend) reconcileOnce(ctx context.Context, disableCleanup bool) {
 	// Page through all non-terminal Funnel tasks and reconcile against K8s Jobs.
 	// Matched jobs are removed from k8sJobs so any remainder can be identified as orphaned.
 	nonTerminalStates := []tes.State{tes.State_QUEUED, tes.State_INITIALIZING, tes.State_RUNNING}
+	matched := make(map[string]bool)
 	for _, state := range nonTerminalStates {
 		pageToken := ""
 		for {
@@ -760,14 +782,16 @@ func (b *Backend) reconcileOnce(ctx context.Context, disableCleanup bool) {
 				break
 			}
 			for _, task := range lresp.Tasks {
-				fmt.Println("DEBUG: Reconciling task", task.Id, "with state", task.State)
+				if matched[task.Id] {
+					continue
+				}
 				j, exists := k8sJobs[task.Id]
 				delete(k8sJobs, task.Id) // matched — remove so it isn't treated as orphaned
+				matched[task.Id] = true
 				if exists {
 					b.reconcileJob(ctx, j, disableCleanup)
 				} else {
-					b.log.Debug("reconcile: job not found for task", "taskID", task.Id)
-					b.writeSystemError(ctx, task.Id, map[string]string{"error": "job not found"}, "Kubernetes job not found for task")
+					b.reconcileMissingJob(ctx, task, disableCleanup)
 				}
 			}
 			pageToken = lresp.NextPageToken

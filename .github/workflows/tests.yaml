@@ -2,6 +2,12 @@ name: Go Tests
 
 on:
   push:
+  pull_request:
+    branches:
+      - develop
+
+permissions:
+  contents: read
 
 # Cancel redundant jobs (if a new job is triggered for the same workflow and ref)
 concurrency:
@@ -30,6 +36,7 @@ jobs:
   unitTest:
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       checks: write
     steps:
     - name: Check out code
@@ -52,11 +59,21 @@ jobs:
 
     - name: Test Report
       uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3
-      if: always()
+      if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
       with:
         name: Unit Test Results
         path: test-report.xml
         reporter: java-junit
+
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: unit-test-results
+        path: |
+          test-report.xml
+          coverage.out
+        if-no-files-found: warn
 
     - name: Fail job if tests failed
       if: steps.unit_tests.outcome == 'failure'

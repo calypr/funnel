@@ -1,0 +1,87 @@
+# Gen3 Workflow Kind fixture, extended with a WORKFLOW task-token grant, from commit 500b11d7b132518522480fda9abaa1c5cd9a73e2:
+# https://github.com/uc-cdis/gen3-workflow/blob/500b11d7b132518522480fda9abaa1c5cd9a73e2/.github/workflows/integration_tests_on_kind/ci_override_config_and_start_minio.sh
+authz:
+  policies:
+    - id: gen3_workflow_user
+      description: Allows the creation of workflow tasks
+      role_ids:
+        - gen3_workflow_creator
+      resource_paths:
+        - /services/workflow/gen3-workflow/tasks
+    - id: gen3_workflow_main_user_tasks_viewer
+      description: Allows access to view all of main@example.org's tasks
+      role_ids:
+        - gen3_workflow_reader
+      resource_paths:
+        - /services/workflow/gen3-workflow/tasks/1
+    - id: gen3_workflow_storage_admin
+      description: Allows access to manage all the user buckets
+      role_ids:
+        - gen3_workflow_admin
+      resource_paths:
+        - /services/workflow/gen3-workflow/storage
+    - id: gen3_workflow_task_token
+      role_ids: [fence_task_token_creator]
+      resource_paths: [/services/fence/task-token/WORKFLOW]
+  resources:
+    - name: services
+      subresources:
+        - name: fence
+          subresources:
+            - name: task-token
+              subresources:
+                - name: WORKFLOW
+        - name: workflow
+          subresources:
+            - name: gen3-workflow
+              subresources:
+                - name: tasks
+                  subresources:
+                    - name: "1"  # 1 is main@example.org
+                - name: storage
+  roles:
+    - id: fence_task_token_creator
+      permissions:
+        - id: fence_task_token_create
+          action:
+            service: fence
+            method: create
+    - id: gen3_workflow_reader
+      permissions:
+        - id: gen3_workflow_reader_action
+          action:
+            service: gen3-workflow
+            method: read
+    - id: gen3_workflow_creator
+      permissions:
+        - id: gen3_workflow_creator_action
+          action:
+            service: gen3-workflow
+            method: create
+    - id: gen3_workflow_admin
+      permissions:
+        - id: gen3_workflow_admin_action
+          action:
+            service: gen3-workflow
+            method: "*"
+clients:
+  funnel-plugin-client:
+    policies:
+      - gen3_workflow_storage_admin
+users:
+  main@example.org:
+    admin: true
+    policies:
+      - gen3_workflow_user
+      - gen3_workflow_task_token
+  indexing@example.org: {}
+  user0@example.org:
+    admin: false
+    policies:
+      - gen3_workflow_user
+  user1@example.org:
+    policies:
+      - gen3_workflow_main_user_tasks_viewer
+  user2@example.org: {}
+  dummy-one@example.org: {}
+  smarty-two@example.org: {}

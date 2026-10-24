@@ -19,19 +19,34 @@ concurrency:
 jobs:
   integration-tests:
     runs-on: ubuntu-latest
+    env:
+      NXF_VER: '25.10.4'
  
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       # -----------------
       # 1. Cluster Setup
       # -----------------
  
       - name: Create Kind cluster
-        uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1
+        uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
         with:
+          version: v0.31.0
+          kubectl_version: v1.35.0
           cluster_name: funnel-gen3
 
+      - name: Build and load candidate Funnel image
+        run: bash tests/kubernetes/build-and-load-candidate-image.sh
+
       - name: Install Helm
-        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v4.3.1
+
+      - name: Install local Funnel image post-renderer
+        run: helm plugin install "$GITHUB_WORKSPACE/tests/gen3"
  
       # ---------------------------
       # 2. Install Funnel + MinIO
@@ -66,7 +81,7 @@ jobs:
 
           helm repo add calypr https://calypr.org/helm-charts
           helm repo update
-          helm upgrade --install funnel calypr/funnel --wait --timeout=60s --version 0.1.99-rc.35 --values values.yaml
+          helm upgrade --install funnel calypr/funnel --wait --timeout=60s --version 0.1.99-rc.35 --values values.yaml --post-renderer funnel-ci-image
 
       - name: Debug Funnel pods (on failure)
         if: failure()
@@ -77,18 +92,10 @@ jobs:
 
       - name: Install Minio
         run: |
-          helm repo add minio https://charts.min.io/
-          helm repo update
-          helm upgrade --install minio minio/minio \
-            --set resources.requests.memory=512Mi \
-            --set replicas=1 \
-            --set persistence.enabled=false \
-            --set mode=standalone \
-            --set rootUser=example \
-            --set rootPassword=example-password \
-            --set buckets[0].name=local \
-            --set buckets[0].policy=none \
-            --set buckets[0].purge=false
+          helm upgrade --install minio oci://registry-1.docker.io/bitnamicharts/minio \
+            --version 17.0.21 \
+            --values tests/kubernetes/minio-values.yaml \
+            --wait --timeout=5m
 
       - name: Install AWS S3 CSI Driver (for testing S3 mounts in Funnel)
         run: |
@@ -101,6 +108,9 @@ jobs:
           helm repo update
           helm upgrade --install aws-mountpoint-s3-csi-driver aws-mountpoint-s3-csi-driver/aws-mountpoint-s3-csi-driver \
             --namespace kube-system \
+            --version 2.8.0 \
+            --values tests/gen3/csi-images.yaml \
+            --wait --timeout=3m \
             --set awsAccessSecret.key_id=example,awsAccessSecret.access_key=example-password
 
       # -------------------------------------
@@ -134,7 +144,7 @@ jobs:
       # ----------------------------
         
       - name: Setup Java
-        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
           java-version: '21'
@@ -149,12 +159,15 @@ jobs:
           
       # Ref: https://github.com/nextflow-io/nf-ga4gh/blob/main/.github/workflows/build.yml
       - name: Install + configure nf-canary
+        env:
+          PLUGIN_VERSION: '1.5.0'
         run: |
           git clone https://github.com/seqeralabs/nf-canary
 
           cd nf-canary
+          git checkout b1a08f05114076ee6f0143cb2e2a1bd92ac160ac
 
-          cat <<EOF > nextflow.config
+          cat <<EOF > funnel.config
           // Nextflow config file for running on TES Backend
           plugins {
             id 'nf-ga4gh@${PLUGIN_VERSION}'
@@ -165,32 +178,9 @@ jobs:
               container = 'ubuntu:24.04'
           }
           params {
-              // TES
-              endpoint                   = 'http://localhost:8000'
-              basicUsername              = null
-              basicPassword              = null
-
-              // Run all non-Fusion tests
-              run                        = 'all'
-              remoteFile                 = ''
-
-              // Disable Fusion — not applicable for basic TES/Funnel
-              skip                          = ''
-              gpu                           = false
-              run                           = ''
-              outdir                        = null
-              remoteFile                    = null
-              container                     = "quay.io/biocontainers/ubuntu:24.04"
-              fusion                        = false
-              fusion_kernel_version_min     = null
-              fusion_memory_capacity_gb_min = null
-              fusion_disk_capacity_gb_min   = null
-              fusion_nvme_required          = null
-              fusion_vcpus_min              = null
-              fusion_open_files_min         = null
-              fusion_cache_path             = '/tmp'
-              fusion_read_write_buckets     = ""
-              fusion_read_only_buckets      = ""
+              container = 'ubuntu:24.04'
+              fusion = false
+              gpu = false
           }
           aws {
               accessKey = "example"
@@ -210,21 +200,37 @@ jobs:
           NXF_TES_ENDPOINT: http://localhost:8000
           NXF_ANSI_LOG: false
         run: |
+          set -o pipefail
           cd nf-canary
-          nextflow run main.nf -with-report report.html -w s3://local/work 2>&1 | tee nextflow.log
-          echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+          nextflow -c funnel.config run main.nf -with-report report.html -w s3://local/work 2>&1 | tee nextflow.log
       
       # ------------------------------
       # 5. Upload test logs + reports
       # ------------------------------
 
+      - name: Diagnose Kubernetes failures
+        if: failure()
+        run: |
+          kubectl get pods -A -o wide
+          kubectl describe pods -A
+          kubectl get events -A --sort-by='.lastTimestamp'
+          kubectl logs -l app.kubernetes.io/instance=minio --all-containers --tail=100 || true
+          for pod in $(kubectl get pods -A -o jsonpath='{range .items[*]}{.metadata.namespace}{"/"}{.metadata.name}{"\n"}{end}'); do
+            namespace=${pod%%/*}
+            name=${pod#*/}
+            kubectl -n "$namespace" logs "$name" --all-containers --prefix --tail=200 || true
+            kubectl -n "$namespace" logs "$name" --all-containers --prefix --previous --tail=200 || true
+          done
+
       - name: Upload Nextflow logs
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          archive: true
           name: nextflow-logs
           path: |
             nf-canary/nextflow.log
             nf-canary/report.html
             nf-canary/.nextflow.log
           if-no-files-found: ignore
+          include-hidden-files: true
