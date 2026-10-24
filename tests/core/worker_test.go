@@ -475,7 +475,7 @@ func TestExecutorErrorPreservedWhenWildcardJoinFails(t *testing.T) {
 	w := worker.DefaultWorker{
 		Conf:        conf.Worker,
 		Store:       store,
-		TaskReader:  taskReader{&task},
+		TaskReader:  newTaskReader(&task),
 		EventWriter: m,
 	}
 
