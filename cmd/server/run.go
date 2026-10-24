@@ -335,23 +335,32 @@ func NewServer(ctx context.Context, conf *config.Config, log *logger.Logger) (*S
 // This opens a database, and starts an API server, scheduler and task logger.
 // This blocks indefinitely.
 func (s *Server) Run(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	// Start server
-	errch := make(chan error)
+	errch := make(chan error, 2)
+	componentCount := 1
 	go func() {
 		errch <- s.Server.Serve(ctx)
 	}()
 
 	// Start Scheduler
 	if s.Scheduler != nil {
+		componentCount++
 		go func() {
 			errch <- s.Scheduler.Run(ctx)
 		}()
 	}
 
-	// Block until done.
-	// Server and scheduler must be stopped via the context.
-	return <-errch
+	firstErr := <-errch
+	cancel()
+	for range componentCount - 1 {
+		if err := <-errch; firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
 }
 
 func dberr(err error) error {

@@ -3,6 +3,7 @@ package tests
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -55,8 +56,10 @@ type Funnel struct {
 	Srv       *servercmd.Server
 
 	// Internal
-	rate time.Duration
-	conn *grpc.ClientConn
+	rate          time.Duration
+	conn          *grpc.ClientConn
+	serverCancel  context.CancelFunc
+	serverStopped <-chan struct{}
 }
 
 // NewFunnel creates a new funnel test server with some test
@@ -111,19 +114,37 @@ func (f *Funnel) addRPCClient() {
 
 // Cleanup cleans up test resources
 func (f *Funnel) Cleanup() {
+	if f.serverCancel != nil {
+		f.serverCancel()
+		if f.serverStopped != nil {
+			<-f.serverStopped
+		}
+		f.serverCancel = nil
+		f.serverStopped = nil
+	}
 	os.RemoveAll(f.StorageDir)
 	os.RemoveAll(f.Conf.Worker.WorkDir)
-	f.conn.Close()
+	if f.conn != nil {
+		f.conn.Close()
+		f.conn = nil
+	}
 }
 
 // StartServer starts the server
 func (f *Funnel) StartServer() {
+	ctx, cancel := context.WithCancel(context.Background())
+	serverDone := make(chan error, 1)
+	serverStopped := make(chan struct{})
+	f.serverCancel = cancel
+	f.serverStopped = serverStopped
 	go func() {
-		f.Srv.Run(context.Background())
+		defer close(serverStopped)
+		serverDone <- f.Srv.Run(ctx)
 	}()
 
-	err := f.PollForServerStart()
+	err := f.pollForServerStart(serverDone)
 	if err != nil {
+		cancel()
 		log.Error("failed to start funnel server", err)
 		panic(err)
 	}
@@ -134,26 +155,58 @@ func (f *Funnel) StartServer() {
 
 // PollForServerStart polls the server http address to check if the server is running.
 func (f *Funnel) PollForServerStart() error {
-	ready := make(chan struct{})
-	go func() {
-		for {
-			_, err := http.Get(f.Conf.Server.HTTPAddress())
-			if err == nil {
-				log.Info(fmt.Sprintf("Server at %s found", f.Conf.Server.HTTPAddress()))
-				close(ready)
-				break
-			}
-			time.Sleep(time.Millisecond * 100)
-		}
-	}()
+	return f.pollForServerStart(nil)
+}
 
-	select {
-	case <-ready:
-		time.Sleep(time.Second * 1)
-		return nil
-	case <-time.After(time.Second * 30):
-		return fmt.Errorf("timeout error - server didn't start within 30 seconds")
+func (f *Funnel) pollForServerStart(serverDone <-chan error) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	client := &http.Client{Timeout: time.Second}
+
+	for {
+		select {
+		case err := <-serverDone:
+			return serverRunStoppedError(err)
+		case <-ctx.Done():
+			return fmt.Errorf("timeout error - server didn't start within 30 seconds")
+		case <-ticker.C:
+		}
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, f.Conf.Server.HTTPAddress(), nil)
+		if err != nil {
+			return err
+		}
+		resp, err := client.Do(req)
+		if resp != nil {
+			resp.Body.Close()
+		}
+		if err != nil {
+			continue
+		}
+
+		log.Info(fmt.Sprintf("Server at %s found", f.Conf.Server.HTTPAddress()))
+		grace := time.NewTimer(time.Second)
+		select {
+		case err := <-serverDone:
+			grace.Stop()
+			return serverRunStoppedError(err)
+		case <-ctx.Done():
+			grace.Stop()
+			return fmt.Errorf("timeout error - server didn't start within 30 seconds")
+		case <-grace.C:
+			return nil
+		}
 	}
+}
+
+func serverRunStoppedError(err error) error {
+	if err == nil {
+		return errors.New("server Run returned before startup completed")
+	}
+	return fmt.Errorf("server failed before startup completed: %w", err)
 }
 
 // Changes the user who will be making the RPC calls.

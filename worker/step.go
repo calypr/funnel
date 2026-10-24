@@ -19,7 +19,6 @@ type stepWorker struct {
 }
 
 func (s *stepWorker) Run(ctx context.Context) error {
-	// WaitGroup to block closing the worker until the last event is written from events/executor.go:StreamLogTail()
 	var wg sync.WaitGroup
 	defer wg.Wait()
 	s.Event.StartTime(time.Now())
@@ -38,7 +37,7 @@ func (s *stepWorker) Run(ctx context.Context) error {
 		if s.Conf.LogUpdateRate != nil && s.Conf.LogUpdateRate.AsDuration() > 0 {
 			stdout, stderr = s.Event.StreamLogTail(subctx, s.Conf.LogTailSize, s.Conf.LogUpdateRate.AsDuration(), &wg)
 		} else {
-			stdout, stderr = s.Event.LogTail(subctx, s.Conf.LogTailSize)
+			stdout, stderr = s.Event.LogTail(subctx, s.Conf.LogTailSize, &wg)
 		}
 	}
 
