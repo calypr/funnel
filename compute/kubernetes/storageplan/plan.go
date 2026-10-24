@@ -9,8 +9,10 @@ import (
 	"reflect"
 	"strings"
 	"text/template"
+	"time"
 
 	"github.com/ohsu-comp-bio/funnel/config"
+	"github.com/ohsu-comp-bio/funnel/storage"
 	"github.com/ohsu-comp-bio/funnel/tes"
 	"google.golang.org/protobuf/types/known/structpb"
 	corev1 "k8s.io/api/core/v1"
@@ -18,10 +20,11 @@ import (
 )
 
 const (
-	planVersion = 4
-	Annotation  = "funnel.calypr.org/storage-plan"
-	Env         = "FUNNEL_KUBERNETES_STORAGE_PLAN"
-	Finalizer   = "funnel.calypr.org/storage-cleanup"
+	planVersion    = 4
+	s3WriteTimeout = 3 * time.Hour
+	Annotation     = "funnel.calypr.org/storage-plan"
+	Env            = "FUNNEL_KUBERNETES_STORAGE_PLAN"
+	Finalizer      = "funnel.calypr.org/storage-cleanup"
 )
 
 // Plan records the resolved mounts and the exact names of task-owned resources.
@@ -34,6 +37,8 @@ type Plan struct {
 	WorkspaceVolume   string
 	WorkerContainer   string
 	ExecutorContainer string
+	S3ReadMounts      []storage.S3ReadMount  `json:"S3ReadMounts,omitempty"`
+	S3WriteMounts     []storage.S3WriteMount `json:"S3WriteMounts,omitempty"`
 	Volumes           []corev1.Volume
 	WorkerMounts      []corev1.VolumeMount
 	OwnedClaims       []string
@@ -50,12 +55,15 @@ type Ownership struct {
 	OwnedVolumes    []string
 }
 
-// Resolve returns nil when native Kubernetes storage is absent.
+// Resolve returns nil when Kubernetes storage and all S3 mounted routes are absent.
 func Resolve(task *tes.Task, conf *config.Config) (*Plan, error) {
 	if conf == nil {
 		return nil, nil
 	}
 	if conf.Kubernetes == nil || conf.Kubernetes.Storage == nil {
+		if hasS3MountedReads(conf.GenericS3) || hasS3MountedWrites(conf.GenericS3) {
+			return nil, fmt.Errorf("S3 mounted reads or writes require Kubernetes.Storage")
+		}
 		return nil, nil
 	}
 	if task == nil || task.Id == "" {
@@ -77,7 +85,17 @@ func Resolve(task *tes.Task, conf *config.Config) (*Plan, error) {
 	if err != nil {
 		return nil, err
 	}
-	workerMounts, err := resolveWorkerMounts(storageConfig.VolumeMounts, data)
+	workerMounts, mountsByVolume, err := resolveWorkerMounts(storageConfig.VolumeMounts, data)
+	if err != nil {
+		return nil, err
+	}
+	// Validate mounted S3 identities before planning any resources so invalid
+	// routes cannot reach the resource creation path.
+	s3ReadMounts, err := resolveS3ReadMounts(conf.GenericS3, mountsByVolume)
+	if err != nil {
+		return nil, err
+	}
+	s3WriteMounts, err := resolveS3WriteMounts(conf.GenericS3, mountsByVolume)
 	if err != nil {
 		return nil, err
 	}
@@ -89,6 +107,8 @@ func Resolve(task *tes.Task, conf *config.Config) (*Plan, error) {
 		WorkspaceVolume:   storageConfig.WorkspaceVolume,
 		WorkerContainer:   storageConfig.WorkerContainer,
 		ExecutorContainer: storageConfig.ExecutorContainer,
+		S3ReadMounts:      s3ReadMounts,
+		S3WriteMounts:     s3WriteMounts,
 		Volumes:           volumes,
 		WorkerMounts:      workerMounts,
 	}
@@ -115,7 +135,42 @@ func Resolve(task *tes.Task, conf *config.Config) (*Plan, error) {
 	if err := p.validate(); err != nil {
 		return nil, err
 	}
+	for _, claim := range p.Claims {
+		if err := p.ValidateMountedWriteClaim(claim); err != nil {
+			return nil, err
+		}
+	}
 	return p, nil
+}
+
+// ValidateMountedWriteClaim checks output access for a template or existing PVC
+// against a resolved plan. Read-only input claims do not require write access.
+func (p *Plan) ValidateMountedWriteClaim(claim *corev1.PersistentVolumeClaim) error {
+	if len(p.S3WriteMounts) == 0 {
+		return nil
+	}
+	for _, mode := range claim.Spec.AccessModes {
+		switch mode {
+		case corev1.ReadWriteOnce, corev1.ReadWriteMany, corev1.ReadWriteOncePod:
+			return nil
+		}
+	}
+	writeRoots := make(map[string]bool, len(p.S3WriteMounts))
+	for _, mount := range p.S3WriteMounts {
+		writeRoots[mount.Root] = true
+	}
+	writeVolumes := make(map[string]bool)
+	for _, mount := range p.WorkerMounts {
+		if writeRoots[mount.MountPath] {
+			writeVolumes[mount.Name] = true
+		}
+	}
+	for _, volume := range p.Volumes {
+		if writeVolumes[volume.Name] && volume.PersistentVolumeClaim.ClaimName == claim.Name {
+			return fmt.Errorf("S3 mounted write volume %q claim %s/%s must support a writable access mode: ReadWriteOnce, ReadWriteMany, or ReadWriteOncePod", volume.Name, claim.Namespace, claim.Name)
+		}
+	}
+	return nil
 }
 
 func parseVolumes(rawVolumes []*structpb.Struct, data map[string]interface{}) ([]corev1.Volume, error) {
@@ -145,22 +200,24 @@ func parseVolumes(rawVolumes []*structpb.Struct, data map[string]interface{}) ([
 	return volumes, nil
 }
 
-func resolveWorkerMounts(rawMounts []*structpb.Struct, data map[string]interface{}) ([]corev1.VolumeMount, error) {
+func resolveWorkerMounts(rawMounts []*structpb.Struct, data map[string]interface{}) ([]corev1.VolumeMount, map[string][]corev1.VolumeMount, error) {
 	workerMounts := make([]corev1.VolumeMount, 0, len(rawMounts))
+	mountsByVolume := make(map[string][]corev1.VolumeMount)
 	for i, raw := range rawMounts {
 		mount := corev1.VolumeMount{}
 		if err := decodeStruct(raw, data, &mount); err != nil {
-			return nil, fmt.Errorf("Kubernetes.Storage.VolumeMounts[%d]: %w", i, err)
+			return nil, nil, fmt.Errorf("Kubernetes.Storage.VolumeMounts[%d]: %w", i, err)
 		}
 		if len(validation.IsDNS1123Label(mount.Name)) != 0 {
-			return nil, fmt.Errorf("Kubernetes.Storage.VolumeMounts[%d] has invalid volume name %q", i, mount.Name)
+			return nil, nil, fmt.Errorf("Kubernetes.Storage.VolumeMounts[%d] has invalid volume name %q", i, mount.Name)
 		}
 		if err := validateMount(mount); err != nil {
-			return nil, fmt.Errorf("Kubernetes.Storage.VolumeMounts[%d]: %w", i, err)
+			return nil, nil, fmt.Errorf("Kubernetes.Storage.VolumeMounts[%d]: %w", i, err)
 		}
+		mountsByVolume[mount.Name] = append(mountsByVolume[mount.Name], mount)
 		workerMounts = append(workerMounts, mount)
 	}
-	return workerMounts, nil
+	return workerMounts, mountsByVolume, nil
 }
 
 func parseClaimTemplates(rawClaims []*structpb.Struct, data map[string]interface{}, namespace string, volumes []corev1.Volume, workspaceVolume, taskID string) ([]*corev1.PersistentVolumeClaim, []corev1.Volume, error) {
@@ -382,6 +439,153 @@ func renderStringValues(value interface{}, data map[string]interface{}) (interfa
 	}
 }
 
+func hasS3MountedReads(backends []*config.GenericS3Storage) bool {
+	for _, backend := range backends {
+		if backend != nil && backend.MountedRead != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func hasS3MountedWrites(backends []*config.GenericS3Storage) bool {
+	for _, backend := range backends {
+		if backend != nil && backend.MountedWrite != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func resolveS3ReadMounts(backends []*config.GenericS3Storage, mountsByVolume map[string][]corev1.VolumeMount) ([]storage.S3ReadMount, error) {
+	readMounts := make([]storage.S3ReadMount, 0)
+	for _, backend := range backends {
+		if backend == nil || backend.MountedRead == nil {
+			continue
+		}
+		if !backend.Valid() {
+			return nil, fmt.Errorf("S3 mounted read backend %q is disabled or invalid", backend.Bucket)
+		}
+		if backend.Bucket == "" {
+			return nil, fmt.Errorf("S3 mounted read requires a bucket")
+		}
+		if matches := matchingS3Backends(backends, backend); matches > 1 {
+			return nil, fmt.Errorf("duplicate mounted S3 backend %q bucket %q", backend.Endpoint, backend.Bucket)
+		}
+		var subPath *string
+		if backend.MountedRead.MountView != nil {
+			value := backend.MountedRead.GetSubPath()
+			subPath = &value
+		}
+		mount, err := selectS3Mount(backend.MountedRead.Volume, subPath, mountsByVolume, "read")
+		if err != nil {
+			return nil, err
+		}
+		readMounts = append(readMounts, storage.S3ReadMount{
+			Endpoint: backend.Endpoint,
+			Bucket:   backend.Bucket,
+			Prefix:   backend.MountedRead.Prefix,
+			Root:     mount.MountPath,
+		})
+	}
+	if err := storage.ValidateS3ReadMounts(readMounts); err != nil {
+		return nil, fmt.Errorf("GenericS3 mounted reads: %w", err)
+	}
+	return readMounts, nil
+}
+
+func resolveS3WriteMounts(backends []*config.GenericS3Storage, mountsByVolume map[string][]corev1.VolumeMount) ([]storage.S3WriteMount, error) {
+	writeMounts := make([]storage.S3WriteMount, 0)
+	for _, backend := range backends {
+		if backend == nil || backend.MountedWrite == nil {
+			continue
+		}
+		if !backend.Valid() {
+			return nil, fmt.Errorf("S3 mounted write backend %q is disabled or invalid", backend.Bucket)
+		}
+		if backend.Bucket == "" {
+			return nil, fmt.Errorf("S3 mounted write requires a bucket")
+		}
+		if matches := matchingS3Backends(backends, backend); matches > 1 {
+			return nil, fmt.Errorf("duplicate mounted S3 backend %q bucket %q", backend.Endpoint, backend.Bucket)
+		}
+		var subPath *string
+		if backend.MountedWrite.MountView != nil {
+			value := backend.MountedWrite.GetSubPath()
+			subPath = &value
+		}
+		mount, err := selectS3Mount(backend.MountedWrite.Volume, subPath, mountsByVolume, "write")
+		if err != nil {
+			return nil, err
+		}
+		if mount.ReadOnly {
+			return nil, fmt.Errorf("S3 mounted write volume %q mount %q must be writable", backend.MountedWrite.Volume, mount.MountPath)
+		}
+		timeout := s3WriteTimeout
+		if configured := backend.MountedWrite.Timeout; configured != nil {
+			if err := configured.CheckValid(); err != nil {
+				return nil, fmt.Errorf("S3 mounted write timeout: %w", err)
+			}
+			timeout = configured.AsDuration()
+			if timeout <= 0 {
+				return nil, fmt.Errorf("S3 mounted write timeout must be positive")
+			}
+		}
+		writeMounts = append(writeMounts, storage.S3WriteMount{
+			Endpoint: backend.Endpoint,
+			Bucket:   backend.Bucket,
+			Prefix:   backend.MountedWrite.Prefix,
+			Root:     mount.MountPath,
+			Timeout:  timeout,
+		})
+	}
+	if err := storage.ValidateS3WriteMounts(writeMounts); err != nil {
+		return nil, fmt.Errorf("GenericS3 mounted writes: %w", err)
+	}
+	return writeMounts, nil
+}
+
+func matchingS3Backends(backends []*config.GenericS3Storage, backend *config.GenericS3Storage) int {
+	matches := 0
+	for _, candidate := range backends {
+		if candidate != nil && candidate.Valid() && candidate.Endpoint == backend.Endpoint && candidate.Bucket == backend.Bucket {
+			matches++
+		}
+	}
+	return matches
+}
+
+func selectS3Mount(volume string, subPath *string, mountsByVolume map[string][]corev1.VolumeMount, direction string) (corev1.VolumeMount, error) {
+	if len(validation.IsDNS1123Label(volume)) != 0 {
+		return corev1.VolumeMount{}, fmt.Errorf("S3 mounted %s has invalid volume reference %q", direction, volume)
+	}
+	candidates := mountsByVolume[volume]
+	if len(candidates) == 0 {
+		return corev1.VolumeMount{}, fmt.Errorf("S3 mounted %s references unknown worker volume %q", direction, volume)
+	}
+	if subPath == nil {
+		if len(candidates) != 1 {
+			return corev1.VolumeMount{}, fmt.Errorf("S3 mounted %s volume %q has %d worker mounts; specify SubPath", direction, volume, len(candidates))
+		}
+		return candidates[0], nil
+	}
+	var selected corev1.VolumeMount
+	matches := 0
+	for _, candidate := range candidates {
+		if candidate.SubPath == *subPath && candidate.SubPathExpr == "" {
+			selected = candidate
+			matches++
+		}
+	}
+	if matches == 0 {
+		return corev1.VolumeMount{}, fmt.Errorf("S3 mounted %s volume %q has no static mount with subPath %q", direction, volume, *subPath)
+	}
+	if matches > 1 {
+		return corev1.VolumeMount{}, fmt.Errorf("S3 mounted %s volume %q has multiple mounts with subPath %q", direction, volume, *subPath)
+	}
+	return selected, nil
+}
+
 func validName(name string) bool { return len(validation.IsDNS1123Subdomain(name)) == 0 }
 
 func (p *Plan) Encode() (string, error) {
@@ -403,13 +607,16 @@ func Decode(snapshot string) (*Plan, error) {
 	return p, nil
 }
 
-// DecodeOwnership validates the storage identity used by cleanup.
+// DecodeOwnership validates the storage identity used by cleanup while excluding
+// S3 routes, which describe execution behavior and do not affect resource ownership.
 func DecodeOwnership(snapshot string) (*Ownership, error) {
 	p, err := decodeSnapshot(snapshot)
 	if err != nil {
 		return nil, err
 	}
 	ownershipPlan := *p
+	ownershipPlan.S3ReadMounts = nil
+	ownershipPlan.S3WriteMounts = nil
 	if err := ownershipPlan.validate(); err != nil {
 		return nil, err
 	}
@@ -497,6 +704,7 @@ func (p *Plan) validate() error {
 		}
 	}
 	paths := []string{path.Join(p.WorkDir, p.TaskID)}
+	mountRoots := make(map[string]bool, len(p.WorkerMounts))
 	for _, mount := range p.WorkerMounts {
 		if _, ok := volumes[mount.Name]; !ok {
 			return fmt.Errorf("worker mount references unknown volume %q", mount.Name)
@@ -510,6 +718,33 @@ func (p *Plan) validate() error {
 			}
 		}
 		paths = append(paths, mount.MountPath)
+		mountRoots[mount.MountPath] = true
+	}
+	if err := storage.ValidateS3ReadMounts(p.S3ReadMounts); err != nil {
+		return fmt.Errorf("invalid S3 read mounts: %w", err)
+	}
+	for _, readMount := range p.S3ReadMounts {
+		if !mountRoots[readMount.Root] {
+			return fmt.Errorf("S3 mounted read root %q does not match an explicit worker mount", readMount.Root)
+		}
+	}
+	if err := storage.ValidateS3WriteMounts(p.S3WriteMounts); err != nil {
+		return fmt.Errorf("invalid S3 write mounts: %w", err)
+	}
+	writableMountRoots := make(map[string]bool)
+	for _, mount := range p.WorkerMounts {
+		volume := volumes[mount.Name]
+		if !mount.ReadOnly && volume.PersistentVolumeClaim != nil && !volume.PersistentVolumeClaim.ReadOnly {
+			writableMountRoots[mount.MountPath] = true
+		}
+	}
+	for _, writeMount := range p.S3WriteMounts {
+		if !writableMountRoots[writeMount.Root] {
+			return fmt.Errorf("S3 mounted write root %q must match an explicit writable worker mount", writeMount.Root)
+		}
+	}
+	if err := validateMountedWriteRoutes(p.S3WriteMounts, p.WorkerMounts, volumes); err != nil {
+		return err
 	}
 	return nil
 }

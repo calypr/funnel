@@ -405,6 +405,12 @@
         "AccountID": {
           "type": "string",
           "title": "AWS Account ID, needed for S3 CSI Driver\nhttps://github.com/awslabs/mountpoint-s3/blob/v1.20.0/doc/CONFIGURATION.md#data-encryption"
+        },
+        "MountedRead": {
+          "$ref": "#/definitions/configS3MountedRead"
+        },
+        "MountedWrite": {
+          "$ref": "#/definitions/configS3MountedWrite"
         }
       },
       "description": "GenericS3Storage describes the configuration for the Generic S3 storage backend."
@@ -608,7 +614,7 @@
           "items": {
             "type": "object"
           },
-          "description": "Each template metadata.name defines a logical volume. Funnel creates its\nPVC as <task ID>-<logical name> and supplies the volume automatically."
+          "description": "Each template metadata.name defines a logical volume. Funnel creates its\nPVC as \u003ctask ID\u003e-\u003clogical name\u003e and supplies the volume automatically."
         },
         "persistentVolumeTemplates": {
           "type": "array",
@@ -835,6 +841,42 @@
         }
       },
       "description": "Resources describes the CPU, RAM, and disk resources required by a task."
+    },
+    "configS3MountedRead": {
+      "type": "object",
+      "properties": {
+        "Prefix": {
+          "type": "string",
+          "description": "Prefix is bucket-relative. An empty prefix mounts the whole bucket."
+        },
+        "Volume": {
+          "type": "string"
+        },
+        "SubPath": {
+          "type": "string"
+        }
+      },
+      "description": "S3MountedRead configures a read-only S3 prefix mounted into a Kubernetes worker."
+    },
+    "configS3MountedWrite": {
+      "type": "object",
+      "properties": {
+        "Prefix": {
+          "type": "string",
+          "description": "Prefix is bucket-relative. An empty prefix mounts the whole bucket."
+        },
+        "Timeout": {
+          "type": "string",
+          "description": "Timeout bounds object visibility polling after a worker copies output files.\nA nil value uses the default timeout."
+        },
+        "Volume": {
+          "type": "string"
+        },
+        "SubPath": {
+          "type": "string"
+        }
+      },
+      "description": "S3MountedWrite configures output publication through a writable Kubernetes worker mount."
     },
     "configSSE": {
       "type": "object",

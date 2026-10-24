@@ -81,6 +81,31 @@ func TestDownloadMountpoint(t *testing.T) {
 			}
 		})
 	}
+	t.Run("mounted-reader", func(t *testing.T) {
+		body := []byte("mounted input")
+		source := filepath.Join(dir, "mounted-source")
+		if err := os.WriteFile(source, body, 0600); err != nil {
+			t.Fatal(err)
+		}
+		mountPrefix := os.Getenv("FUNNEL_MOUNTPOINT_TEST_PREFIX") + prefix + "/"
+		reader, err := newMountedS3Reader(S3ReadMount{
+			Endpoint: os.Getenv("FUNNEL_MOUNTPOINT_TEST_ENDPOINT"),
+			Bucket:   "mounted",
+			Prefix:   mountPrefix,
+			Root:     dir,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		destination := filepath.Join(dir, "mounted-copy")
+		if _, err := reader.Get(ctx, "s3://mounted/"+mountPrefix+"mounted-source", destination); err != nil {
+			t.Fatal(err)
+		}
+		got, err := os.ReadFile(destination)
+		if err != nil || !bytes.Equal(got, body) {
+			t.Fatalf("mounted input copy = %q, want %q, error %v", got, body, err)
+		}
+	})
 	t.Run("source-failure-preserves-destination", func(t *testing.T) {
 		before, err := os.ReadFile(target)
 		if err != nil {
