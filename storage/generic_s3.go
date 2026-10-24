@@ -68,8 +68,9 @@ func isDir(ctx context.Context, minioClient *minio.Client, bucketName, objectNam
 			return false, object.Err
 		}
 
-		// If any object's key starts with the objectName and is not equal, it's a directory
-		if strings.HasPrefix(object.Key, objectName) && object.Key != objectName {
+		// If any object's key is under "objectName/", it's a directory. Keys that
+		// merely share the prefix (e.g. "file.txt.bak" for "file.txt") don't count.
+		if strings.HasPrefix(object.Key, objectName+"/") {
 			return true, nil
 		}
 	}
