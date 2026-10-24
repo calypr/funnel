@@ -41,12 +41,14 @@ debug:
 	@funnel server run
 
 # Generate the protobuf/gRPC code using Buf
-proto:
+proto: proto-depends
 	@go run ./util/openapi2proto/main.go ./tes/task-execution-schemas/openapi/task_execution_service.openapi.yaml > tes/tes.proto
 	@buf generate
 
-# Install Buf and dependencies
+# Initialize the TES schema submodule and install Buf.
+# `proto` depends on this target so generation also works from a fresh clone.
 proto-depends:
+	@git submodule update --init --recursive tes/task-execution-schemas
 	@go install github.com/bufbuild/buf/cmd/buf@v1.28.1
 
 # Lint Protobuf files
@@ -257,4 +259,4 @@ website-dev: website
 clean:
 	@rm -rf ./bin ./pkg ./test_tmp ./build ./buildtools
 
-.PHONY: proto proto-lint website docker webdash build debug
+.PHONY: proto proto-depends proto-lint website docker webdash build debug
