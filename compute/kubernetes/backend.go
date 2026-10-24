@@ -220,6 +220,9 @@ func (b *Backend) createResources(ctx context.Context, task *tes.Task, config *c
 		timeoutCtx, cancel = context.WithTimeout(ctx, timeout) // derive from parent ctx
 		defer cancel()
 	}
+	if err := b.validatePersistentVolumePermissions(timeoutCtx, plan); err != nil {
+		return fmt.Errorf("validating persistent volume permissions: %w", err)
+	}
 
 	// Create Worker Job first so its UID can be used as an owner reference on
 	// all subordinate namespaced resources, enabling automatic K8s GC cleanup.

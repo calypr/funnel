@@ -102,6 +102,39 @@ The `hostPath` source makes this example suitable only for a local cluster whose
 
 Funnel creates the PV and PVC with task ownership and preserves the existing cleanup lifecycle. Explicit PV storage adds a finalizer to the worker Job. Cleanup requests deletion of owned PVs and the Job before releasing that finalizer. A failed delete request leaves the plan available for retry. Reconciliation retries cleanup for canceled tasks even when the Job is still running or its deletion request failed. Submission checks persisted cancellation before and after resource creation and cleans up resources created during cancellation. The server needs permission to delete these PVs. Finish PV-backed tasks and clean up their resources before removing cluster-scoped deletion permissions. Kubernetes storage-protection finalizers and the storage driver's normal cleanup still apply.
 
+Before creating the worker Job, Funnel checks PV permissions with Kubernetes `SelfSubjectAccessReview`. Explicit PV templates require cluster-scoped `create` permission and `get` and `delete` permission for each generated PV name. The check uses the effective task configuration, including plugin overrides. A denied or unavailable authorization check rejects submission before creating the Job or its storage. Existing-claim and StorageClass-only configurations skip these PV checks.
+
+The Funnel server identity must be allowed to create `selfsubjectaccessreviews` in the `authorization.k8s.io` API group. Kubernetes normally grants this through its default authenticated-user roles. The submission check does not require PV `list` permission; the separate orphan cleanup sweep still needs it. Authorization can change after the check, so keep PV permissions until all PV-backed tasks have been cleaned up.
+
+To enable explicit PV storage, an administrator can apply the following RBAC resources. Replace the subject name and namespace with the service account used by the Funnel server Pod. These permissions supplement the server's existing namespaced permissions for Jobs, Pods, and PVCs.
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: funnel-pv-manager
+rules:
+  - apiGroups: [""]
+    resources: [persistentvolumes]
+    verbs: [create, get, delete]
+  - apiGroups: [authorization.k8s.io]
+    resources: [selfsubjectaccessreviews]
+    verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: funnel-pv-manager
+subjects:
+  - kind: ServiceAccount
+    name: funnel
+    namespace: funnel-tasks
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: funnel-pv-manager
+```
+
 ## Add worker mounts
 
 `volumeMounts` contains native Kubernetes `volumeMount` objects. Use the configured volume's `name`. You can mount the same volume at multiple paths.
@@ -177,3 +210,10 @@ FUNNEL_KUBERNETES_TEST_KUBECONFIG=/path/to/test-kubeconfig \
 ```
 
 The test verifies real Kubernetes mounts and cleanup. It does not certify an S3 CSI driver or asynchronous S3 output publication.
+
+To verify permission failures, run the RBAC test with an administrator kubeconfig for a disposable cluster. It creates temporary service accounts and roles, impersonates those accounts, and checks that denied PV permissions leave no worker Job or storage resources. It also checks successful submission and cleanup with PV permissions restricted by name and with a PVC-only configuration.
+
+```sh
+FUNNEL_KUBERNETES_TEST_KUBECONFIG=/path/to/test-kubeconfig \
+  go test ./compute/kubernetes -run '^TestNativeStoragePermissionsLive$' -v -count=1
+```

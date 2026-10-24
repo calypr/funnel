@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/calypr/funnel/compute/kubernetes/storageplan"
+	authorizationv1 "k8s.io/api/authorization/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -19,6 +20,54 @@ const (
 	storageOwnedLabel         = "funnel.calypr.org/storage-owned"
 	storageOwnerUIDAnnotation = "funnel.calypr.org/storage-owner-uid"
 )
+
+func (b *Backend) validatePersistentVolumePermissions(ctx context.Context, plan *storageplan.Plan) error {
+	if plan == nil || len(plan.PersistentVolumes) == 0 {
+		return nil
+	}
+
+	reviews := b.client.AuthorizationV1().SelfSubjectAccessReviews()
+	check := func(verb, name string) error {
+		review := &authorizationv1.SelfSubjectAccessReview{
+			Spec: authorizationv1.SelfSubjectAccessReviewSpec{
+				ResourceAttributes: &authorizationv1.ResourceAttributes{
+					Verb:     verb,
+					Version:  "v1",
+					Resource: "persistentvolumes",
+					Name:     name,
+				},
+			},
+		}
+		response, err := reviews.Create(ctx, review, metav1.CreateOptions{})
+		if err != nil {
+			return fmt.Errorf("request %s authorization for persistentvolumes %q: %w", verb, name, err)
+		}
+		if response == nil {
+			return fmt.Errorf("request %s authorization for persistentvolumes %q returned no status", verb, name)
+		}
+		if response.Status.Allowed && !response.Status.Denied {
+			return nil
+		}
+
+		decision := "no opinion"
+		if response.Status.Denied {
+			decision = "denied"
+		}
+		return fmt.Errorf("Kubernetes authorization %s %s on persistentvolumes %q (reason=%q, evaluationError=%q)", decision, verb, name, response.Status.Reason, response.Status.EvaluationError)
+	}
+
+	if err := check("create", ""); err != nil {
+		return err
+	}
+	for _, volume := range plan.PersistentVolumes {
+		for _, verb := range []string{"get", "delete"} {
+			if err := check(verb, volume.Name); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
 
 func (b *Backend) validateExistingStorage(ctx context.Context, plan *storageplan.Plan) error {
 	if plan == nil {
