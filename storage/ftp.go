@@ -319,5 +319,9 @@ func (b *ftpclient) List(ctx context.Context, url string) ([]*Object, error) {
 
 // ftpJoin joins the given URL with the given subpath.
 func ftpJoin(url, path string) (string, error) {
-	return strings.TrimSuffix(url, "/") + "/" + path, nil
+	joined, err := joinURLPath(url, path)
+	if err != nil {
+		return "", fmt.Errorf("ftpStorage: parsing URL: %s", err)
+	}
+	return joined, nil
 }

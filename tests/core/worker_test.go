@@ -2,6 +2,8 @@ package core
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"path"
 	"strings"
@@ -425,6 +427,85 @@ func TestExecutorErrorStopsTask(t *testing.T) {
 	// Only the first executor should have run; the second must not produce a log.
 	if got := len(builder.Task.Logs[0].Logs); got != 1 {
 		t.Errorf("expected 1 executor log, got %d", got)
+	}
+}
+
+type joinErrorStorage struct {
+	storage.Fake
+	err       error
+	joinCalls int
+}
+
+func (s *joinErrorStorage) Join(url, filePath string) (string, error) {
+	s.joinCalls++
+	return "", s.err
+}
+
+func (s *joinErrorStorage) Put(_ context.Context, _, filePath string) (*storage.Object, error) {
+	return nil, fmt.Errorf("unexpected wildcard upload for %q", filePath)
+}
+
+func TestExecutorErrorPreservedWhenWildcardJoinFails(t *testing.T) {
+	tests.SetLogOutput(log, t)
+	conf := tests.DefaultConfig()
+	conf.Worker.WorkDir = t.TempDir()
+	joinErr := errors.New("sentinel wildcard join failure")
+	store := &joinErrorStorage{err: joinErr}
+	task := tes.Task{
+		Id: "test-task-" + tes.GenerateID(),
+		Executors: []*tes.Executor{
+			{
+				Image:   "alpine",
+				Command: []string{"sh", "-c", "echo output > /outputs/result.txt; exit 7"},
+			},
+		},
+		Outputs: []*tes.Output{
+			{Url: "gs://bucket/output", Path: "/outputs/*.txt"},
+		},
+	}
+
+	builder := &events.TaskBuilder{Task: &task}
+	logger := &events.Logger{Log: log}
+	m := &events.MultiWriter{logger, builder}
+	w := worker.DefaultWorker{
+		Conf:        conf.Worker,
+		Store:       store,
+		TaskReader:  taskReader{&task},
+		EventWriter: m,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	err := w.Run(ctx)
+	if err == nil {
+		t.Fatal("expected executor failure")
+	}
+	if errors.Is(err, joinErr) {
+		t.Fatalf("expected executor failure, got wildcard join error: %v", err)
+	}
+	if task.State != tes.State_EXECUTOR_ERROR {
+		t.Errorf("expected state EXECUTOR_ERROR, got %s", task.State)
+	}
+	if store.joinCalls != 1 {
+		t.Fatalf("expected wildcard storage Join to be called once, got %d", store.joinCalls)
+	}
+
+	if got := len(builder.Task.Logs[0].Logs); got != 1 {
+		t.Fatalf("expected 1 executor log, got %d", got)
+	}
+	if got := builder.Task.Logs[0].Logs[0].ExitCode; got != 7 {
+		t.Errorf("expected executor exit code 7, got %d", got)
+	}
+
+	loggedJoinError := false
+	for _, systemLog := range builder.Task.Logs[0].SystemLogs {
+		if strings.Contains(systemLog, joinErr.Error()) {
+			loggedJoinError = true
+			break
+		}
+	}
+	if !loggedJoinError {
+		t.Errorf("expected system log containing %q", joinErr)
 	}
 }
 

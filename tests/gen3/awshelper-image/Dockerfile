@@ -1,4 +1,4 @@
-FROM quay.io/cdis/awshelper@sha256:0b90890428340fbdb6657e1f2e599f623bf76eaaffa4f31fc8a4d75e98b5500c
+FROM quay.io/cdis/awshelper@sha256:6d42dcd8bc306554caa4a5b8146ed8a550e0a4b4b0a9fbc0d3f7790856c167b4
 USER root
 ARG TARGETARCH
 RUN test "$TARGETARCH" = arm64 && \

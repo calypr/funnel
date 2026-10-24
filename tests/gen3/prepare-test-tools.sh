@@ -50,11 +50,28 @@ PYTHON
     nodes=("$FUNNEL_CI_KIND_CLUSTER_NAME-worker")
   fi
   for node in "${nodes[@]}"; do
-    docker exec -i "$node" ctr -n k8s.io images import - <"$archive" >/dev/null
-    docker exec "$node" crictl inspecti "$image" | jq -e --arg architecture "$architecture" --arg recipe "$recipe" \
-      '.info.imageSpec | .architecture == $architecture and .config.Labels["io.calypr.funnel.fixture-recipe"] == $recipe' >/dev/null
     runtime_image=$image
     if [[ "$image" != */* ]]; then runtime_image="docker.io/library/$image"; fi
+    docker exec -i "$node" ctr -n k8s.io images import \
+      --label io.cri-containerd.image=managed --label io.cri-containerd.pinned=pinned \
+      - <"$archive" >/dev/null
+    image_status="$context/image-status.json"
+    image_ready=false
+    for ((attempt=0; attempt<100; attempt++)); do
+      if docker exec "$node" crictl inspecti "$runtime_image" >"$image_status" 2>"$context/image-status.err"; then
+        image_ready=true
+        break
+      fi
+      sleep 0.1
+    done
+    if [[ "$image_ready" != true ]]; then
+      cat "$context/image-status.err" >&2
+      printf 'Imported native fixture is not visible through CRI: %s on %s\n' "$runtime_image" "$node" >&2
+      exit 2
+    fi
+    jq -e --arg architecture "$architecture" --arg recipe "$recipe" \
+      '.status.pinned == true and (.info.imageSpec | .architecture == $architecture and .config.Labels["io.calypr.funnel.fixture-recipe"] == $recipe)' \
+      "$image_status" >/dev/null
     executables=("$executable")
     if [[ "$fixture" == dicom ]]; then executables+=(/usr/bin/bash); fi
     for executable_path in "${executables[@]}"; do

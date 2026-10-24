@@ -115,6 +115,13 @@ tasks for the delegated-access test. It also grants the main user `create` on
 MinIO stores the small test dataset on a 1 GiB memory-backed volume, keeping its
 free-space checks independent of the Docker host’s shared disk usage.
 
+The upstream Gen3 Workflow test classes share the same two users and buckets.
+Their storage setup and bucket cleanup run once per pytest invocation under a
+cross-process lock. Each class waits for setup to finish before executing its
+unchanged test bodies. This prevents competing first-time policy creation and
+bucket cleanup from overlapping another class's work. Setup errors still fail
+the suite; no authorization failures are retried or ignored.
+
 The Go compiler and module caches persist across runs. The candidate image is
 built from the checked-out Funnel source. Its identity is checked on both Kind
 nodes and against the running server. Workers inherit that image with registry

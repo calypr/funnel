@@ -337,7 +337,15 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 
 	if run.syserr == nil {
 		// Resolve wildcards in the output paths
-		resolveWildcards(mapper)
+		if err := resolveWildcards(mapper, r.Store); err != nil {
+			if run.execerr != nil {
+				// The executor already failed; as with upload errors below, keep the
+				// task an EXECUTOR_ERROR rather than a SYSTEM_ERROR.
+				event.Error("Failed to resolve wildcard outputs after executor error", "error", err)
+			} else {
+				run.syserr = err
+			}
+		}
 	}
 
 	if run.syserr == nil && r.Conf.ScratchPath != "" {

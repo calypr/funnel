@@ -17,7 +17,7 @@ global:
   externalSecrets:
     deploy: false
     createLocalK8sSecret: false
-  awshelper_container_image: quay.io/cdis/awshelper@sha256:0b90890428340fbdb6657e1f2e599f623bf76eaaffa4f31fc8a4d75e98b5500c
+  awshelper_container_image: quay.io/cdis/awshelper@sha256:6d42dcd8bc306554caa4a5b8146ed8a550e0a4b4b0a9fbc0d3f7790856c167b4
   aws:
     externalSecrets:
       enabled: false
@@ -82,7 +82,7 @@ fence:
     usersync: true
     userYamlS3Path: none
     syncFromDbgap: false
-    custom_image: quay.io/cdis/awshelper@sha256:0b90890428340fbdb6657e1f2e599f623bf76eaaffa4f31fc8a4d75e98b5500c
+    custom_image: quay.io/cdis/awshelper@sha256:6d42dcd8bc306554caa4a5b8146ed8a550e0a4b4b0a9fbc0d3f7790856c167b4
   FENCE_CONFIG_PUBLIC:
     BASE_URL: http://localhost:8000/user
     AUTHLIB_INSECURE_TRANSPORT: true

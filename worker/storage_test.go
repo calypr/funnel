@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/go-test/deep"
+	"github.com/ohsu-comp-bio/funnel/config"
 	"github.com/ohsu-comp-bio/funnel/events"
 	"github.com/ohsu-comp-bio/funnel/storage"
 	"github.com/ohsu-comp-bio/funnel/tes"
@@ -160,4 +161,88 @@ func (s *capturingUploadStorage) Put(_ context.Context, url, sourcePath string) 
 	}
 	s.uploaded[url] = string(data)
 	return &storage.Object{URL: url, Size: int64(len(data))}, nil
+}
+
+// Wildcard matches are joined to the output URL by the storage backend, as
+// DIRECTORY outputs are, so each backend encodes file names its own way.
+func TestResolveWildcardsJoinsWithStorage(t *testing.T) {
+	workDir := t.TempDir()
+	localDir := t.TempDir()
+	for _, dir := range []string{"ftp", "http", "local"} {
+		if err := os.MkdirAll(filepath.Join(workDir, "outputs", dir), 0755); err != nil {
+			t.Fatal(err)
+		}
+		for _, name := range []string{"result#1.txt", "50%25.txt", "100%.txt", "a b.txt", "a?b.txt"} {
+			if err := os.WriteFile(filepath.Join(workDir, "outputs", dir, name), nil, 0644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	httpStore, err := storage.NewHTTP(&config.HTTPStorage{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ftpStore, err := storage.NewFTP(&config.FTPStorage{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	localStore, err := storage.NewLocal(&config.LocalStorage{AllowedDirs: []string{localDir}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := &storage.Mux{Backends: []storage.Storage{ftpStore, httpStore, localStore}}
+
+	ftpDir := filepath.Join(workDir, "outputs", "ftp")
+	httpDir := filepath.Join(workDir, "outputs", "http")
+	localOutDir := filepath.Join(workDir, "outputs", "local")
+	mapper := &FileMapper{
+		WorkDir: workDir,
+		Outputs: []*tes.Output{
+			{Url: "ftp://user:pass@example.com/upload/glob?token=abc", Path: ftpDir + "/*.txt", PathPrefix: "/outputs/ftp"},
+			{Url: "https://example.com/upload/glob?token=abc", Path: httpDir + "/*.txt", PathPrefix: "/outputs/http"},
+			{Url: "file://" + localDir + "/glob", Path: localOutDir + "/*.txt", PathPrefix: "/outputs/local"},
+		},
+	}
+	if err := resolveWildcards(mapper, store); err != nil {
+		t.Fatal(err)
+	}
+
+	// FTP and HTTP escape each name and keep the query; local storage keeps the
+	// names as they are. Glob sorts the matches.
+	expected := []*tes.Output{
+		{Url: "ftp://user:pass@example.com/upload/glob/100%25.txt?token=abc", Path: ftpDir + "/100%.txt", PathPrefix: "/outputs/ftp"},
+		{Url: "ftp://user:pass@example.com/upload/glob/50%2525.txt?token=abc", Path: ftpDir + "/50%25.txt", PathPrefix: "/outputs/ftp"},
+		{Url: "ftp://user:pass@example.com/upload/glob/a%20b.txt?token=abc", Path: ftpDir + "/a b.txt", PathPrefix: "/outputs/ftp"},
+		{Url: "ftp://user:pass@example.com/upload/glob/a%3Fb.txt?token=abc", Path: ftpDir + "/a?b.txt", PathPrefix: "/outputs/ftp"},
+		{Url: "ftp://user:pass@example.com/upload/glob/result%231.txt?token=abc", Path: ftpDir + "/result#1.txt", PathPrefix: "/outputs/ftp"},
+		{Url: "https://example.com/upload/glob/100%25.txt?token=abc", Path: httpDir + "/100%.txt", PathPrefix: "/outputs/http"},
+		{Url: "https://example.com/upload/glob/50%2525.txt?token=abc", Path: httpDir + "/50%25.txt", PathPrefix: "/outputs/http"},
+		{Url: "https://example.com/upload/glob/a%20b.txt?token=abc", Path: httpDir + "/a b.txt", PathPrefix: "/outputs/http"},
+		{Url: "https://example.com/upload/glob/a%3Fb.txt?token=abc", Path: httpDir + "/a?b.txt", PathPrefix: "/outputs/http"},
+		{Url: "https://example.com/upload/glob/result%231.txt?token=abc", Path: httpDir + "/result#1.txt", PathPrefix: "/outputs/http"},
+		{Url: "file://" + localDir + "/glob/100%.txt", Path: localOutDir + "/100%.txt", PathPrefix: "/outputs/local"},
+		{Url: "file://" + localDir + "/glob/50%25.txt", Path: localOutDir + "/50%25.txt", PathPrefix: "/outputs/local"},
+		{Url: "file://" + localDir + "/glob/a b.txt", Path: localOutDir + "/a b.txt", PathPrefix: "/outputs/local"},
+		{Url: "file://" + localDir + "/glob/a?b.txt", Path: localOutDir + "/a?b.txt", PathPrefix: "/outputs/local"},
+		{Url: "file://" + localDir + "/glob/result#1.txt", Path: localOutDir + "/result#1.txt", PathPrefix: "/outputs/local"},
+	}
+	for _, diff := range deep.Equal(mapper.Outputs, expected) {
+		t.Error(diff)
+	}
+}
+
+func TestResolveWildcardsReportsJoinError(t *testing.T) {
+	workDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(workDir, "out.txt"), nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+	mapper := &FileMapper{
+		WorkDir: workDir,
+		// No storage backend handles this URL, so Join fails.
+		Outputs: []*tes.Output{{Url: "gs://bucket/glob", Path: workDir + "/*.txt"}},
+	}
+	if err := resolveWildcards(mapper, &storage.Mux{}); err == nil {
+		t.Error("expected an error for an output URL that no storage backend supports")
+	}
 }

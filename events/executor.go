@@ -315,6 +315,6 @@ type logTailWriter struct {
 }
 
 func (l *logTailWriter) Write(p []byte) (n int, err error) {
-	l.ch <- p
+	l.ch <- append([]byte(nil), p...)
 	return len(p), nil
 }

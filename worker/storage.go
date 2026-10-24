@@ -3,7 +3,6 @@ package worker
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -254,7 +253,7 @@ func fixLinks(mapper *FileMapper, basepath string) {
 }
 
 // resolveWildcards resolves any wildcards/globs in the output paths.
-func resolveWildcards(mapper *FileMapper) error {
+func resolveWildcards(mapper *FileMapper, store storage.Storage) error {
 	var outputs []*tes.Output
 
 	for _, output := range mapper.Outputs {
@@ -271,11 +270,13 @@ func resolveWildcards(mapper *FileMapper) error {
 
 				// Construct URL by:
 				// - removing the mapper.WorkDir from the output.Path
-				// - then removing the PathPrefix
-				// - then joining the output.URL
+				// - then removing the PathPrefix and the leading slash
+				// - then joining the output.URL with the storage backend's
+				//   Join, as for DIRECTORY outputs, so the file name is
+				//   encoded the way that backend expects
 				globPath := strings.TrimPrefix(glob, mapper.WorkDir)
 				fixPath := strings.TrimPrefix(globPath, output.PathPrefix)
-				out.Url, err = url.JoinPath(output.Url, fixPath)
+				out.Url, err = store.Join(output.Url, strings.TrimPrefix(fixPath, "/"))
 				if err != nil {
 					return fmt.Errorf("failed to join URL: %v", err)
 				}

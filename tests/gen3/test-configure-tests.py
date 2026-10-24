@@ -63,7 +63,7 @@ def main(test_root):
         assert 'app=funnel-worker,task-id={task_id} --all-containers' in workflow_test.read_text()
         assert workflow_test.read_text().replace(
             'app=funnel-worker,task-id={task_id}', 'app=funnel-worker'
-        ) == original_workflow
+        ).replace(configuration.STORAGE_CONFIGURED, configuration.STORAGE_ORIGINAL) == original_workflow
         configured = destination.read_text()
         configured_conftest = conftest.read_text()
         configuration.configure(copy)

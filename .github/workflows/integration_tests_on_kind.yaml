@@ -161,6 +161,8 @@ jobs:
         with:
           path: ${{ env.FUNNEL_CI_TEST_IMAGE_CACHE_DIR }}
           key: gen3-task-images-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tests/gen3/arborist-image/**', 'tests/gen3/awshelper-image/**', 'tests/gen3/dicom-image/**', 'tests/gen3/canary-image/**', 'tests/gen3/prepare-test-tools.sh') }}
+          restore-keys: |
+            gen3-task-images-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Install Kind
         shell: bash
@@ -180,6 +182,9 @@ jobs:
 
       - name: Verify plain and Gen3 Helm rendering
         run: bash tests/gen3/test-post-renderer.sh
+
+      - name: Verify shared workflow fixture initialization
+        run: python3 tests/gen3/test-shared-workflow-fixture.py
 
       - name: Verify port-forward process ownership
         run: bash tests/gen3/test-port-forward.sh
