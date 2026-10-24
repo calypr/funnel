@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ohsu-comp-bio/funnel/util/ring"
+	"github.com/calypr/funnel/util/ring"
 	"golang.org/x/time/rate"
 )
 
@@ -181,8 +181,9 @@ func LogTail(ctx context.Context, taskID string, attempt, index uint32, size int
 	go func() {
 		defer wg.Done()
 		<-ctx.Done()
-		flush(stdoutbuf, Type_EXECUTOR_STDOUT)
-		flush(stderrbuf, Type_EXECUTOR_STDERR)
+		// Best-effort final flush; the writers are closed either way.
+		_ = flush(stdoutbuf, Type_EXECUTOR_STDOUT)
+		_ = flush(stderrbuf, Type_EXECUTOR_STDERR)
 	}()
 
 	return stdoutbuf, stderrbuf
@@ -300,12 +301,12 @@ func StreamLogTail(ctx context.Context, taskID string, attempt, index uint32, si
 					flushboth(immediate)
 				}
 			case b := <-stdoutch:
-				stdoutbuf.Write(b)
+				_, _ = stdoutbuf.Write(b)
 				if limiter.Allow() {
 					flushboth(immediate)
 				}
 			case b := <-stderrch:
-				stderrbuf.Write(b)
+				_, _ = stderrbuf.Write(b)
 				if limiter.Allow() {
 					flushboth(immediate)
 				}

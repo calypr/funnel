@@ -3,7 +3,7 @@ package version
 import (
 	"fmt"
 
-	"github.com/ohsu-comp-bio/funnel/version"
+	"github.com/calypr/funnel/version"
 	"github.com/spf13/cobra"
 )
 

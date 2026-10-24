@@ -1,6 +1,7 @@
 package dynamodb
 
 import (
+	"errors"
 	"fmt"
 
 	"context"
@@ -10,8 +11,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	"github.com/ohsu-comp-bio/funnel/server"
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/server"
+	"github.com/calypr/funnel/tes"
 )
 
 // GetTask gets a task, which describes a running task
@@ -120,11 +121,22 @@ func (db *DynamoDB) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*
 
 	if req.View == tes.View_FULL.String() {
 		for _, item := range response.Items {
-			// TODO handle errors
-			_ = db.getContent(ctx, item)
-			_ = db.getExecutorOutput(ctx, item, "stdout", db.stdoutTable)
-			_ = db.getExecutorOutput(ctx, item, "stderr", db.stderrTable)
-			_ = db.getSystemLogs(ctx, item)
+			var errs []error
+			if err := db.getContent(ctx, item); err != nil {
+				errs = append(errs, err)
+			}
+			if err := db.getExecutorOutput(ctx, item, "stdout", db.stdoutTable); err != nil {
+				errs = append(errs, err)
+			}
+			if err := db.getExecutorOutput(ctx, item, "stderr", db.stderrTable); err != nil {
+				errs = append(errs, err)
+			}
+			if err := db.getSystemLogs(ctx, item); err != nil {
+				errs = append(errs, err)
+			}
+			if err := errors.Join(errs...); err != nil {
+				return nil, fmt.Errorf("dynamodb loading task detail: %w", err)
+			}
 		}
 	}
 

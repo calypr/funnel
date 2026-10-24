@@ -8,8 +8,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/kballard/go-shellquote"
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/util/shellwords"
 )
 
 // ErrKeyFmt describes an error in input/output/env/tag flag formatting
@@ -62,7 +62,7 @@ func valsToTask(vals flagVals) (task *tes.Task, err error) {
 	// Create executors
 	for i, exec := range vals.execs {
 		// Split command string based on shell syntax.
-		cmd, _ := shellquote.Split(exec.cmd)
+		cmd, _ := shellwords.Split(exec.cmd)
 
 		// Only set the stdio paths if their respective flags were used.
 		var stdin, stdout, stderr string

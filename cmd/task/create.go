@@ -8,7 +8,7 @@ import (
 
 	"context"
 
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/tes"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 

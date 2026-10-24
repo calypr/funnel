@@ -6,12 +6,12 @@ import (
 	"fmt"
 
 	"dario.cat/mergo"
-	workerCmd "github.com/ohsu-comp-bio/funnel/cmd/worker"
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/events"
-	"github.com/ohsu-comp-bio/funnel/logger"
-	"github.com/ohsu-comp-bio/funnel/plugins/proto"
-	"github.com/ohsu-comp-bio/funnel/tes"
+	workerCmd "github.com/calypr/funnel/cmd/worker"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/plugins/proto"
+	"github.com/calypr/funnel/tes"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -106,7 +106,8 @@ func (b *Backend) Submit(task *tes.Task) error {
 	}
 
 	go func() {
-		w.Run(ctx)
+		// The worker reports its own errors via the event stream.
+		_ = w.Run(ctx)
 		w.Close()
 	}()
 

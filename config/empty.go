@@ -1,7 +1,7 @@
 package config
 
 import (
-	"github.com/ohsu-comp-bio/funnel/logger"
+	"github.com/calypr/funnel/logger"
 	durationpb "google.golang.org/protobuf/types/known/durationpb"
 )
 

@@ -10,8 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/minio/minio-go/v7"
-	"github.com/ohsu-comp-bio/funnel/config"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
+	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/calypr/funnel/config"
 	"golang.org/x/sys/unix"
 )
 
@@ -56,12 +58,19 @@ func TestDownloadMountpoint(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			source := prefix + "-" + tc.name
-			info, err := store.client.PutObject(ctx, "sources", source, bytes.NewReader(tc.body), int64(len(tc.body)), minio.PutObjectOptions{PartSize: 5 << 20})
+			uploader := manager.NewUploader(store.client(ctx, "sources"), func(u *manager.Uploader) {
+				u.PartSize = 5 << 20
+			})
+			info, err := uploader.Upload(ctx, &awss3.PutObjectInput{
+				Bucket: aws.String("sources"),
+				Key:    aws.String(source),
+				Body:   bytes.NewReader(tc.body),
+			})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if tc.name == "multipart" && !strings.Contains(info.ETag, "-") {
-				t.Fatalf("source was not uploaded in multiple parts: %q", info.ETag)
+			if tc.name == "multipart" && !strings.Contains(aws.ToString(info.ETag), "-") {
+				t.Fatalf("source was not uploaded in multiple parts: %q", aws.ToString(info.ETag))
 			}
 			if _, err := store.Get(ctx, "s3://sources/"+source, target); err != nil {
 				t.Fatal(err)
@@ -70,12 +79,15 @@ func TestDownloadMountpoint(t *testing.T) {
 			if err != nil || !bytes.Equal(got, tc.body) {
 				t.Fatalf("mounted content differs: got %d bytes, want %d, error %v", len(got), len(tc.body), err)
 			}
-			object, err := store.client.GetObject(ctx, "mounted", os.Getenv("FUNNEL_MOUNTPOINT_TEST_PREFIX")+prefix+"/download", minio.GetObjectOptions{})
+			object, err := store.client(ctx, "mounted").GetObject(ctx, &awss3.GetObjectInput{
+				Bucket: aws.String("mounted"),
+				Key:    aws.String(os.Getenv("FUNNEL_MOUNTPOINT_TEST_PREFIX") + prefix + "/download"),
+			})
 			if err != nil {
 				t.Fatal(err)
 			}
-			persisted, readErr := io.ReadAll(object)
-			closeErr := object.Close()
+			persisted, readErr := io.ReadAll(object.Body)
+			closeErr := object.Body.Close()
 			if readErr != nil || closeErr != nil || !bytes.Equal(persisted, tc.body) {
 				t.Fatalf("S3 content differs: got %d bytes, want %d, read error %v, close error %v", len(persisted), len(tc.body), readErr, closeErr)
 			}
@@ -111,7 +123,7 @@ func TestDownloadMountpoint(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := download(ctx, store.client, "sources", prefix+"-missing", target, ""); err == nil {
+		if err := store.download(ctx, "sources", prefix+"-missing", target); err == nil {
 			t.Fatal("missing source download succeeded")
 		}
 		after, err := os.ReadFile(target)

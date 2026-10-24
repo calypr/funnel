@@ -3,7 +3,7 @@ package util
 import (
 	"strings"
 
-	"github.com/ohsu-comp-bio/funnel/config"
+	"github.com/calypr/funnel/config"
 	"github.com/spf13/pflag"
 )
 

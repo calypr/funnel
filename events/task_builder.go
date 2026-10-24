@@ -4,8 +4,8 @@ import (
 	"context"
 	"sync"
 
-	"github.com/ohsu-comp-bio/funnel/logger"
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/tes"
 )
 
 // TaskBuilder aggregates events into an in-memory Task object.

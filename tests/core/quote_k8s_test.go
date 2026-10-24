@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ohsu-comp-bio/funnel/tes"
-	"github.com/ohsu-comp-bio/funnel/tests"
+	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/tests"
 )
 
 func TestQuotesKubernetes(t *testing.T) {
