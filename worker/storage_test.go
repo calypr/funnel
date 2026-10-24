@@ -122,6 +122,27 @@ func TestUploadOutputsMissingFileStillReachesStorage(t *testing.T) {
 	}
 }
 
+func TestFlattenOutputsExplicitDirectoryStillRequiresDirectory(t *testing.T) {
+	_, err := FlattenOutputs(context.Background(), []*tes.Output{
+		{Url: "s3://bucket/output", Path: filepath.Join(t.TempDir(), "missing"), Type: tes.Directory},
+	}, storage.Fake{}, events.NewTaskWriter("task-1", 0, events.Noop{}))
+	if err == nil {
+		t.Fatal("expected missing declared directory to fail")
+	}
+}
+
+func TestFlattenOutputsUnknownTypeIsSkipped(t *testing.T) {
+	flat, err := FlattenOutputs(context.Background(), []*tes.Output{
+		{Url: "s3://bucket/output", Path: filepath.Join(t.TempDir(), "missing"), Type: tes.FileType(1000)},
+	}, storage.Fake{}, events.NewTaskWriter("task-1", 0, events.Noop{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(flat) != 0 {
+		t.Fatalf("flattened outputs = %v, want none", flat)
+	}
+}
+
 type capturingUploadStorage struct {
 	storage.Fake
 	uploaded  map[string]string

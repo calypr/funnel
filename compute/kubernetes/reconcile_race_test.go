@@ -99,7 +99,10 @@ func TestReconcileDoesNotFailTaskListedInTwoNonterminalStates(t *testing.T) {
 	ctx := context.Background()
 	job := reconcileTestJob(taskID, batchv1.JobStatus{Succeeded: 1})
 	client := fake.NewSimpleClientset(job)
-	database := &reconcileTaskDatabase{task: &tes.Task{Id: taskID}, transitionBetween: true}
+	database := &reconcileTaskDatabase{
+		task:              &tes.Task{Id: taskID},
+		transitionBetween: true,
+	}
 	writer := &reconcileStateEvents{}
 	backend := newReconcileTestBackend(client, database, writer)
 
