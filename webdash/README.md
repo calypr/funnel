@@ -1,25 +1,7 @@
-# Funnel Web Dashboard
+# Funnel web dashboard
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+The dashboard uses React, Vite, and Vitest. It requires Node.js 22.13+, 24+, or 26+; see the `engines` field in `package.json` for the supported ranges.
 
-## Available Scripts
+Run `npm ci` to install the locked dependencies. Run `npm start` to start the development server at [http://localhost:3000](http://localhost:3000). Run `npm test` to run the Vitest suite.
 
-In the project directory, you can run:
-
-### `yarn start`
-
-Runs the app in the development mode.<br>
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
-
-The page will reload if you make edits.<br>
-You will also see any lint errors in the console.
-
-### `yarn build`
-
-Builds the app for production to the `build` folder.<br>
-It correctly bundles React in production mode and optimizes the build for the best performance.
-
-The build is minified and the filenames include the hashes.<br>
-Your app is ready to be deployed!
-
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+Run `npm run build` to write production files to `build/`. From the repository root, run `make webdash` to embed the files in the Go server. The build places application assets in `build/static/`, which matches the server's `/static/` handler.
