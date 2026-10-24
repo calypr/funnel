@@ -438,7 +438,7 @@ func (r *DefaultWorker) processOutputs(ctx context.Context, event *events.TaskWr
 	if run.syserr == nil {
 		if err := resolveWildcards(mapper, r.Store); err != nil {
 			if run.execerr != nil {
-				event.Error("Failed to resolve wildcard outputs after executor error", "error", err)
+				_ = event.Error("Failed to resolve wildcard outputs after executor error", "error", err)
 			} else {
 				run.syserr = err
 			}
