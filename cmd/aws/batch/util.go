@@ -1,8 +1,8 @@
 package batch
 
-import "github.com/aws/aws-sdk-go/service/batch"
+import "github.com/aws/aws-sdk-go-v2/service/batch/types"
 
-type byRevision []*batch.JobDefinition
+type byRevision []types.JobDefinition
 
 func (a byRevision) Len() int {
 	return len(a)

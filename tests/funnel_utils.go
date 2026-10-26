@@ -2,6 +2,7 @@ package tests
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -14,10 +15,8 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	dockerTypes "github.com/docker/docker/api/types/events"
-	dockerFilters "github.com/docker/docker/api/types/filters"
-	docker "github.com/docker/docker/client"
+	cerrdefs "github.com/containerd/errdefs"
+	docker "github.com/moby/moby/client"
 	runlib "github.com/ohsu-comp-bio/funnel/cmd/run"
 	servercmd "github.com/ohsu-comp-bio/funnel/cmd/server"
 	"github.com/ohsu-comp-bio/funnel/compute/scheduler"
@@ -28,7 +27,6 @@ import (
 	"github.com/ohsu-comp-bio/funnel/util/dockerutil"
 	"github.com/ohsu-comp-bio/funnel/util/k8sutil"
 	"github.com/ohsu-comp-bio/funnel/util/rpc"
-	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"k8s.io/client-go/kubernetes"
 )
@@ -57,9 +55,8 @@ type Funnel struct {
 	Srv       *servercmd.Server
 
 	// Internal
-	startTime string
-	rate      time.Duration
-	conn      *grpc.ClientConn
+	rate time.Duration
+	conn *grpc.ClientConn
 }
 
 // NewFunnel creates a new funnel test server with some test
@@ -98,7 +95,6 @@ func NewFunnel(conf *config.Config) *Funnel {
 		Server:     srv.Server,
 		Srv:        srv,
 		Scheduler:  srv.Scheduler,
-		startTime:  fmt.Sprintf("%d", time.Now().Unix()),
 		rate:       time.Millisecond * 500,
 	}
 }
@@ -176,27 +172,28 @@ func (f *Funnel) SwitchUser(username string) {
 	panic("Cannot switch to an undefined user: " + username)
 }
 
-// WaitForDockerDestroy waits for a "destroy" event
-// from docker for the given container ID
-//
-// TODO probably could use docker.ContainerWait()
-// https://godoc.org/github.com/moby/moby/client#Client.ContainerWait
-func (f *Funnel) WaitForDockerDestroy(id string) {
-	fil := dockerFilters.NewArgs()
-	fil.Add("type", "container")
-	fil.Add("container", id)
-	fil.Add("event", "destroy")
+const dockerDestroyWaitTimeout = 30 * time.Second
 
-	s, err := f.Docker.Events(context.Background(), dockerTypes.ListOptions{
-		Since:   string(f.startTime),
-		Filters: fil,
-	})
+// WaitForDockerDestroy waits until Docker no longer has the container.
+func (f *Funnel) WaitForDockerDestroy(id string) {
+	ctx, cancel := context.WithTimeout(context.Background(), dockerDestroyWaitTimeout)
+	defer cancel()
+	ticker := time.NewTicker(f.rate)
+	defer ticker.Stop()
+
 	for {
-		select {
-		case e := <-err:
-			panic(e)
-		case <-s:
+		_, err := f.Docker.ContainerInspect(ctx, id, docker.ContainerInspectOptions{})
+		if cerrdefs.IsNotFound(err) {
 			return
+		}
+		if err != nil {
+			panic(fmt.Errorf("failed to inspect Docker container %s while waiting for deletion: %w", id, err))
+		}
+
+		select {
+		case <-ctx.Done():
+			panic(fmt.Errorf("timed out waiting for Docker container %s to be deleted: %w", id, ctx.Err()))
+		case <-ticker.C:
 		}
 	}
 }
@@ -442,11 +439,11 @@ func (f *Funnel) StartServerInDocker(containerName, imageName string, extraArgs 
 
 func (f *Funnel) findTestServerContainers() []string {
 	res := []string{}
-	containers, err := f.Docker.ContainerList(context.Background(), container.ListOptions{})
+	containers, err := f.Docker.ContainerList(context.Background(), docker.ContainerListOptions{})
 	if err != nil {
 		panic(err)
 	}
-	for _, c := range containers {
+	for _, c := range containers.Items {
 		for _, n := range c.Names {
 			if strings.Contains(n, "funnel-test-server-") {
 				res = append(res, n)
@@ -458,7 +455,7 @@ func (f *Funnel) findTestServerContainers() []string {
 
 func (f *Funnel) killTestServerContainers(ids []string) {
 	for _, n := range ids {
-		err := f.Docker.ContainerStop(context.Background(), strings.TrimPrefix(n, "/"), container.StopOptions{})
+		_, err := f.Docker.ContainerStop(context.Background(), strings.TrimPrefix(n, "/"), docker.ContainerStopOptions{})
 		if err != nil {
 			panic(err)
 		}

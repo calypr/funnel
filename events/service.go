@@ -1,6 +1,6 @@
 package events
 
-import "golang.org/x/net/context"
+import "context"
 
 // Service is a wrapper for providing a Writer as a gRPC service.
 type Service struct {

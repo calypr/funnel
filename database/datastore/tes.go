@@ -1,10 +1,11 @@
 package datastore
 
 import (
+	"context"
+
 	"cloud.google.com/go/datastore"
 	"github.com/ohsu-comp-bio/funnel/server"
 	"github.com/ohsu-comp-bio/funnel/tes"
-	"golang.org/x/net/context"
 	"google.golang.org/api/iterator"
 )
 
