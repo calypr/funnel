@@ -10,6 +10,8 @@ import (
 // protobuf oneof wrappers here keeps net/rpc Config encoding symmetric. Plugin
 // binaries must be rebuilt when this config schema changes.
 func init() {
+	gob.Register(&S3MountedRead_SubPath{})
+	gob.Register(&S3MountedWrite_SubPath{})
 	gob.Register(&structpb.Value_NullValue{})
 	gob.Register(&structpb.Value_NumberValue{})
 	gob.Register(&structpb.Value_StringValue{})
