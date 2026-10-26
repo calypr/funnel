@@ -397,6 +397,12 @@ capture_cluster_diagnostics() {
     timeout --signal=TERM --kill-after=1s 4s kubectl get pods -n "$NAMESPACE" -o wide || true
     printf '%s\n' '--- namespace events ---'
     timeout --signal=TERM --kill-after=1s 4s kubectl get events -n "$NAMESPACE" --sort-by=.lastTimestamp || true
+    printf '%s\n' '--- kube-system pods ---'
+    timeout --signal=TERM --kill-after=1s 4s kubectl get pods -n kube-system -o wide || true
+    printf '%s\n' '--- S3 CSI workloads ---'
+    timeout --signal=TERM --kill-after=1s 4s kubectl -n kube-system describe daemonset/s3-csi-node deployment/s3-csi-controller || true
+    printf '%s\n' '--- kube-system events ---'
+    timeout --signal=TERM --kill-after=1s 4s kubectl get events -n kube-system --sort-by=.lastTimestamp || true
     if [[ "$exit_status" != 0 && -f "$script_dir/collect-task-diagnostics.sh" ]]; then
       timeout --signal=TERM --kill-after=2s 18s bash "$script_dir/collect-task-diagnostics.sh" snapshot "$NAMESPACE" || true
     fi
