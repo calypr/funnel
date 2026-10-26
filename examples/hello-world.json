@@ -7,8 +7,7 @@
       "command": [
         "echo",
         "hello world"
-      ],
-      "stdout": "/tmp/hello_out"
+      ]
     }
   ]
 }
