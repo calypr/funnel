@@ -1,10 +1,36 @@
 package task
 
 import (
+	"errors"
 	"io"
+	"net"
+	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 )
+
+func TestConnectionFailureHint(t *testing.T) {
+	server := httptest.NewServer(nil)
+	address := server.URL
+	server.Close()
+	cmd := NewCommand()
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"list", "--server", address})
+	err := cmd.Execute()
+	var op *net.OpError
+	if !errors.As(err, &op) || op.Op != "dial" || !strings.Contains(err.Error(), "--server or FUNNEL_SERVER") || !strings.Contains(err.Error(), address) {
+		t.Fatalf("expected connection error and hint, got %v", err)
+	}
+}
+
+func TestConnectionHintLeavesOtherErrorsUnchanged(t *testing.T) {
+	err := errors.New("server returned HTTP 403")
+	if got := connectionHint(err); got != err {
+		t.Fatalf("unexpected change to error: %v", got)
+	}
+}
 
 func TestGet(t *testing.T) {
 	cmd, h := newCommandHooks()
