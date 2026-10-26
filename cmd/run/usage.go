@@ -4,7 +4,7 @@ var usage = `Usage:
   funnel run 'CMD' [flags]
 
 General flags:
-  -S, --server      Address of Funnel server. Default: http://localhost:8000
+  -S, --server      Server address (or FUNNEL_SERVER; default http://localhost:8000).
   -c, --container   Containter the command runs in. Default: alpine
       --sh          Command to be run. This command will be run with the shell: 'sh -c "<sh>"'.
                     This is the default execution mode for commands passed as args. 
