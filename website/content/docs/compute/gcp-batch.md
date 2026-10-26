@@ -6,16 +6,11 @@ menu:
     weight: 20
 ---
 
-> [!WARNING]
-> Current Limitations: ⚠️
-> 
-> - Latest Funnel release ([v0.11.11](https://github.com/calypr/funnel/releases/tag/v0.11.11)) requires specific bucket prefixing in the inputs and outputs
->   - e.g. `/mnt/disks/<BUCKET>/<FILE>` instead of `/<FILE>`
-> - Nextflow workflows are currently not supported (as Nextflow expects root-level working directories → `/work`)
-
 # Overview
 
-The following steps illustrate how to run a TES tasks via GCP Batch utilizing Google Storage Buckets.
+The following steps illustrate how to run TES tasks via GCP Batch utilizing Google Storage Buckets.
+
+GCS buckets are automatically mounted inside task containers. Input and output paths use standard filesystem paths (e.g. `/input/file.txt`) — no `/mnt/disks/` prefixing required. Nextflow workflows are supported via the TES executor `workdir` field.
 
 # Quick Start
 
@@ -54,22 +49,23 @@ funnel server run --Compute "gcp-batch" --GCPBatch.Project "example-project" --G
   "name": "Input/Output Test",
   "inputs": [
     {
-      "url": "gs://tes-batch-integration/README.md",
-      "path": "/mnt/disks/tes-batch-integration/README.md"
+      "url": "gs://my-bucket/input/README.md",
+      "path": "/input/README.md"
     }
   ],
   "outputs": [
     {
-      "url": "gs://tes-batch-integration/README.md.sha256",
-      "path": "/mnt/disks/tes-batch-integration/README.md.sha256"
+      "url": "gs://my-bucket/output/README.md.sha256",
+      "path": "/output/README.md.sha256"
     }
   ],
   "executors": [
     {
       "image": "alpine",
       "command": [
-        "sha256sum",
-        "/mnt/disks/tes-batch-integration/README.md | tee /mnt/disks/tes-batch-integration/README.md.sha256"
+        "sh",
+        "-c",
+        "sha256sum /input/README.md | tee /output/README.md.sha256"
       ]
     }
   ]
@@ -94,8 +90,9 @@ funnel task get <TASK ID>
   "executors": [
     {
       "command": [
-        "sha256sum",
-        "/mnt/disks/tes-batch-integration/README.md | tee /mnt/disks/tes-batch-integration/README.md.sha256"
+        "sh",
+        "-c",
+        "sha256sum /input/README.md | tee /output/README.md.sha256"
       ],
       "image": "alpine"
     }
@@ -103,15 +100,15 @@ funnel task get <TASK ID>
   "id": "d6f0tgpurbu7o23pgj20",
   "inputs": [
     {
-      "path": "/mnt/disks/tes-batch-integration/README.md",
-      "url": "gs://tes-batch-integration/README.md"
+      "path": "/input/README.md",
+      "url": "gs://my-bucket/input/README.md"
     }
   ],
-  "name": "GCP Batch Task Example",
+  "name": "Input/Output Test",
   "outputs": [
     {
-      "path": "/mnt/disks/tes-batch-integration/README.md.sha256",
-      "url": "gs://tes-batch-integration/README.md.sha256"
+      "path": "/output/README.md.sha256",
+      "url": "gs://my-bucket/output/README.md.sha256"
     }
   ],
   "state": "COMPLETE"
@@ -121,10 +118,26 @@ funnel task get <TASK ID>
 ## 5. Verify Outputs
 
 ```sh
-gsutil cat gs://tes-batch-integration/README.md.sha256
-9b9916cea5348edd6ad78893231edb81fc96772d1dd99fae9c2a64f84646cb1c  /mnt/disks/tes-batch-integration/README.md
+gsutil cat gs://my-bucket/output/README.md.sha256
+9b9916cea5348edd6ad78893231edb81fc96772d1dd99fae9c2a64f84646cb1c  /input/README.md
+```
+
+# Nextflow
+
+Nextflow tasks can specify a working directory via the TES executor `workdir` field, which maps to Docker's `--workdir` flag inside the GCP Batch container:
+
+```json
+{
+  "executors": [
+    {
+      "image": "nextflow/nextflow:latest",
+      "command": ["nextflow", "run", "main.nf"],
+      "workdir": "/work"
+    }
+  ]
+}
 ```
 
 # Additional Resources
 
-- https://docs.cloud.google.com/batch/docs
+- [GCP Batch Documentation](https://docs.cloud.google.com/batch/docs)
