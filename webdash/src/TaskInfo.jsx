@@ -224,22 +224,15 @@ function TaskInfoRaw(props) {
   };
 
   const renderSysLogs = (logs) => {
-    if ( logs && logs.length && logs[0].systemLogs && Array.isArray(logs[0].systemLogs)) {
-      const syslogs = logs[0].systemLogs;
-      var entryList = syslogs.map(item => {
-        var parts = item.split("' ").map(p => p.replace(/'/g, "").split("="));
-        return parts;
-      });
-      var entries = [];
-      for (var i in entryList) {        
-        var entry = {};
-        for (var j in entryList[i]) {
-          if (entryList[i][j][1] !== "") {
-            entry[entryList[i][j][0]] = entryList[i][j][1];
-          }
+    const syslogs = logs?.[0]?.system_logs ?? logs?.[0]?.systemLogs;
+    if (Array.isArray(syslogs)) {
+      const entries = syslogs.map(item => {
+        const entry = {};
+        for (const [, key, value] of item.matchAll(/(\S+)='((?:\\'|[^'])*)'/g)) {
+          if (value !== "") entry[key] = value.replace(/\\'/g, "'");
         }
-        entries.push(entry);
-      }
+        return entry;
+      });
       return (
         <div style={{padding: '40px 0px 0px 0px'}}>
           {renderTitle('System Logs')}
