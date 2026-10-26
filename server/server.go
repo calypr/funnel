@@ -195,6 +195,7 @@ func (s *Server) Serve(pctx context.Context) error {
 	marsh := NewMarshaler()
 	grpcMux := runtime.NewServeMux(
 		runtime.WithMarshalerOption(runtime.MIMEWildcard, marsh),
+		runtime.WithForwardResponseRewriter(rewriteTaskViewResponse),
 		runtime.WithErrorHandler(customErrorHandler),
 	)
 
@@ -252,7 +253,7 @@ func (s *Server) Serve(pctx context.Context) error {
 			}
 
 			// Apply message middleware to grpcMux
-			messageHandler(grpcMux).ServeHTTP(resp, req)
+			messageHandler(withTaskView(grpcMux)).ServeHTTP(resp, req)
 		}
 	})
 

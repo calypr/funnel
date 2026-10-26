@@ -36,11 +36,26 @@ type TaskCore struct {
 	DataJSON []byte `db:"data"`
 }
 
-var fullView = "data"                                         // Select the entire JSONB column
-var minimalView = "id, owner, state, data -> 'creation_time'" // Can't easily construct the full minimalist view
+func taskView(view string) (func(*tes.Task) *tes.Task, error) {
+	switch view {
+	case "", tes.View_MINIMAL.String():
+		return (*tes.Task).GetMinimalView, nil
+	case tes.View_BASIC.String():
+		return (*tes.Task).GetBasicView, nil
+	case tes.View_FULL.String():
+		return func(task *tes.Task) *tes.Task { return task }, nil
+	default:
+		return nil, fmt.Errorf("unknown task view %q: must be one of MINIMAL, BASIC, FULL", view)
+	}
+}
 
 // GetTask gets a task.
 func (db *Postgres) GetTask(ctx context.Context, req *tes.GetTaskRequest) (*tes.Task, error) {
+	project, err := taskView(req.View)
+	if err != nil {
+		return nil, err
+	}
+
 	ctx, cancel := db.context()
 	defer cancel()
 
@@ -56,7 +71,7 @@ func (db *Postgres) GetTask(ctx context.Context, req *tes.GetTaskRequest) (*tes.
 	var core TaskCore
 	var stateStr string
 
-	err := db.client.QueryRow(ctx, selectSQL, req.Id).Scan(&core.ID, &core.Owner, &stateStr, &core.DataJSON)
+	err = db.client.QueryRow(ctx, selectSQL, req.Id).Scan(&core.ID, &core.Owner, &stateStr, &core.DataJSON)
 
 	if err != nil {
 		return nil, tes.ErrNotFound
@@ -78,21 +93,16 @@ func (db *Postgres) GetTask(ctx context.Context, req *tes.GetTaskRequest) (*tes.
 
 	trimUnusedExecutorLogs(&task)
 
-	switch req.View {
-	case tes.View_BASIC.String():
-		// task.Logs = tes.FilterLogs(task.Logs, tes.FilterBasic)
-		// task.Inputs = tes.FilterInputs(task.Inputs, tes.FilterBasic)
-	case tes.View_MINIMAL.String():
-		task.Logs = nil
-		task.Inputs = nil
-		task.Outputs = nil
-	}
-
-	return &task, nil
+	return project(&task), nil
 }
 
 // ListTasks returns a list of tasks.
 func (db *Postgres) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*tes.ListTasksResponse, error) {
+	project, err := taskView(req.View)
+	if err != nil {
+		return nil, err
+	}
+
 	ctx, cancel := db.context()
 	defer cancel()
 
@@ -179,17 +189,7 @@ func (db *Postgres) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*
 
 		trimUnusedExecutorLogs(&task)
 
-		switch req.View {
-		case tes.View_BASIC.String():
-			// task.Logs = tes.FilterLogs(task.Logs, tes.FilterBasic)
-			// task.Inputs = tes.FilterInputs(task.Inputs, tes.FilterBasic)
-		case tes.View_MINIMAL.String():
-			task.Logs = nil
-			task.Inputs = nil
-			task.Outputs = nil
-		}
-
-		tasks = append(tasks, &task)
+		tasks = append(tasks, project(&task))
 	}
 
 	if rows.Err() != nil {
