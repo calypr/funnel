@@ -1,4 +1,4 @@
-name: Gen3 Integration Tests
+name: Gen3 workflow integration tests
 
 on:
   pull_request:
@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   integration_tests:
-    name: Integration tests / integration_tests
+    name: Gen3 workflow tests (Kind, authentication, and storage)
     runs-on: ubuntu-24.04-arm
     env:
       TEST_REPO: ${{ github.workspace }}/gen3-code-vigil
@@ -248,3 +248,15 @@ jobs:
         with:
           path: ${{ env.FUNNEL_CI_TEST_IMAGE_CACHE_DIR }}
           key: gen3-task-images-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tests/gen3/arborist-image/**', 'tests/gen3/awshelper-image/**', 'tests/gen3/dicom-image/**', 'tests/gen3/canary-image/**', 'tests/gen3/prepare-test-tools.sh') }}
+
+  # Preserve the required status context until the stack's ruleset migration.
+  required-gen3-tests:
+    name: Integration tests / integration_tests
+    needs: integration_tests
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report test result for existing required-check rules
+        env:
+          CHECK_RESULT: ${{ needs.integration_tests.result }}
+        run: test "$CHECK_RESULT" = success

@@ -1,4 +1,4 @@
-name: Nextflow Test
+name: Nextflow local-executor integration tests
 
 on:
   # Run on push to main/master/develop (e.g. after PR is merged)
@@ -12,9 +12,11 @@ concurrency:
   cancel-in-progress: true
 jobs:
   build:
+    name: Build Nextflow-test binary
     uses: ./.github/workflows/build.yaml
 
   nextflow:
+    name: Nextflow workflow against local Funnel
     needs: build
     runs-on: ubuntu-latest
     steps:

@@ -1,4 +1,4 @@
-name: Integration Tests (K8s)
+name: Nextflow Kubernetes integration tests
 
 on:
   push:
@@ -18,6 +18,7 @@ concurrency:
  
 jobs:
   integration-tests:
+    name: Nextflow tasks on Kubernetes (Kind and MinIO)
     runs-on: ubuntu-latest
     env:
       NXF_VER: '25.10.4'

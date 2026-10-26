@@ -1,4 +1,4 @@
-name: CodeQL
+name: CodeQL security analysis
 
 on:
   push:
@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   analyze:
-    name: Analyze (${{ matrix.language }})
+    name: CodeQL security analysis (${{ matrix.language }})
     runs-on: ubuntu-latest
     permissions:
       contents: read

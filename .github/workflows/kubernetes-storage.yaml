@@ -1,4 +1,4 @@
-name: Kubernetes storage E2E
+name: Kubernetes PVC and S3 end-to-end tests
 
 on:
   pull_request:
@@ -14,6 +14,7 @@ concurrency:
 
 jobs:
   storage-e2e:
+    name: Kubernetes task storage (k3d, PVCs, and S3)
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:

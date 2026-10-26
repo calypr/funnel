@@ -64,17 +64,28 @@ func NewBackend(ctx context.Context, conf *config.Config, reader tes.ReadOnlySer
 		conf:     conf,
 	}
 
-	if !conf.Kubernetes.DisableReconciler {
-		b.cleanBacklog(ctx, conf.Kubernetes.DisableJobCleanup)
-
-		// TODO: Add a condition based on whether ExternalReconciler is enabled or not,
-		// so that we don't start the internal reconciler when an external one is configured.
-		// This is to avoid the possibility of multiple concurrent reconcilers running for each server instance.
-		rate := conf.Kubernetes.ReconcileRate.AsDuration()
-		go b.reconcile(ctx, rate, conf.Kubernetes.DisableJobCleanup)
-	}
+	b.startReconciler(ctx)
 
 	return b, nil
+}
+
+func (b *Backend) startReconciler(ctx context.Context) {
+	if b.conf.Kubernetes.DisableReconciler {
+		return
+	}
+
+	// TODO: Add a condition based on whether ExternalReconciler is enabled or not,
+	// so that we don't start the internal reconciler when an external one is configured.
+	// This is to avoid the possibility of multiple concurrent reconcilers running for each server instance.
+	rate := b.conf.Kubernetes.ReconcileRate.AsDuration()
+	disableCleanup := b.conf.Kubernetes.DisableJobCleanup
+	go func() {
+		b.cleanBacklog(ctx, disableCleanup)
+		if ctx.Err() != nil {
+			return
+		}
+		b.reconcile(ctx, rate, disableCleanup)
+	}()
 }
 
 func (b Backend) CheckBackendParameterSupport(task *tes.Task) error {
