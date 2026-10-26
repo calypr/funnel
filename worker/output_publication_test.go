@@ -281,3 +281,77 @@ func TestDefaultWorkerWaitsForOutputAcknowledgementBeforeCompletion(t *testing.T
 		})
 	}
 }
+
+func TestWorkerOutputFailureIncludesTaskPathAndOriginalError(t *testing.T) {
+	root := t.TempDir()
+	mapper := NewFileMapper(filepath.Join(root, "work"))
+	output := &tes.Output{Url: "file://" + filepath.Join(root, "destination", "result.txt"), Path: "/outputs/result.txt", Type: tes.File}
+	if err := mapper.AddOutput(output); err != nil {
+		t.Fatal(err)
+	}
+	store, err := storage.NewLocal(&config.LocalStorage{AllowedDirs: []string{root}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer := &publicationEvents{}
+	run := &helper{}
+	w := &DefaultWorker{Conf: &config.Worker{WorkDir: root, MaxParallelTransfers: 1}, Store: store}
+	w.processOutputs(context.Background(), events.NewTaskWriter("task", 0, writer), mapper, run)
+	if !errors.Is(run.syserr, os.ErrNotExist) {
+		t.Fatalf("expected original missing-file error, got %v", run.syserr)
+	}
+	for _, event := range writer.snapshot() {
+		log := event.GetSystemLog()
+		if log.GetMsg() != "upload failed" {
+			continue
+		}
+		fields := log.GetFields()
+		if fields["path"] != output.Path {
+			t.Errorf("output path = %q, want %q", fields["path"], output.Path)
+		}
+		if !strings.Contains(fields["error"], mapper.Outputs[0].Path) {
+			t.Errorf("original error missing host path: %q", fields["error"])
+		}
+		return
+	}
+	t.Fatal("missing upload failure event")
+}
+
+type failingOutputStore struct {
+	storage.Fake
+	err error
+}
+
+func (s failingOutputStore) Put(context.Context, string, string) (*storage.Object, error) {
+	return nil, s.err
+}
+
+func TestWorkerOutputFailurePreservesStorageError(t *testing.T) {
+	root := t.TempDir()
+	mapper := NewFileMapper(filepath.Join(root, "work"))
+	output := &tes.Output{Url: "s3://bucket/result.txt", Path: "/outputs/result.txt", Type: tes.File}
+	if err := mapper.AddOutput(output); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(mapper.Outputs[0].Path, []byte("result"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	denied := errors.New("storage access denied")
+	writer := &publicationEvents{}
+	run := &helper{}
+	w := &DefaultWorker{Conf: &config.Worker{WorkDir: root, MaxParallelTransfers: 1}, Store: failingOutputStore{err: denied}}
+	w.processOutputs(context.Background(), events.NewTaskWriter("task", 0, writer), mapper, run)
+	if !errors.Is(run.syserr, denied) {
+		t.Fatalf("expected original storage error, got %v", run.syserr)
+	}
+	for _, event := range writer.snapshot() {
+		log := event.GetSystemLog()
+		if log.GetMsg() == "upload failed" {
+			if fields := log.GetFields(); fields["path"] != output.Path || fields["error"] != denied.Error() {
+				t.Errorf("unexpected failure details: %v", fields)
+			}
+			return
+		}
+	}
+	t.Fatal("missing upload failure event")
+}

@@ -516,7 +516,7 @@ func (r *DefaultWorker) processOutputs(ctx context.Context, event *events.TaskWr
 	var outputLog []*tes.OutputFileLog
 	if run.syserr == nil {
 		var uploadErr error
-		outputLog, uploadErr = UploadOutputs(ctx, mapper.Outputs, r.Store, event, int(r.Conf.MaxParallelTransfers))
+		outputLog, uploadErr = uploadOutputs(ctx, mapper.Outputs, r.Store, event, int(r.Conf.MaxParallelTransfers), mapper)
 		if uploadErr != nil {
 			if run.execerr != nil {
 				// The executor already failed; treat upload errors as warnings so the
