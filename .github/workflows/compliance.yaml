@@ -16,7 +16,7 @@
 # - name: Setup tmate session
 #   uses: mxschmitt/action-tmate@v3
 
-name: Compliance Test
+name: TES API compliance tests
 
 on:
   push:
@@ -28,9 +28,11 @@ concurrency:
 
 jobs:
   build:
+    name: Build compliance-test binary
     uses: ./.github/workflows/build.yaml
 
   compliance:
+    name: TES ${{ matrix.version }} compliance (${{ matrix.db }}, ${{ matrix.compute }}, ${{ matrix.storage }})
     strategy:
       fail-fast: false
       matrix:

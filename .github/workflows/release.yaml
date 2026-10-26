@@ -1,7 +1,7 @@
 # Publishes releases to GitHub when a new semver tag is pushed
 # Ref: https://semver.org
 
-name: Release
+name: Publish Funnel release
 on:
   push:
     tags:
@@ -21,7 +21,7 @@ permissions:
 
 jobs:
   release:
-    name: Release
+    name: Publish release binaries and archives
     runs-on: ubuntu-latest
 
     permissions:

@@ -1,4 +1,4 @@
-name: Gen3 Integration Tests
+name: Gen3 workflow integration tests
 
 on:
   pull_request:
@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   integration_tests:
-    name: Integration tests / integration_tests
+    name: Gen3 workflow tests (Kind, authentication, and storage)
     runs-on: ubuntu-24.04-arm
     env:
       TEST_REPO: ${{ github.workspace }}/gen3-code-vigil

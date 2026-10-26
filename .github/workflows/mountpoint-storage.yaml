@@ -1,4 +1,4 @@
-name: Mountpoint storage E2E
+name: S3 Mountpoint download tests
 
 on:
   pull_request:
@@ -26,6 +26,7 @@ concurrency:
 
 jobs:
   mountpoint-storage:
+    name: Downloads through S3 Mountpoint and MinIO
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
