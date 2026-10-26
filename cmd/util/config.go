@@ -1,8 +1,10 @@
 package util
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"dario.cat/mergo"
 	"github.com/calypr/funnel/config"
@@ -46,6 +48,9 @@ func MergeConfigFileWithFlags(file string, flagConf *config.Config) (*config.Con
 	err = mergo.Merge(conf, flagConf, mergo.WithOverride)
 	if err != nil {
 		return conf, err
+	}
+	if strings.HasPrefix(conf.GetWorker().GetWorkDir(), "~") {
+		return conf, fmt.Errorf("Worker.WorkDir %q starts with ~, which is not expanded; use an explicit path", conf.Worker.WorkDir)
 	}
 
 	if conf.Server.RPCAddress() != defaults.Server.RPCAddress() {
