@@ -33,7 +33,7 @@ func (b *Backend) listAllWorkerJobs(ctx context.Context) (map[string]*v1.Job, er
 }
 
 func (b *Backend) cleanBacklog(ctx context.Context, disableCleanup bool) {
-	if !disableCleanup {
+	if disableCleanup {
 		return
 	}
 
