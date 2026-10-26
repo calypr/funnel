@@ -48,7 +48,7 @@ func newCommandHooks() (*cobra.Command, *hooks) {
 	}
 	cmd.SetGlobalNormalizationFunc(util.NormalizeFlags)
 	f := cmd.PersistentFlags()
-	f.StringVarP(&tesServer, "server", "S", tesServer, fmt.Sprintf("(default \"%s\")", defaultTesServer))
+	f.StringVarP(&tesServer, "server", "S", tesServer, fmt.Sprintf("Server address (or FUNNEL_SERVER; default %s)", defaultTesServer))
 
 	create := &cobra.Command{
 		Use:   "create [task.json ...]",
