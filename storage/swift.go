@@ -245,6 +245,11 @@ func (sw *Swift) UnsupportedOperations(url string) UnsupportedOperations {
 	if err != nil {
 		return AllUnsupported(err)
 	}
+	if !sw.conn.Authenticated() {
+		if err := sw.conn.Authenticate(context.Background()); err != nil {
+			return AllUnsupported(&swiftError{"authentication failed", url, err})
+		}
+	}
 	_, _, err = sw.conn.Container(context.Background(), u.bucket)
 	if err != nil {
 		return AllUnsupported(&swiftError{"looking for bucket", url, err})
@@ -282,3 +287,5 @@ type swiftError struct {
 func (s *swiftError) Error() string {
 	return fmt.Sprintf("swift: %s for URL %q: %v", s.msg, s.url, s.err)
 }
+
+func (s *swiftError) Unwrap() error { return s.err }
