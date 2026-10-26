@@ -30,5 +30,7 @@ website/go.sum
 website/resources
 
 /.gen3-local/
+/.ci-worktrees/
+
 /gen3-code-vigil
 /gen3-gitops-ci

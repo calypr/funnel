@@ -50,6 +50,9 @@ jobs:
     - name: Install gotestsum
       run: go install gotest.tools/gotestsum@v1.13.0
 
+    - name: Download Go modules
+      run: sh .github/scripts/download-go-modules.sh
+
     - name: Unit Tests
       id: unit_tests
       continue-on-error: true
