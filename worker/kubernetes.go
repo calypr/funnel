@@ -30,22 +30,23 @@ import (
 
 // KubernetesCommand is responsible for configuring and running a task in a Kubernetes cluster.
 type KubernetesCommand struct {
-	StoragePlan    *storageplan.Plan
-	TaskId         string
-	JobId          int
-	StdinFile      string
-	StdoutFile     string
-	StderrFile     string
-	TaskTemplate   string
-	Namespace      string // Funnel Server Namespace
-	JobsNamespace  string // Funnel Worker + Executor Namespace (default: Namespace)
-	NodeSelector   map[string]string
-	Tolerations    []map[string]interface{}
-	Resources      *tes.Resources
-	ResourceLimits *tes.Resources
-	ServiceAccount string
-	NeedsPVC       bool
-	Clientset      kubernetes.Interface
+	StoragePlan     *storageplan.Plan
+	TaskId          string
+	JobId           int
+	StdinFile       string
+	StdoutFile      string
+	StderrFile      string
+	TaskTemplate    string
+	Namespace       string // Funnel Server Namespace
+	JobsNamespace   string // Funnel Worker + Executor Namespace (default: Namespace)
+	NodeSelector    map[string]string
+	Tolerations     []map[string]interface{}
+	Resources       *tes.Resources
+	ResourceLimits  *tes.Resources
+	ServiceAccount  string
+	ImagePullPolicy corev1.PullPolicy
+	NeedsPVC        bool
+	Clientset       kubernetes.Interface
 	Command
 }
 
@@ -169,6 +170,7 @@ func (kcmd KubernetesCommand) Run(ctx context.Context) error {
 		"RamGbLimit":         kcmd.ResourceLimits.RamGb,
 		"DiskGbLimit":        kcmd.ResourceLimits.DiskGb,
 		"Image":              kcmd.Image,
+		"ImagePullPolicy":    kcmd.ImagePullPolicy,
 		"NeedsPVC":           kcmd.StoragePlan == nil && kcmd.NeedsPVC,
 		"NodeSelector":       kcmd.NodeSelector,
 		"Tolerations":        kcmd.Tolerations,
@@ -629,6 +631,16 @@ func getKubernetesClientset() (*kubernetes.Clientset, error) {
 // publishes the effective resources as an event, and assembles the
 // KubernetesCommand for one executor of the task.
 func (r *DefaultWorker) newKubernetesCommand(ctx context.Context, event *events.TaskWriter, task *tes.Task, d *tes.Executor, i int, command Command, resources *tes.Resources) (*KubernetesCommand, error) {
+	pullPolicy := corev1.PullAlways
+	if value := task.Tags["_IMAGE_PULL_POLICY"]; value != "" {
+		pullPolicy = corev1.PullPolicy(value)
+		switch pullPolicy {
+		case corev1.PullAlways, corev1.PullIfNotPresent, corev1.PullNever:
+		default:
+			return nil, fmt.Errorf("invalid _IMAGE_PULL_POLICY %q: expected Always, IfNotPresent, or Never", value)
+		}
+	}
+
 	resources, err := config.ValidateResources(resources, r.Executor.Resources)
 	if err != nil {
 		return nil, err
@@ -643,22 +655,23 @@ func (r *DefaultWorker) newKubernetesCommand(ctx context.Context, event *events.
 	_ = r.EventWriter.WriteEvent(ctx, events.NewResources(task.Id, task.Resources))
 
 	kcmd := &KubernetesCommand{
-		StoragePlan:    r.Executor.StoragePlan,
-		TaskId:         task.Id,
-		JobId:          i,
-		StdinFile:      d.Stdin,
-		StdoutFile:     d.Stdout,
-		StderrFile:     d.Stderr,
-		TaskTemplate:   r.Executor.Template,
-		Namespace:      r.Executor.Namespace,
-		JobsNamespace:  r.Executor.JobsNamespace,
-		Resources:      resources,
-		ResourceLimits: resourceLimits,
-		Command:        command,
-		NeedsPVC:       len(task.GetInputs()) > 0 || len(task.GetOutputs()) > 0 || len(task.GetVolumes()) > 0,
-		NodeSelector:   r.Executor.NodeSelector,
-		Tolerations:    r.Executor.Tolerations,
-		ServiceAccount: fmt.Sprintf("funnel-worker-sa-%s-%s", r.Executor.JobsNamespace, task.Id),
+		StoragePlan:     r.Executor.StoragePlan,
+		TaskId:          task.Id,
+		JobId:           i,
+		StdinFile:       d.Stdin,
+		StdoutFile:      d.Stdout,
+		StderrFile:      d.Stderr,
+		TaskTemplate:    r.Executor.Template,
+		Namespace:       r.Executor.Namespace,
+		JobsNamespace:   r.Executor.JobsNamespace,
+		Resources:       resources,
+		ResourceLimits:  resourceLimits,
+		Command:         command,
+		NeedsPVC:        len(task.GetInputs()) > 0 || len(task.GetOutputs()) > 0 || len(task.GetVolumes()) > 0,
+		NodeSelector:    r.Executor.NodeSelector,
+		Tolerations:     r.Executor.Tolerations,
+		ServiceAccount:  fmt.Sprintf("funnel-worker-sa-%s-%s", r.Executor.JobsNamespace, task.Id),
+		ImagePullPolicy: pullPolicy,
 	}
 
 	// Override ServiceAccountName if provided in Task Tags

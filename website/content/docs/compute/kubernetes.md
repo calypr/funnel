@@ -108,6 +108,22 @@ funnel task create hello-world.json
   <img title="K8s Storage" src="/img/k8s-pvc.png" />
 </a>
 
+# Executor image pull policy
+
+Executor containers use `Always` by default. Set the task tag `_IMAGE_PULL_POLICY`
+to `Always`, `IfNotPresent`, or `Never` to override the policy for that task:
+
+```json
+"tags": {
+  "_IMAGE_PULL_POLICY": "IfNotPresent"
+}
+```
+
+An absent or empty tag keeps the default. Invalid values fail executor setup.
+The tag applies to executor containers; it does not change the worker image's
+pull policy. Custom executor templates must use `{{.ImagePullPolicy}}` in their
+`imagePullPolicy` field to honor the tag.
+
 # Additional Resources 📚
 
 - [Helm Repo](https://ohsu-comp-bio.github.io/helm-charts)
