@@ -9,7 +9,7 @@ menu:
 > [!WARNING]
 > Current Limitations: ⚠️
 > 
-> - Latest Funnel release ([v0.11.11](https://github.com/ohsu-comp-bio/funnel/releases/tag/v0.11.11)) requires specific bucket prefixing in the inputs and outputs
+> - Latest Funnel release ([v0.11.11](https://github.com/calypr/funnel/releases/tag/v0.11.11)) requires specific bucket prefixing in the inputs and outputs
 >   - e.g. `/mnt/disks/<BUCKET>/<FILE>` instead of `/<FILE>`
 > - Nextflow workflows are currently not supported (as Nextflow expects root-level working directories → `/work`)
 
@@ -22,7 +22,7 @@ The following steps illustrate how to run a TES tasks via GCP Batch utilizing Go
 ## 1. Download Funnel
 
 ```sh
-curl -fsSL https://ohsu-comp-bio.github.io/funnel/install.sh | bash
+curl -fsSL https://calypr.org/tools/funnel/install.sh | bash
 ```
 
 ## 2. Start Server

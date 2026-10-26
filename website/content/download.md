@@ -13,10 +13,10 @@ menu:
 
 ## 1. Quick Start
 
-Run the following [install script](https://github.com/ohsu-comp-bio/funnel/blob/develop/install.sh) to fetch latest version of Funnel from [GitHub Releases](https://github.com/ohsu-comp-bio/funnel/releases):
+Run the following [install script](https://github.com/calypr/funnel/blob/develop/install.sh) to fetch the latest version of Funnel from [GitHub Releases](https://github.com/calypr/funnel/releases):
 
 ```sh
-curl -fsSL https://ohsu-comp-bio.github.io/funnel/install.sh | bash
+curl -fsSL https://calypr.org/tools/funnel/install.sh | bash
 ```
 
 ## 2. Containers
