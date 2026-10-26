@@ -147,6 +147,10 @@ func (s3b *AmazonS3) List(ctx context.Context, url string) ([]*Object, error) {
 	if err != nil {
 		return nil, err
 	}
+	base := strings.TrimSuffix(url, u.path)
+	if !strings.HasSuffix(base, "/") {
+		base += "/"
+	}
 
 	var objects []*Object
 
@@ -165,7 +169,7 @@ func (s3b *AmazonS3) List(ctx context.Context, url string) ([]*Object, error) {
 				continue
 			}
 			objects = append(objects, &Object{
-				URL:          fmt.Sprintf("s3://%s/%s", u.bucket, *obj.Key),
+				URL:          base + *obj.Key,
 				Name:         *obj.Key,
 				ETag:         *obj.ETag,
 				LastModified: *obj.LastModified,

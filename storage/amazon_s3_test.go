@@ -140,6 +140,48 @@ func TestAmazonS3ListPagination(t *testing.T) {
 	}
 }
 
+func TestAmazonS3ListPreservesEndpointQualifiedURL(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodHead:
+			if r.URL.Path != "/bucket" {
+				t.Errorf("unexpected bucket discovery URL %s", r.URL)
+			}
+			w.Header().Set("X-Amz-Bucket-Region", "us-east-1")
+		case http.MethodGet:
+			if r.URL.Path != "/bucket" || r.URL.Query().Get("prefix") != "dir/" {
+				t.Errorf("unexpected list URL %s", r.URL)
+			}
+			w.Header().Set("Content-Type", "application/xml")
+			_, _ = io.WriteString(w, `<ListBucketResult><IsTruncated>false</IsTruncated><Contents><Key>dir/file.txt</Key><Size>4</Size><ETag>file</ETag><LastModified>2006-01-02T15:04:05Z</LastModified></Contents></ListBucketResult>`)
+		default:
+			t.Errorf("unexpected request %s", r.Method)
+		}
+	}))
+	defer server.Close()
+
+	store, err := NewAmazonS3(&config.AmazonS3Storage{AWSConfig: &config.AWSConfig{
+		Region: "us-east-1", DisableAutoCredentialLoad: true,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverURL := server.URL
+	store.cfg.BaseEndpoint = &serverURL
+	store.forcePathStyle = true
+
+	objects, err := store.List(t.Context(), "s3://s3.amazonaws.com/bucket/dir/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(objects) != 1 {
+		t.Fatalf("listed %d objects, want 1", len(objects))
+	}
+	if objects[0].URL != "s3://s3.amazonaws.com/bucket/dir/file.txt" {
+		t.Fatalf("listed URL = %q", objects[0].URL)
+	}
+}
+
 func TestAmazonS3RegionDiscovery(t *testing.T) {
 	for _, status := range []int{http.StatusOK, http.StatusMovedPermanently, http.StatusForbidden} {
 		t.Run(fmt.Sprint(status), func(t *testing.T) {
