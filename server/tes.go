@@ -20,6 +20,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	googleproto "google.golang.org/protobuf/proto"
 
 	"google.golang.org/grpc"
 )
@@ -208,6 +209,17 @@ func (ts *TaskService) CreateTask(ctx context.Context, task *tes.Task) (*tes.Cre
 	return &tes.CreateTaskResponse{Id: task.Id}, nil
 }
 
+func normalizeTaskView(view string) (string, error) {
+	if view == "" {
+		return tes.View_MINIMAL.String(), nil
+	}
+	normalized := strings.ToUpper(view)
+	if _, ok := tes.View_value[normalized]; !ok {
+		return "", status.Errorf(codes.InvalidArgument, "invalid view %q: must be one of MINIMAL, BASIC, FULL", view)
+	}
+	return normalized, nil
+}
+
 // GetTask calls GetTask on the underlying tes.ReadOnlyServer. If the underlying server
 // returns tes.ErrNotFound, TaskService will handle returning the appropriate gRPC error.
 func (ts *TaskService) GetTask(ctx context.Context, req *tes.GetTaskRequest) (*tes.Task, error) {
@@ -230,6 +242,14 @@ func (ts *TaskService) GetTask(ctx context.Context, req *tes.GetTaskRequest) (*t
 		}
 	*/
 
+	view, err := normalizeTaskView(req.View)
+	if err != nil {
+		return nil, err
+	}
+	if view != req.View {
+		req = googleproto.Clone(req).(*tes.GetTaskRequest)
+		req.View = view
+	}
 	task, err := ts.Read.GetTask(ctx, req)
 	if err == tes.ErrNotFound {
 		err = status.Errorf(codes.NotFound, "%v: taskID: %s", err.Error(), req.Id)
@@ -239,6 +259,14 @@ func (ts *TaskService) GetTask(ctx context.Context, req *tes.GetTaskRequest) (*t
 
 // ListTasks calls ListTasks on the underlying tes.ReadOnlyServer.
 func (ts *TaskService) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*tes.ListTasksResponse, error) {
+	view, err := normalizeTaskView(req.View)
+	if err != nil {
+		return nil, err
+	}
+	if view != req.View {
+		req = googleproto.Clone(req).(*tes.ListTasksRequest)
+		req.View = view
+	}
 	return ts.Read.ListTasks(ctx, req)
 }
 
