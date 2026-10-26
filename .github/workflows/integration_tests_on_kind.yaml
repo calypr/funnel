@@ -248,3 +248,15 @@ jobs:
         with:
           path: ${{ env.FUNNEL_CI_TEST_IMAGE_CACHE_DIR }}
           key: gen3-task-images-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tests/gen3/arborist-image/**', 'tests/gen3/awshelper-image/**', 'tests/gen3/dicom-image/**', 'tests/gen3/canary-image/**', 'tests/gen3/prepare-test-tools.sh') }}
+
+  # Preserve the required status context until the stack's ruleset migration.
+  required-gen3-tests:
+    name: Integration tests / integration_tests
+    needs: integration_tests
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report test result for existing required-check rules
+        env:
+          CHECK_RESULT: ${{ needs.integration_tests.result }}
+        run: test "$CHECK_RESULT" = success

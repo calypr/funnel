@@ -66,3 +66,15 @@ jobs:
     - name: Fail job if tests failed
       if: steps.unit_tests.outcome == 'failure'
       run: exit 1
+
+  # Preserve the required status context until the stack's ruleset migration.
+  required-go-tests:
+    name: unitTest
+    needs: unitTest
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report test result for existing required-check rules
+        env:
+          CHECK_RESULT: ${{ needs.unitTest.result }}
+        run: test "$CHECK_RESULT" = success
