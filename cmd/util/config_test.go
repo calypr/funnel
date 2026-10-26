@@ -2,6 +2,7 @@ package util
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/calypr/funnel/config"
@@ -58,6 +59,34 @@ func TestMergeConfigFileWithFlags(t *testing.T) {
 	}
 	if result.Compute != fileConfig.Compute {
 		t.Error("expected Config.Compute to equal default value from config.DefaultValue()")
+	}
+}
+
+func TestMergeConfigRejectsTildeWorkDir(t *testing.T) {
+	for _, source := range []string{"file", "flag"} {
+		for _, workDir := range []string{"~", "~/work", "~other/work", "./work", "/tmp/work"} {
+			t.Run(source+"/"+workDir, func(t *testing.T) {
+				flags := config.EmptyConfig()
+				file := ""
+				if source == "file" {
+					conf := config.EmptyConfig()
+					conf.Worker.WorkDir = workDir
+					var cleanup func()
+					file, cleanup = TempConfigFile(conf, "config.yaml")
+					defer cleanup()
+				} else {
+					flags.Worker.WorkDir = workDir
+				}
+				got, err := MergeConfigFileWithFlags(file, flags)
+				if strings.HasPrefix(workDir, "~") {
+					if err == nil || !strings.Contains(err.Error(), "Worker.WorkDir") || !strings.Contains(err.Error(), "not expanded") {
+						t.Fatalf("expected actionable error, got %v", err)
+					}
+				} else if err != nil || got.Worker.WorkDir != workDir {
+					t.Fatalf("work directory = %q, error = %v", got.Worker.WorkDir, err)
+				}
+			})
+		}
 	}
 }
 

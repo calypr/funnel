@@ -132,6 +132,7 @@ Node:
 
 Worker:
   # Files created during processing will be written in this directory.
+  # Tilde (~) is not expanded; use an explicit path or a relative path.
   WorkDir: ./funnel-work-dir
 
   # For low-level tuning.
