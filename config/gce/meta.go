@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/imdario/mergo"
-	"github.com/ohsu-comp-bio/funnel/config"
+	"dario.cat/mergo"
+	"github.com/calypr/funnel/config"
 )
 
 // WithMetadataConfig loads config from a GCE VM environment, in particular

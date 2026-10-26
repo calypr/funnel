@@ -5,9 +5,9 @@ import (
 	"context"
 	"fmt"
 
-	badger "github.com/dgraph-io/badger/v2"
-	"github.com/ohsu-comp-bio/funnel/server"
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/server"
+	"github.com/calypr/funnel/tes"
+	badger "github.com/dgraph-io/badger/v4"
 	"google.golang.org/protobuf/proto"
 )
 

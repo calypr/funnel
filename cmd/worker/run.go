@@ -3,20 +3,23 @@ package worker
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/database/datastore"
-	"github.com/ohsu-comp-bio/funnel/database/dynamodb"
-	"github.com/ohsu-comp-bio/funnel/database/elastic"
-	"github.com/ohsu-comp-bio/funnel/database/mongodb"
-	"github.com/ohsu-comp-bio/funnel/database/postgres"
-	"github.com/ohsu-comp-bio/funnel/events"
-	"github.com/ohsu-comp-bio/funnel/logger"
-	"github.com/ohsu-comp-bio/funnel/storage"
-	"github.com/ohsu-comp-bio/funnel/tes"
-	"github.com/ohsu-comp-bio/funnel/util"
-	"github.com/ohsu-comp-bio/funnel/worker"
+	"github.com/calypr/funnel/compute/kubernetes/storageplan"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/database/datastore"
+	"github.com/calypr/funnel/database/dynamodb"
+	"github.com/calypr/funnel/database/elastic"
+	"github.com/calypr/funnel/database/mongodb"
+	"github.com/calypr/funnel/database/postgres"
+	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/storage"
+	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/util"
+	"github.com/calypr/funnel/worker"
+	googleproto "google.golang.org/protobuf/proto"
 )
 
 // Run runs the "worker run" command.
@@ -64,14 +67,9 @@ func NewWorker(ctx context.Context, conf *config.Config, log *logger.Logger, opt
 		return nil, fmt.Errorf("creating task reader: %v", err)
 	}
 
-	// Initialize task storage client.
-	store, err := storage.NewMux(conf)
-	if err != nil {
-		return nil, fmt.Errorf("failed to instantiate Storage backend: %v", err)
-	}
-	store.AttachLogger(log)
-
 	// The executor always defaults to docker, unless explicitly set to kubernetes.
+	var readMounts []storage.S3ReadMount
+	var writeMounts []storage.S3WriteMount
 	var executor = worker.Executor{
 		Backend: "docker",
 	}
@@ -85,12 +83,40 @@ func NewWorker(ctx context.Context, conf *config.Config, log *logger.Logger, opt
 		executor.Resources = conf.Kubernetes.Resources
 		executor.NodeSelector = conf.Kubernetes.NodeSelector
 		executor.Tolerations = convertK8sTolerations(conf.Kubernetes.Tolerations)
+		if snapshot := os.Getenv(storageplan.Env); snapshot != "" {
+			plan, err := storageplan.Decode(snapshot)
+			if err != nil {
+				return nil, fmt.Errorf("reading submitted storage plan: %w", err)
+			}
+			conf = googleproto.Clone(conf).(*config.Config)
+			conf.Worker.WorkDir = plan.WorkDir
+			readMounts = plan.S3ReadMounts
+			writeMounts = plan.S3WriteMounts
+			executor.StoragePlan = plan
+			executor.JobsNamespace = plan.Namespace
+		} else if conf.Kubernetes.Storage != nil {
+			return nil, fmt.Errorf("explicit Kubernetes storage requires a submitted storage plan")
+		}
+
 	}
+
+	if executor.StoragePlan == nil {
+		for _, backend := range conf.GenericS3 {
+			if backend != nil && (backend.MountedRead != nil || backend.MountedWrite != nil) {
+				return nil, fmt.Errorf("GenericS3 mounted access requires a submitted Kubernetes storage plan")
+			}
+		}
+	}
+	mux, err := storage.NewWorkerMux(conf, readMounts, writeMounts...)
+	if err != nil {
+		return nil, fmt.Errorf("creating worker storage backend: %w", err)
+	}
+	mux.AttachLogger(log)
 
 	return &worker.DefaultWorker{
 		Executor:    executor,
 		Conf:        conf.Worker,
-		Store:       store,
+		Store:       mux,
 		TaskReader:  reader,
 		EventWriter: writer,
 	}, nil

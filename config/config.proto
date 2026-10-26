@@ -3,9 +3,10 @@ syntax = "proto3";
 package config;
 
 import "google/protobuf/duration.proto";
+import "google/protobuf/struct.proto";
 import "logger/logger.proto";
 
-option go_package = "github.com/ohsu-comp-bio/funnel/config";
+option go_package = "github.com/calypr/funnel/config";
 
 message GridEngine {
     string Template = 1;
@@ -53,6 +54,8 @@ message Config {
   FTPStorage FTPStorage = 31;
   // Plugins
   Plugins Plugins = 32;
+  reserved 34;
+  reserved "MountedInputs";
 }
 
 // This config matches the funnel plugins repo protobuf
@@ -303,6 +306,35 @@ message GenericS3Storage {
   // AWS Account ID, needed for S3 CSI Driver
   // https://github.com/awslabs/mountpoint-s3/blob/v1.20.0/doc/CONFIGURATION.md#data-encryption
   string AccountID = 8;
+  S3MountedRead MountedRead = 9;
+  S3MountedWrite MountedWrite = 10;
+}
+
+// S3MountedRead configures a read-only S3 prefix mounted into a Kubernetes worker.
+message S3MountedRead {
+  reserved 1;
+  reserved "WorkerMount";
+  // Prefix is bucket-relative. An empty prefix mounts the whole bucket.
+  string Prefix = 2;
+  string Volume = 3;
+  oneof MountView {
+    string SubPath = 4;
+  }
+}
+
+// S3MountedWrite configures output publication through a writable Kubernetes worker mount.
+message S3MountedWrite {
+  reserved 1;
+  reserved "WorkerMount";
+  // Prefix is bucket-relative. An empty prefix mounts the whole bucket.
+  string Prefix = 2;
+  // Timeout bounds object visibility polling after a worker copies output files.
+  // A nil value uses the default timeout.
+  google.protobuf.Duration Timeout = 3;
+  string Volume = 4;
+  oneof MountView {
+    string SubPath = 5;
+  }
 }
 
 // SwiftStorage configures the OpenStack Swift object storage backend.
@@ -334,6 +366,9 @@ message FTPStorage {
 
 // Kubernetes describes the configuration for the Kubernetes compute backend.
 message Kubernetes {
+  reserved 21 to 23;
+  reserved "PVCMode", "StorageClassName", "SharedPVCName", "S3FilesFilesystemId";
+
   string Executor = 1;
   string WorkerTemplate = 2;
   string ExecutorTemplate = 3;
@@ -349,6 +384,8 @@ message Kubernetes {
   bool DisableReconciler = 13;
   google.protobuf.Duration ReconcileRate = 14;
   bool DisableJobCleanup = 15;
+  // WorkerImage bypasses server pod image discovery when set.
+  string WorkerImage = 24;
 
   // NodeSelector + Tolerations for scheduling jobs onto specific nodes
   // https://kubernetes.io/docs/tasks/configure-pod-container/assign-pods-nodes/#create-a-pod-that-gets-scheduled-to-your-chosen-node
@@ -367,6 +404,32 @@ message Kubernetes {
   // interfaces. Funnel defaults to /dev, /proc, /sys, /run, and /var/run.
   // A configured non-empty list replaces those defaults.
   repeated string ForbiddenPathPrefixes = 20;
+
+  // Storage bindings add native Kubernetes volume mounts to worker and
+  // executor pods. When absent, Funnel keeps its legacy per-task PVC behavior.
+  KubernetesStorage Storage = 25;
+}
+
+// KubernetesStorage describes native Kubernetes storage resources and mounts.
+message KubernetesStorage {
+  reserved 2, 5;
+  reserved "Bindings", "MountedInputs";
+
+  string WorkspaceVolume = 1;
+  // WorkerContainer selects the worker container receiving generated mounts
+  // and plan environment. It may be empty when the pod has one regular
+  // container; set it when the pod has multiple regular containers.
+  string WorkerContainer = 3;
+  // ExecutorContainer selects the executor container receiving generated
+  // mounts. It may be empty when the pod has one regular
+  // container; set it when the pod has multiple regular containers.
+  string ExecutorContainer = 4;
+  repeated google.protobuf.Struct volumes = 6;
+  repeated google.protobuf.Struct volumeMounts = 7;
+  // Each template metadata.name defines a logical volume. Funnel creates its
+  // PVC as <task ID>-<logical name> and supplies the volume automatically.
+  repeated google.protobuf.Struct volumeClaimTemplates = 8;
+  repeated google.protobuf.Struct persistentVolumeTemplates = 9;
 }
 
 // KubernetesResources describes default and maximum resource limits for Kubernetes tasks.

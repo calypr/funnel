@@ -1,7 +1,13 @@
-name: Go Tests
+name: Go unit and integration tests
 
 on:
   push:
+  pull_request:
+    branches:
+      - develop
+
+permissions:
+  contents: read
 
 # Cancel redundant jobs (if a new job is triggered for the same workflow and ref)
 concurrency:
@@ -9,55 +15,66 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint:
-    name: lint
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out code
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-
-      - name: Set up Go 1.x
-        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
-        with:
-          go-version-file: go.mod
-
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9
-        with:
-          # https://github.com/golangci/golangci-lint/releases/tag/v2.11.4
-          version: v2.11.4
-
   unitTest:
+    name: Go tests (race detector and coverage)
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       checks: write
     steps:
     - name: Check out code
-      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
     - name: Set up Go 1.x
-      uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
         go-version-file: go.mod
 
     - name: Install gotestsum
       run: go install gotest.tools/gotestsum@v1.13.0
 
+    - name: Download Go modules
+      run: sh .github/scripts/download-go-modules.sh
+
     - name: Unit Tests
       id: unit_tests
       continue-on-error: true
+      env:
+        CGO_ENABLED: "1"
       run: |
-        gotestsum --junitfile=test-report.xml -- ./... -coverprofile=coverage.out
+        gotestsum --junitfile=test-report.xml -- -race ./... -coverprofile=coverage.out
         go tool cover -func=coverage.out
 
     - name: Test Report
       uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3
-      if: always()
+      if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
       with:
         name: Unit Test Results
         path: test-report.xml
         reporter: java-junit
 
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: unit-test-results
+        path: |
+          test-report.xml
+          coverage.out
+        if-no-files-found: warn
+
     - name: Fail job if tests failed
       if: steps.unit_tests.outcome == 'failure'
       run: exit 1
+
+  # Preserve the required status context until the stack's ruleset migration.
+  required-go-tests:
+    name: unitTest
+    needs: unitTest
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report test result for existing required-check rules
+        env:
+          CHECK_RESULT: ${{ needs.unitTest.result }}
+        run: test "$CHECK_RESULT" = success

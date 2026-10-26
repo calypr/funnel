@@ -1,15 +1,16 @@
 package rpc
 
 import (
+	"context"
 	"encoding/base64"
 	"math"
 	"math/rand"
 	"time"
 
-	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/retry"
-	"github.com/ohsu-comp-bio/funnel/config"
-	"golang.org/x/net/context"
+	"github.com/calypr/funnel/config"
+	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/retry"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
@@ -53,6 +54,7 @@ func Dial(pctx context.Context, conf *config.RPCClient, opts ...grpc.DialOption)
 		opts,
 		grpc.WithUnaryInterceptor(grpc_retry.UnaryClientInterceptor(
 			grpc_retry.WithMax(uint(conf.MaxRetries)),
+			grpc_retry.WithCodes(codes.Unavailable, codes.ResourceExhausted),
 			grpc_retry.WithBackoff(newExponentialBackoff().BackoffWithJitter),
 		)),
 	)
@@ -105,7 +107,7 @@ func (b *exponentialBackoff) Jitter(val time.Duration) time.Duration {
 	return time.Duration(minInterval + (r.Float64() * (maxInterval - minInterval + 1)))
 }
 
-func (b *exponentialBackoff) BackoffWithJitter(attempt uint) time.Duration {
+func (b *exponentialBackoff) BackoffWithJitter(_ context.Context, attempt uint) time.Duration {
 	nextBackoff := b.Jitter(b.Backoff(attempt))
 
 	if nextBackoff > b.Max {

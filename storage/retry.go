@@ -3,7 +3,7 @@ package storage
 import (
 	"context"
 
-	"github.com/ohsu-comp-bio/funnel/util"
+	"github.com/calypr/funnel/util"
 )
 
 // Retrier wraps a storage backend with logic which will retry on error,

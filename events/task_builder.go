@@ -2,18 +2,23 @@ package events
 
 import (
 	"context"
+	"sync"
 
-	"github.com/ohsu-comp-bio/funnel/logger"
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/tes"
 )
 
 // TaskBuilder aggregates events into an in-memory Task object.
+// Read Task only after all event writers have finished.
 type TaskBuilder struct {
 	*tes.Task
+	mu sync.Mutex
 }
 
 // WriteEvent updates the Task object.
-func (tb TaskBuilder) WriteEvent(ctx context.Context, ev *Event) error {
+func (tb *TaskBuilder) WriteEvent(ctx context.Context, ev *Event) error {
+	tb.mu.Lock()
+	defer tb.mu.Unlock()
 	logger := logger.NewLogger("TaskBuilder", logger.DefaultConfig())
 	t := tb.Task
 	t.Id = ev.Id
@@ -68,4 +73,4 @@ func (tb TaskBuilder) WriteEvent(ctx context.Context, ev *Event) error {
 	return nil
 }
 
-func (tb TaskBuilder) Close() {}
+func (tb *TaskBuilder) Close() {}

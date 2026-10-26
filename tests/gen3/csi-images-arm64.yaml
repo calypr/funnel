@@ -1,0 +1,13 @@
+# Exact upstream ARM64 variants of the CSI driver and sidecars used by this fixture.
+image:
+  repository: public.ecr.aws/mountpoint-s3-csi-driver/aws-mountpoint-s3-csi-driver
+  tag: "v2.8.0@sha256:d30949f906aa2cb7146027dde49df94cb5e20baa2fc7c908a77f778f01613933"
+sidecars:
+  nodeDriverRegistrar:
+    image:
+      repository: public.ecr.aws/csi-components/csi-node-driver-registrar
+      tag: "v2.17.0-eksbuild.5@sha256:60d5db91972aca39f45c637c779eff4ab9f3760af8ba9e1f88afb7c827ca1662"
+  livenessProbe:
+    image:
+      repository: public.ecr.aws/csi-components/livenessprobe
+      tag: "v2.19.0-eksbuild.5@sha256:78ab55e0d35d543aa410f70944a613e92b3864cb47e46bf379a422c09833536b"

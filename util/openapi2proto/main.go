@@ -405,7 +405,7 @@ func main() {
 	tmpl, err := template.New("proto").Parse(`
 syntax = "proto3";
 
-option go_package = "github.com/ohsu-comp-bio/funnel/tes";
+option go_package = "github.com/calypr/funnel/tes";
 
 package tes;
 

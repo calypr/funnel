@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/events"
-	"github.com/ohsu-comp-bio/funnel/logger"
-	"github.com/ohsu-comp-bio/funnel/tes"
-	"golang.org/x/net/context"
+	"context"
+
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/tes"
 )
 
 // TaskQueue describes the interface the scheduler uses to find tasks that need scheduling.
@@ -63,11 +64,15 @@ func (s *Scheduler) CheckNodes() error {
 
 		if node.State == NodeState_GONE {
 			for _, tid := range node.TaskIds {
-				s.Event.WriteEvent(ctx, events.NewState(tid, tes.State_SYSTEM_ERROR))
-				s.Event.WriteEvent(ctx, events.NewSystemLog(tid, 0, 0, "info",
+				if err := s.Event.WriteEvent(ctx, events.NewState(tid, tes.State_SYSTEM_ERROR)); err != nil {
+					s.Log.Error("writing dead-node task state", "taskID", tid, "error", err)
+				}
+				if werr := s.Event.WriteEvent(ctx, events.NewSystemLog(tid, 0, 0, "info",
 					"Cleaning up Task assigned to dead/gone node", map[string]string{
 						"nodeID": node.Id,
-					}))
+					})); werr != nil {
+					s.Log.Error("writing dead-node cleanup event", "taskID", tid, "error", werr)
+				}
 			}
 			_, err = s.Nodes.DeleteNode(ctx, node)
 		} else {
@@ -100,14 +105,16 @@ func (s *Scheduler) Schedule(ctx context.Context) error {
 				"nodeID", offer.Node.Id,
 				"node", offer.Node,
 			)
-			s.Event.WriteEvent(ctx, events.NewSystemLog(task.Id, 0, 0, "info",
+			if err := s.Event.WriteEvent(ctx, events.NewSystemLog(task.Id, 0, 0, "info",
 				"Assigning task to node", map[string]string{
 					"nodeID": offer.Node.Id,
-				}))
+				})); err != nil {
+				s.Log.Error("writing assignment event", "taskID", task.Id, "error", err)
+			}
 
-			// TODO this is important! write a test for this line.
-			//      when a task is assigned, its state is immediately Initializing
-			//      even before the node has received it.
+			// The task's state is written INITIALIZING below, immediately upon
+			// assignment — before the node has received it. Covered by
+			// TestScheduleAssignsTaskAndMarksInitializing.
 			offer.Node.TaskIds = append(offer.Node.TaskIds, task.Id)
 			_, err = s.Nodes.PutNode(ctx, offer.Node)
 			if err != nil {
@@ -116,11 +123,13 @@ func (s *Scheduler) Schedule(ctx context.Context) error {
 					"taskID", task.Id,
 					"nodeID", offer.Node.Id,
 				)
-				s.Event.WriteEvent(ctx, events.NewSystemLog(task.Id, 0, 0, "error",
+				if werr := s.Event.WriteEvent(ctx, events.NewSystemLog(task.Id, 0, 0, "error",
 					"Error in AssignTask", map[string]string{
 						"error":  err.Error(),
 						"nodeID": offer.Node.Id,
-					}))
+					})); werr != nil {
+					s.Log.Error("writing AssignTask error event", "taskID", task.Id, "error", werr)
+				}
 				continue
 			}
 

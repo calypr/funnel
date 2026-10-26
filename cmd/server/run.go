@@ -5,30 +5,30 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ohsu-comp-bio/funnel/compute/aws_batch"
-	"github.com/ohsu-comp-bio/funnel/compute/gcp_batch"
-	"github.com/ohsu-comp-bio/funnel/compute/gridengine"
-	"github.com/ohsu-comp-bio/funnel/compute/htcondor"
-	"github.com/ohsu-comp-bio/funnel/compute/kubernetes"
-	"github.com/ohsu-comp-bio/funnel/compute/local"
-	"github.com/ohsu-comp-bio/funnel/compute/noop"
-	"github.com/ohsu-comp-bio/funnel/compute/pbs"
-	"github.com/ohsu-comp-bio/funnel/compute/scheduler"
-	"github.com/ohsu-comp-bio/funnel/compute/slurm"
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/database/badger"
-	"github.com/ohsu-comp-bio/funnel/database/boltdb"
-	"github.com/ohsu-comp-bio/funnel/database/datastore"
-	"github.com/ohsu-comp-bio/funnel/database/dynamodb"
-	"github.com/ohsu-comp-bio/funnel/database/elastic"
-	"github.com/ohsu-comp-bio/funnel/database/mongodb"
-	"github.com/ohsu-comp-bio/funnel/database/postgres"
-	"github.com/ohsu-comp-bio/funnel/events"
-	"github.com/ohsu-comp-bio/funnel/logger"
-	"github.com/ohsu-comp-bio/funnel/metrics"
-	"github.com/ohsu-comp-bio/funnel/plugins/shared"
-	"github.com/ohsu-comp-bio/funnel/server"
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/compute/aws_batch"
+	"github.com/calypr/funnel/compute/gcp_batch"
+	"github.com/calypr/funnel/compute/gridengine"
+	"github.com/calypr/funnel/compute/htcondor"
+	"github.com/calypr/funnel/compute/kubernetes"
+	"github.com/calypr/funnel/compute/local"
+	"github.com/calypr/funnel/compute/noop"
+	"github.com/calypr/funnel/compute/pbs"
+	"github.com/calypr/funnel/compute/scheduler"
+	"github.com/calypr/funnel/compute/slurm"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/database/badger"
+	"github.com/calypr/funnel/database/boltdb"
+	"github.com/calypr/funnel/database/datastore"
+	"github.com/calypr/funnel/database/dynamodb"
+	"github.com/calypr/funnel/database/elastic"
+	"github.com/calypr/funnel/database/mongodb"
+	"github.com/calypr/funnel/database/postgres"
+	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/metrics"
+	"github.com/calypr/funnel/plugins/shared"
+	"github.com/calypr/funnel/server"
+	"github.com/calypr/funnel/tes"
 )
 
 // Run runs the "server run" command.
@@ -335,23 +335,32 @@ func NewServer(ctx context.Context, conf *config.Config, log *logger.Logger) (*S
 // This opens a database, and starts an API server, scheduler and task logger.
 // This blocks indefinitely.
 func (s *Server) Run(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	// Start server
-	errch := make(chan error)
+	errch := make(chan error, 2)
+	componentCount := 1
 	go func() {
 		errch <- s.Server.Serve(ctx)
 	}()
 
 	// Start Scheduler
 	if s.Scheduler != nil {
+		componentCount++
 		go func() {
 			errch <- s.Scheduler.Run(ctx)
 		}()
 	}
 
-	// Block until done.
-	// Server and scheduler must be stopped via the context.
-	return <-errch
+	firstErr := <-errch
+	cancel()
+	for range componentCount - 1 {
+		if err := <-errch; firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
 }
 
 func dberr(err error) error {

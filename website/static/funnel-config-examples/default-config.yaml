@@ -359,9 +359,10 @@ LocalStorage:
   AllowedDirs:
     - ./
 
-# HTTPStorage is used to download public files on the web via a GET request.
+# HTTPStorage downloads inputs with GET and uploads outputs with PUT, for URLs
+# that need no credentials, such as public or presigned URLs.
 HTTPStorage:
-  # Timeout for http(s) GET requests.
+  # Timeout for http(s) requests, including the transfer itself.
   Timeout:
     duration: 30s
 

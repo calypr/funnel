@@ -1,12 +1,13 @@
 # build stage
-FROM golang:1.26-alpine AS build-env
+FROM golang:1.27.2-alpine AS build-env
 RUN apk add make git bash build-base
 ENV GOPATH=/go
 ENV PATH="/go/bin:${PATH}"
 
 WORKDIR /go/src/github.com/ohsu-comp-bio/funnel
 COPY go.* .
-RUN go mod download
+COPY .github/scripts/download-go-modules.sh /tmp/download-go-modules.sh
+RUN sh /tmp/download-go-modules.sh
 COPY . .
 RUN apk add --no-cache bash build-base git protobuf protobuf-dev
 RUN --mount=type=cache,target=/root/.cache/go-build make build

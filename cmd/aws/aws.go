@@ -1,7 +1,7 @@
 package aws
 
 import (
-	"github.com/ohsu-comp-bio/funnel/cmd/aws/batch"
+	"github.com/calypr/funnel/cmd/aws/batch"
 	"github.com/spf13/cobra"
 )
 

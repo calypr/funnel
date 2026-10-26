@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/ohsu-comp-bio/funnel/tes"
-	"golang.org/x/net/context"
+	"context"
+
+	"github.com/calypr/funnel/tes"
 )
 
 // Cancel runs the "task cancel" CLI command, which connects to the server,

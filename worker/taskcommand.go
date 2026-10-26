@@ -3,8 +3,9 @@ package worker
 import (
 	"io"
 
-	"github.com/ohsu-comp-bio/funnel/tes"
-	"golang.org/x/net/context"
+	"context"
+
+	"github.com/calypr/funnel/tes"
 )
 
 // TaskReader is a type which reads task information

@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/logger"
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/tes"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -201,7 +201,7 @@ func TestCreateJob(t *testing.T) {
 	conf := config.DefaultConfig()
 	conf.Kubernetes.JobsNamespace = jobsNamespace
 	conf.Kubernetes.WorkerTemplate = minimalWorkerTemplate
-	_, err := CreateJob(ctx, task, conf, fake.NewSimpleClientset(), l)
+	_, err := CreateJob(ctx, task, conf, fake.NewSimpleClientset(), l, nil)
 	if err != nil {
 		t.Errorf("CreateJob failed: %v", err)
 	}
@@ -324,7 +324,7 @@ func TestCreateJobWithNoResources(t *testing.T) {
 	conf := config.DefaultConfig()
 	conf.Kubernetes.JobsNamespace = jobsNamespace
 	conf.Kubernetes.WorkerTemplate = minimalWorkerTemplate
-	_, err := CreateJob(ctx, task, conf, fake.NewSimpleClientset(), l)
+	_, err := CreateJob(ctx, task, conf, fake.NewSimpleClientset(), l, nil)
 	if err != nil {
 		t.Errorf("CreateJob failed with nil resources: %v", err)
 	}

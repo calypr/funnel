@@ -8,9 +8,10 @@ import (
 	"strconv"
 	"text/template"
 
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/logger"
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/compute/kubernetes/storageplan"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/tes"
 	v1 "k8s.io/api/batch/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -35,7 +36,7 @@ func SanitizeLabelValue(s string) string {
 
 // Create the Funnel Worker job from kubernetes-template.yaml
 // Executor job is created in worker/kubernetes.go#Run
-func CreateJob(ctx context.Context, task *tes.Task, conf *config.Config, client kubernetes.Interface, log *logger.Logger) (*v1.Job, error) {
+func CreateJob(ctx context.Context, task *tes.Task, conf *config.Config, client kubernetes.Interface, log *logger.Logger, plan *storageplan.Plan) (*v1.Job, error) {
 	// Parse Worker Template
 
 	log.Debug("Creating job from template", "template", conf.Kubernetes.WorkerTemplate)
@@ -44,16 +45,17 @@ func CreateJob(ctx context.Context, task *tes.Task, conf *config.Config, client 
 		return nil, fmt.Errorf("%v", err)
 	}
 
-	pods, err := client.CoreV1().Pods(conf.Kubernetes.Namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: "app=funnel",
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list pods: %v", err)
-	}
-
-	var image string
-	if len(pods.Items) > 0 && len(pods.Items[0].Spec.Containers) > 0 {
-		image = pods.Items[0].Spec.Containers[0].Image
+	image := conf.Kubernetes.WorkerImage
+	if image == "" {
+		pods, err := client.CoreV1().Pods(conf.Kubernetes.Namespace).List(ctx, metav1.ListOptions{
+			LabelSelector: "app=funnel",
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to list pods: %v", err)
+		}
+		if len(pods.Items) > 0 && len(pods.Items[0].Spec.Containers) > 0 {
+			image = pods.Items[0].Spec.Containers[0].Image
+		}
 	}
 
 	res := task.GetResources()
@@ -82,7 +84,7 @@ func CreateJob(ctx context.Context, task *tes.Task, conf *config.Config, client 
 		"DiskGb":             res.GetDiskGb(),
 		"Image":              image,
 		"BackoffLimit":       backoffLimit,
-		"NeedsPVC":           len(task.Inputs) > 0 || len(task.Outputs) > 0 || len(task.Volumes) > 0,
+		"NeedsPVC":           plan == nil && (len(task.Inputs) > 0 || len(task.Outputs) > 0 || len(task.Volumes) > 0),
 		"NodeSelector":       conf.Kubernetes.NodeSelector,
 		"Tolerations":        conf.Kubernetes.Tolerations,
 		"ServiceAccountName": fmt.Sprintf("funnel-worker-sa-%s-%s", conf.Kubernetes.JobsNamespace, task.Id),
@@ -109,6 +111,12 @@ func CreateJob(ctx context.Context, task *tes.Task, conf *config.Config, client 
 	job, ok := obj.(*v1.Job)
 	if !ok {
 		return nil, fmt.Errorf("failed to decode job spec")
+	}
+
+	if plan != nil {
+		if err := plan.ApplyWorker(job, conf.Worker.WorkDir, task.Id); err != nil {
+			return nil, fmt.Errorf("binding worker storage: %w", err)
+		}
 	}
 
 	log.Debug("Creating job", "Job", job.Name, "JobsNamespace", conf.Kubernetes.JobsNamespace)

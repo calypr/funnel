@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/util/fsutil"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/util/fsutil"
 )
 
 // Local provides access to a local-disk storage system.
@@ -149,7 +149,7 @@ func copyFile(ctx context.Context, source string, dest string) (err error) {
 	defer sf.Close()
 
 	// Create and open dest file for writing
-	df, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY, 0775)
+	df, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0775)
 	if err != nil {
 		return fmt.Errorf("failed to create dest file for copying: %v", err)
 	}

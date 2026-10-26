@@ -3,7 +3,7 @@ package mongodb
 import (
 	"context"
 
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/tes"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )

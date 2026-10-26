@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/logger"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/logger"
 )
 
 // operation codes help multiplex storage operations across multiple backends.
@@ -93,6 +93,65 @@ func NewMux(conf *config.Config) (*Mux, error) {
 	}
 
 	return mux, nil
+}
+
+// NewWorkerMux activates only the S3 mounts captured in the submitted plan.
+// NewMux leaves filesystem access disabled for server-side validation.
+func NewWorkerMux(conf *config.Config, mounts []S3ReadMount, writes ...S3WriteMount) (*Mux, error) {
+	if err := ValidateS3ReadMounts(mounts); err != nil {
+		return nil, err
+	}
+	if err := ValidateS3WriteMounts(writes); err != nil {
+		return nil, err
+	}
+	if len(mounts)+len(writes) > 0 && !mountedFileOperationsSupported {
+		return nil, fmt.Errorf("mounted S3 file access requires Unix nonblocking file opens")
+	}
+	if err := validateS3WriteMountRootAliases(writes); err != nil {
+		return nil, err
+	}
+	mux, err := NewMux(conf)
+	if err != nil {
+		return nil, err
+	}
+	for _, mount := range mounts {
+		target, err := mux.mountedS3Backend(mount.Endpoint, mount.Bucket)
+		if err != nil {
+			return nil, err
+		}
+		reader, err := newMountedS3Reader(mount)
+		if err != nil {
+			return nil, err
+		}
+		target.mountedRead = reader
+	}
+	for _, mount := range writes {
+		target, err := mux.mountedS3Backend(mount.Endpoint, mount.Bucket)
+		if err != nil {
+			return nil, err
+		}
+		prefix := strings.TrimSuffix("s3://"+mount.Bucket+"/"+mount.Prefix, "/")
+		target.mountedWrite = &mountedS3Writer{mount: mountedS3Reader{prefix: prefix, root: mount.Root}, timeout: mount.Timeout, pollInterval: 2 * time.Second}
+	}
+	return mux, nil
+}
+
+func (mux *Mux) mountedS3Backend(endpoint, bucket string) (*GenericS3, error) {
+	var target *GenericS3
+	for _, backend := range mux.Backends {
+		s3, ok := backend.(*GenericS3)
+		if !ok || s3.configuredEndpoint != endpoint || s3.bucket != bucket {
+			continue
+		}
+		if target != nil {
+			return nil, fmt.Errorf("ambiguous mounted S3 backend %q bucket %q", endpoint, bucket)
+		}
+		target = s3
+	}
+	if target == nil {
+		return nil, fmt.Errorf("submitted mounted S3 backend %q bucket %q is unavailable", endpoint, bucket)
+	}
+	return target, nil
 }
 
 // Stat returns information about the object at the given storage URL.
@@ -190,6 +249,36 @@ func (mux *Mux) AttachLogger(log *logger.Logger) {
 }
 
 func (mux *Mux) findBackend(url string, op operation) (Storage, error) {
+	// Explicit mounted transfers select their configured backend before API discovery.
+	var owner *GenericS3
+	for _, backend := range mux.Backends {
+		s3, ok := backend.(*GenericS3)
+		if !ok {
+			continue
+		}
+		var matched bool
+		var canonical string
+		if op == getOp || op == statOp || op == listOp {
+			canonical, matched = s3.mountedURL(url)
+		}
+		if op == putOp || op == joinOp {
+			canonical, matched = s3.mountedWriteURL(url)
+		}
+		if !matched {
+			continue
+		}
+		if err := validateInputURL(canonical); err != nil {
+			return nil, err
+		}
+		if owner != nil {
+			return nil, fmt.Errorf("request supported by multiple mounted S3 backends for: %s", url)
+		}
+		owner = s3
+	}
+	if owner != nil {
+		return owner, nil
+	}
+
 	var found = 0
 	var useBackend Storage
 	var err error
@@ -232,4 +321,22 @@ func (mux *Mux) findBackend(url string, op operation) (Storage, error) {
 	}
 
 	return useBackend, nil
+}
+
+// CheckGet checks input support without probing unrelated output capabilities.
+func CheckGet(store Storage, url string) error {
+	if mux, ok := store.(*Mux); ok {
+		_, err := mux.findBackend(url, getOp)
+		return err
+	}
+	return store.UnsupportedOperations(url).Get
+}
+
+// CheckPut checks output support without probing unrelated input capabilities.
+func CheckPut(store Storage, url string) error {
+	if mux, ok := store.(*Mux); ok {
+		_, err := mux.findBackend(url, putOp)
+		return err
+	}
+	return store.UnsupportedOperations(url).Put
 }

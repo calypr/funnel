@@ -3,9 +3,9 @@ package batch
 import (
 	"fmt"
 
-	"github.com/ohsu-comp-bio/funnel/cmd/util"
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/logger"
+	"github.com/calypr/funnel/cmd/util"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/logger"
 	"github.com/spf13/cobra"
 )
 
@@ -38,7 +38,9 @@ var jobDefCmd = &cobra.Command{
 
 		if funnelConfigFile != "" {
 			funnelConf := &config.Config{}
-			config.ParseFile(funnelConfigFile, funnelConf)
+			if err := config.ParseFile(funnelConfigFile, funnelConf); err != nil {
+				return fmt.Errorf("parsing funnel config %s: %w", funnelConfigFile, err)
+			}
 			conf.Funnel = funnelConf
 		}
 

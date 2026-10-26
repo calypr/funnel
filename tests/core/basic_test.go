@@ -2,15 +2,17 @@ package core
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/hashicorp/go-multierror"
-	workerCmd "github.com/ohsu-comp-bio/funnel/cmd/worker"
-	"github.com/ohsu-comp-bio/funnel/events"
-	"github.com/ohsu-comp-bio/funnel/tes"
-	"github.com/ohsu-comp-bio/funnel/tests"
+	"sync"
+
+	workerCmd "github.com/calypr/funnel/cmd/worker"
+	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/tests"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -714,6 +716,7 @@ func TestPagination(t *testing.T) {
 	c := tests.DefaultConfig()
 	c.Compute = "noop"
 	f := tests.NewFunnel(c)
+	t.Cleanup(f.Cleanup)
 	f.StartServer()
 	ctx := context.Background()
 
@@ -790,6 +793,7 @@ func TestSmallPaginationAndSortOrder(t *testing.T) {
 	c := tests.DefaultConfig()
 	c.Compute = "noop"
 	f := tests.NewFunnel(c)
+	t.Cleanup(f.Cleanup)
 	f.StartServer()
 	ctx := context.Background()
 
@@ -1146,7 +1150,15 @@ func TestConcurrentStateUpdate(t *testing.T) {
 	f := tests.NewFunnel(c)
 	f.StartServer()
 
-	var result *multierror.Error
+	var (
+		mu     sync.Mutex
+		errs   []error
+		result = func(err error) {
+			mu.Lock()
+			defer mu.Unlock()
+			errs = append(errs, err)
+		}
+	)
 
 	ids := []string{}
 	for i := 0; i < 10; i++ {
@@ -1157,7 +1169,7 @@ func TestConcurrentStateUpdate(t *testing.T) {
 			opts := &workerCmd.Options{TaskID: id}
 			w, err := workerCmd.NewWorker(ctx, c, log, opts)
 			if err != nil {
-				result = multierror.Append(result, err)
+				result(err)
 				return
 			}
 
@@ -1173,21 +1185,21 @@ func TestConcurrentStateUpdate(t *testing.T) {
 			opts := &workerCmd.Options{TaskID: id}
 			w, err := workerCmd.NewWorker(ctx, c, log, opts)
 			if err != nil {
-				result = multierror.Append(result, err)
+				result(err)
 				return
 			}
 
 			log.Info("writing state canceled event", "taskID", id)
 			err = w.EventWriter.WriteEvent(ctx, events.NewState(id, tes.Canceled))
 			if err != nil {
-				result = multierror.Append(result, err)
+				result(err)
 				log.Error("error writing event", "error", err, "taskID", id)
 			}
 		}(id)
 	}
 
-	if result != nil {
-		t.Error(result)
+	if err := errors.Join(errs...); err != nil {
+		t.Error(err)
 	}
 
 	for _, i := range ids {

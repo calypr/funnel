@@ -108,6 +108,34 @@ funnel task create hello-world.json
   <img title="K8s Storage" src="/img/k8s-pvc.png" />
 </a>
 
+# Startup cleanup
+
+When the internal reconciler is enabled, backlog cleanup runs in the background
+so Kubernetes cleanup does not delay server startup. Periodic reconciliation
+starts after that cleanup finishes; the two operations do not run concurrently.
+Cleanup uses the server context, so stopping the server cancels in-flight cleanup
+requests.
+
+`Kubernetes.DisableJobCleanup` skips backlog cleanup while keeping reconciliation
+enabled. `Kubernetes.DisableReconciler` disables both automatic startup cleanup
+and periodic reconciliation.
+
+# Executor image pull policy
+
+Executor containers use `Always` by default. Set the task tag `_IMAGE_PULL_POLICY`
+to `Always`, `IfNotPresent`, or `Never` to override the policy for that task:
+
+```json
+"tags": {
+  "_IMAGE_PULL_POLICY": "IfNotPresent"
+}
+```
+
+An absent or empty tag keeps the default. Invalid values fail executor setup.
+The tag applies to executor containers; it does not change the worker image's
+pull policy. Custom executor templates must use `{{.ImagePullPolicy}}` in their
+`imagePullPolicy` field to honor the tag.
+
 # Additional Resources 📚
 
 - [Helm Repo](https://ohsu-comp-bio.github.io/helm-charts)

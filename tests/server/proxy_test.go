@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/ohsu-comp-bio/funnel/tests"
+	"github.com/calypr/funnel/tests"
 )
 
 func TestListNoCacheHeader(t *testing.T) {

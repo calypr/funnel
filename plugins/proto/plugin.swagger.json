@@ -405,6 +405,12 @@
         "AccountID": {
           "type": "string",
           "title": "AWS Account ID, needed for S3 CSI Driver\nhttps://github.com/awslabs/mountpoint-s3/blob/v1.20.0/doc/CONFIGURATION.md#data-encryption"
+        },
+        "MountedRead": {
+          "$ref": "#/definitions/configS3MountedRead"
+        },
+        "MountedWrite": {
+          "$ref": "#/definitions/configS3MountedWrite"
         }
       },
       "description": "GenericS3Storage describes the configuration for the Generic S3 storage backend."
@@ -525,6 +531,10 @@
         "DisableJobCleanup": {
           "type": "boolean"
         },
+        "WorkerImage": {
+          "type": "string",
+          "description": "WorkerImage bypasses server pod image discovery when set."
+        },
         "NodeSelector": {
           "type": "object",
           "additionalProperties": {
@@ -553,6 +563,10 @@
             "type": "string"
           },
           "description": "ForbiddenPathPrefixes are container paths that user-submitted tasks are not\nallowed to mount inputs, outputs, volumes, or working directories into.\nMounting over these would expose or clobber sensitive host/kernel\ninterfaces. Funnel defaults to /dev, /proc, /sys, /run, and /var/run.\nA configured non-empty list replaces those defaults."
+        },
+        "Storage": {
+          "$ref": "#/definitions/configKubernetesStorage",
+          "description": "Storage bindings add native Kubernetes volume mounts to worker and\nexecutor pods. When absent, Funnel keeps its legacy per-task PVC behavior."
         }
       },
       "description": "Kubernetes describes the configuration for the Kubernetes compute backend."
@@ -568,6 +582,48 @@
         }
       },
       "description": "KubernetesResources describes default and maximum resource limits for Kubernetes tasks."
+    },
+    "configKubernetesStorage": {
+      "type": "object",
+      "properties": {
+        "WorkspaceVolume": {
+          "type": "string"
+        },
+        "WorkerContainer": {
+          "type": "string",
+          "description": "WorkerContainer selects the worker container receiving generated mounts\nand plan environment. It may be empty when the pod has one regular\ncontainer; set it when the pod has multiple regular containers."
+        },
+        "ExecutorContainer": {
+          "type": "string",
+          "description": "ExecutorContainer selects the executor container receiving generated\nmounts. It may be empty when the pod has one regular\ncontainer; set it when the pod has multiple regular containers."
+        },
+        "volumes": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "volumeMounts": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "volumeClaimTemplates": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          },
+          "description": "Each template metadata.name defines a logical volume. Funnel creates its\nPVC as \u003ctask ID\u003e-\u003clogical name\u003e and supplies the volume automatically."
+        },
+        "persistentVolumeTemplates": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      },
+      "description": "KubernetesStorage describes native Kubernetes storage resources and mounts."
     },
     "configLocalStorage": {
       "type": "object",
@@ -785,6 +841,42 @@
         }
       },
       "description": "Resources describes the CPU, RAM, and disk resources required by a task."
+    },
+    "configS3MountedRead": {
+      "type": "object",
+      "properties": {
+        "Prefix": {
+          "type": "string",
+          "description": "Prefix is bucket-relative. An empty prefix mounts the whole bucket."
+        },
+        "Volume": {
+          "type": "string"
+        },
+        "SubPath": {
+          "type": "string"
+        }
+      },
+      "description": "S3MountedRead configures a read-only S3 prefix mounted into a Kubernetes worker."
+    },
+    "configS3MountedWrite": {
+      "type": "object",
+      "properties": {
+        "Prefix": {
+          "type": "string",
+          "description": "Prefix is bucket-relative. An empty prefix mounts the whole bucket."
+        },
+        "Timeout": {
+          "type": "string",
+          "description": "Timeout bounds object visibility polling after a worker copies output files.\nA nil value uses the default timeout."
+        },
+        "Volume": {
+          "type": "string"
+        },
+        "SubPath": {
+          "type": "string"
+        }
+      },
+      "description": "S3MountedWrite configures output publication through a writable Kubernetes worker mount."
     },
     "configSSE": {
       "type": "object",
@@ -1067,6 +1159,14 @@
         }
       },
       "additionalProperties": {}
+    },
+    "protobufNullValue": {
+      "type": "string",
+      "enum": [
+        "NULL_VALUE"
+      ],
+      "default": "NULL_VALUE",
+      "description": "`NullValue` is a singleton enumeration to represent the null value for the\n`Value` type union.\n\nThe JSON representation for `NullValue` is JSON `null`.\n\n - NULL_VALUE: Null value."
     },
     "rpcStatus": {
       "type": "object",

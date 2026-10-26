@@ -2,17 +2,17 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/ohsu-comp-bio/funnel/events"
-	"github.com/ohsu-comp-bio/funnel/storage"
-	"github.com/ohsu-comp-bio/funnel/tes"
-	"github.com/ohsu-comp-bio/funnel/util"
-	"github.com/ohsu-comp-bio/funnel/util/fsutil"
+	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/storage"
+	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/util"
+	"github.com/calypr/funnel/util/fsutil"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -28,20 +28,26 @@ func FlattenInputs(ctx context.Context, inputs []*tes.Input, store storage.Stora
 			flat = append(flat, input)
 
 		case tes.Directory:
-			list, err := store.List(ctx, input.Url)
+			prefix := strings.TrimSuffix(input.Url, "/") + "/"
+			list, err := store.List(ctx, prefix)
 			if err != nil {
 				return nil, fmt.Errorf("listing directory: %s", err)
 			}
 
 			if len(list) == 0 {
-				ev.Warn("download source directory is empty", "url", input.Url)
+				_ = ev.Warn("download source directory is empty", "url", input.Url)
 				continue
 			}
 
 			for _, obj := range list {
+				rel, ok := strings.CutPrefix(obj.URL, prefix)
+				if !ok || !filepath.IsLocal(rel) || rel == "." || strings.ContainsAny(rel, "\\\x00") {
+					return nil, fmt.Errorf("listed input %q is outside directory %q", obj.URL, input.Url)
+				}
+
 				flat = append(flat, &tes.Input{
 					Url:  obj.URL,
-					Path: filepath.Join(input.Path, strings.TrimPrefix(obj.URL, strings.TrimSuffix(input.Url, "/")+"/")),
+					Path: filepath.Join(input.Path, rel),
 				})
 			}
 		}
@@ -88,31 +94,38 @@ func FlattenOutputs(ctx context.Context, outputs []*tes.Output, store storage.St
 
 	var flat []*tes.Output
 	for _, output := range outputs {
-		switch output.Type {
-		case tes.File:
-			flat = append(flat, output)
-
-		case tes.Directory:
-			list, err := fsutil.WalkFiles(output.Path)
-			if err != nil {
-				return nil, fmt.Errorf("walking directory: %s", err)
-			}
-
-			if len(list) == 0 {
-				ev.Warn("upload source directory is empty", "url", output.Url)
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if output.Type == tes.File {
+			info, err := os.Stat(output.Path)
+			if err != nil || !info.IsDir() {
+				flat = append(flat, output)
 				continue
 			}
+		} else if output.Type != tes.Directory {
+			continue
+		}
 
-			for _, f := range list {
-				u, err := store.Join(output.Url, f.Rel)
-				if err != nil {
-					return nil, fmt.Errorf("joining storage url: %s", err)
-				}
-				flat = append(flat, &tes.Output{
-					Url:  u,
-					Path: f.Abs,
-				})
+		list, err := fsutil.WalkFiles(output.Path)
+		if err != nil {
+			return nil, fmt.Errorf("walking directory: %s", err)
+		}
+
+		if len(list) == 0 {
+			_ = ev.Warn("upload source directory is empty", "url", output.Url)
+			continue
+		}
+
+		for _, f := range list {
+			u, err := store.Join(output.Url, f.Rel)
+			if err != nil {
+				return nil, fmt.Errorf("joining storage url: %s", err)
 			}
+			flat = append(flat, &tes.Output{
+				Url:  u,
+				Path: f.Abs,
+			})
 		}
 	}
 	return flat, nil
@@ -120,6 +133,9 @@ func FlattenOutputs(ctx context.Context, outputs []*tes.Output, store storage.St
 
 // UploadOutputs uploads the outputs.
 func UploadOutputs(ctx context.Context, outputs []*tes.Output, store storage.Storage, ev *events.TaskWriter, parallelLimit int) ([]*tes.OutputFileLog, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	flat, err := FlattenOutputs(ctx, outputs, store, ev)
 	if err != nil {
@@ -135,7 +151,7 @@ func UploadOutputs(ctx context.Context, outputs []*tes.Output, store storage.Sto
 	storage.Upload(ctx, store, uploads, parallelLimit)
 
 	var logs []*tes.OutputFileLog
-	var errs util.MultiError
+	var errs []error
 
 	for _, x := range uploads {
 		up := x.(*upload)
@@ -146,7 +162,7 @@ func UploadOutputs(ctx context.Context, outputs []*tes.Output, store storage.Sto
 		}
 	}
 
-	return logs, errs.ToError()
+	return logs, errors.Join(errs...)
 }
 
 type download struct {
@@ -163,13 +179,13 @@ func (d *download) Path() string {
 	return d.in.Path
 }
 func (d *download) Started() {
-	d.ev.Info("download started", "url", d.in.Url)
+	_ = d.ev.Info("download started", "url", d.in.Url)
 }
 func (d *download) Finished(obj *storage.Object) {
-	d.ev.Info("download finished", "url", d.in.Url, "size", obj.Size, "etag", obj.ETag)
+	_ = d.ev.Info("download finished", "url", d.in.Url, "size", obj.Size, "etag", obj.ETag)
 }
 func (d *download) Failed(err error) {
-	d.ev.Error("download failed", "url", d.in.Url, "error", err)
+	_ = d.ev.Error("download failed", "url", d.in.Url, "error", err)
 	d.cancel()
 	d.err = err
 }
@@ -188,7 +204,7 @@ func (u *upload) Path() string {
 	return u.out.Path
 }
 func (u *upload) Started() {
-	u.ev.Info("upload started", "url", u.out.Url)
+	_ = u.ev.Info("upload started", "url", u.out.Url)
 }
 func (u *upload) Finished(obj *storage.Object) {
 	u.log = &tes.OutputFileLog{
@@ -196,17 +212,17 @@ func (u *upload) Finished(obj *storage.Object) {
 		Path:      u.out.Path,
 		SizeBytes: fmt.Sprintf("%d", obj.Size),
 	}
-	u.ev.Info("upload finished", "url", obj.URL, "etag", obj.ETag, "size", obj.Size)
+	_ = u.ev.Info("upload finished", "url", obj.URL, "etag", obj.ETag, "size", obj.Size)
 }
 func (u *upload) Failed(err error) {
 	u.err = err
-	u.ev.Error("upload failed", "url", u.out.Url, "error", err)
+	_ = u.ev.Error("upload failed", "url", u.out.Url, "error", err)
 }
 
 // fixLinks walks the output paths, fixing cases where a symlink is
 // broken because it's pointing to a path inside a container volume.
 func fixLinks(mapper *FileMapper, basepath string) {
-	filepath.Walk(basepath, func(p string, f os.FileInfo, err error) error {
+	_ = filepath.Walk(basepath, func(p string, f os.FileInfo, err error) error {
 		if err != nil {
 			// There's an error, so be safe and give up on this file
 			return nil
@@ -241,7 +257,7 @@ func fixLinks(mapper *FileMapper, basepath string) {
 					if err != nil {
 						return nil
 					}
-					os.Symlink(mapped, p)
+					_ = os.Symlink(mapped, p)
 				}
 			}
 		}
@@ -250,7 +266,7 @@ func fixLinks(mapper *FileMapper, basepath string) {
 }
 
 // resolveWildcards resolves any wildcards/globs in the output paths.
-func resolveWildcards(mapper *FileMapper) error {
+func resolveWildcards(mapper *FileMapper, store storage.Storage) error {
 	var outputs []*tes.Output
 
 	for _, output := range mapper.Outputs {
@@ -267,11 +283,13 @@ func resolveWildcards(mapper *FileMapper) error {
 
 				// Construct URL by:
 				// - removing the mapper.WorkDir from the output.Path
-				// - then removing the PathPrefix
-				// - then joining the output.URL
+				// - then removing the PathPrefix and the leading slash
+				// - then joining the output.URL with the storage backend's
+				//   Join, as for DIRECTORY outputs, so the file name is
+				//   encoded the way that backend expects
 				globPath := strings.TrimPrefix(glob, mapper.WorkDir)
 				fixPath := strings.TrimPrefix(globPath, output.PathPrefix)
-				out.Url, err = url.JoinPath(output.Url, fixPath)
+				out.Url, err = store.Join(output.Url, strings.TrimPrefix(fixPath, "/"))
 				if err != nil {
 					return fmt.Errorf("failed to join URL: %v", err)
 				}

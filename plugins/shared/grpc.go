@@ -3,9 +3,9 @@ package shared
 import (
 	"context"
 
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/plugins/proto"
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/plugins/proto"
+	"github.com/calypr/funnel/tes"
 )
 
 // GRPCClient is an implementation of KV that talks over RPC.

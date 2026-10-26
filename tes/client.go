@@ -12,8 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ohsu-comp-bio/funnel/util"
-	"golang.org/x/net/context"
+	"context"
+
+	"github.com/calypr/funnel/util"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 

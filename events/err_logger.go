@@ -3,7 +3,7 @@ package events
 import (
 	"context"
 
-	"github.com/ohsu-comp-bio/funnel/logger"
+	"github.com/calypr/funnel/logger"
 )
 
 // ErrLogger writes an error message to the given logger when an event write fails.

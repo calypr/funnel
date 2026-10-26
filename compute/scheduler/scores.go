@@ -3,7 +3,7 @@ package scheduler
 import (
 	"sort"
 
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/tes"
 )
 
 // Scores describe how well a task fits a node.

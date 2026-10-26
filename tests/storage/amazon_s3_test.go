@@ -6,15 +6,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/events"
-	"github.com/ohsu-comp-bio/funnel/storage"
-	"github.com/ohsu-comp-bio/funnel/tes"
-	"github.com/ohsu-comp-bio/funnel/tests"
-	util "github.com/ohsu-comp-bio/funnel/util/aws"
-	"github.com/ohsu-comp-bio/funnel/worker"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/storage"
+	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/tests"
+	util "github.com/calypr/funnel/util/aws"
+	"github.com/calypr/funnel/worker"
 )
 
 func TestAmazonS3Storage(t *testing.T) {
@@ -214,20 +215,20 @@ func TestAmazonS3Storage(t *testing.T) {
 }
 
 type s3Test struct {
-	client *s3.S3
+	client *s3.Client
 }
 
 func newS3Test(conf *config.AmazonS3Storage) (*s3Test, error) {
-	sess, err := util.NewAWSSession(conf.AWSConfig)
+	sess, err := util.NewAWSConfig(context.Background(), conf.AWSConfig)
 	if err != nil {
 		return nil, err
 	}
-	client := s3.New(sess)
+	client := s3.NewFromConfig(sess, func(options *s3.Options) { options.UsePathStyle = conf.AWSConfig.Endpoint != "" })
 	return &s3Test{client}, nil
 }
 
 func (b *s3Test) createBucket(bucket string) error {
-	_, err := b.client.CreateBucket(&s3.CreateBucketInput{
+	_, err := b.client.CreateBucket(context.Background(), &s3.CreateBucketInput{
 		Bucket: aws.String(bucket),
 	})
 	return err
@@ -239,7 +240,7 @@ func (b *s3Test) deleteBucket(bucket string) error {
 	}
 	for {
 		//Requesting for batch of objects from s3 bucket
-		objects, err := b.client.ListObjects(params)
+		objects, err := b.client.ListObjects(context.Background(), params)
 		if err != nil {
 			return err
 		}
@@ -250,21 +251,21 @@ func (b *s3Test) deleteBucket(bucket string) error {
 		}
 
 		//creating an array of pointers of ObjectIdentifier
-		objectsToDelete := make([]*s3.ObjectIdentifier, 0, 1000)
+		objectsToDelete := make([]types.ObjectIdentifier, 0, 1000)
 		for _, object := range (*objects).Contents {
-			obj := s3.ObjectIdentifier{
+			obj := types.ObjectIdentifier{
 				Key: object.Key,
 			}
-			objectsToDelete = append(objectsToDelete, &obj)
+			objectsToDelete = append(objectsToDelete, obj)
 		}
 		//Creating JSON payload for bulk delete
-		deleteArray := s3.Delete{Objects: objectsToDelete}
+		deleteArray := types.Delete{Objects: objectsToDelete}
 		deleteParams := &s3.DeleteObjectsInput{
 			Bucket: aws.String(bucket),
 			Delete: &deleteArray,
 		}
 		//Running the Bulk delete job (limit 1000)
-		_, err = b.client.DeleteObjects(deleteParams)
+		_, err = b.client.DeleteObjects(context.Background(), deleteParams)
 		if err != nil {
 			return err
 		}
@@ -274,6 +275,6 @@ func (b *s3Test) deleteBucket(bucket string) error {
 			break
 		}
 	}
-	_, err := b.client.DeleteBucket(&s3.DeleteBucketInput{Bucket: aws.String(bucket)})
+	_, err := b.client.DeleteBucket(context.Background(), &s3.DeleteBucketInput{Bucket: aws.String(bucket)})
 	return err
 }

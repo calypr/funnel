@@ -5,12 +5,12 @@ import (
 	"os"
 	"testing"
 
-	workerCmd "github.com/ohsu-comp-bio/funnel/cmd/worker"
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/events"
-	"github.com/ohsu-comp-bio/funnel/logger"
-	"github.com/ohsu-comp-bio/funnel/tes"
-	"github.com/ohsu-comp-bio/funnel/tests"
+	workerCmd "github.com/calypr/funnel/cmd/worker"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/tests"
 )
 
 var log = logger.NewLogger("kafka-worker-test", logger.DefaultConfig())
@@ -46,7 +46,7 @@ func TestKafkaWorkerRun(t *testing.T) {
 	ctx := context.Background()
 	// Task builder collects events into a task view.
 	task := &tes.Task{}
-	b := events.TaskBuilder{Task: task}
+	b := &events.TaskBuilder{Task: task}
 	l := &events.Logger{Log: log}
 	m := &events.MultiWriter{b, l}
 

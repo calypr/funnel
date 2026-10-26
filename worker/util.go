@@ -21,7 +21,7 @@ func getExitCode(err error) (int, error) {
 		return k8sErr.ExitCode, nil
 	}
 
-	if exiterr, exitOk := err.(*exec.ExitError); exitOk {
+	if exiterr, exitOk := err.(*exec.ExitError); exitOk && exiterr.ProcessState != nil {
 		if status, statusOk := exiterr.Sys().(syscall.WaitStatus); statusOk {
 			return status.ExitStatus(), nil
 		}
@@ -45,10 +45,9 @@ func handlePanic(cb func(error)) {
 
 // helper aims to simplify the error and context checking in the worker code.
 type helper struct {
-	syserr       error
-	execerr      error
-	taskCanceled bool
-	ctx          context.Context
+	syserr  error
+	execerr error
+	ctx     context.Context
 }
 
 func (h *helper) ok() bool {

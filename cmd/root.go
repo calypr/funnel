@@ -2,18 +2,18 @@
 package cmd
 
 import (
-	"github.com/ohsu-comp-bio/funnel/cmd/aws"
-	"github.com/ohsu-comp-bio/funnel/cmd/examples"
-	"github.com/ohsu-comp-bio/funnel/cmd/gce"
-	"github.com/ohsu-comp-bio/funnel/cmd/kubernetes"
-	"github.com/ohsu-comp-bio/funnel/cmd/node"
-	"github.com/ohsu-comp-bio/funnel/cmd/run"
-	"github.com/ohsu-comp-bio/funnel/cmd/server"
-	"github.com/ohsu-comp-bio/funnel/cmd/storage"
-	"github.com/ohsu-comp-bio/funnel/cmd/task"
-	"github.com/ohsu-comp-bio/funnel/cmd/termdash"
-	"github.com/ohsu-comp-bio/funnel/cmd/version"
-	"github.com/ohsu-comp-bio/funnel/cmd/worker"
+	"github.com/calypr/funnel/cmd/aws"
+	"github.com/calypr/funnel/cmd/examples"
+	"github.com/calypr/funnel/cmd/gce"
+	"github.com/calypr/funnel/cmd/kubernetes"
+	"github.com/calypr/funnel/cmd/node"
+	"github.com/calypr/funnel/cmd/run"
+	"github.com/calypr/funnel/cmd/server"
+	"github.com/calypr/funnel/cmd/storage"
+	"github.com/calypr/funnel/cmd/task"
+	"github.com/calypr/funnel/cmd/termdash"
+	"github.com/calypr/funnel/cmd/version"
+	"github.com/calypr/funnel/cmd/worker"
 	"github.com/spf13/cobra"
 )
 

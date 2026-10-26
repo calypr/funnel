@@ -1,0 +1,158 @@
+# A deliberately small Gen3 CI fixture. It uses the pinned GitOps values for
+# service configuration, then disables AWS-backed secret lookup and unrelated
+# services so the test runs wholly inside Kind.
+global:
+  hostname: localhost
+  environment: gen3-ci
+  dev: true
+  postgres:
+    dbCreate: false
+  clusterName: ""
+  netPolicy:
+    enabled: true
+    dbSubnets: []
+  pdb: false
+  topologySpread:
+    enabled: false
+  externalSecrets:
+    deploy: false
+    createLocalK8sSecret: false
+  awshelper_container_image: quay.io/cdis/awshelper@sha256:6d42dcd8bc306554caa4a5b8146ed8a550e0a4b4b0a9fbc0d3f7790856c167b4
+  aws:
+    externalSecrets:
+      enabled: false
+    secretStoreServiceAccount:
+      enabled: false
+
+postgresql:
+  auth:
+    postgresPassword: gen3-ci-postgres
+  primary:
+    persistence:
+      enabled: false
+    extraVolumeMounts:
+      - name: data
+        mountPath: /bitnami/postgresql
+
+elasticsearch:
+  replicas: 0
+
+# Only services exercised by the selected gen3_workflow tests are installed.
+"access-backend": {enabled: false}
+ambassador: {enabled: false}
+"argo-wrapper": {enabled: false}
+audit: {enabled: false}
+cedar: {enabled: false}
+"cohort-middleware": {enabled: false}
+"dicom-server": {enabled: false}
+etl: {enabled: false}
+"frontend-framework": {enabled: false}
+"gen3-embeddings": {enabled: false}
+"gen3-user-data-library": {enabled: false}
+guppy: {enabled: false}
+hatchery: {enabled: false}
+manifestservice: {enabled: false}
+metadata: {enabled: false}
+"ohdsi-atlas": {enabled: false}
+"ohdsi-webapi": {enabled: false}
+"ohif-viewer": {enabled: false}
+orthanc: {enabled: false}
+peregrine: {enabled: false}
+portal: {enabled: false}
+requestor: {enabled: false}
+sheepdog: {enabled: false}
+sower: {enabled: false}
+ssjdispatcher: {enabled: false}
+wts: {enabled: false}
+"zendesk-wrapper": {enabled: false}
+
+arborist:
+  enabled: true
+  replicaCount: 1
+fence:
+  enabled: true
+  replicaCount: 1
+  image:
+    pullPolicy: IfNotPresent
+  externalSecrets:
+    createK8sFenceConfigSecret: true
+    createK8sGoogleAppSecrets: true
+    createK8sJwtKeysSecret: true
+  usersync:
+    usersync: true
+    userYamlS3Path: none
+    syncFromDbgap: false
+    custom_image: quay.io/cdis/awshelper@sha256:6d42dcd8bc306554caa4a5b8146ed8a550e0a4b4b0a9fbc0d3f7790856c167b4
+  FENCE_CONFIG_PUBLIC:
+    BASE_URL: http://localhost:8000/user
+    AUTHLIB_INSECURE_TRANSPORT: true
+    SESSION_COOKIE_SECURE: false
+  FENCE_CONFIG:
+    BASE_URL: http://revproxy-service.gen3-local.svc.cluster.local/user
+    OPENID_CONNECT:
+      fence:
+        api_base_url: ""
+        client_id: abc
+        client_secret: xyz
+      ras:
+        discovery_url: https://stsstg.nih.gov/.well-known/openid-configuration
+        client_id: abc
+        client_secret: xyz
+        redirect_url: '{{BASE_URL}}/login/ras/callback'
+      google:
+        discovery_url: https://accounts.google.com/.well-known/openid-configuration
+        client_id: abc
+        client_secret: xyz
+        redirect_url: '{{BASE_URL}}/login/google/login/'
+    AWS_CREDENTIALS:
+      cdistest:
+        aws_access_key_id: abc
+        aws_secret_access_key: xyz
+funnel:
+  enabled: true
+  postgres:
+    dbCreate: false
+  postgresql:
+    enabled: false
+  oidc_job_enabled: false
+  externalSecrets:
+    createFunnelOidcClientSecret: false
+  endpoint_url: http://minio.gen3-local.svc.cluster.local:9000
+  authenticationSource: driver
+  stsRegion: ""
+  Kubernetes:
+    ReplicaCount: 1
+    NodeSelector: {role: workflow}
+    Tolerations: []
+    Worker:
+      PriorityClassName: ""
+  resources:
+    requests:
+      memory: 512Mi
+"gen3-workflow":
+  enabled: true
+  replicaCount: 1
+  image:
+    pullPolicy: IfNotPresent
+  gen3WorkflowConfig:
+    s3UpstreamEndpoint: http://minio.gen3-local.svc.cluster.local:9000
+    s3AccessKeyId: minioadmin
+    s3SecretAccessKey: minioadmin
+    kmsEncryptionEnabled: false
+    enableOptimizedNodeScheduling: false
+  GEN3_WORKFLOW_CONFIG:
+    DPOP_REQUIRED: false
+indexd:
+  enabled: true
+  replicaCount: 1
+  image:
+    pullPolicy: IfNotPresent
+  externalSecrets:
+    createK8sServiceCredsSecret: true
+revproxy:
+  enabled: true
+  replicaCount: 1
+  image:
+    pullPolicy: IfNotPresent
+  ingress:
+    enabled: false

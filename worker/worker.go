@@ -10,11 +10,12 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/events"
-	"github.com/ohsu-comp-bio/funnel/storage"
-	"github.com/ohsu-comp-bio/funnel/tes"
-	"github.com/ohsu-comp-bio/funnel/version"
+	"github.com/calypr/funnel/compute/kubernetes/storageplan"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/storage"
+	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/version"
 )
 
 // DefaultWorker is the default task worker, which follows a basic,
@@ -29,8 +30,11 @@ type DefaultWorker struct {
 	Command
 }
 
+var errTaskCanceled = errors.New("task canceled")
+
 // Configuration of the task executor.
 type Executor struct {
+	StoragePlan *storageplan.Plan
 	// "docker" or "kubernetes"
 	Backend string
 	// Kubernetes executor template
@@ -82,12 +86,17 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 	// TODO if we failed to retrieve the task, we can't do anything useful.
 	//      but, it's also difficult to report the failure usefully.
 	if run.syserr != nil {
-		r.EventWriter.WriteEvent(pctx, events.NewSystemLog("unknown", 0, 0, "error",
+		// Best-effort: if the task ID is unknown there's no other reporting channel.
+		_ = r.EventWriter.WriteEvent(pctx, events.NewSystemLog("unknown", 0, 0, "error",
 			"failed to get task. ID unknown", map[string]string{
 				"error": run.syserr.Error(),
 			}))
 		runerr = run.syserr
 		return
+	}
+
+	if plan := r.Executor.StoragePlan; plan != nil && plan.TaskID != task.Id {
+		return fmt.Errorf("storage plan belongs to task %q, not %q", plan.TaskID, task.Id)
 	}
 
 	// set up task specific utilities
@@ -101,12 +110,12 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 		mapper.ScratchDir = filepath.Join(scratchAbsDir, filepath.Join(r.Conf.WorkDir, task.GetId()))
 	}
 
-	event.Info("Version", version.LogFields()...)
-	event.State(tes.State_INITIALIZING)
-	event.StartTime(time.Now())
+	_ = event.Info("Version", version.LogFields()...)
+	_ = event.State(tes.State_INITIALIZING)
+	_ = event.StartTime(time.Now())
 
 	if name, err := os.Hostname(); err == nil {
-		event.Metadata(map[string]string{"hostname": name})
+		_ = event.Metadata(map[string]string{"hostname": name})
 	}
 
 	// TODO: Increment taskgroup waitgroup, defer done on waitgroup
@@ -116,30 +125,30 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 	// Run the final logging/state steps in a deferred function
 	// to ensure they always run, even if there's a missed error.
 	defer func() {
-		event.EndTime(time.Now())
+		_ = event.EndTime(time.Now())
 		switch {
-		case run.taskCanceled:
+		case errors.Is(context.Cause(run.ctx), errTaskCanceled):
 			// The task was canceled.
-			event.Info("Canceled")
-			event.State(tes.State_CANCELED)
-			runerr = fmt.Errorf("task canceled")
+			_ = event.Info("Canceled")
+			_ = event.State(tes.State_CANCELED)
+			runerr = errTaskCanceled
 		case run.syserr != nil:
 			// Something else failed
-			event.Error("System error", "error", run.syserr)
-			event.State(tes.State_SYSTEM_ERROR)
+			_ = event.Error("System error", "error", run.syserr)
+			_ = event.State(tes.State_SYSTEM_ERROR)
 			runerr = run.syserr
 		case run.execerr != nil:
 			// One of the executors failed
-			event.Error("Exec error", "error", run.execerr)
-			event.State(tes.State_EXECUTOR_ERROR)
+			_ = event.Error("Exec error", "error", run.execerr)
+			_ = event.State(tes.State_EXECUTOR_ERROR)
 			runerr = run.execerr
 		default:
-			event.State(tes.State_COMPLETE)
+			_ = event.State(tes.State_COMPLETE)
 		}
 
 		// cleanup workdir
 		if !r.Conf.LeaveWorkDir {
-			mapper.Cleanup()
+			_ = mapper.Cleanup()
 		}
 	}()
 
@@ -149,7 +158,8 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 		run.syserr = e
 	})
 
-	ctx := r.pollForCancel(pctx, func() { run.taskCanceled = true })
+	ctx, stopPolling := r.pollForCancel(pctx)
+	defer stopPolling()
 	run.ctx = ctx
 
 	// Prepare file mapper, which maps task file URLs to host filesystem paths
@@ -167,7 +177,7 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 	}
 
 	if run.ok() {
-		event.State(tes.State_RUNNING)
+		_ = event.State(tes.State_RUNNING)
 	}
 
 	// Create symlinks between the working directory and the Scratch Directory
@@ -189,187 +199,11 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 
 	}
 
-	// Run steps
 	if run.ok() {
-		var resources = task.GetResources()
-		if resources == nil {
-			resources = &tes.Resources{}
-		}
-
-		for i, d := range task.GetExecutors() {
-			// If a previous executor failed and its error was not to be ignored,
-			// stop before creating any state (executor writer, log slot, etc.) for
-			// this executor. Creating the writer above would otherwise emit an empty
-			// executor log entry for an executor that never ran.
-			if !run.ok() {
-				break
-			}
-
-			var command = Command{
-				Image:        d.Image,
-				ShellCommand: d.Command,
-				Volumes:      mapper.Volumes,
-				Workdir:      d.Workdir,
-				Env:          d.Env,
-				Event:        event.NewExecutorWriter(uint32(i)),
-			}
-
-			var taskCommand TaskCommand
-
-			if r.Executor.Backend == "kubernetes" {
-				resources, err := config.ValidateResources(resources, r.Executor.Resources)
-				if err != nil {
-					return err
-				}
-
-				// Store the effective resources back to the task
-				task.Resources = resources
-
-				resourceLimits := config.GetResourceLimits(r.Executor.Resources)
-
-				err = r.EventWriter.WriteEvent(pctx, events.NewResources(task.Id, task.Resources))
-				if err != nil {
-					// TODO: Handle this error properly...
-					// return fmt.Errorf("error writing resources event for task %s: %v", task.Id, err)
-				}
-
-				taskCommand = &KubernetesCommand{
-					TaskId:         task.Id,
-					JobId:          i,
-					StdinFile:      d.Stdin,
-					StdoutFile:     d.Stdout,
-					StderrFile:     d.Stderr,
-					TaskTemplate:   r.Executor.Template,
-					Namespace:      r.Executor.Namespace,
-					JobsNamespace:  r.Executor.JobsNamespace,
-					Resources:      resources,
-					ResourceLimits: resourceLimits,
-					Command:        command,
-					NeedsPVC:       len(task.GetInputs()) > 0 || len(task.GetOutputs()) > 0 || len(task.GetVolumes()) > 0,
-					NodeSelector:   r.Executor.NodeSelector,
-					Tolerations:    r.Executor.Tolerations,
-					ServiceAccount: fmt.Sprintf("funnel-worker-sa-%s-%s", r.Executor.JobsNamespace, task.Id),
-				}
-
-				// Override ServiceAccountName if provided in Task Tags
-				if saName, exists := task.Tags["_WORKER_SA"]; exists && saName != "" {
-					taskCommand.(*KubernetesCommand).ServiceAccount = saName
-				}
-
-			} else {
-				taskCommand = &DockerCommand{
-					Volumes: mapper.Volumes,
-					Workdir: d.Workdir,
-					Name:    fmt.Sprintf("%s-%d", task.Id, i),
-					// TODO make RemoveContainer configurable
-					RemoveContainer: true,
-					Event:           event.NewExecutorWriter(uint32(i)),
-					DriverCommand:   r.Conf.Container.DriverCommand,
-					RunCommand:      r.Conf.Container.RunCommand,
-					PullCommand:     r.Conf.Container.PullCommand,
-					StopCommand:     r.Conf.Container.StopCommand,
-					Resources:       resources,
-					Command:         command,
-				}
-
-				// TODO: Hide this behind explicit flag/option in configuration
-				// if r.Conf.Container.EnableTags {
-				// 	for k, v := range task.Tags {
-				// 		safeTag := r.sanitizeValues(v)
-				// 		taskCommand.Tags[k] = safeTag
-				// 	}
-				// }
-			}
-
-			s := &stepWorker{
-				Conf:    r.Conf,
-				Event:   event.NewExecutorWriter(uint32(i)),
-				Command: taskCommand,
-			}
-
-			// Opens stdin/out/err files and updates those fields on "cmd".
-			// Skip for Kubernetes: the executor runs in a separate pod and writes
-			// stdout/stderr directly via its PVC mount. Creating host files here
-			// would poison the Mountpoint inode, making the file unreadable by
-			// the worker's mount instance (EPERM).
-			if r.Executor.Backend != "kubernetes" {
-				run.syserr = r.openStepLogs(mapper, s, d)
-			}
-
-			if run.ok() {
-				err := s.Run(ctx)
-
-				if err != nil {
-					// Check if it's a Kubernetes system error
-					// TODO: Change this to check the exit code
-					var k8sSystemErr *K8sSystemErr
-					var execErr *K8sExecutorErr
-
-					switch {
-					// K8s System error
-					case errors.As(err, &k8sSystemErr):
-						run.syserr = err
-					// K8s Executor error
-					case errors.As(err, &execErr):
-						run.execerr = err
-					// Local (Docker) Executor error
-					default:
-						run.execerr = err
-					}
-
-					// If this executor declared that its errors should be ignored,
-					// clear the executor error so subsequent executors still run.
-					// System errors are never ignored.
-					if run.execerr != nil && d.GetIgnoreError() {
-						run.execerr = nil
-					}
-				}
-			}
-		}
+		r.runExecutors(ctx, event, mapper, task, &run)
 	}
 
-	// Try to fix symlinks broken by docker filesystems.
-	if run.syserr == nil {
-		for _, output := range mapper.Outputs {
-			fixLinks(mapper, output.Path)
-		}
-	}
-
-	if run.syserr == nil {
-		// Resolve wildcards in the output paths
-		resolveWildcards(mapper)
-	}
-
-	if run.syserr == nil && r.Conf.ScratchPath != "" {
-		mapper.CopyOutputsToWorkDir(r.Conf.ScratchPath)
-	}
-
-	// Upload outputs regardless of executor error — the user needs the output
-	// files (logs, stderr, etc.) to diagnose failures. Only skip on system errors
-	// where the worker itself is in a bad state.
-	var outputLog []*tes.OutputFileLog
-	if run.syserr == nil {
-		var uploadErr error
-		outputLog, uploadErr = UploadOutputs(ctx, mapper.Outputs, r.Store, event, int(r.Conf.MaxParallelTransfers))
-		if uploadErr != nil {
-			if run.execerr != nil {
-				// The executor already failed; treat upload errors as warnings so the
-				// task is reported as EXECUTOR_ERROR rather than SYSTEM_ERROR.
-				event.Error("Failed to upload outputs after executor error", "error", uploadErr)
-			} else {
-				run.syserr = uploadErr
-			}
-		}
-	}
-
-	// unmap paths for OutputFileLog
-	for _, o := range outputLog {
-		o.Path = mapper.ContainerPath(o.Path)
-	}
-
-	if len(outputLog) > 0 {
-		event.Outputs(outputLog)
-	}
+	r.processOutputs(ctx, event, mapper, &run)
 
 	return
 }
@@ -392,7 +226,7 @@ func (r *DefaultWorker) openStepLogs(mapper *FileMapper, s *stepWorker, d *tes.E
 		stdin, err = mapper.CreateHostFile(d.Stdin)
 		s.Command.SetStdin(stdin)
 		if err != nil {
-			s.Event.Error("Couldn't prepare log files", err)
+			_ = s.Event.Error("Couldn't prepare log files", err)
 			return err
 		}
 	}
@@ -402,7 +236,7 @@ func (r *DefaultWorker) openStepLogs(mapper *FileMapper, s *stepWorker, d *tes.E
 		stdout, err = mapper.CreateHostFile(d.Stdout)
 		s.Command.SetStdout(stdout)
 		if err != nil {
-			s.Event.Error("Couldn't prepare log files", err)
+			_ = s.Event.Error("Couldn't prepare log files", err)
 			return err
 		}
 	}
@@ -424,15 +258,13 @@ func (r *DefaultWorker) openStepLogs(mapper *FileMapper, s *stepWorker, d *tes.E
 func (r *DefaultWorker) validate(mapper *FileMapper) error {
 	// TODO need to switch on directory type and check list as well.
 	for _, input := range mapper.Inputs {
-		unsupported := r.Store.UnsupportedOperations(input.Url)
-		if unsupported.Get != nil {
-			return fmt.Errorf("Input download not supported by storage: %v", unsupported.Get)
+		if err := storage.CheckGet(r.Store, input.Url); err != nil {
+			return fmt.Errorf("Input download not supported by storage: %w", err)
 		}
 	}
 	for _, output := range mapper.Outputs {
-		unsupported := r.Store.UnsupportedOperations(output.Url)
-		if unsupported.Put != nil {
-			return fmt.Errorf("Output upload not supported by storage: %v", unsupported.Put)
+		if err := storage.CheckPut(r.Store, output.Url); err != nil {
+			return fmt.Errorf("Output upload not supported by storage: %w", err)
 		}
 	}
 	return nil
@@ -446,12 +278,14 @@ func (r *DefaultWorker) sanitizeValues(value string) string {
 	return re.ReplaceAllString(value, "")
 }
 
-func (r *DefaultWorker) pollForCancel(pctx context.Context, cancelCallback func()) context.Context {
-	taskctx, cancel := context.WithCancel(pctx)
+func (r *DefaultWorker) pollForCancel(pctx context.Context) (context.Context, func()) {
+	taskctx, cancel := context.WithCancelCause(pctx)
+	done := make(chan struct{})
 
 	// Start a goroutine that polls the server to watch for a canceled state.
 	// If a cancel state is found, "taskctx" is canceled.
 	go func() {
+		defer close(done)
 		ticker := time.NewTicker(r.Conf.PollingRate.AsDuration())
 		defer ticker.Stop()
 
@@ -462,11 +296,180 @@ func (r *DefaultWorker) pollForCancel(pctx context.Context, cancelCallback func(
 			case <-ticker.C:
 				state, _ := r.TaskReader.State(taskctx)
 				if tes.TerminalState(state) {
-					cancel()
-					cancelCallback()
+					cancel(errTaskCanceled)
+					return
 				}
 			}
 		}
 	}()
-	return taskctx
+	return taskctx, func() {
+		cancel(nil)
+		<-done
+	}
+}
+
+// runExecutors builds and runs each executor in the task. Kubernetes and
+// Docker executors are constructed differently; failures are recorded on run
+// and checked with run.ok() between executors.
+func (r *DefaultWorker) runExecutors(ctx context.Context, event *events.TaskWriter, mapper *FileMapper, task *tes.Task, run *helper) {
+	var resources = task.GetResources()
+	if resources == nil {
+		resources = &tes.Resources{}
+	}
+
+	for i, d := range task.GetExecutors() {
+		// If a previous executor failed and its error was not to be ignored,
+		// stop before creating any state (executor writer, log slot, etc.) for
+		// this executor. Creating the writer above would otherwise emit an empty
+		// executor log entry for an executor that never ran.
+		if !run.ok() {
+			break
+		}
+
+		var command = Command{
+			Image:        d.Image,
+			ShellCommand: d.Command,
+			Volumes:      mapper.Volumes,
+			Workdir:      d.Workdir,
+			Env:          d.Env,
+			Event:        event.NewExecutorWriter(uint32(i)),
+		}
+
+		var taskCommand TaskCommand
+
+		if r.Executor.Backend == "kubernetes" {
+			kcmd, kerr := r.newKubernetesCommand(ctx, event, task, d, i, command, resources)
+			if kerr != nil {
+				run.syserr = kerr
+				break
+			}
+			taskCommand = kcmd
+		} else {
+			taskCommand = &DockerCommand{
+				Volumes: mapper.Volumes,
+				Workdir: d.Workdir,
+				Name:    fmt.Sprintf("%s-%d", task.Id, i),
+				// TODO make RemoveContainer configurable
+				RemoveContainer: true,
+				Event:           event.NewExecutorWriter(uint32(i)),
+				DriverCommand:   r.Conf.Container.DriverCommand,
+				RunCommand:      r.Conf.Container.RunCommand,
+				PullCommand:     r.Conf.Container.PullCommand,
+				StopCommand:     r.Conf.Container.StopCommand,
+				Resources:       resources,
+				Command:         command,
+			}
+
+			// TODO: Hide this behind explicit flag/option in configuration
+			// if r.Conf.Container.EnableTags {
+			// 	for k, v := range task.Tags {
+			// 		safeTag := r.sanitizeValues(v)
+			// 		taskCommand.Tags[k] = safeTag
+			// 	}
+			// }
+		}
+
+		s := &stepWorker{
+			Conf:    r.Conf,
+			Event:   event.NewExecutorWriter(uint32(i)),
+			Command: taskCommand,
+		}
+
+		// Opens stdin/out/err files and updates those fields on "cmd".
+		// Skip for Kubernetes: the executor runs in a separate pod and writes
+		// stdout/stderr directly via its PVC mount. Creating host files here
+		// would poison the Mountpoint inode, making the file unreadable by
+		// the worker's mount instance (EPERM).
+		if r.Executor.Backend != "kubernetes" {
+			run.syserr = r.openStepLogs(mapper, s, d)
+		}
+
+		if run.ok() {
+			err := s.Run(ctx)
+
+			if err != nil {
+				var k8sSystemErr *K8sSystemErr
+				var execErr *K8sExecutorErr
+
+				switch {
+				// K8s System error
+				case errors.As(err, &k8sSystemErr):
+					run.syserr = err
+				// K8s Executor error
+				case errors.As(err, &execErr):
+					run.execerr = err
+				default:
+					// Local (Docker) executor: classify by exit code. If the
+					// container ran and exited (an exec.ExitError we can
+					// extract a code from), the failure belongs to the task's
+					// executor. Errors with no exit code at all — the docker
+					// binary missing, a failure to start the driver — are the
+					// worker's environment failing, i.e. a system error.
+					if _, codeErr := getExitCode(err); codeErr == nil {
+						run.execerr = err
+					} else {
+						run.syserr = err
+					}
+				}
+
+				// If this executor declared that its errors should be ignored,
+				// clear the executor error so subsequent executors still run.
+				// System errors are never ignored.
+				if run.execerr != nil && d.GetIgnoreError() {
+					run.execerr = nil
+				}
+			}
+		}
+	}
+}
+
+// processOutputs finishes the task's file work after the executors: repairing
+// symlinks, resolving wildcards, copying scratch outputs back, and uploading
+// outputs. Upload runs even after an executor error — the output files are
+// how a user diagnoses the failure — but is skipped on system errors where the
+// worker itself is in a bad state.
+func (r *DefaultWorker) processOutputs(ctx context.Context, event *events.TaskWriter, mapper *FileMapper, run *helper) {
+	if run.syserr == nil {
+		for _, output := range mapper.Outputs {
+			fixLinks(mapper, output.Path)
+		}
+	}
+
+	if run.syserr == nil {
+		if err := resolveWildcards(mapper, r.Store); err != nil {
+			if run.execerr != nil {
+				_ = event.Error("Failed to resolve wildcard outputs after executor error", "error", err)
+			} else {
+				run.syserr = err
+			}
+		}
+	}
+
+	if run.syserr == nil && r.Conf.ScratchPath != "" {
+		_ = mapper.CopyOutputsToWorkDir(r.Conf.ScratchPath)
+	}
+
+	var outputLog []*tes.OutputFileLog
+	if run.syserr == nil {
+		var uploadErr error
+		outputLog, uploadErr = UploadOutputs(ctx, mapper.Outputs, r.Store, event, int(r.Conf.MaxParallelTransfers))
+		if uploadErr != nil {
+			if run.execerr != nil {
+				// The executor already failed; treat upload errors as warnings so the
+				// task is reported as EXECUTOR_ERROR rather than SYSTEM_ERROR.
+				_ = event.Error("Failed to upload outputs after executor error", "error", uploadErr)
+			} else {
+				run.syserr = uploadErr
+			}
+		}
+	}
+
+	// unmap paths for OutputFileLog
+	for _, o := range outputLog {
+		o.Path = mapper.ContainerPath(o.Path)
+	}
+
+	if len(outputLog) > 0 {
+		_ = event.Outputs(outputLog)
+	}
 }

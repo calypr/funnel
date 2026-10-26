@@ -2,20 +2,23 @@ package core
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"path"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
-	workerCmd "github.com/ohsu-comp-bio/funnel/cmd/worker"
+	workerCmd "github.com/calypr/funnel/cmd/worker"
 
-	"github.com/ohsu-comp-bio/funnel/events"
-	"github.com/ohsu-comp-bio/funnel/storage"
-	"github.com/ohsu-comp-bio/funnel/tes"
-	"github.com/ohsu-comp-bio/funnel/tests"
-	"github.com/ohsu-comp-bio/funnel/worker"
-	gcontext "golang.org/x/net/context"
+	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/storage"
+	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/tests"
+	"github.com/calypr/funnel/worker"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
@@ -125,15 +128,15 @@ func TestWorkDirCleanup(t *testing.T) {
 }
 
 type eventCounter struct {
-	stdout, stderr int
+	stdout, stderr atomic.Int32
 }
 
 func (e *eventCounter) WriteEvent(ctx context.Context, ev *events.Event) error {
 	switch ev.Type {
 	case events.Type_EXECUTOR_STDOUT:
-		e.stdout++
+		e.stdout.Add(1)
 	case events.Type_EXECUTOR_STDERR:
-		e.stderr++
+		e.stderr.Add(1)
 	}
 	return nil
 }
@@ -144,11 +147,15 @@ type taskReader struct {
 	task *tes.Task
 }
 
-func (r taskReader) Task(ctx gcontext.Context) (*tes.Task, error) {
-	return r.task, nil
+func newTaskReader(task *tes.Task) taskReader {
+	return taskReader{task: proto.Clone(task).(*tes.Task)}
 }
 
-func (r taskReader) State(ctx gcontext.Context) (tes.State, error) {
+func (r taskReader) Task(ctx context.Context) (*tes.Task, error) {
+	return proto.Clone(r.task).(*tes.Task), nil
+}
+
+func (r taskReader) State(ctx context.Context) (tes.State, error) {
 	return r.task.State, nil
 }
 
@@ -179,7 +186,7 @@ func TestLargeLogRate(t *testing.T) {
 	w := worker.DefaultWorker{
 		Conf:        conf.Worker,
 		Store:       &storage.Mux{},
-		TaskReader:  taskReader{&task},
+		TaskReader:  newTaskReader(&task),
 		EventWriter: m,
 	}
 
@@ -190,8 +197,8 @@ func TestLargeLogRate(t *testing.T) {
 	// Given the difficulty of timing how long it task a task + docker container to start,
 	// we just check that a small amount of events were generated.
 	// 20 events is not too bad for dumping many megabytes of data.
-	if counts.stdout > 20 {
-		t.Error("unexpected stdout event count", counts.stdout)
+	if counts.stdout.Load() > 20 {
+		t.Error("unexpected stdout event count", counts.stdout.Load())
 	}
 }
 
@@ -220,7 +227,7 @@ func TestZeroLogRate(t *testing.T) {
 	w := worker.DefaultWorker{
 		Conf:        conf.Worker,
 		Store:       &storage.Mux{},
-		TaskReader:  taskReader{&task},
+		TaskReader:  newTaskReader(&task),
 		EventWriter: m,
 	}
 
@@ -229,8 +236,8 @@ func TestZeroLogRate(t *testing.T) {
 	time.Sleep(time.Second)
 
 	// we expect a single event to be generated
-	if counts.stdout != 1 {
-		t.Error("unexpected stdout event count", counts.stdout)
+	if counts.stdout.Load() != 1 {
+		t.Error("unexpected stdout event count", counts.stdout.Load())
 	}
 }
 
@@ -259,7 +266,7 @@ func TestZeroLogTailSize(t *testing.T) {
 	w := worker.DefaultWorker{
 		Conf:        conf.Worker,
 		Store:       &storage.Mux{},
-		TaskReader:  taskReader{&task},
+		TaskReader:  newTaskReader(&task),
 		EventWriter: m,
 	}
 
@@ -271,8 +278,8 @@ func TestZeroLogTailSize(t *testing.T) {
 	}
 
 	// we expect zero events to be generated
-	if counts.stdout != 0 {
-		t.Error("unexpected stdout event count", counts.stdout)
+	if counts.stdout.Load() != 0 {
+		t.Error("unexpected stdout event count", counts.stdout.Load())
 	}
 }
 
@@ -299,7 +306,7 @@ func TestLogTailContent(t *testing.T) {
 	w := worker.DefaultWorker{
 		Conf:        conf.Worker,
 		Store:       &storage.Mux{},
-		TaskReader:  taskReader{&task},
+		TaskReader:  newTaskReader(&task),
 		EventWriter: m,
 	}
 
@@ -343,7 +350,7 @@ func TestDockerContainerMetadata(t *testing.T) {
 	w := worker.DefaultWorker{
 		Conf:        conf.Worker,
 		Store:       &storage.Mux{},
-		TaskReader:  taskReader{&task},
+		TaskReader:  newTaskReader(&task),
 		EventWriter: m,
 	}
 
@@ -410,7 +417,7 @@ func TestExecutorErrorStopsTask(t *testing.T) {
 	w := worker.DefaultWorker{
 		Conf:        conf.Worker,
 		Store:       &storage.Mux{},
-		TaskReader:  taskReader{&task},
+		TaskReader:  newTaskReader(&task),
 		EventWriter: m,
 	}
 
@@ -425,6 +432,85 @@ func TestExecutorErrorStopsTask(t *testing.T) {
 	// Only the first executor should have run; the second must not produce a log.
 	if got := len(builder.Task.Logs[0].Logs); got != 1 {
 		t.Errorf("expected 1 executor log, got %d", got)
+	}
+}
+
+type joinErrorStorage struct {
+	storage.Fake
+	err       error
+	joinCalls int
+}
+
+func (s *joinErrorStorage) Join(url, filePath string) (string, error) {
+	s.joinCalls++
+	return "", s.err
+}
+
+func (s *joinErrorStorage) Put(_ context.Context, _, filePath string) (*storage.Object, error) {
+	return nil, fmt.Errorf("unexpected wildcard upload for %q", filePath)
+}
+
+func TestExecutorErrorPreservedWhenWildcardJoinFails(t *testing.T) {
+	tests.SetLogOutput(log, t)
+	conf := tests.DefaultConfig()
+	conf.Worker.WorkDir = t.TempDir()
+	joinErr := errors.New("sentinel wildcard join failure")
+	store := &joinErrorStorage{err: joinErr}
+	task := tes.Task{
+		Id: "test-task-" + tes.GenerateID(),
+		Executors: []*tes.Executor{
+			{
+				Image:   "alpine",
+				Command: []string{"sh", "-c", "echo output > /outputs/result.txt; exit 7"},
+			},
+		},
+		Outputs: []*tes.Output{
+			{Url: "gs://bucket/output", Path: "/outputs/*.txt"},
+		},
+	}
+
+	builder := &events.TaskBuilder{Task: &task}
+	logger := &events.Logger{Log: log}
+	m := &events.MultiWriter{logger, builder}
+	w := worker.DefaultWorker{
+		Conf:        conf.Worker,
+		Store:       store,
+		TaskReader:  newTaskReader(&task),
+		EventWriter: m,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	err := w.Run(ctx)
+	if err == nil {
+		t.Fatal("expected executor failure")
+	}
+	if errors.Is(err, joinErr) {
+		t.Fatalf("expected executor failure, got wildcard join error: %v", err)
+	}
+	if task.State != tes.State_EXECUTOR_ERROR {
+		t.Errorf("expected state EXECUTOR_ERROR, got %s", task.State)
+	}
+	if store.joinCalls != 1 {
+		t.Fatalf("expected wildcard storage Join to be called once, got %d", store.joinCalls)
+	}
+
+	if got := len(builder.Task.Logs[0].Logs); got != 1 {
+		t.Fatalf("expected 1 executor log, got %d", got)
+	}
+	if got := builder.Task.Logs[0].Logs[0].ExitCode; got != 7 {
+		t.Errorf("expected executor exit code 7, got %d", got)
+	}
+
+	loggedJoinError := false
+	for _, systemLog := range builder.Task.Logs[0].SystemLogs {
+		if strings.Contains(systemLog, joinErr.Error()) {
+			loggedJoinError = true
+			break
+		}
+	}
+	if !loggedJoinError {
+		t.Errorf("expected system log containing %q", joinErr)
 	}
 }
 
@@ -455,7 +541,7 @@ func TestExecutorIgnoreErrorContinuesTask(t *testing.T) {
 	w := worker.DefaultWorker{
 		Conf:        conf.Worker,
 		Store:       &storage.Mux{},
-		TaskReader:  taskReader{&task},
+		TaskReader:  newTaskReader(&task),
 		EventWriter: m,
 	}
 
@@ -480,7 +566,7 @@ func TestWorkerRunFileTaskReader(t *testing.T) {
 
 	// Task builder collects events into a task view.
 	task := &tes.Task{}
-	b := events.TaskBuilder{Task: task}
+	b := &events.TaskBuilder{Task: task}
 
 	opts := &workerCmd.Options{
 		TaskFile: "../../examples/hello-world.json",
@@ -509,7 +595,7 @@ func TestWorkerRunBase64TaskReader(t *testing.T) {
 
 	// Task builder collects events into a task view.
 	task := &tes.Task{}
-	b := events.TaskBuilder{Task: task}
+	b := &events.TaskBuilder{Task: task}
 
 	opts := &workerCmd.Options{
 		TaskBase64: "ewogICJuYW1lIjogIkhlbGxvIHdvcmxkIiwKICAiZGVzY3JpcHRpb24iOiAiRGVtb25zdHJhdGVzIHRoZSBtb3N0IGJhc2ljIGVjaG8gdGFzay4iLAogICJleGVjdXRvcnMiOiBbCiAgICB7CiAgICAgICJpbWFnZSI6ICJhbHBpbmUiLAogICAgICAiY29tbWFuZCI6IFsiZWNobyIsICJoZWxsbyB3b3JsZCJdCiAgICB9CiAgXQp9Cg==",

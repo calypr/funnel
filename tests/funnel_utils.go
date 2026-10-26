@@ -2,6 +2,8 @@ package tests
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -14,21 +16,18 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	dockerTypes "github.com/docker/docker/api/types/events"
-	dockerFilters "github.com/docker/docker/api/types/filters"
-	docker "github.com/docker/docker/client"
-	runlib "github.com/ohsu-comp-bio/funnel/cmd/run"
-	servercmd "github.com/ohsu-comp-bio/funnel/cmd/server"
-	"github.com/ohsu-comp-bio/funnel/compute/scheduler"
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/logger"
-	"github.com/ohsu-comp-bio/funnel/server"
-	"github.com/ohsu-comp-bio/funnel/tes"
-	"github.com/ohsu-comp-bio/funnel/util/dockerutil"
-	"github.com/ohsu-comp-bio/funnel/util/k8sutil"
-	"github.com/ohsu-comp-bio/funnel/util/rpc"
-	"golang.org/x/net/context"
+	runlib "github.com/calypr/funnel/cmd/run"
+	servercmd "github.com/calypr/funnel/cmd/server"
+	"github.com/calypr/funnel/compute/scheduler"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/server"
+	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/util/dockerutil"
+	"github.com/calypr/funnel/util/k8sutil"
+	"github.com/calypr/funnel/util/rpc"
+	cerrdefs "github.com/containerd/errdefs"
+	docker "github.com/moby/moby/client"
 	"google.golang.org/grpc"
 	"k8s.io/client-go/kubernetes"
 )
@@ -57,9 +56,10 @@ type Funnel struct {
 	Srv       *servercmd.Server
 
 	// Internal
-	startTime string
-	rate      time.Duration
-	conn      *grpc.ClientConn
+	rate          time.Duration
+	conn          *grpc.ClientConn
+	serverCancel  context.CancelFunc
+	serverStopped <-chan struct{}
 }
 
 // NewFunnel creates a new funnel test server with some test
@@ -98,7 +98,6 @@ func NewFunnel(conf *config.Config) *Funnel {
 		Server:     srv.Server,
 		Srv:        srv,
 		Scheduler:  srv.Scheduler,
-		startTime:  fmt.Sprintf("%d", time.Now().Unix()),
 		rate:       time.Millisecond * 500,
 	}
 }
@@ -115,19 +114,37 @@ func (f *Funnel) addRPCClient() {
 
 // Cleanup cleans up test resources
 func (f *Funnel) Cleanup() {
+	if f.serverCancel != nil {
+		f.serverCancel()
+		if f.serverStopped != nil {
+			<-f.serverStopped
+		}
+		f.serverCancel = nil
+		f.serverStopped = nil
+	}
 	os.RemoveAll(f.StorageDir)
 	os.RemoveAll(f.Conf.Worker.WorkDir)
-	f.conn.Close()
+	if f.conn != nil {
+		f.conn.Close()
+		f.conn = nil
+	}
 }
 
 // StartServer starts the server
 func (f *Funnel) StartServer() {
+	ctx, cancel := context.WithCancel(context.Background())
+	serverDone := make(chan error, 1)
+	serverStopped := make(chan struct{})
+	f.serverCancel = cancel
+	f.serverStopped = serverStopped
 	go func() {
-		f.Srv.Run(context.Background())
+		defer close(serverStopped)
+		serverDone <- f.Srv.Run(ctx)
 	}()
 
-	err := f.PollForServerStart()
+	err := f.pollForServerStart(serverDone)
 	if err != nil {
+		cancel()
 		log.Error("failed to start funnel server", err)
 		panic(err)
 	}
@@ -138,26 +155,58 @@ func (f *Funnel) StartServer() {
 
 // PollForServerStart polls the server http address to check if the server is running.
 func (f *Funnel) PollForServerStart() error {
-	ready := make(chan struct{})
-	go func() {
-		for {
-			_, err := http.Get(f.Conf.Server.HTTPAddress())
-			if err == nil {
-				log.Info(fmt.Sprintf("Server at %s found", f.Conf.Server.HTTPAddress()))
-				close(ready)
-				break
-			}
-			time.Sleep(time.Millisecond * 100)
-		}
-	}()
+	return f.pollForServerStart(nil)
+}
 
-	select {
-	case <-ready:
-		time.Sleep(time.Second * 1)
-		return nil
-	case <-time.After(time.Second * 30):
-		return fmt.Errorf("timeout error - server didn't start within 30 seconds")
+func (f *Funnel) pollForServerStart(serverDone <-chan error) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	client := &http.Client{Timeout: time.Second}
+
+	for {
+		select {
+		case err := <-serverDone:
+			return serverRunStoppedError(err)
+		case <-ctx.Done():
+			return fmt.Errorf("timeout error - server didn't start within 30 seconds")
+		case <-ticker.C:
+		}
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, f.Conf.Server.HTTPAddress(), nil)
+		if err != nil {
+			return err
+		}
+		resp, err := client.Do(req)
+		if resp != nil {
+			resp.Body.Close()
+		}
+		if err != nil {
+			continue
+		}
+
+		log.Info(fmt.Sprintf("Server at %s found", f.Conf.Server.HTTPAddress()))
+		grace := time.NewTimer(time.Second)
+		select {
+		case err := <-serverDone:
+			grace.Stop()
+			return serverRunStoppedError(err)
+		case <-ctx.Done():
+			grace.Stop()
+			return fmt.Errorf("timeout error - server didn't start within 30 seconds")
+		case <-grace.C:
+			return nil
+		}
 	}
+}
+
+func serverRunStoppedError(err error) error {
+	if err == nil {
+		return errors.New("server Run returned before startup completed")
+	}
+	return fmt.Errorf("server failed before startup completed: %w", err)
 }
 
 // Changes the user who will be making the RPC calls.
@@ -176,27 +225,28 @@ func (f *Funnel) SwitchUser(username string) {
 	panic("Cannot switch to an undefined user: " + username)
 }
 
-// WaitForDockerDestroy waits for a "destroy" event
-// from docker for the given container ID
-//
-// TODO probably could use docker.ContainerWait()
-// https://godoc.org/github.com/moby/moby/client#Client.ContainerWait
-func (f *Funnel) WaitForDockerDestroy(id string) {
-	fil := dockerFilters.NewArgs()
-	fil.Add("type", "container")
-	fil.Add("container", id)
-	fil.Add("event", "destroy")
+const dockerDestroyWaitTimeout = 30 * time.Second
 
-	s, err := f.Docker.Events(context.Background(), dockerTypes.ListOptions{
-		Since:   string(f.startTime),
-		Filters: fil,
-	})
+// WaitForDockerDestroy waits until Docker no longer has the container.
+func (f *Funnel) WaitForDockerDestroy(id string) {
+	ctx, cancel := context.WithTimeout(context.Background(), dockerDestroyWaitTimeout)
+	defer cancel()
+	ticker := time.NewTicker(f.rate)
+	defer ticker.Stop()
+
 	for {
-		select {
-		case e := <-err:
-			panic(e)
-		case <-s:
+		_, err := f.Docker.ContainerInspect(ctx, id, docker.ContainerInspectOptions{})
+		if cerrdefs.IsNotFound(err) {
 			return
+		}
+		if err != nil {
+			panic(fmt.Errorf("failed to inspect Docker container %s while waiting for deletion: %w", id, err))
+		}
+
+		select {
+		case <-ctx.Done():
+			panic(fmt.Errorf("timed out waiting for Docker container %s to be deleted: %w", id, ctx.Err()))
+		case <-ticker.C:
 		}
 	}
 }
@@ -370,7 +420,7 @@ func (f *Funnel) StartServerInDocker(containerName, imageName string, extraArgs 
 			))
 		} else {
 			funnelBinary, err = filepath.Abs(filepath.Join(
-				gopath, "src/github.com/ohsu-comp-bio/funnel/build/release/linux_amd64/funnel",
+				gopath, "src/github.com/calypr/funnel/build/release/linux_amd64/funnel",
 			))
 		}
 		if err != nil {
@@ -381,8 +431,8 @@ func (f *Funnel) StartServerInDocker(containerName, imageName string, extraArgs 
 
 	// write config file
 	configPath, _ := filepath.Abs(filepath.Join(f.Conf.Worker.WorkDir, "config.yml"))
-	config.ToYamlFile(f.Conf, configPath)
-	os.Chmod(configPath, 0644)
+	_ = config.ToYamlFile(f.Conf, configPath)
+	_ = os.Chmod(configPath, 0644)
 
 	httpPort, _ := strconv.ParseInt(f.Conf.Server.HTTPPort, 0, 32)
 	rpcPort, _ := strconv.ParseInt(f.Conf.Server.RPCPort, 0, 32)
@@ -442,11 +492,11 @@ func (f *Funnel) StartServerInDocker(containerName, imageName string, extraArgs 
 
 func (f *Funnel) findTestServerContainers() []string {
 	res := []string{}
-	containers, err := f.Docker.ContainerList(context.Background(), container.ListOptions{})
+	containers, err := f.Docker.ContainerList(context.Background(), docker.ContainerListOptions{})
 	if err != nil {
 		panic(err)
 	}
-	for _, c := range containers {
+	for _, c := range containers.Items {
 		for _, n := range c.Names {
 			if strings.Contains(n, "funnel-test-server-") {
 				res = append(res, n)
@@ -458,7 +508,7 @@ func (f *Funnel) findTestServerContainers() []string {
 
 func (f *Funnel) killTestServerContainers(ids []string) {
 	for _, n := range ids {
-		err := f.Docker.ContainerStop(context.Background(), strings.TrimPrefix(n, "/"), container.StopOptions{})
+		_, err := f.Docker.ContainerStop(context.Background(), strings.TrimPrefix(n, "/"), docker.ContainerStopOptions{})
 		if err != nil {
 			panic(err)
 		}

@@ -2,8 +2,9 @@
 package scheduler
 
 import (
-	events "github.com/ohsu-comp-bio/funnel/events"
-	context "golang.org/x/net/context"
+	"context"
+
+	events "github.com/calypr/funnel/events"
 
 	grpc "google.golang.org/grpc"
 

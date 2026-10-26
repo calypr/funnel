@@ -1,14 +1,14 @@
 package server
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 	"net/http"
 	"os"
 	"strings"
 
-	"github.com/ohsu-comp-bio/funnel/config"
-	"golang.org/x/net/context"
+	"github.com/calypr/funnel/config"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -16,9 +16,10 @@ import (
 )
 
 type Authentication struct {
-	admins map[string]bool
-	basic  map[string]string
-	oidc   *OidcConfig
+	admins     map[string]bool
+	basic      map[string]string
+	oidc       *OidcConfig
+	accessMode string
 }
 
 const (
@@ -40,7 +41,8 @@ type UserInfo struct {
 	Username string
 	// In case of OIDC authentication, the provided Bearer token, which can be
 	// used when requesting task input data.
-	Token string
+	Token      string
+	accessMode string
 }
 
 // Context key type for storing UserInfo.
@@ -55,7 +57,6 @@ var (
 	publicUserInfo        = UserInfo{IsPublic: true, IsAdmin: false, Username: ""}
 	systemUserInfo        = UserInfo{IsPublic: false, IsAdmin: true, Username: "SYSTEM"}
 	UserInfoKey           = userInfoContextKey("user-info")
-	accessMode            = AccessAll
 )
 
 func GetUser(ctx context.Context) *UserInfo {
@@ -86,20 +87,21 @@ func NewAuthentication(
 		}
 	}
 
-	if taskAccess == AccessAll || taskAccess == AccessOwner || taskAccess == AccessOwnerOrAdmin {
-		accessMode = taskAccess
-	} else if taskAccess == "" {
-		accessMode = AccessAll
-	} else {
+	switch taskAccess {
+	case "":
+		taskAccess = AccessAll
+	case AccessAll, AccessOwner, AccessOwnerOrAdmin:
+	default:
 		fmt.Printf("[ERROR] Bad configuration value for Server.TaskAccess (%s). "+
-			"Expected 'All', 'Owner', or 'OwnerOrAdmin'.\n", accessMode)
+			"Expected 'All', 'Owner', or 'OwnerOrAdmin'.\n", taskAccess)
 		os.Exit(1)
 	}
 
 	return &Authentication{
-		admins: adminUsers,
-		basic:  basicCreds,
-		oidc:   initOidcConfig(oidc),
+		admins:     adminUsers,
+		basic:      basicCreds,
+		oidc:       initOidcConfig(oidc),
+		accessMode: taskAccess,
 	}
 }
 
@@ -112,7 +114,9 @@ func (a *Authentication) Interceptor(
 
 	// Case when authentication is not required:
 	if len(a.basic) == 0 && a.oidc == nil {
-		ctx = context.WithValue(ctx, UserInfoKey, &publicUserInfo)
+		userInfo := publicUserInfo
+		userInfo.accessMode = a.accessMode
+		ctx = context.WithValue(ctx, UserInfoKey, &userInfo)
 		return handler(ctx, req)
 	}
 
@@ -138,11 +142,12 @@ func (a *Authentication) Interceptor(
 		if authorized {
 			isAdmin := a.admins[username]
 			ctx = context.WithValue(ctx, UserInfoKey,
-				&UserInfo{Username: username, IsAdmin: isAdmin})
+				&UserInfo{Username: username, IsAdmin: isAdmin, accessMode: a.accessMode})
 		}
 	} else if a.oidc != nil && strings.HasPrefix(authorization, "Bearer ") {
 		authErr = errInvalidBearerToken
 		if userInfo := a.oidc.Authorize(authorization); userInfo != nil {
+			userInfo.accessMode = a.accessMode
 			ctx = context.WithValue(ctx, UserInfoKey, userInfo)
 			authorized = true
 		}
@@ -205,16 +210,16 @@ func (a *Authentication) handleBasicAuth(w http.ResponseWriter, req *http.Reques
 // and the username recorded in the task. For public users and unknown task
 // owners, the username is an empty string.
 func (u *UserInfo) IsAccessible(dataOwner string) bool {
-	if *u == systemUserInfo || accessMode == AccessAll {
+	if *u == systemUserInfo || u.accessMode == "" || u.accessMode == AccessAll {
 		return true
 	}
 
 	isOwner := u != nil && u.Username == dataOwner
-	if accessMode == AccessOwner {
+	if u.accessMode == AccessOwner {
 		return isOwner
 	}
 
-	if accessMode == AccessOwnerOrAdmin {
+	if u.accessMode == AccessOwnerOrAdmin {
 		return isOwner || u != nil && u.IsAdmin
 	}
 
@@ -226,6 +231,6 @@ func (u *UserInfo) IsAccessible(dataOwner string) bool {
 // If the result is false, data access must be verified (see: IsAccessible).
 func (u *UserInfo) CanSeeAllTasks() bool {
 	return *u == systemUserInfo ||
-		accessMode == AccessAll ||
-		accessMode == AccessOwnerOrAdmin && u != nil && u.IsAdmin
+		u.accessMode == "" || u.accessMode == AccessAll ||
+		u.accessMode == AccessOwnerOrAdmin && u != nil && u.IsAdmin
 }

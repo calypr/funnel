@@ -3,10 +3,11 @@ package scheduler
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/ohsu-comp-bio/funnel/config"
+	"github.com/calypr/funnel/config"
 	"github.com/stretchr/testify/mock"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
@@ -18,7 +19,7 @@ func TestStopNode(t *testing.T) {
 	n := newTestNode(conf, t)
 
 	n.Client.On("GetNode", mock.Anything, mock.Anything, mock.Anything).
-		Return(&Node{}, nil)
+		Return(emptyNodeResponse, nil)
 
 	stop := n.Start()
 
@@ -83,12 +84,12 @@ func TestNoTasks(t *testing.T) {
 
 	// Tell the scheduler mock to return nothing
 	n.Client.On("GetNode", mock.Anything, mock.Anything, mock.Anything).
-		Return(&Node{}, nil)
+		Return(emptyNodeResponse, nil)
 
 	// Count the number of times the worker factory was called
-	var count int
+	var count atomic.Int32
 	n.workerRun = func(context.Context, string) error {
-		count++
+		count.Add(1)
 		return nil
 	}
 
@@ -97,7 +98,7 @@ func TestNoTasks(t *testing.T) {
 	n.sync(context.Background())
 	time.Sleep(time.Second)
 
-	if count != 0 {
+	if count.Load() != 0 {
 		t.Fatal("Unexpected worker factory call count")
 	}
 	if n.workers.Count() != 0 {
@@ -112,9 +113,9 @@ func TestNodeWorkerCreated(t *testing.T) {
 	n := newTestNode(conf, t)
 
 	// Count the number of times the worker factory was called
-	var count int
+	var count atomic.Int32
 	n.workerRun = func(context.Context, string) error {
-		count++
+		count.Add(1)
 		return nil
 	}
 
@@ -122,8 +123,8 @@ func TestNodeWorkerCreated(t *testing.T) {
 	n.sync(context.Background())
 	time.Sleep(time.Second)
 
-	if count != 2 {
-		t.Fatalf("Unexpected node worker count: %d", count)
+	if count.Load() != 2 {
+		t.Fatalf("Unexpected node worker count: %d", count.Load())
 	}
 }
 

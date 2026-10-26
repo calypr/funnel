@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -13,10 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v2/jwk"
-	"github.com/lestrrat-go/jwx/v2/jwt"
-	"github.com/ohsu-comp-bio/funnel/config"
-	"golang.org/x/net/context"
+	"github.com/calypr/funnel/config"
+	"github.com/lestrrat-go/jwx/v4/jwt"
 	"golang.org/x/oauth2"
 )
 
@@ -40,7 +39,7 @@ type OidcConfig struct {
 	admins map[string]bool
 	remote OidcRemoteConfig
 	oauth2 *oauth2.Config
-	jwks   jwk.Cache
+	jwks   *jwksCache
 }
 
 func initOidcConfig(config *config.OidcAuth) *OidcConfig {
@@ -99,23 +98,14 @@ func (c *OidcConfig) initJwks() {
 	jwksUrl := c.remote.JwksURI
 	ctx := context.Background()
 
-	// Define JWKS cache:
-	c.jwks = *jwk.NewCache(ctx)
-	if err := c.jwks.Register(jwksUrl, jwk.WithMinRefreshInterval(15*time.Minute)); err != nil {
-		fmt.Printf("[ERROR] Failed to register JWKS (%s) of the OIDC service "+
-			"(%s): %s\n", jwksUrl, c.local.ServiceConfigURL, err)
-		os.Exit(1)
-	}
-
-	// Init JWKS cache:
-	ctx2, _ := context.WithTimeout(ctx, 10*time.Second)
-	_, err := c.jwks.Refresh(ctx2, jwksUrl)
-
+	cache, err := newJWKSCache(ctx, jwksUrl)
 	if err != nil {
-		fmt.Printf("[ERROR] Failed to fetch JWKS (%s) of the OIDC service "+
-			"(%s): %s\n", jwksUrl, c.local.ServiceConfigURL, err)
+		fmt.Printf("[ERROR] Failed to create JWKS cache for the OIDC service (%s): %s\n",
+			c.local.ServiceConfigURL, err)
 		os.Exit(1)
 	}
+
+	c.jwks = cache
 }
 
 func (c *OidcConfig) RedirectToLogin(w http.ResponseWriter, req *http.Request) {
@@ -221,15 +211,16 @@ func (c *OidcConfig) Authorize(authorization string) *UserInfo {
 }
 
 func (c *OidcConfig) ParseJwtSubject(jwtString string) string {
-	keySet, err := c.jwks.Get(context.Background(), c.remote.JwksURI)
+	keySet, err := c.jwks.Fetch(context.Background(), c.remote.JwksURI)
 	if err != nil {
 		fmt.Printf("[WARN] Failed to retrieve JWKS key-set: %s", err)
 		return ""
 	}
 
-	token, err := jwt.ParseString(
-		jwtString,
+	token, err := jwt.Parse(
+		[]byte(jwtString),
 		jwt.WithVerify(true),
+		jwt.WithValidate(true),
 		jwt.WithKeySet(keySet),
 		jwt.WithIssuer(c.remote.Issuer),
 	)
@@ -243,14 +234,16 @@ func (c *OidcConfig) ParseJwtSubject(jwtString string) string {
 		return ""
 	}
 
-	return token.Subject()
+	subject, _ := token.Subject()
+	return subject
 }
 
 func (c *OidcConfig) isJwtValid(token *jwt.Token) bool {
 	// If audience is required, it must be in the token.
 	if c.local.RequireAudience != "" {
 		found := false
-		for _, value := range (*token).Audience() {
+		audience, _ := (*token).Audience()
+		for _, value := range audience {
 			if value == c.local.RequireAudience {
 				found = true
 				break
@@ -258,20 +251,22 @@ func (c *OidcConfig) isJwtValid(token *jwt.Token) bool {
 		}
 		if !found {
 			fmt.Printf("[WARN] Audience [%s] not found in %v.",
-				c.local.RequireAudience, (*token).Audience())
+				c.local.RequireAudience, audience)
 			return false
 		}
 	}
 
 	// If scope is required, it must be in the token.
 	if c.local.RequireScope != "" {
-		value, found := (*token).Get("scope")
+		value, found := (*token).Field("scope")
 		if found {
 			found = false
-			for _, value := range strings.Split(value.(string), " ") {
-				if value == c.local.RequireScope {
-					found = true
-					break
+			if scope, ok := value.(string); ok {
+				for _, value := range strings.Split(scope, " ") {
+					if value == c.local.RequireScope {
+						found = true
+						break
+					}
 				}
 			}
 		}

@@ -1,0 +1,40 @@
+name: S3 Mountpoint download tests
+
+on:
+  pull_request:
+    paths:
+      - "storage/**"
+      - "go.mod"
+      - "go.sum"
+      - "tests/storage/mountpoint-download.sh"
+      - ".github/workflows/mountpoint-storage.yaml"
+  push:
+    branches: [develop]
+    paths:
+      - "storage/**"
+      - "go.mod"
+      - "go.sum"
+      - "tests/storage/mountpoint-download.sh"
+      - ".github/workflows/mountpoint-storage.yaml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mountpoint-storage-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mountpoint-storage:
+    name: Downloads through S3 Mountpoint and MinIO
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+      - name: Enable FUSE
+        run: sudo modprobe fuse
+      - name: Test downloads against Mountpoint and MinIO
+        run: tests/storage/mountpoint-download.sh

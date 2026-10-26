@@ -4,28 +4,33 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/aws/aws-sdk-go/service/s3/s3manager"
-	"github.com/ohsu-comp-bio/funnel/config"
-	util "github.com/ohsu-comp-bio/funnel/util/aws"
-	s3util "github.com/ohsu-comp-bio/funnel/util/s3"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	smithyhttp "github.com/aws/smithy-go/transport/http"
+	"github.com/calypr/funnel/config"
+	util "github.com/calypr/funnel/util/aws"
+	s3util "github.com/calypr/funnel/util/s3"
 )
 
 // s3Protocol defines the s3 URL protocol
 const s3Protocol = "s3://"
 
+const defaultS3RetryMaxAttempts = 4
+
 // AmazonS3 provides access to an S3 object store.
 type AmazonS3 struct {
-	sess     *session.Session
-	endpoint string
+	cfg            aws.Config
+	endpoint       string
+	forcePathStyle bool
 	// region is the pre-configured AWS/S3-compatible region.  When set together
 	// with endpoint (non-AWS deployments), GetBucketRegion is skipped and this
 	// value is used directly.
@@ -34,14 +39,17 @@ type AmazonS3 struct {
 	customerKey          *string
 	customerKeyMD5       *string
 	kmsKeyID             *string
-	serverSideEncryption *string
+	serverSideEncryption types.ServerSideEncryption
 }
 
 // NewAmazonS3 creates an AmazonS3 session instance
 func NewAmazonS3(conf *config.AmazonS3Storage) (*AmazonS3, error) {
-	sess, err := util.NewAWSSession(conf.AWSConfig)
+	sess, err := util.NewAWSConfig(context.Background(), conf.AWSConfig)
 	if err != nil {
 		return nil, fmt.Errorf("error creating amazon s3 backend: %v", err)
+	}
+	if conf.AWSConfig.MaxRetries <= 0 && sess.RetryMaxAttempts == 0 {
+		sess.RetryMaxAttempts = defaultS3RetryMaxAttempts
 	}
 
 	var endpoint string
@@ -54,7 +62,7 @@ func NewAmazonS3(conf *config.AmazonS3Storage) (*AmazonS3, error) {
 	var customerKey *string
 	var customerKeyMD5 *string
 	var kmsKeyID *string
-	var serverSideEncryption *string
+	var serverSideEncryption types.ServerSideEncryption
 
 	if conf.SSE != nil && conf.SSE.CustomerKeyFile != "" && conf.SSE.KMSKey != "" {
 		return nil, fmt.Errorf("invalid SSE config: can't provide both Customer and KMS keys")
@@ -67,19 +75,20 @@ func NewAmazonS3(conf *config.AmazonS3Storage) (*AmazonS3, error) {
 		}
 
 		customerAlgorithm = aws.String("AES256")
-		customerKey = aws.String(string(key[:]))
+		customerKey = aws.String(base64.StdEncoding.EncodeToString(key))
 		b := md5.Sum(key)
 		customerKeyMD5 = aws.String(base64.StdEncoding.EncodeToString(b[:]))
 	}
 
 	if conf.SSE != nil && conf.SSE.KMSKey != "" {
-		serverSideEncryption = aws.String(s3.ServerSideEncryptionAwsKms)
+		serverSideEncryption = types.ServerSideEncryptionAwsKms
 		kmsKeyID = aws.String(conf.SSE.KMSKey)
 	}
 
 	return &AmazonS3{
 		sess,
 		endpoint,
+		conf.AWSConfig.Endpoint != "" && !regexp.MustCompile(`^s3.*\.amazonaws\.com/`).MatchString(conf.AWSConfig.Endpoint),
 		conf.AWSConfig.Region,
 		customerAlgorithm,
 		customerKey,
@@ -96,8 +105,7 @@ func (s3b *AmazonS3) Stat(ctx context.Context, url string) (*Object, error) {
 		return nil, err
 	}
 
-	sess := s3b.sess.Copy(&aws.Config{Region: aws.String(region)})
-	client := s3.New(sess)
+	client := s3b.client(region)
 
 	statInput := &s3.HeadObjectInput{
 		Bucket:               aws.String(u.bucket),
@@ -107,7 +115,7 @@ func (s3b *AmazonS3) Stat(ctx context.Context, url string) (*Object, error) {
 		SSECustomerKeyMD5:    s3b.customerKeyMD5,
 	}
 	var res *s3.HeadObjectOutput
-	res, err = client.HeadObjectWithContext(ctx, statInput)
+	res, err = client.HeadObject(ctx, statInput)
 	if err != nil {
 		// the file may not be encrypted => retry without sse-c keys
 		if s3b.customerKey != nil {
@@ -116,7 +124,7 @@ func (s3b *AmazonS3) Stat(ctx context.Context, url string) (*Object, error) {
 				Key:    aws.String(u.path),
 			}
 			var rerr error
-			res, rerr = client.HeadObjectWithContext(ctx, statInput)
+			res, rerr = client.HeadObject(ctx, statInput)
 			if rerr != nil {
 				return nil, fmt.Errorf("amazonS3: calling stat on URL %s: %v", url, err)
 			}
@@ -139,38 +147,35 @@ func (s3b *AmazonS3) List(ctx context.Context, url string) ([]*Object, error) {
 	if err != nil {
 		return nil, err
 	}
+	base := strings.TrimSuffix(url, u.path)
+	if !strings.HasSuffix(base, "/") {
+		base += "/"
+	}
 
 	var objects []*Object
 
-	sess := s3b.sess.Copy(&aws.Config{Region: aws.String(region)})
-	client := s3.New(sess)
-	err = client.ListObjectsV2PagesWithContext(
-		ctx,
-		&s3.ListObjectsV2Input{
-			Bucket: aws.String(u.bucket),
-			Prefix: aws.String(u.path),
-		},
-		func(page *s3.ListObjectsV2Output, more bool) bool {
-			for _, obj := range page.Contents {
-				if *obj.Key != u.path+"/" {
-					// check if key represents a directory
-					if strings.HasSuffix(*obj.Key, "/") {
-						continue
-					}
-					objects = append(objects, &Object{
-						URL:          fmt.Sprintf("s3://%s/%s", u.bucket, *obj.Key),
-						Name:         *obj.Key,
-						ETag:         *obj.ETag,
-						LastModified: *obj.LastModified,
-						Size:         *obj.Size,
-					})
-				}
+	client := s3b.client(region)
+	pages := s3.NewListObjectsV2Paginator(client, &s3.ListObjectsV2Input{
+		Bucket: aws.String(u.bucket),
+		Prefix: aws.String(u.path),
+	})
+	for pages.HasMorePages() {
+		page, err := pages.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, obj := range page.Contents {
+			if strings.HasSuffix(*obj.Key, "/") {
+				continue
 			}
-			return true
-		},
-	)
-	if err != nil {
-		return nil, err
+			objects = append(objects, &Object{
+				URL:          base + *obj.Key,
+				Name:         *obj.Key,
+				ETag:         *obj.ETag,
+				LastModified: *obj.LastModified,
+				Size:         *obj.Size,
+			})
+		}
 	}
 
 	return objects, nil
@@ -188,8 +193,11 @@ func (s3b *AmazonS3) Get(ctx context.Context, url, path string) (*Object, error)
 		return nil, err
 	}
 
-	sess := s3b.sess.Copy(&aws.Config{Region: aws.String(region)})
-	manager := s3manager.NewDownloader(sess)
+	client := s3b.client(region)
+	downloader := manager.NewDownloader(client, func(d *manager.Downloader) {
+		d.PartSize = 5 * 1024 * 1024
+		d.Concurrency = 1
+	})
 
 	// Create a file to write the S3 Object contents to.
 	hf, err := os.Create(path)
@@ -204,20 +212,19 @@ func (s3b *AmazonS3) Get(ctx context.Context, url, path string) (*Object, error)
 		SSECustomerKey:       s3b.customerKey,
 		SSECustomerKeyMD5:    s3b.customerKeyMD5,
 	}
-	var copyErr error
-	var retryErr error
-	_, copyErr = manager.DownloadWithContext(ctx, hf, getInput)
+	_, copyErr := downloader.Download(ctx, hf, getInput)
 	if copyErr != nil {
 		if s3b.customerKey != nil {
+			// the file may not be encrypted => retry without sse-c keys
 			getInput = &s3.GetObjectInput{
 				Bucket: aws.String(u.bucket),
 				Key:    aws.String(u.path),
 			}
-			_, retryErr = manager.DownloadWithContext(ctx, hf, getInput)
+			_, copyErr = downloader.Download(ctx, hf, getInput)
 		}
 	}
 	closeErr := hf.Close()
-	if copyErr != nil && retryErr != nil {
+	if copyErr != nil {
 		return nil, fmt.Errorf("amazonS3: copying file: %v", copyErr)
 	}
 	if closeErr != nil {
@@ -233,8 +240,10 @@ func (s3b *AmazonS3) Put(ctx context.Context, url, path string) (*Object, error)
 		return nil, err
 	}
 
-	sess := s3b.sess.Copy(&aws.Config{Region: aws.String(region)})
-	manager := s3manager.NewUploader(sess)
+	client := s3b.client(region)
+	uploader := manager.NewUploader(client, func(u *manager.Uploader) {
+		u.PartSize = 5 * 1024 * 1024
+	})
 
 	var hf *os.File
 	// If path contains a wildcard, then handle globbing
@@ -257,7 +266,7 @@ func (s3b *AmazonS3) Put(ctx context.Context, url, path string) (*Object, error)
 	}
 	defer hf.Close()
 
-	uploadInput := &s3manager.UploadInput{
+	uploadInput := &s3.PutObjectInput{
 		Bucket:               aws.String(u.bucket),
 		Key:                  aws.String(u.path),
 		Body:                 hf,
@@ -268,7 +277,7 @@ func (s3b *AmazonS3) Put(ctx context.Context, url, path string) (*Object, error)
 		SSEKMSKeyId:          s3b.kmsKeyID,
 	}
 
-	_, copyErr := manager.UploadWithContext(ctx, uploadInput)
+	_, copyErr := uploader.Upload(ctx, uploadInput)
 	if copyErr != nil {
 		return nil, fmt.Errorf("amazonS3: copying file: %v", copyErr)
 	}
@@ -324,10 +333,38 @@ func (s3b *AmazonS3) parse(rawurl string) (*urlparts, string, error) {
 		region = s3b.region
 	} else {
 		var err error
-		region, err = s3manager.GetBucketRegion(context.Background(), s3b.sess, url.bucket, "us-east-1")
+		region, err = s3b.bucketRegion(context.Background(), url.bucket)
 		if err != nil {
 			return nil, "", fmt.Errorf("amazonS3: failed to determine region for bucket %q: %v", url.bucket, err)
 		}
 	}
 	return url, region, nil
+}
+
+func (s3b *AmazonS3) client(region string) *s3.Client {
+	return s3.NewFromConfig(s3b.cfg, func(options *s3.Options) {
+		options.Region = region
+		options.UsePathStyle = s3b.forcePathStyle
+		options.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
+		options.ResponseChecksumValidation = aws.ResponseChecksumValidationWhenRequired
+	})
+}
+
+func (s3b *AmazonS3) bucketRegion(ctx context.Context, bucket string) (string, error) {
+	result, err := s3b.client("us-east-1").HeadBucket(ctx, &s3.HeadBucketInput{Bucket: aws.String(bucket)}, func(options *s3.Options) {
+		options.Credentials = nil
+	})
+	if err == nil {
+		if region := aws.ToString(result.BucketRegion); region != "" {
+			return region, nil
+		}
+		return "us-east-1", nil
+	}
+	var response *smithyhttp.ResponseError
+	if errors.As(err, &response) {
+		if region := response.HTTPResponse().Header.Get("X-Amz-Bucket-Region"); region != "" {
+			return region, nil
+		}
+	}
+	return "", err
 }
