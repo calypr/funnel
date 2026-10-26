@@ -218,15 +218,12 @@ bundle-examples:
 full: proto install tidy lint test website webdash
 
 hugo-deps:
-	@cd website && \
-	([ -f go.mod ] || hugo mod init github.com/ohsu-comp-bio/funnel/website) && \
-	hugo mod get -u && \
-	hugo mod tidy
+	@cd website && go mod download
 
 # Build the website
 website: hugo-deps
 	@hugo --source ./website --minify
-	@npx -y pagefind --site docs
+	@npx -y pagefind@1.4.0 --site docs
 
 # Serve the Funnel website on http://localhost:1313
 website-dev: website
