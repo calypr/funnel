@@ -133,6 +133,10 @@ func FlattenOutputs(ctx context.Context, outputs []*tes.Output, store storage.St
 
 // UploadOutputs uploads the outputs.
 func UploadOutputs(ctx context.Context, outputs []*tes.Output, store storage.Storage, ev *events.TaskWriter, parallelLimit int) ([]*tes.OutputFileLog, error) {
+	return uploadOutputs(ctx, outputs, store, ev, parallelLimit, nil)
+}
+
+func uploadOutputs(ctx context.Context, outputs []*tes.Output, store storage.Storage, ev *events.TaskWriter, parallelLimit int, mapper *FileMapper) ([]*tes.OutputFileLog, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -145,7 +149,11 @@ func UploadOutputs(ctx context.Context, outputs []*tes.Output, store storage.Sto
 	// List all files and send to uploader routines.
 	var uploads []storage.Transfer
 	for _, output := range flat {
-		uploads = append(uploads, storage.Transfer(&upload{ev: ev, out: output}))
+		outputPath := output.Path
+		if mapper != nil {
+			outputPath = mapper.ContainerPath(output.Path)
+		}
+		uploads = append(uploads, storage.Transfer(&upload{ev: ev, out: output, outputPath: outputPath}))
 	}
 
 	storage.Upload(ctx, store, uploads, parallelLimit)
@@ -191,10 +199,11 @@ func (d *download) Failed(err error) {
 }
 
 type upload struct {
-	ev  *events.TaskWriter
-	out *tes.Output
-	log *tes.OutputFileLog
-	err error
+	ev         *events.TaskWriter
+	out        *tes.Output
+	outputPath string
+	log        *tes.OutputFileLog
+	err        error
 }
 
 func (u *upload) URL() string {
@@ -216,7 +225,7 @@ func (u *upload) Finished(obj *storage.Object) {
 }
 func (u *upload) Failed(err error) {
 	u.err = err
-	_ = u.ev.Error("upload failed", "url", u.out.Url, "error", err)
+	_ = u.ev.Error("upload failed", "path", u.outputPath, "url", u.out.Url, "error", err)
 }
 
 // fixLinks walks the output paths, fixing cases where a symlink is
