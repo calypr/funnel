@@ -122,6 +122,7 @@ func createdStorage(t *testing.T, withPV bool) *config.KubernetesStorage {
 
 func bindingClient() *fake.Clientset {
 	client := fake.NewSimpleClientset()
+	allowPVPermissions(client)
 	client.PrependReactor("create", "jobs", func(action k8stesting.Action) (bool, runtime.Object, error) {
 		job := action.(k8stesting.CreateAction).GetObject().(*batchv1.Job)
 		job.UID = types.UID("uid-" + job.Name)

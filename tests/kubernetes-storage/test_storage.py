@@ -16,6 +16,7 @@ NAMESPACE = "funnel-storage-e2e"
 OUTPUT = Path(os.environ["FUNNEL_E2E_OUTPUT_DIR"])
 IMAGE = os.environ["FUNNEL_E2E_IMAGE"]
 TERMINAL = {"COMPLETE", "EXECUTOR_ERROR", "SYSTEM_ERROR", "CANCELED"}
+STORAGE_FINALIZER = "funnel.calypr.org/storage-cleanup"
 
 
 def kubectl(*args, stdin=None):
@@ -28,13 +29,27 @@ def kubectl(*args, stdin=None):
     return result.stdout
 
 
+def can_i(verb, resource, identity):
+    result = subprocess.run(
+        ["kubectl", "-n", NAMESPACE, "auth", "can-i", verb, resource, "--as", identity],
+        text=True, capture_output=True, timeout=150, check=False,
+    )
+    answer = result.stdout.strip()
+    if result.returncode not in {0, 1} or answer not in {"yes", "no"}:
+        raise RuntimeError(f"kubectl auth can-i {verb} {resource}: {result.stderr}")
+    return answer
+
+
 def apply(kind, name, **fields):
     api_version = "v1"
-    if kind in {"Role", "RoleBinding"}:
+    if kind in {"Role", "RoleBinding", "ClusterRole", "ClusterRoleBinding"}:
         api_version = "rbac.authorization.k8s.io/v1"
+    metadata = {"name": name}
+    if kind not in {"ClusterRole", "ClusterRoleBinding"}:
+        metadata["namespace"] = NAMESPACE
     manifest = {
         "apiVersion": api_version, "kind": kind,
-        "metadata": {"name": name, "namespace": NAMESPACE}, **fields,
+        "metadata": metadata, **fields,
     }
     kubectl("apply", "-f", "-", stdin=json.dumps(manifest))
 
@@ -113,6 +128,32 @@ def server(mode):
       - name: workspace
         persistentVolumeClaim:
           claimName: shared-workspace"""
+    if mode == "explicit":
+        workspace = """    volumeClaimTemplates:
+      - metadata:
+          name: workspace
+        spec:
+          accessModes: [ReadWriteOnce]
+          storageClassName: ''
+          volumeName: data-{{.TaskId}}
+          resources:
+            requests:
+              storage: 64Mi
+    persistentVolumeTemplates:
+      - apiVersion: v1
+        kind: PersistentVolume
+        metadata:
+          name: data-{{.TaskId}}
+        spec:
+          accessModes: [ReadWriteOnce]
+          storageClassName: ''
+          persistentVolumeReclaimPolicy: Retain
+          capacity:
+            storage: 64Mi
+          hostPath:
+            path: /tmp/funnel-storage-{{.TaskId}}
+            type: DirectoryOrCreate
+    volumes:"""
     if mode == "readonly-template":
         workspace = workspace.replace("    volumes:", """      - metadata:
           name: output
@@ -146,7 +187,8 @@ def server(mode):
         "apiVersion": "v1", "kind": "Pod",
         "metadata": {"name": name, "namespace": NAMESPACE, "labels": {"server": name}},
         "spec": {
-            "serviceAccountName": "funnel", "restartPolicy": "Never", "terminationGracePeriodSeconds": 1,
+            "serviceAccountName": "funnel-pv" if mode == "explicit" else "funnel",
+            "restartPolicy": "Never", "terminationGracePeriodSeconds": 1,
             "containers": [{
                 "name": "server", "image": IMAGE, "imagePullPolicy": "IfNotPresent",
                 "args": ["server", "run", "--config", "/config/server.yaml"],
@@ -192,6 +234,16 @@ class StorageE2E(unittest.TestCase):
         ])
         apply("RoleBinding", "funnel", roleRef={"apiGroup": "rbac.authorization.k8s.io", "kind": "Role", "name": "funnel"},
               subjects=[{"kind": "ServiceAccount", "name": "funnel", "namespace": NAMESPACE}])
+        apply("ServiceAccount", "funnel-pv")
+        apply("RoleBinding", "funnel-pv", roleRef={"apiGroup": "rbac.authorization.k8s.io", "kind": "Role", "name": "funnel"},
+              subjects=[{"kind": "ServiceAccount", "name": "funnel-pv", "namespace": NAMESPACE}])
+        apply("ClusterRole", "funnel-pv", rules=[
+            {"apiGroups": [""], "resources": ["persistentvolumes"], "verbs": ["create", "get", "delete"]},
+            {"apiGroups": ["authorization.k8s.io"], "resources": ["selfsubjectaccessreviews"], "verbs": ["create"]},
+        ])
+        apply("ClusterRoleBinding", "funnel-pv",
+              roleRef={"apiGroup": "rbac.authorization.k8s.io", "kind": "ClusterRole", "name": "funnel-pv"},
+              subjects=[{"kind": "ServiceAccount", "name": "funnel-pv", "namespace": NAMESPACE}])
         pvc("references")
         pvc("shared-workspace")
         pvc("readonly-output", "ReadOnlyMany")
@@ -250,12 +302,20 @@ printf 'nested\n' > /outputs/nested/value.txt
         }
 
     def test_volume_transfers_and_cleanup(self):
-        for mode in ("dynamic", "existing"):
+        for mode in ("dynamic", "existing", "explicit"):
             with self.subTest(mode=mode), server(mode) as url:
                 task_id = request(url, "/v1/tasks", self.task(mode))["id"]
                 claim_name = "shared-workspace" if mode == "existing" else task_id + "-workspace"
                 claim = wait_for("workspace PVC", lambda: get("pvc", claim_name))
-                self.assertEqual(claim["spec"]["storageClassName"], "local-path")
+                self.assertEqual(claim["spec"]["storageClassName"], "" if mode == "explicit" else "local-path")
+                if mode == "explicit":
+                    server_pod = get("pod", "funnel-explicit")
+                    self.assertEqual(server_pod["spec"]["serviceAccountName"], "funnel-pv")
+                    identity = f"system:serviceaccount:{NAMESPACE}:funnel-pv"
+                    for verb in ("create", "get", "delete"):
+                        self.assertEqual(can_i(verb, "persistentvolumes", identity), "yes")
+                    self.assertEqual(can_i("list", "persistentvolumes", identity), "no")
+                    self.assertEqual(can_i("create", "selfsubjectaccessreviews", identity), "yes")
                 probe = "probe-" + mode
                 pod(probe, claim_name, "/workspace")
                 try:
@@ -264,15 +324,27 @@ printf 'nested\n' > /outputs/nested/value.txt
                     ).strip())
                     worker = get("job", task_id)
                     self.assertIsNotNone(worker)
+                    self.assertEqual(request(url, f"/v1/tasks/{task_id}")["state"], "RUNNING")
                     plan = json.loads(worker["metadata"]["annotations"]["funnel.calypr.org/storage-plan"])
                     self.assertEqual(plan["OwnedClaims"] or [], [] if mode == "existing" else [claim_name])
+                    if mode == "explicit":
+                        volume_name = "data-" + task_id
+                        self.assertEqual(worker["spec"]["template"]["spec"]["serviceAccountName"], "funnel")
+                        self.assertEqual(plan["OwnedVolumes"], [volume_name])
+                        self.assertIn(STORAGE_FINALIZER, worker["metadata"].get("finalizers", []))
+                        self.assertEqual(claim["spec"]["volumeName"], volume_name)
+                        volume = get("pv", volume_name)
+                        self.assertEqual(volume["spec"]["claimRef"]["name"], claim_name)
+                        self.assertEqual(volume["spec"]["claimRef"]["namespace"], NAMESPACE)
+                        self.assertEqual(volume["spec"]["hostPath"], {
+                            "path": f"/tmp/funnel-storage-{task_id}", "type": "DirectoryOrCreate",
+                        })
                     self.assertEqual(plan["S3ReadMounts"][0]["Root"], "/reference")
                     jobs = json.loads(kubectl("get", "jobs", "-l", "app=funnel-executor", "-o", "json"))["items"]
                     executor = next(job for job in jobs if job["metadata"]["name"].startswith(task_id))
                     volumes = executor["spec"]["template"]["spec"]["volumes"]
                     self.assertTrue(any(volume.get("emptyDir") == {} for volume in volumes))
                     self.assertFalse(any(volume.get("persistentVolumeClaim", {}).get("claimName") == "references" for volume in volumes))
-                    self.assertEqual(request(url, f"/v1/tasks/{task_id}")["state"], "RUNNING")
                     kubectl("exec", probe, "--", "touch", f"/workspace/{task_id}/scratch/release")
                     task = finished(url, task_id, "COMPLETE")
                     expected = {"result.txt": "api\nmounted\n", "nested/value.txt": "nested\n", "empty.txt": ""}
@@ -288,9 +360,11 @@ printf 'nested\n' > /outputs/nested/value.txt
                 finally:
                     kubectl("delete", "pod", probe, "--wait=true", "--timeout=60s")
                 wait_for("worker Job cleanup", lambda: get("job", task_id) is None)
-                if mode == "dynamic":
+                if mode in {"dynamic", "explicit"}:
                     wait_for("owned PVC cleanup", lambda: get("pvc", claim_name) is None)
-                else:
+                if mode == "explicit":
+                    wait_for("owned PV cleanup", lambda: get("pv", "data-" + task_id) is None)
+                elif mode == "existing":
                     self.assertFalse(get("pvc", claim_name)["metadata"].get("ownerReferences"))
                 self.assertEqual(kubectl("exec", "references", "--", "cat", "/data/release-1/input.txt"), "mounted\n")
                 self.assertIsNotNone(get("pvc", "references"))
