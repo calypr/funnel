@@ -1,0 +1,45 @@
+name: Dashboard frontend tests and production build
+
+on:
+  push:
+    branches:
+      - develop
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Dashboard tests, build, and embedded bundle
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.22.0'
+          cache: npm
+          cache-dependency-path: webdash/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: webdash
+        run: npm ci
+
+      - name: Test frontend
+        working-directory: webdash
+        run: npm test
+
+      - name: Build frontend
+        working-directory: webdash
+        run: npm run build
+
+      - name: Check committed dashboard assets
+        run: bash .github/scripts/check-webdash-bundle.sh
