@@ -11,6 +11,7 @@ import (
 	"github.com/ohsu-comp-bio/funnel/logger"
 	"github.com/ohsu-comp-bio/funnel/util"
 	"github.com/stretchr/testify/mock"
+	"google.golang.org/grpc"
 )
 
 // testNode wraps Node with some testing helpers.
@@ -56,7 +57,7 @@ func newTestNode(conf *config.Config, t *testing.T) testNode {
 func (t *testNode) Start() context.CancelFunc {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Client.On("GetNode", mock.Anything, mock.Anything, mock.Anything).
-		Return(&Node{}, nil)
+		Return(emptyNodeResponse, nil)
 	go func() {
 		t.NodeProcess.Run(ctx)
 		close(t.done)
@@ -68,6 +69,10 @@ func (t *testNode) Wait() {
 	<-t.done
 }
 
+func emptyNodeResponse(context.Context, *GetNodeRequest, ...grpc.CallOption) *Node {
+	return &Node{}
+}
+
 func (t *testNode) AddTasks(ids ...string) {
 	// Set up the scheduler mock to assign a task to the worker.
 	t.Client.On("GetNode", mock.Anything, mock.Anything, mock.Anything).
@@ -77,7 +82,7 @@ func (t *testNode) AddTasks(ids ...string) {
 		Once()
 
 	t.Client.On("GetNode", mock.Anything, mock.Anything, mock.Anything).
-		Return(&Node{}, nil)
+		Return(emptyNodeResponse, nil)
 }
 
 func timeLimit(t *testing.T, d time.Duration) func() {

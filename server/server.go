@@ -4,6 +4,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -131,8 +132,7 @@ type JSONError struct {
 	Error string `json:"error"`
 }
 
-// Serve starts the server and does not block. This will open TCP ports
-// for both RPC and HTTP.
+// Serve starts the server and blocks until its context is canceled or a listener stops.
 func (s *Server) Serve(pctx context.Context) error {
 	ctx, cancel := context.WithCancel(pctx)
 	defer cancel()
@@ -145,6 +145,7 @@ func (s *Server) Serve(pctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	defer lis.Close()
 
 	auth := NewAuthentication(s.BasicAuth, s.OidcAuth, s.TaskAccess)
 
@@ -287,15 +288,20 @@ func (s *Server) Serve(pctx context.Context) error {
 		Addr:    ":" + s.HTTPPort,
 		Handler: mux,
 	}
+	httpLis, err := net.Listen("tcp", httpServer.Addr)
+	if err != nil {
+		return err
+	}
+	defer httpLis.Close()
 
-	var srverr error
+	serveErrs := make(chan error, 2)
 	go func() {
-		srverr = grpcServer.Serve(lis)
+		serveErrs <- grpcServer.Serve(lis)
 		cancel()
 	}()
 
 	go func() {
-		srverr = httpServer.ListenAndServe()
+		serveErrs <- httpServer.Serve(httpLis)
 		cancel()
 	}()
 
@@ -305,9 +311,22 @@ func (s *Server) Serve(pctx context.Context) error {
 
 	<-ctx.Done()
 	grpcServer.GracefulStop()
-	httpServer.Shutdown(context.TODO())
+	shutdownErr := httpServer.Shutdown(context.Background())
 
-	return srverr
+	var serveErr error
+	for range 2 {
+		err := <-serveErrs
+		if err == nil || errors.Is(err, grpc.ErrServerStopped) || errors.Is(err, http.ErrServerClosed) {
+			continue
+		}
+		if serveErr == nil {
+			serveErr = err
+		}
+	}
+	if serveErr != nil {
+		return serveErr
+	}
+	return shutdownErr
 }
 
 func (s *Server) addHeadertoCtx(req *http.Request) *http.Request {

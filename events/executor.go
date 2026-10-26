@@ -138,8 +138,8 @@ func (ew *ExecutorWriter) Error(msg string, args ...interface{}) error {
 
 // LogTail returns stdout/err io.Writers which will track the
 // tail of the content (up to "size") and emit events.
-func (ew *ExecutorWriter) LogTail(ctx context.Context, size int64) (stdout, stderr io.Writer) {
-	return LogTail(ctx, ew.gen.taskID, ew.gen.attempt, ew.gen.index, size, ew.out)
+func (ew *ExecutorWriter) LogTail(ctx context.Context, size int64, wg *sync.WaitGroup) (stdout, stderr io.Writer) {
+	return LogTail(ctx, ew.gen.taskID, ew.gen.attempt, ew.gen.index, size, ew.out, wg)
 }
 
 // StreamLogTail returns stdout/err io.Writers which will track the
@@ -153,7 +153,7 @@ func (ew *ExecutorWriter) StreamLogTail(ctx context.Context, size int64, interva
 // LogTail returns stdout/err io.Writers which will track the
 // tail of the content (up to "size") and emit events once the ctx.Done
 // is closed.
-func LogTail(ctx context.Context, taskID string, attempt, index uint32, size int64, out Writer) (stdout, stderr io.Writer) {
+func LogTail(ctx context.Context, taskID string, attempt, index uint32, size int64, out Writer, wg *sync.WaitGroup) (stdout, stderr io.Writer) {
 	stdoutbuf := ring.NewBuffer(size)
 	stderrbuf := ring.NewBuffer(size)
 
@@ -172,13 +172,17 @@ func LogTail(ctx context.Context, taskID string, attempt, index uint32, size int
 		case Type_EXECUTOR_STDERR:
 			e = NewStderr(taskID, attempt, index, s)
 		}
-		return out.WriteEvent(ctx, e)
+		flushctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		return out.WriteEvent(flushctx, e)
 	}
 
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		<-ctx.Done()
 		flush(stdoutbuf, Type_EXECUTOR_STDOUT)
-		flush(stdoutbuf, Type_EXECUTOR_STDERR)
+		flush(stderrbuf, Type_EXECUTOR_STDERR)
 	}()
 
 	return stdoutbuf, stderrbuf
@@ -199,6 +203,7 @@ func StreamLogTail(ctx context.Context, taskID string, attempt, index uint32, si
 	stderrbuf := ring.NewBuffer(size)
 	stdoutch := make(chan []byte)
 	stderrch := make(chan []byte)
+	inputDone := make(chan struct{})
 	// Buffer event channel to handle bursts and prevent silent drops
 	eventch := make(chan *Event, 100)
 	// Used as an immediate timeout for flush()
@@ -275,6 +280,7 @@ func StreamLogTail(ctx context.Context, taskID string, attempt, index uint32, si
 
 	// input writes and flush routine.
 	go func() {
+		defer close(inputDone)
 		// The ticker helps ensure content gets flushed at a regular
 		// interval, so nothing is buffered for too long.
 		ticker := time.NewTicker(interval)
@@ -307,14 +313,18 @@ func StreamLogTail(ctx context.Context, taskID string, attempt, index uint32, si
 		}
 	}()
 
-	return &logTailWriter{stdoutch}, &logTailWriter{stderrch}
+	return &logTailWriter{ch: stdoutch, done: inputDone}, &logTailWriter{ch: stderrch, done: inputDone}
 }
 
 type logTailWriter struct {
-	ch chan<- []byte
+	ch   chan<- []byte
+	done <-chan struct{}
 }
 
 func (l *logTailWriter) Write(p []byte) (n int, err error) {
-	l.ch <- append([]byte(nil), p...)
+	select {
+	case l.ch <- append([]byte(nil), p...):
+	case <-l.done:
+	}
 	return len(p), nil
 }

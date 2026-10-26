@@ -56,8 +56,10 @@ jobs:
     - name: Unit Tests
       id: unit_tests
       continue-on-error: true
+      env:
+        CGO_ENABLED: "1"
       run: |
-        gotestsum --junitfile=test-report.xml -- ./... -coverprofile=coverage.out
+        gotestsum --junitfile=test-report.xml -- -race ./... -coverprofile=coverage.out
         go tool cover -func=coverage.out
 
     - name: Test Report
