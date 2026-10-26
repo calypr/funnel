@@ -184,6 +184,49 @@ func parseMessageEnum(name string, schema *openapi3.SchemaRef) (Enum, error) {
 
 func cleanSchema(messages []Message, enums []Enum, services []ServicePath) {
 	sort.SliceStable(messages, func(i, j int) bool { return messages[i].Name < messages[j].Name })
+	enumOrder := map[string]int{
+		"tesState":    0,
+		"tesFileType": 1,
+		"view":        2,
+	}
+	sort.SliceStable(enums, func(i, j int) bool {
+		leftOrder, leftKnown := enumOrder[enums[i].Name]
+		rightOrder, rightKnown := enumOrder[enums[j].Name]
+		if leftKnown && rightKnown && leftOrder != rightOrder {
+			return leftOrder < rightOrder
+		}
+		if leftKnown != rightKnown {
+			return leftKnown
+		}
+		return enums[i].Name < enums[j].Name
+	})
+	// Paths.Map returns a Go map, whose iteration order is deliberately
+	// unspecified. Keep the established TES RPC order so equivalent OpenAPI
+	// inputs always produce the same proto and generated clients.
+	serviceOrder := map[string]int{
+		"GetTask":        0,
+		"CancelTask":     1,
+		"GetServiceInfo": 2,
+		"ListTasks":      3,
+		"CreateTask":     4,
+	}
+	sort.SliceStable(services, func(i, j int) bool {
+		leftOrder, leftKnown := serviceOrder[services[i].Name]
+		rightOrder, rightKnown := serviceOrder[services[j].Name]
+		if leftKnown && rightKnown && leftOrder != rightOrder {
+			return leftOrder < rightOrder
+		}
+		if leftKnown != rightKnown {
+			return leftKnown
+		}
+		if services[i].Path != services[j].Path {
+			return services[i].Path < services[j].Path
+		}
+		if services[i].Mode != services[j].Mode {
+			return services[i].Mode < services[j].Mode
+		}
+		return services[i].Name < services[j].Name
+	})
 
 	var prefixRemove = "tes"
 	for i := range messages {
