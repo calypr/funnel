@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/util/fsutil"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/util/fsutil"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/option"
 	"google.golang.org/api/storage/v1"

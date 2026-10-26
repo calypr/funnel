@@ -14,10 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jwx-go/jwkfetch/v4"
-	"github.com/lestrrat-go/httprc/v3"
+	"github.com/calypr/funnel/config"
 	"github.com/lestrrat-go/jwx/v4/jwt"
-	"github.com/ohsu-comp-bio/funnel/config"
 	"golang.org/x/oauth2"
 )
 
@@ -41,7 +39,7 @@ type OidcConfig struct {
 	admins map[string]bool
 	remote OidcRemoteConfig
 	oauth2 *oauth2.Config
-	jwks   *jwkfetch.Cache
+	jwks   *jwksCache
 }
 
 func initOidcConfig(config *config.OidcAuth) *OidcConfig {
@@ -100,21 +98,10 @@ func (c *OidcConfig) initJwks() {
 	jwksUrl := c.remote.JwksURI
 	ctx := context.Background()
 
-	cache, err := jwkfetch.NewCache(ctx, httprc.NewClient())
+	cache, err := newJWKSCache(ctx, jwksUrl)
 	if err != nil {
 		fmt.Printf("[ERROR] Failed to create JWKS cache for the OIDC service (%s): %s\n",
 			c.local.ServiceConfigURL, err)
-		os.Exit(1)
-	}
-
-	ctx2, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	if err := cache.Register(ctx2, jwksUrl,
-		jwkfetch.WithMinInterval(15*time.Minute),
-		jwkfetch.WithWaitReady(true),
-	); err != nil {
-		fmt.Printf("[ERROR] Failed to register JWKS (%s) of the OIDC service "+
-			"(%s): %s\n", jwksUrl, c.local.ServiceConfigURL, err)
 		os.Exit(1)
 	}
 

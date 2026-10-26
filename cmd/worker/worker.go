@@ -6,10 +6,10 @@ import (
 	"syscall"
 	"time"
 
-	cmdutil "github.com/ohsu-comp-bio/funnel/cmd/util"
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/logger"
-	"github.com/ohsu-comp-bio/funnel/util"
+	cmdutil "github.com/calypr/funnel/cmd/util"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/util"
 	"github.com/spf13/cobra"
 )
 

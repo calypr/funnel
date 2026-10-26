@@ -4,9 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/alecthomas/units"
-	"github.com/ohsu-comp-bio/funnel/compute/scheduler"
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/compute/scheduler"
+	"github.com/calypr/funnel/tes"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -182,13 +181,13 @@ func WatchNodes(ctx context.Context, nodes scheduler.SchedulerServiceServer) {
 				nodeStates.WithLabelValues(node.GetState().String()).Inc()
 				res := node.GetResources()
 				nodeTotalCPU.Set(float64(res.GetCpus()))
-				nodeTotalRAM.Set(res.GetRamGb() * float64(units.GB))
-				nodeTotalDisk.Set(res.GetDiskGb() * float64(units.GB))
+				nodeTotalRAM.Set(res.GetRamGb() * float64(1000*1000*1000))
+				nodeTotalDisk.Set(res.GetDiskGb() * float64(1000*1000*1000))
 
 				avail := node.GetAvailable()
 				nodeAvailableCPU.Set(float64(avail.GetCpus()))
-				nodeAvailableRAM.Set(avail.GetRamGb() * float64(units.GB))
-				nodeAvailableDisk.Set(avail.GetDiskGb() * float64(units.GB))
+				nodeAvailableRAM.Set(avail.GetRamGb() * float64(1000*1000*1000))
+				nodeAvailableDisk.Set(avail.GetDiskGb() * float64(1000*1000*1000))
 			}
 		}
 	}

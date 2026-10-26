@@ -3,23 +3,18 @@ package termdash
 import (
 	"fmt"
 	"os"
+	"time"
 
-	ui "github.com/gizak/termui"
-	"github.com/ohsu-comp-bio/funnel/cmd/termdash/compact"
-	"github.com/ohsu-comp-bio/funnel/cmd/termdash/config"
-	"github.com/ohsu-comp-bio/funnel/cmd/termdash/widgets"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 )
 
 var (
 	defaultTesServer = "http://localhost:8000"
 	tesServer        string
-	cursor           *GridCursor
-	cGrid            *compact.Grid
-	header           *widgets.TermDashHeader
 )
 
-// Cmd represents the worker command
+// Cmd represents the dashboard command.
 var Cmd = &cobra.Command{
 	Use:   "dashboard",
 	Short: "Start a Funnel dashboard in your terminal.",
@@ -43,34 +38,14 @@ func init() {
 }
 
 func termdash(tesHTTPServerAddress string) error {
-	// init global config
-	config.Init()
-
-	// override default colormap
-	ui.ColorMap = colorMap
-
-	if err := ui.Init(); err != nil {
-		return fmt.Errorf("Error initializing termdash UI: %v", err)
-	}
-	defer Shutdown()
-
-	// init grid, cursor, header
-	header = widgets.NewTermDashHeader()
-	cGrid = compact.NewGrid()
-	var err error
-	cursor, err = NewGridCursor(tesHTTPServerAddress)
+	m, err := newDashboard(tesHTTPServerAddress)
 	if err != nil {
-		return fmt.Errorf("error initializing the grid cursor: %v", err)
+		return fmt.Errorf("error initializing the dashboard: %v", err)
 	}
-
-	for {
-		exit := Display()
-		if exit {
-			return nil
-		}
-	}
+	_, err = tea.NewProgram(m, tea.WithAltScreen()).Run()
+	return err
 }
 
-func Shutdown() {
-	ui.Close()
+func timeNow() string {
+	return time.Now().Format("3:04PM")
 }

@@ -2,7 +2,7 @@ syntax = "proto3";
 
 import "google/api/annotations.proto";
 
-option go_package = "github.com/ohsu-comp-bio/funnel/compute/scheduler";
+option go_package = "github.com/calypr/funnel/compute/scheduler";
 
 package scheduler;
 

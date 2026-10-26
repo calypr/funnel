@@ -4,7 +4,7 @@ package scheduler
 import (
 	"context"
 
-	events "github.com/ohsu-comp-bio/funnel/events"
+	events "github.com/calypr/funnel/events"
 
 	grpc "google.golang.org/grpc"
 

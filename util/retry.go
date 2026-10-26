@@ -2,10 +2,8 @@ package util
 
 import (
 	"context"
-	"errors"
+	"math/rand"
 	"time"
-
-	"github.com/cenkalti/backoff/v7"
 )
 
 // Retrier retries failed operations until they succeed, reach MaxTries attempts,
@@ -19,7 +17,6 @@ type Retrier struct {
 	MaxTries            int
 	ShouldRetry         func(err error) bool
 	Notify              func(err error, d time.Duration)
-	backoff             backoff.BackOff
 }
 
 // NewRetrier returns a retrier configured for ten attempts over fifteen minutes.
@@ -35,58 +32,71 @@ func NewRetrier() *Retrier {
 	}
 }
 
-// Retry the function f until it does not return error or BackOff stops.
+// Retry the function f until it does not return error or the retry budget
+// (MaxTries / MaxElapsedTime / context) is exhausted.
 func (r *Retrier) Retry(ctx context.Context, f func() error) error {
 	maxTries := r.MaxTries
 	if maxTries < 1 || r.MaxElapsedTime < 0 {
 		maxTries = 1
 	}
 
-	r.backoff = &backoff.ExponentialBackOff{
-		InitialInterval:     r.InitialInterval,
-		MaxInterval:         r.MaxInterval,
-		Multiplier:          r.Multiplier,
-		RandomizationFactor: r.RandomizationFactor,
+	multiplier := r.Multiplier
+	if multiplier < 1 {
+		multiplier = 1
+	}
+	randFactor := r.RandomizationFactor
+	if randFactor < 0 {
+		randFactor = 0
+	}
+	maxInterval := r.MaxInterval
+	if maxInterval <= 0 {
+		maxInterval = time.Minute
 	}
 
-	_, err := backoff.Retry(ctx, func() (struct{}, error) {
-		return struct{}{}, r.checkErr(f())
-	},
-		backoff.WithBackOff(r.backoff),
-		backoff.WithMaxTries(uint(maxTries)),
-		backoff.WithMaxElapsedTime(r.MaxElapsedTime),
-		backoff.WithNotify(r.notify),
+	var (
+		interval = r.InitialInterval
+		lastErr  error
+		start    = time.Now()
 	)
-	if err == nil {
-		return nil
-	}
+	for attempt := 0; attempt < maxTries; attempt++ {
+		lastErr = f()
+		if lastErr == nil {
+			return nil
+		}
+		if r.ShouldRetry != nil && !r.ShouldRetry(lastErr) {
+			return lastErr
+		}
+		if r.MaxElapsedTime > 0 && time.Since(start) > r.MaxElapsedTime {
+			break
+		}
+		if attempt == maxTries-1 {
+			break
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 
-	retryErr := backoff.AsRetryError(err)
-	if retryErr == nil {
-		return err
-	}
-	if errors.Is(retryErr.Cause, backoff.ErrPermanent) {
-		return retryErr.LastErr
-	}
-	if ctxErr := ctx.Err(); ctxErr != nil {
-		return ctxErr
-	}
-	return retryErr.LastErr
-}
+		sleep := time.Duration(float64(interval) * (1 + randFactor*(rand.Float64()*2-1)))
+		if sleep < 0 {
+			sleep = interval
+		}
 
-func (r *Retrier) notify(err error, d time.Duration) {
-	if r.Notify != nil {
-		r.Notify(err, d)
-	}
-}
+		if r.Notify != nil {
+			r.Notify(lastErr, sleep)
+		}
 
-func (r *Retrier) checkErr(err error) error {
-	switch {
-	case err != nil && r.ShouldRetry != nil && !r.ShouldRetry(err):
-		return backoff.Permanent(err)
-	case err != nil:
-		return err
-	default:
-		return nil
+		timer := time.NewTimer(sleep)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+
+		interval = time.Duration(float64(interval) * multiplier)
+		if interval > maxInterval {
+			interval = maxInterval
+		}
 	}
+	return lastErr
 }

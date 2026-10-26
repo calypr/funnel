@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ohsu-comp-bio/funnel/config"
+	"github.com/calypr/funnel/config"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"

@@ -21,7 +21,7 @@ func getExitCode(err error) (int, error) {
 		return k8sErr.ExitCode, nil
 	}
 
-	if exiterr, exitOk := err.(*exec.ExitError); exitOk {
+	if exiterr, exitOk := err.(*exec.ExitError); exitOk && exiterr.ProcessState != nil {
 		if status, statusOk := exiterr.Sys().(syscall.WaitStatus); statusOk {
 			return status.ExitStatus(), nil
 		}

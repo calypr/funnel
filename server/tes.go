@@ -4,18 +4,19 @@ import (
 	"encoding/gob"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"context"
 
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/events"
-	"github.com/ohsu-comp-bio/funnel/logger"
-	"github.com/ohsu-comp-bio/funnel/plugins/proto"
-	"github.com/ohsu-comp-bio/funnel/plugins/shared"
-	"github.com/ohsu-comp-bio/funnel/tes"
-	"github.com/ohsu-comp-bio/funnel/util/server"
-	"github.com/ohsu-comp-bio/funnel/version"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/plugins/proto"
+	"github.com/calypr/funnel/plugins/shared"
+	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/util/server"
+	"github.com/calypr/funnel/version"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -42,6 +43,25 @@ type TaskService struct {
 	Config        *config.Config
 	Plugin        shared.Authorize
 	PluginManager *shared.Manager
+
+	// submitWG tracks in-flight compute backend submissions started by
+	// CreateTask; Close waits for them so a server shutdown can't strand
+	// a partially created backend job.
+	submitWG sync.WaitGroup
+}
+
+// Close waits (bounded) for in-flight compute backend submissions.
+func (ts *TaskService) Close() {
+	done := make(chan struct{})
+	go func() {
+		ts.submitWG.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		ts.Log.Warn("timed out waiting for in-flight task submissions to complete")
+	}
 }
 
 func (ts *TaskService) forbiddenPathPrefixes() []string {
@@ -150,8 +170,13 @@ func (ts *TaskService) CreateTask(ctx context.Context, task *tes.Task) (*tes.Cre
 	conf := ctx.Value("Config")
 
 	// dispatch to compute backend
+	ts.submitWG.Add(1)
 	go func() {
-		workerCtx := context.Background()
+		defer ts.submitWG.Done()
+		// Bounded context: a hung compute backend must not pin this goroutine
+		// (and the resources it has partially created) forever.
+		workerCtx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+		defer cancel()
 
 		if pluginResponse != nil {
 			workerCtx = context.WithValue(workerCtx, "pluginResponse", pluginResponse)
@@ -161,15 +186,20 @@ func (ts *TaskService) CreateTask(ctx context.Context, task *tes.Task) (*tes.Cre
 		}
 
 		err := ts.Compute.WriteEvent(workerCtx, events.NewTaskCreated(task))
-		ts.Log.Debug("submitted task to compute backend", "taskID", task.Id, "error", err)
-
 		if err != nil {
-			ts.Log.Debug("writing SystemError event for task", "taskID", task.Id, "error", err)
-			err = ts.Event.WriteEvent(workerCtx, events.NewState(task.Id, tes.SystemError))
-
-			if err != nil {
+			ts.Log.Error("error submitting task to compute backend", "taskID", task.Id, "error", err)
+			if logErr := ts.Event.WriteEvent(workerCtx, events.NewSystemLog(
+				task.Id, 0, 0, "error",
+				"Error submitting task to compute backend",
+				map[string]string{"error": err.Error()},
+			)); logErr != nil {
+				ts.Log.Error("failed to write system log for compute backend submission error", "taskID", task.Id, "error", logErr)
+			}
+			if err := ts.Event.WriteEvent(workerCtx, events.NewState(task.Id, tes.SystemError)); err != nil {
 				ts.Log.Error("error writing SystemError event after compute backend submission failure", "taskID", task.Id, "error", err)
 			}
+		} else {
+			ts.Log.Debug("submitted task to compute backend", "taskID", task.Id)
 		}
 	}()
 

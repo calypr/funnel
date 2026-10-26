@@ -6,8 +6,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/tes"
 )
 
 func TestSetupTemplatedHPCSubmit(t *testing.T) {

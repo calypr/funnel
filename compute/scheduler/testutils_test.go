@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/logger"
-	"github.com/ohsu-comp-bio/funnel/util"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/util"
 	"github.com/stretchr/testify/mock"
 	"google.golang.org/grpc"
 )

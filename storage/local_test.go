@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/go-test/deep"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestLocalSupports(t *testing.T) {
@@ -89,9 +89,7 @@ func TestLocalListDirectory(t *testing.T) {
 		},
 	}
 
-	for _, diff := range deep.Equal(list, expected1) {
-		t.Error(diff)
-	}
+	assert.Equal(t, expected1, list)
 
 	list, gerr = l.List(ctx, d+"/test_dir")
 	if gerr != nil {
@@ -113,9 +111,7 @@ func TestLocalListDirectory(t *testing.T) {
 		},
 	}
 
-	for _, diff := range deep.Equal(list, expected2) {
-		t.Error(diff)
-	}
+	assert.Equal(t, expected2, list)
 
 	list, gerr = l.List(ctx, "../tests/storage/testdata/test_dir")
 	if gerr != nil {
@@ -137,9 +133,7 @@ func TestLocalListDirectory(t *testing.T) {
 		},
 	}
 
-	for _, diff := range deep.Equal(list, expected3) {
-		t.Error(diff)
-	}
+	assert.Equal(t, expected3, list)
 }
 
 func TestLocalJoin(t *testing.T) {

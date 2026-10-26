@@ -16,18 +16,18 @@ import (
 	"text/template"
 	"time"
 
+	runlib "github.com/calypr/funnel/cmd/run"
+	servercmd "github.com/calypr/funnel/cmd/server"
+	"github.com/calypr/funnel/compute/scheduler"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/server"
+	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/util/dockerutil"
+	"github.com/calypr/funnel/util/k8sutil"
+	"github.com/calypr/funnel/util/rpc"
 	cerrdefs "github.com/containerd/errdefs"
 	docker "github.com/moby/moby/client"
-	runlib "github.com/ohsu-comp-bio/funnel/cmd/run"
-	servercmd "github.com/ohsu-comp-bio/funnel/cmd/server"
-	"github.com/ohsu-comp-bio/funnel/compute/scheduler"
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/logger"
-	"github.com/ohsu-comp-bio/funnel/server"
-	"github.com/ohsu-comp-bio/funnel/tes"
-	"github.com/ohsu-comp-bio/funnel/util/dockerutil"
-	"github.com/ohsu-comp-bio/funnel/util/k8sutil"
-	"github.com/ohsu-comp-bio/funnel/util/rpc"
 	"google.golang.org/grpc"
 	"k8s.io/client-go/kubernetes"
 )
@@ -420,7 +420,7 @@ func (f *Funnel) StartServerInDocker(containerName, imageName string, extraArgs 
 			))
 		} else {
 			funnelBinary, err = filepath.Abs(filepath.Join(
-				gopath, "src/github.com/ohsu-comp-bio/funnel/build/release/linux_amd64/funnel",
+				gopath, "src/github.com/calypr/funnel/build/release/linux_amd64/funnel",
 			))
 		}
 		if err != nil {
@@ -431,8 +431,8 @@ func (f *Funnel) StartServerInDocker(containerName, imageName string, extraArgs 
 
 	// write config file
 	configPath, _ := filepath.Abs(filepath.Join(f.Conf.Worker.WorkDir, "config.yml"))
-	config.ToYamlFile(f.Conf, configPath)
-	os.Chmod(configPath, 0644)
+	_ = config.ToYamlFile(f.Conf, configPath)
+	_ = os.Chmod(configPath, 0644)
 
 	httpPort, _ := strconv.ParseInt(f.Conf.Server.HTTPPort, 0, 32)
 	rpcPort, _ := strconv.ParseInt(f.Conf.Server.RPCPort, 0, 32)

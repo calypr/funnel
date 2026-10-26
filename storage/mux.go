@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ohsu-comp-bio/funnel/config"
-	"github.com/ohsu-comp-bio/funnel/logger"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/logger"
 )
 
 // operation codes help multiplex storage operations across multiple backends.
