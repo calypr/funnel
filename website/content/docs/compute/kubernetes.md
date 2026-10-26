@@ -6,107 +6,81 @@ menu:
     weight: 20
 ---
 
-> Funnel on Kubernetes is in active development and may involve frequent updates 🚧
+> **Warning:** Funnel on Kubernetes is in active development and may involve frequent updates 🚧
 
-# Quick Start
+# Kubernetes
 
-## 1. Deploying with Helm ⚡️
+## 1. Add Helm Repo
+
+> **Note:** See Funnel's [Helm Charts](https://github.com/calypr/helm-charts/tree/main/charts/funnel) for the latest configuration options
 
 ```sh
-helm repo add ohsu https://ohsu-comp-bio.github.io/helm-charts
-helm repo update
-helm upgrade --install ohsu funnel
+helm repo add calypr https://calypr.org/helm-charts
+
+helm repo update calypr
+
+helm search repo calypr/funnel
 ```
 
-{{< details title="(Alternative) Deploying with `kubectl` ⚙️" >}}
-
-### 1. Create a Service:
-
-Deploy it:
+## 2. Deploy Funnel
 
 ```sh
-kubectl apply -f funnel-service.yml
+helm upgrade --install funnel calypr/funnel
+
+kubectl rollout status deployment/funnel-server
+
+kubectl get deployments
+# NAME           READY   STATUS
+# funnel-server   1/1     Running
 ```
 
-### 2. Create Funnel config files
-
-> *[funnel-server.yaml](https://github.com/ohsu-comp-bio/funnel/blob/develop/deployments/kubernetes/funnel-server.yaml)*
-
-> *[funnel-worker.yaml](https://github.com/ohsu-comp-bio/funnel/blob/develop/deployments/kubernetes/funnel-worker.yaml)*
-
-Get the clusterIP:
+## 4. Port-Forward for Local Access
 
 ```sh
-export HOSTNAME=$(kubectl get services funnel --output=jsonpath='{.spec.clusterIP}')
+kubectl port-forward svc/funnel 8000:8000
 
-sed -i "s|\${HOSTNAME}|${HOSTNAME}|g" funnel-worker.yaml
-```
-
-### 3. Create a ConfigMap
-
-```sh
-kubectl create configmap funnel-config --from-file=funnel-server.yaml --from-file=funnel-worker.yaml
-```
-
-### 4. Create a Service Account for Funnel
-
-Define a Role and RoleBinding:
-
-> *[role.yml](https://github.com/ohsu-comp-bio/funnel/blob/develop/deployments/kubernetes/role.yml)*
-
-> *[role_binding.yml](https://github.com/ohsu-comp-bio/funnel/blob/develop/deployments/kubernetes/role_binding.yml)*
-
-```sh
-kubectl create serviceaccount funnel-sa --namespace default
-kubectl apply -f role.yml
-kubectl apply -f role_binding.yml
-```
-
-### 5. Create a Persistent Volume Claim
-
-> *[funnel-storage-pvc.yml](https://github.com/ohsu-comp-bio/funnel/blob/develop/deployments/kubernetes/funnel-storage-pvc.yml)*
-
-```sh
-kubectl apply -f funnel-storage-pvc.yml
-```
-
-### 6. Create a Deployment
-
-> *[funnel-deployment.yml](https://github.com/ohsu-comp-bio/funnel/blob/develop/deployments/kubernetes/funnel-deployment.yml)*
-
-```sh
-kubectl apply -f funnel-deployment.yml
-```
-
-{{< /details >}}
-
-# 2. Proxy the Service for local testing
-
-```sh
-kubectl port-forward service/funnel 8000:8000
-```
-
-Now the funnel server can be accessed as if it were running locally. This can be verified by listing all tasks, which will return an empty JSON list:
-
-```sh
 funnel task list
 # {}
 ```
 
-A task can then be submitted following the [standard workflow](../../tasks):
+## 4. Submit Example Task
 
 ```sh
 funnel examples hello-world > hello-world.json
 
 funnel task create hello-world.json
 # <Task ID>
+
+funnel task get <Task ID> --view MINIMAL
+# { "id": "...", "state": "COMPLETE" }
 ```
 
 # Storage Architecture
 
-<a href="https://www.figma.com/board/bzgv8kVL2QKESU3Sqn7S1a/Funnel-%2B-Gen3?node-id=2-1059&t=9bcuG0bMAcxBLcRD-1">
-  <img title="K8s Storage" src="/img/k8s-pvc.png" />
-</a>
+The following diagram shows the legacy per-task S3 volume flow. For native storage bindings and other volume options, see the [Kubernetes storage guide](../kubernetes-storage/).
+
+Funnel uses the [AWS S3 CSI Driver](https://github.com/awslabs/mountpoint-s3-csi-driver) to provision a per-task PersistentVolume (PV) and PersistentVolumeClaim (PVC) backed by S3. This gives Worker and Executor pods `ReadWriteMany` access across nodes without requiring them to co-schedule.
+
+```mermaid
+sequenceDiagram
+    participant Server as Funnel Server
+    participant K8s as Kubernetes API
+    participant CSI as S3 CSI Driver
+    participant Worker as Worker Pod (Node A)
+    participant Executor as Executor Pod (Node B)
+    participant S3 as S3 Bucket
+
+    Server->>K8s: Create PV + PVC (s3://bucket/)
+    K8s->>CSI: Mount bucket → funnel-worker-pv-<taskID>
+    Server->>Worker: Launch Worker Job
+    Worker->>S3: DownloadInputs (GenericS3)
+    Worker->>Executor: Launch Executor Job (PVC subPath mount)
+    Executor->>Executor: Run task command
+    Executor-->>Worker: Task complete
+    Worker->>S3: UploadOutputs (GenericS3)
+    Worker->>K8s: Delete PVC + PV
+    Worker->>Server: Report COMPLETE
+```
 
 # Startup cleanup
 
@@ -138,10 +112,9 @@ pull policy. Custom executor templates must use `{{.ImagePullPolicy}}` in their
 
 # Additional Resources 📚
 
-- [Helm Repo](https://ohsu-comp-bio.github.io/helm-charts)
-
-- [Helm Repo Source](https://github.com/ohsu-comp-bio/helm-charts)
-
-- [Helm Charts](https://github.com/ohsu-comp-bio/funnel/tree/develop/deployments/kubernetes/helm)
-
+- [Helm Repo](https://calypr.org/helm-charts)
+- [Helm Repo Source](https://github.com/calypr/helm-charts)
+- [Helm Chart values reference](https://github.com/calypr/helm-charts/tree/main/charts/funnel)
+- [AWS S3 CSI Driver](https://github.com/awslabs/mountpoint-s3-csi-driver)
 - [The Chart Best Practices Guide](https://helm.sh/docs/chart_best_practices/)
+- [GitHub issue #1412 — S3 Working Directory Behavior](https://github.com/calypr/funnel/issues/1412)
