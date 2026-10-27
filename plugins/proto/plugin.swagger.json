@@ -157,9 +157,6 @@
         "DynamoDB": {
           "$ref": "#/definitions/configDynamoDB"
         },
-        "Elastic": {
-          "$ref": "#/definitions/configElastic"
-        },
         "MongoDB": {
           "$ref": "#/definitions/configMongoDB"
         },
@@ -308,33 +305,6 @@
         }
       },
       "description": "DynamoDB describes the configuration for Amazon DynamoDB."
-    },
-    "configElastic": {
-      "type": "object",
-      "properties": {
-        "IndexPrefix": {
-          "type": "string"
-        },
-        "URL": {
-          "type": "string"
-        },
-        "Username": {
-          "type": "string"
-        },
-        "Password": {
-          "type": "string"
-        },
-        "CloudID": {
-          "type": "string"
-        },
-        "APIKey": {
-          "type": "string"
-        },
-        "ServiceToken": {
-          "type": "string"
-        }
-      },
-      "description": "Elastic configures access to an Elasticsearch database."
     },
     "configFTPStorage": {
       "type": "object",

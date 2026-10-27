@@ -81,14 +81,6 @@ test:
 test-verbose:
 	@go test -v $(TESTS)
 
-start-elasticsearch:
-	@docker rm -f funnel-es-test > /dev/null 2>&1 || echo
-	@docker run -d --name funnel-es-test -p 9200:9200 -p 9300:9300 -e "discovery.type=single-node" -e "xpack.security.enabled=false" docker.io/elastic/elasticsearch:8.17.1 > /dev/null
-
-test-elasticsearch:
-	@go test ./tests/core/ -funnel-config `pwd`/tests/elastic.config.yml
-	@go test ./tests/scheduler/ -funnel-config `pwd`/tests/elastic.config.yml
-
 start-mongodb:
 	@docker rm -f funnel-mongodb-test > /dev/null 2>&1 || echo
 	@docker run -d --name funnel-mongodb-test -p 27000:27017 docker.io/mongo > /dev/null
