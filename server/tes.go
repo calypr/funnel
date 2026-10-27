@@ -188,14 +188,16 @@ func (ts *TaskService) CreateTask(ctx context.Context, task *tes.Task) (*tes.Cre
 		err := ts.Compute.WriteEvent(workerCtx, events.NewTaskCreated(task))
 		if err != nil {
 			ts.Log.Error("error submitting task to compute backend", "taskID", task.Id, "error", err)
-			if logErr := ts.Event.WriteEvent(workerCtx, events.NewSystemLog(
+			failureCtx, cancelFailure := context.WithTimeout(context.WithoutCancel(workerCtx), 10*time.Second)
+			defer cancelFailure()
+			if logErr := ts.Event.WriteEvent(failureCtx, events.NewSystemLog(
 				task.Id, 0, 0, "error",
 				"Error submitting task to compute backend",
 				map[string]string{"error": err.Error()},
 			)); logErr != nil {
 				ts.Log.Error("failed to write system log for compute backend submission error", "taskID", task.Id, "error", logErr)
 			}
-			if err := ts.Event.WriteEvent(workerCtx, events.NewState(task.Id, tes.SystemError)); err != nil {
+			if err := ts.Event.WriteEvent(failureCtx, events.NewState(task.Id, tes.SystemError)); err != nil {
 				ts.Log.Error("error writing SystemError event after compute backend submission failure", "taskID", task.Id, "error", err)
 			}
 		} else {
