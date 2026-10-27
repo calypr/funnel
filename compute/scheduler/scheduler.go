@@ -2,6 +2,7 @@
 package scheduler
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -63,9 +64,14 @@ func (s *Scheduler) CheckNodes() error {
 		var err error
 
 		if node.State == NodeState_GONE {
+			stateWriteFailed := false
 			for _, tid := range node.TaskIds {
 				if err := s.Event.WriteEvent(ctx, events.NewState(tid, tes.State_SYSTEM_ERROR)); err != nil {
-					s.Log.Error("writing dead-node task state", "taskID", tid, "error", err)
+					var transitionErr *tes.TransitionError
+					if !errors.Is(err, tes.ErrNotFound) && !(errors.As(err, &transitionErr) && tes.TerminalState(transitionErr.From)) {
+						stateWriteFailed = true
+						s.Log.Error("writing dead-node task state", "taskID", tid, "error", err)
+					}
 				}
 				if werr := s.Event.WriteEvent(ctx, events.NewSystemLog(tid, 0, 0, "info",
 					"Cleaning up Task assigned to dead/gone node", map[string]string{
@@ -73,6 +79,9 @@ func (s *Scheduler) CheckNodes() error {
 					})); werr != nil {
 					s.Log.Error("writing dead-node cleanup event", "taskID", tid, "error", werr)
 				}
+			}
+			if stateWriteFailed {
+				continue
 			}
 			_, err = s.Nodes.DeleteNode(ctx, node)
 		} else {
