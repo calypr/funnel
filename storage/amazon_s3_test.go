@@ -31,6 +31,7 @@ func TestAmazonS3Transfers(t *testing.T) {
 		sse  *config.SSE
 	}{
 		{name: "plain"},
+		{name: "S3 managed", sse: &config.SSE{S3Managed: true}},
 		{name: "customer key", sse: &config.SSE{CustomerKeyFile: keyFile}},
 		{name: "kms key", sse: &config.SSE{KMSKey: "test-kms-key"}},
 	} {
@@ -55,6 +56,12 @@ func TestAmazonS3Transfers(t *testing.T) {
 				w.Header().Set("Last-Modified", "Mon, 02 Jan 2006 15:04:05 GMT")
 				switch r.Method {
 				case http.MethodPut:
+					if test.sse != nil && test.sse.S3Managed && r.Header.Get("X-Amz-Server-Side-Encryption") != "AES256" {
+						t.Errorf("missing SSE-S3 header: %v", r.Header)
+					}
+					if test.sse == nil && r.Header.Get("X-Amz-Server-Side-Encryption") != "" {
+						t.Errorf("unexpected encryption header: %v", r.Header)
+					}
 					if r.Header.Get("X-Amz-Sdk-Checksum-Algorithm") != "" || r.Header.Get("Content-Encoding") == "aws-chunked" {
 						t.Error("unexpected optional checksum on compatible endpoint")
 					}
@@ -106,6 +113,29 @@ func TestAmazonS3Transfers(t *testing.T) {
 				t.Fatalf("download = %q", got)
 			}
 		})
+	}
+}
+
+func TestAmazonS3RejectsConflictingEncryptionModes(t *testing.T) {
+	for _, sse := range []*config.SSE{
+		{S3Managed: true, KMSKey: "key"},
+		{S3Managed: true, CustomerKeyFile: "key"},
+		{KMSKey: "key", CustomerKeyFile: "key"},
+	} {
+		_, err := NewAmazonS3(&config.AmazonS3Storage{AWSConfig: &config.AWSConfig{Region: "local", DisableAutoCredentialLoad: true}, SSE: sse})
+		if err == nil || !strings.Contains(err.Error(), "invalid SSE config") {
+			t.Fatalf("expected conflicting modes error, got %v", err)
+		}
+	}
+}
+
+func TestAmazonS3ManagedEncryptionConfig(t *testing.T) {
+	conf := config.EmptyConfig()
+	if err := config.Parse([]byte("AmazonS3:\n  SSE:\n    S3Managed: true\n"), conf); err != nil {
+		t.Fatal(err)
+	}
+	if !conf.AmazonS3.SSE.S3Managed {
+		t.Fatal("S3Managed was not enabled by the config file")
 	}
 }
 
@@ -390,6 +420,9 @@ func TestAmazonS3MultipartTransfer(t *testing.T) {
 		w.Header().Set("Last-Modified", "Mon, 02 Jan 2006 15:04:05 GMT")
 		if r.Method == http.MethodPost {
 			if r.URL.Query().Has("uploads") {
+				if r.Header.Get("X-Amz-Server-Side-Encryption") != "AES256" {
+					t.Errorf("missing SSE-S3 header on multipart initiation: %v", r.Header)
+				}
 				_, _ = io.WriteString(w, `<InitiateMultipartUploadResult><UploadId>upload-fixture</UploadId></InitiateMultipartUploadResult>`)
 				return
 			}
@@ -440,7 +473,7 @@ func TestAmazonS3MultipartTransfer(t *testing.T) {
 		_, _ = w.Write(body[first : last+1])
 	}))
 	defer server.Close()
-	store, err := NewAmazonS3(&config.AmazonS3Storage{AWSConfig: &config.AWSConfig{Endpoint: server.URL, Region: "local", DisableAutoCredentialLoad: true}})
+	store, err := NewAmazonS3(&config.AmazonS3Storage{AWSConfig: &config.AWSConfig{Endpoint: server.URL, Region: "local", DisableAutoCredentialLoad: true}, SSE: &config.SSE{S3Managed: true}})
 	if err != nil {
 		t.Fatal(err)
 	}

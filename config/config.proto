@@ -273,6 +273,7 @@ message GoogleCloudStorage {
 message SSE {
   string CustomerKeyFile = 1;
   string KMSKey = 2;
+  bool S3Managed = 3;
 }
 
 // AmazonS3Storage describes the configuration for the Amazon S3 storage backend.

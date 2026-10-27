@@ -2205,6 +2205,7 @@ type SSE struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	CustomerKeyFile string                 `protobuf:"bytes,1,opt,name=CustomerKeyFile,proto3" json:"CustomerKeyFile,omitempty"`
 	KMSKey          string                 `protobuf:"bytes,2,opt,name=KMSKey,proto3" json:"KMSKey,omitempty"`
+	S3Managed       bool                   `protobuf:"varint,3,opt,name=S3Managed,proto3" json:"S3Managed,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -2251,6 +2252,13 @@ func (x *SSE) GetKMSKey() string {
 		return x.KMSKey
 	}
 	return ""
+}
+
+func (x *SSE) GetS3Managed() bool {
+	if x != nil {
+		return x.S3Managed
+	}
+	return false
 }
 
 // AmazonS3Storage describes the configuration for the Amazon S3 storage backend.
@@ -3632,10 +3640,11 @@ const file_config_config_proto_rawDesc = "" +
 	"\vAllowedDirs\x18\x02 \x03(\tR\vAllowedDirs\"Z\n" +
 	"\x12GoogleCloudStorage\x12\x1a\n" +
 	"\bDisabled\x18\x01 \x01(\bR\bDisabled\x12(\n" +
-	"\x0fCredentialsFile\x18\x02 \x01(\tR\x0fCredentialsFile\"G\n" +
+	"\x0fCredentialsFile\x18\x02 \x01(\tR\x0fCredentialsFile\"e\n" +
 	"\x03SSE\x12(\n" +
 	"\x0fCustomerKeyFile\x18\x01 \x01(\tR\x0fCustomerKeyFile\x12\x16\n" +
-	"\x06KMSKey\x18\x02 \x01(\tR\x06KMSKey\"}\n" +
+	"\x06KMSKey\x18\x02 \x01(\tR\x06KMSKey\x12\x1c\n" +
+	"\tS3Managed\x18\x03 \x01(\bR\tS3Managed\"}\n" +
 	"\x0fAmazonS3Storage\x12\x1a\n" +
 	"\bDisabled\x18\x01 \x01(\bR\bDisabled\x12\x1d\n" +
 	"\x03SSE\x18\x02 \x01(\v2\v.config.SSER\x03SSE\x12/\n" +
