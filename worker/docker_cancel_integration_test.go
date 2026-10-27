@@ -22,9 +22,10 @@ func TestDockerCancellationStopsContainer(t *testing.T) {
 	}
 	name := fmt.Sprintf("funnel-cancel-test-%d", time.Now().UnixNano())
 	t.Cleanup(func() {
-		out, err := exec.Command("docker", "rm", "-f", name).CombinedOutput()
-		if err != nil && !strings.Contains(string(out), "No such container") {
-			t.Errorf("cleaning up container: %v: %s", err, out)
+		if dockerContainerPresent(t, name, true) {
+			if out, err := exec.Command("docker", "rm", "-f", name).CombinedOutput(); err != nil {
+				t.Errorf("cleaning up container: %v: %s", err, out)
+			}
 		}
 	})
 	ctx, cancel := context.WithCancel(context.Background())
@@ -54,6 +55,9 @@ func TestDockerCancellationStopsContainer(t *testing.T) {
 	if !started {
 		t.Fatal("container did not start")
 	}
+	if !dockerContainerPresent(t, name, false) {
+		t.Fatal("running container was not listed")
+	}
 	cancel()
 	select {
 	case err := <-done:
@@ -66,12 +70,8 @@ func TestDockerCancellationStopsContainer(t *testing.T) {
 	if code := builder.Task.GetLogs()[0].GetLogs()[0].GetExitCode(); code != 137 {
 		t.Fatalf("exit code = %d, want 137 after force removal", code)
 	}
-	out, err := exec.Command("docker", "inspect", "--format", "{{.State.Running}}", name).CombinedOutput()
-	if err != nil && !strings.Contains(string(out), "No such object") && !strings.Contains(string(out), "No such container") {
-		t.Fatalf("inspect container: %v: %s", err, out)
-	}
-	if err == nil && strings.TrimSpace(string(out)) != "false" {
-		t.Fatalf("container remains running after cancellation: %s", out)
+	if dockerContainerPresent(t, name, false) {
+		t.Fatal("container remains running after cancellation")
 	}
 }
 
@@ -81,13 +81,17 @@ func TestDockerCancellationWithSlowCleanup(t *testing.T) {
 	}
 	name := fmt.Sprintf("funnel-slow-stop-%d", time.Now().UnixNano())
 	t.Cleanup(func() {
-		out, err := exec.Command("docker", "rm", "-f", name).CombinedOutput()
-		if err != nil && !strings.Contains(string(out), "No such container") {
-			t.Errorf("cleaning up container: %v: %s", err, out)
+		if dockerContainerPresent(t, name, true) {
+			if out, err := exec.Command("docker", "rm", "-f", name).CombinedOutput(); err != nil {
+				t.Errorf("cleaning up container: %v: %s", err, out)
+			}
 		}
 	})
 	if out, err := exec.Command("docker", "run", "-d", "--name", name, "alpine:latest", "sleep", "60").CombinedOutput(); err != nil {
 		t.Fatalf("starting container: %v: %s", err, out)
+	}
+	if !dockerContainerPresent(t, name, true) {
+		t.Fatal("started container was not listed")
 	}
 	wrapper := filepath.Join(t.TempDir(), "docker-delayed")
 	if err := os.WriteFile(wrapper, []byte("#!/bin/sh\nsleep 6\nexec docker \"$@\"\n"), 0700); err != nil {
@@ -100,8 +104,20 @@ func TestDockerCancellationWithSlowCleanup(t *testing.T) {
 	if err := command.Stop(); err != nil {
 		t.Fatalf("stopping container with delayed Docker command: %v", err)
 	}
-	out, err := exec.Command("docker", "inspect", name).CombinedOutput()
-	if err == nil || (!strings.Contains(string(out), "No such object") && !strings.Contains(string(out), "No such container")) {
-		t.Fatalf("container was not removed: %v: %s", err, out)
+	if dockerContainerPresent(t, name, true) {
+		t.Fatal("container was not removed")
 	}
+}
+
+func dockerContainerPresent(t *testing.T, name string, all bool) bool {
+	t.Helper()
+	args := []string{"ps", "--filter", "name=^/" + name + "$", "--format", "{{.Names}}"}
+	if all {
+		args = append(args, "--all")
+	}
+	out, err := exec.Command("docker", args...).CombinedOutput()
+	if err != nil {
+		t.Fatalf("listing containers: %v: %s", err, out)
+	}
+	return strings.TrimSpace(string(out)) == name
 }
