@@ -323,7 +323,8 @@ func (kcmd KubernetesCommand) Run(ctx context.Context) error {
 }
 
 // streamPodLogs streams logs from a pod regardless of its state
-// This works for Running, Succeeded, and Failed pods (as long as they haven't been deleted)
+// This works for completed (Succeeded or Failed) pods (as long as they haven't been deleted)
+// but not for Running pods (would require `&corev1.PodLogOptions{Follow: true}`)
 func streamPodLogs(ctx context.Context, namespace string, podName string, stdout io.Writer, stderr io.Writer) error {
 	clientset, err := getKubernetesClientset()
 	if err != nil {
