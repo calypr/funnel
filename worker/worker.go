@@ -95,6 +95,15 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 		return
 	}
 
+	// Task assignment moves a task to INITIALIZING before the node receives it.
+	// Local task readers also use UNKNOWN or QUEUED before execution. Other states
+	// indicate that this assignment is stale or the task is already in progress.
+	switch task.GetState() {
+	case tes.State_UNKNOWN, tes.State_QUEUED, tes.State_INITIALIZING:
+	default:
+		return
+	}
+
 	if plan := r.Executor.StoragePlan; plan != nil && plan.TaskID != task.Id {
 		return fmt.Errorf("storage plan belongs to task %q, not %q", plan.TaskID, task.Id)
 	}
