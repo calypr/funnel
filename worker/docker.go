@@ -91,7 +91,9 @@ func (docker DockerCommand) Run(ctx context.Context) error {
 // Stop stops the container.
 func (docker DockerCommand) Stop() error {
 	_ = docker.Event.Info("Stopping container", "container", docker.Name)
-	err := docker.executeCommand(context.Background(), docker.StopCommand, false)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	err := docker.executeCommand(ctx, docker.StopCommand, false)
 	if err != nil {
 		_ = docker.Event.Error("failed to stop docker container", err)
 		return err

@@ -71,6 +71,11 @@ func (s *stepWorker) Run(ctx context.Context) error {
 			return ctx.Err()
 
 		case result := <-done:
+			if ctx.Err() != nil {
+				_ = s.Command.Stop()
+				_ = s.Event.EndTime(time.Now())
+				return ctx.Err()
+			}
 			_ = s.Event.EndTime(time.Now())
 			exitcode, err := getExitCode(result)
 			if err != nil {

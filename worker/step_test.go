@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"io"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -13,6 +14,63 @@ import (
 )
 
 type logCommand struct{ Command }
+
+type cancellationCommand struct {
+	Command
+	started chan struct{}
+	stopped atomic.Bool
+}
+
+func (c *cancellationCommand) Run(ctx context.Context) error {
+	close(c.started)
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+func (c *cancellationCommand) Stop() error {
+	c.stopped.Store(true)
+	return nil
+}
+
+func TestStepStopsCommandWhenCancellationAndCompletionRace(t *testing.T) {
+	for i := 0; i < 10000; i++ {
+		ctx, cancel := context.WithCancel(context.Background())
+		command := &cancellationCommand{started: make(chan struct{})}
+		step := &stepWorker{Conf: &config.Worker{}, Command: command, Event: events.NewExecutorWriter("task", 0, 0, events.Noop{})}
+		done := make(chan error, 1)
+		go func() { done <- step.Run(ctx) }()
+		<-command.started
+		cancel()
+		if err := <-done; err != context.Canceled {
+			t.Fatalf("iteration %d: got %v, want context canceled", i, err)
+		}
+		if !command.stopped.Load() {
+			t.Fatalf("iteration %d: canceled command was not stopped", i)
+		}
+	}
+}
+
+type completedCommand struct {
+	Command
+	stopped bool
+}
+
+func (c *completedCommand) Run(context.Context) error { return nil }
+func (c *completedCommand) Stop() error {
+	c.stopped = true
+	return nil
+}
+
+func TestStepDoesNotStopCompletedCommand(t *testing.T) {
+	command := &completedCommand{}
+	step := &stepWorker{Conf: &config.Worker{}, Command: command, Event: events.NewExecutorWriter("task", 0, 0, events.Noop{})}
+	if err := step.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if command.stopped {
+		t.Fatal("normally completed command was stopped")
+	}
+}
 
 func (c *logCommand) Run(context.Context) error {
 	if _, err := io.WriteString(c.Stdout, "stdout tail"); err != nil {
