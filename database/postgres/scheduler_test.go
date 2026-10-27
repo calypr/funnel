@@ -11,7 +11,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 )
 
-func TestPostgresRejectsStaleHeartbeatAndCorruptNodeRow(t *testing.T) {
+func TestPostgresStaleHeartbeatPreservesReservationAndRejectsCorruptNodeRow(t *testing.T) {
 	db, container := getTestPostgres(t)
 	t.Cleanup(func() {
 		db.Close()
@@ -69,8 +69,19 @@ func TestPostgresRejectsStaleHeartbeatAndCorruptNodeRow(t *testing.T) {
 	if assigned != 1 {
 		t.Fatalf("task assigned to %d nodes; want exactly one", assigned)
 	}
-	if _, err := db.PutNode(ctx, staleNodes[assignedNode]); err == nil {
-		t.Fatal("stale heartbeat overwrote the assignment")
+	before, err := db.GetNode(ctx, &scheduler.GetNodeRequest{Id: assignedNode})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.PutNode(ctx, staleNodes[assignedNode]); err != nil {
+		t.Fatalf("pure stale heartbeat: %v", err)
+	}
+	after, err := db.GetNode(ctx, &scheduler.GetNodeRequest{Id: assignedNode})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Version != before.Version || len(after.TaskIds) != 1 || after.TaskIds[0] != task.Id || after.Available.Cpus != before.Available.Cpus {
+		t.Fatalf("heartbeat changed allocation: before=%v after=%v", before, after)
 	}
 	storedTask, err := db.GetTask(ctx, &tes.GetTaskRequest{Id: task.Id})
 	if err != nil || storedTask.State != tes.State_INITIALIZING {

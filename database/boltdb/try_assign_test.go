@@ -12,6 +12,7 @@ import (
 	"github.com/calypr/funnel/events"
 	"github.com/calypr/funnel/tes"
 	bolt "go.etcd.io/bbolt"
+	"google.golang.org/protobuf/proto"
 )
 
 func openTryAssignDB(t *testing.T) *BoltDB {
@@ -150,47 +151,36 @@ func TestTryAssignRejectsStaleCandidateWhenNodeIsIneligible(t *testing.T) {
 	}
 }
 
-func TestTryAssignAdoptsLegacyNodeAssignment(t *testing.T) {
+func TestInitMigratesLegacyNodeAssignmentOnce(t *testing.T) {
 	db := openTryAssignDB(t)
-	task := createTryAssignTask(t, db, "task-1")
-	node := createTryAssignNode(t, db, "node-1")
+	ctx := context.Background()
+	task := createTryAssignTask(t, db, "legacy-task")
+	node := createTryAssignNode(t, db, "legacy-node")
 	node.TaskIds = []string{task.Id}
-	if _, err := db.PutNode(context.Background(), node); err != nil {
+	seedLegacyClaimMigration(t, db, node)
+	if err := db.Init(); err != nil {
 		t.Fatal(err)
 	}
-	if owner, err := db.TryAssign(context.Background(), task, nil); err != nil || owner != node.Id {
-		t.Fatalf("read legacy assignment = %q, %v; want %s", owner, err, node.Id)
-	}
-	var claim string
-	if err := db.db.View(func(tx *bolt.Tx) error {
-		claim = string(tx.Bucket(TaskClaims).Get([]byte(task.Id)))
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if claim != "" {
-		t.Fatalf("read-only lookup created claim %q", claim)
-	}
-
-	owner, err := db.TryAssign(context.Background(), task, node)
+	owner, err := db.TryAssign(ctx, task, nil)
 	if err != nil || owner != node.Id {
-		t.Fatalf("TryAssign legacy assignment = %q, %v; want %s", owner, err, node.Id)
+		t.Fatalf("migrated owner = %q %v", owner, err)
 	}
-	stored, err := db.GetNode(context.Background(), &scheduler.GetNodeRequest{Id: node.Id})
+	before, err := db.GetNode(ctx, &scheduler.GetNodeRequest{Id: node.Id})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(stored.TaskIds) != 1 {
-		t.Fatalf("legacy node task IDs = %v; want exactly one task", stored.TaskIds)
+	if len(before.TaskIds) != 1 || before.TaskIds[0] != task.Id || before.Available.Cpus != 3 {
+		t.Fatalf("migration lost/recharged allocation: %v", before)
 	}
-	if err := db.db.View(func(tx *bolt.Tx) error {
-		claim = string(tx.Bucket(TaskClaims).Get([]byte(task.Id)))
-		return nil
-	}); err != nil {
+	if err := db.Init(); err != nil {
 		t.Fatal(err)
 	}
-	if claim != node.Id {
-		t.Fatalf("adopted claim = %q; want %q", claim, node.Id)
+	after, err := db.GetNode(ctx, &scheduler.GetNodeRequest{Id: node.Id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !proto.Equal(before, after) {
+		t.Fatalf("repeated migration changed node: before=%v after=%v", before, after)
 	}
 }
 
@@ -220,24 +210,29 @@ func TestTryAssignNilCandidateOnlyLooksUpExistingOwner(t *testing.T) {
 	}
 }
 
-func TestTryAssignOrphanClaimReturnsMissingOwnerOrErrorsOnMissingReservation(t *testing.T) {
+func TestTryAssignRejectsInactiveClaimAndReturnsMissingActiveOwner(t *testing.T) {
 	db := openTryAssignDB(t)
-	task := createTryAssignTask(t, db, "task-1")
-	if err := db.db.Update(func(tx *bolt.Tx) error {
-		return tx.Bucket(TaskClaims).Put([]byte(task.Id), []byte("node-1"))
-	}); err != nil {
+	ctx := context.Background()
+	task := createTryAssignTask(t, db, "inactive-task")
+	if err := db.db.Update(func(tx *bolt.Tx) error { return tx.Bucket(TaskClaims).Put([]byte(task.Id), []byte("orphan")) }); err != nil {
 		t.Fatal(err)
 	}
-
-	owner, err := db.TryAssign(context.Background(), task, nil)
-	if err != nil || owner != "node-1" {
-		t.Fatalf("lookup missing owner = %q, %v; want node-1", owner, err)
+	if owner, err := db.TryAssign(ctx, task, nil); err == nil || owner != "" || !strings.Contains(err.Error(), "inactive allocation") {
+		t.Fatalf("inactive claim = %q %v", owner, err)
 	}
-
-	createTryAssignNode(t, db, "node-1")
-	owner, err = db.TryAssign(context.Background(), task, nil)
-	if err == nil || owner != "" || !strings.Contains(err.Error(), "without a node assignment") {
-		t.Fatalf("lookup orphan claim = %q, %v; want reservation error", owner, err)
+	active := createTryAssignTask(t, db, "active-task")
+	node := createTryAssignNode(t, db, "missing-owner")
+	if _, err := db.TryAssign(ctx, active, node); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.DeleteNode(ctx, &scheduler.Node{Id: node.Id}); err != nil {
+		t.Fatal(err)
+	}
+	if owner, err := db.TryAssign(ctx, active, nil); err != nil || owner != node.Id {
+		t.Fatalf("missing active owner = %q %v", owner, err)
+	}
+	if _, err := db.PutNode(ctx, &scheduler.Node{Id: node.Id, State: scheduler.NodeState_ALIVE}); err == nil {
+		t.Fatal("reused ID with active allocations")
 	}
 }
 

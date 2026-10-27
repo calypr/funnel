@@ -35,9 +35,10 @@ instances before starting the new version. Older schedulers do not consult
 claims and can assign the same task to another node. Check the server logs for
 conflicting existing assignments before restarting task submission.
 
-With BoltDB and PostgreSQL, the scheduler records a task claim and its node
-reservation together. MongoDB retains its existing scheduler behavior and does
-not provide the same concurrent-assignment guarantee.
+With BoltDB, PostgreSQL, and MongoDB, the scheduler records a task claim and its
+node reservation together. MongoDB requires a replica set or sharded cluster
+for these transactions. Standalone MongoDB deployments must be converted before
+upgrading; Funnel rejects them at startup. See the [MongoDB configuration](../../databases/mongodb/).
 
 The available scheduler and node config:
 ```yaml
@@ -86,3 +87,51 @@ Logger:
   # Write logs to this path. If empty, logs are written to stderr.
   OutputFile: ""
 ```
+
+### Assignment storage upgrade
+
+BoltDB, PostgreSQL, and MongoDB use persisted task claims as the authoritative assignment
+record. At first startup after this upgrade, Funnel imports active assignments
+from existing node records in a transaction. Conflicting owners or a claim with
+no reservation on an existing owner prevent startup and must be investigated.
+Claims whose owner node has disappeared are retained for scheduler recovery.
+The migration records completion and does not rescan all nodes during normal
+assignment.
+
+Stop all older Funnel server and scheduler instances before upgrading. Node
+heartbeat requests can update node status, but cannot create assignments or
+remove active claims by changing `task_ids`. Funnel derives that list from the
+claims. Terminal task states remove entries from the active node index while
+preserving the durable ownership record.
+
+### Heartbeats, scheduling snapshots, and reservations
+
+For all three scheduler backends, `last_ping` is stored separately from resource
+reservations. A routine heartbeat refreshes that timestamp without changing the
+node's configuration/reservation version. Assignment and completion do not
+refresh liveness. Resource, metadata, drain, and other configuration changes
+still check that version. Scheduler health transitions also check the observed
+heartbeat before marking a node dead or gone.
+
+Each scheduling pass reads one candidate snapshot. Successful assignments and failed reservation attempts refresh the
+affected node in that snapshot. The database validates current eligibility and
+capacity before committing an assignment; the snapshot is not authoritative.
+
+An allocation records the resource quantities reserved at assignment. Terminal
+state writes release that allocation and update the node's resource usage in
+the same database transaction. Repeated terminal writes do not release it twice.
+Available capacity is derived from total capacity minus active usage, including
+when a node's reported capacity shrinks below its existing reservations.
+
+A completed allocation cannot be reactivated by changing its task back to a
+nonterminal state. Submit a new task to retry it. Resource accounting follows
+TES terminal states, including cancellation; this does not establish that an
+unreachable runtime has physically stopped its process. The design does not add
+automatic reassignment or exactly-once process execution.
+
+The startup migration snapshots existing active allocations and reconstructs
+resource totals transactionally. PostgreSQL uses short per-task and per-node
+transactions during normal reservation/release. MongoDB uses snapshot transactions
+with majority writes and retries write conflicts against fresh task and node
+records. BoltDB retains its embedded single-writer transaction model. None of
+these backends requires an external event log.

@@ -4,12 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/calypr/funnel/compute/scheduler"
 	"github.com/calypr/funnel/tes"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -67,44 +65,9 @@ func (db *Postgres) ReadQueue(n int, after *tes.Task) []*tes.Task {
 
 // PutNode is an RPC endpoint that is used by nodes to send heartbeats and status updates.
 func (db *Postgres) PutNode(ctx context.Context, node *scheduler.Node) (*scheduler.PutNodeResponse, error) {
-	ctx, cancel := db.context()
+	ctx, cancel := context.WithTimeout(ctx, db.conf.GetTimeout().GetDuration().AsDuration())
 	defer cancel()
-
-	var data []byte
-	var version int64
-	err := db.client.QueryRow(ctx, "SELECT data, version FROM nodes WHERE id = $1", node.Id).Scan(&data, &version)
-	isNew := err == pgx.ErrNoRows
-	if err != nil && !isNew {
-		return nil, err
-	}
-	existing := &scheduler.Node{}
-	if !isNew {
-		if err := json.Unmarshal(data, existing); err != nil {
-			return nil, fmt.Errorf("unmarshaling node %s: %w", node.Id, err)
-		}
-		if node.Version != version {
-			return nil, fmt.Errorf("node %s version outdated", node.Id)
-		}
-	}
-	if err := scheduler.UpdateNode(ctx, db, node, existing); err != nil {
-		return nil, err
-	}
-	node.Version = version + 1
-	data, err = json.Marshal(node)
-	if err != nil {
-		return nil, fmt.Errorf("marshaling node %s: %w", node.Id, err)
-	}
-	heartbeat := time.Unix(0, node.LastPing)
-	if isNew {
-		_, err = db.client.Exec(ctx, `INSERT INTO nodes (id, state, version, last_heartbeat, data) VALUES ($1, $2, $3, $4, $5::jsonb)`, node.Id, node.State.String(), node.Version, heartbeat, data)
-	} else {
-		var tag pgconn.CommandTag
-		tag, err = db.client.Exec(ctx, `UPDATE nodes SET state = $1, version = $2, last_heartbeat = $3, data = $4::jsonb WHERE id = $5 AND version = $6`, node.State.String(), node.Version, heartbeat, data, node.Id, version)
-		if err == nil && tag.RowsAffected() == 0 {
-			return nil, fmt.Errorf("node %s version outdated", node.Id)
-		}
-	}
-	if err != nil {
+	if err := db.putReportedNode(ctx, node); err != nil {
 		return nil, err
 	}
 	return &scheduler.PutNodeResponse{}, nil
@@ -115,10 +78,11 @@ func (db *Postgres) GetNode(ctx context.Context, req *scheduler.GetNodeRequest) 
 	ctx, cancel := db.context()
 	defer cancel()
 
-	selectSQL := `SELECT data FROM nodes WHERE id = $1`
+	selectSQL := `SELECT n.data,COALESCE(h.last_ping,0) FROM nodes n LEFT JOIN node_heartbeats h ON h.id=n.id WHERE n.id=$1`
+	var stamp int64
 	var nodeJSON []byte
 
-	err := db.client.QueryRow(ctx, selectSQL, req.Id).Scan(&nodeJSON)
+	err := db.client.QueryRow(ctx, selectSQL, req.Id).Scan(&nodeJSON, &stamp)
 	if err == pgx.ErrNoRows {
 		return nil, status.Errorf(codes.NotFound, "nodeID: %s not found", req.Id)
 	}
@@ -131,6 +95,7 @@ func (db *Postgres) GetNode(ctx context.Context, req *scheduler.GetNodeRequest) 
 		return nil, fmt.Errorf("failed to unmarshal node JSON: %w", err)
 	}
 
+	node.LastPing = stamp
 	return &node, nil
 }
 
@@ -139,16 +104,43 @@ func (db *Postgres) DeleteNode(ctx context.Context, req *scheduler.Node) (*sched
 	ctx, cancel := db.context()
 	defer cancel()
 
-	deleteSQL := `DELETE FROM nodes WHERE id = $1`
-	tag, err := db.client.Exec(ctx, deleteSQL, req.Id)
+	tx, err := db.client.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
-
-	if tag.RowsAffected() == 0 {
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	var stamp int64
+	err = tx.QueryRow(ctx, `SELECT last_ping FROM node_heartbeats WHERE id=$1 FOR UPDATE`, req.Id).Scan(&stamp)
+	if err != nil && err != pgx.ErrNoRows {
+		return nil, err
+	}
+	var version int64
+	var data []byte
+	err = tx.QueryRow(ctx, `SELECT version,data FROM nodes WHERE id=$1 FOR UPDATE`, req.Id).Scan(&version, &data)
+	if err == pgx.ErrNoRows {
 		return nil, status.Errorf(codes.NotFound, "nodeID: %s not found", req.Id)
 	}
+	if err != nil {
+		return nil, err
+	}
+	var current scheduler.Node
+	if err := json.Unmarshal(data, &current); err != nil {
+		return nil, err
+	}
+	finishedCleanup := req.State == scheduler.NodeState_GONE && current.State == scheduler.NodeState_GONE && len(current.TaskIds) == 0
+	if req.Version != 0 && ((version != req.Version && !finishedCleanup) || stamp != req.LastPing) {
+		return nil, scheduler.ErrNodeChanged
+	}
 
+	if _, err := tx.Exec(ctx, `DELETE FROM nodes WHERE id=$1`, req.Id); err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM node_heartbeats WHERE id=$1`, req.Id); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
 	return &scheduler.DeleteNodeResponse{}, nil
 }
 
@@ -163,9 +155,9 @@ func (db *Postgres) ListNodes(ctx context.Context, req *scheduler.ListNodesReque
 
 	var rows pgx.Rows
 	if page.AfterID == "" {
-		rows, err = db.client.Query(ctx, `SELECT data FROM nodes ORDER BY id ASC LIMIT $1`, page.Limit+1)
+		rows, err = db.client.Query(ctx, `SELECT n.data,COALESCE(h.last_ping,0) FROM nodes n LEFT JOIN node_heartbeats h ON h.id=n.id ORDER BY n.id ASC LIMIT $1`, page.Limit+1)
 	} else {
-		rows, err = db.client.Query(ctx, `SELECT data FROM nodes WHERE id > $1 ORDER BY id ASC LIMIT $2`, page.AfterID, page.Limit+1)
+		rows, err = db.client.Query(ctx, `SELECT n.data,COALESCE(h.last_ping,0) FROM nodes n LEFT JOIN node_heartbeats h ON h.id=n.id WHERE n.id > $1 ORDER BY n.id ASC LIMIT $2`, page.AfterID, page.Limit+1)
 	}
 	if err != nil {
 		return nil, err
@@ -175,7 +167,8 @@ func (db *Postgres) ListNodes(ctx context.Context, req *scheduler.ListNodesReque
 	var nodes []*scheduler.Node
 	for rows.Next() {
 		var nodeJSON []byte
-		if err := rows.Scan(&nodeJSON); err != nil {
+		var stamp int64
+		if err := rows.Scan(&nodeJSON, &stamp); err != nil {
 			return nil, fmt.Errorf("scanning node row: %w", err)
 		}
 
@@ -183,6 +176,7 @@ func (db *Postgres) ListNodes(ctx context.Context, req *scheduler.ListNodesReque
 		if err := json.Unmarshal(nodeJSON, &node); err != nil {
 			return nil, fmt.Errorf("unmarshaling node JSON: %w", err)
 		}
+		node.LastPing = stamp
 		nodes = append(nodes, &node)
 	}
 

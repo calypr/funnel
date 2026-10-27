@@ -1,9 +1,8 @@
 package mongodb
 
 import (
-	"fmt"
-
 	"context"
+	"fmt"
 
 	"github.com/calypr/funnel/compute/scheduler"
 	"github.com/calypr/funnel/tes"
@@ -19,7 +18,6 @@ func (db *MongoDB) ReadQueue(n int, after *tes.Task) []*tes.Task {
 	ctx, cancel := db.context()
 	defer cancel()
 
-	fmt.Println("Reading queue!")
 	opts := options.Find().SetSort(bson.D{{Key: "creationtime", Value: 1}, {Key: "id", Value: 1}}).SetLimit(int64(n))
 	query := bson.M{"state": tes.State_QUEUED}
 	if after != nil {
@@ -31,9 +29,7 @@ func (db *MongoDB) ReadQueue(n int, after *tes.Task) []*tes.Task {
 		return nil
 	}
 
-	ctx, cancel = db.context()
-	defer cancel()
-
+	defer cursor.Close(ctx)
 	var tasks []*tes.Task
 	err = cursor.All(ctx, &tasks)
 	if err != nil {
@@ -48,42 +44,7 @@ func (db *MongoDB) ReadQueue(n int, after *tes.Task) []*tes.Task {
 // and status updates, such as completed tasks. The server responds with updated
 // information for the node, such as canceled tasks.
 func (db *MongoDB) PutNode(ctx context.Context, node *scheduler.Node) (*scheduler.PutNodeResponse, error) {
-	nodes := db.nodes()
-
-	q := bson.M{"id": node.Id}
-
-	if node.GetVersion() != 0 {
-		q["version"] = node.GetVersion()
-	}
-
-	mctx, cancel := db.wrap(ctx)
-	defer cancel()
-
-	var existing scheduler.Node
-	err := nodes.FindOne(mctx, bson.M{"id": node.Id}).Decode(&existing)
-	if err != nil {
-		return nil, err
-	}
-
-	mctx, cancel = db.wrap(ctx)
-	defer cancel()
-
-	// Warm the connection pool; the result is intentionally unused.
-	_, _ = db.GetTask(ctx, &tes.GetTaskRequest{Id: "foo"})
-	err = scheduler.UpdateNode(mctx, db, node, &existing)
-	if err != nil {
-		return nil, err
-	}
-
-	node.Version = node.GetVersion() + 1
-
-	mctx, cancel = db.wrap(ctx)
-	defer cancel()
-
-	opts := options.UpdateOne().SetUpsert(true)
-	_, err = nodes.UpdateOne(mctx, q, node, opts)
-
-	return &scheduler.PutNodeResponse{}, err
+	return &scheduler.PutNodeResponse{}, db.putReportedNode(ctx, node)
 }
 
 // GetNode gets a node
@@ -92,26 +53,23 @@ func (db *MongoDB) GetNode(ctx context.Context, req *scheduler.GetNodeRequest) (
 	defer cancel()
 
 	var node scheduler.Node
-	err := db.nodes().FindOne(mctx, bson.M{"id": req.Id}).Decode(&node)
+	err := db.nodes().FindOne(mctx, bson.M{"id": req.Id}, options.FindOne().SetCollation(&options.Collation{Locale: "simple"})).Decode(&node)
 	if err == mongo.ErrNoDocuments {
 		return nil, status.Errorf(codes.NotFound, "%v: nodeID: %s", err, req.Id)
 	}
 
+	if err != nil {
+		return nil, err
+	}
+	if err := db.overlayHeartbeats(mctx, []*scheduler.Node{&node}); err != nil {
+		return nil, err
+	}
 	return &node, nil
 }
 
 // DeleteNode deletes a node
 func (db *MongoDB) DeleteNode(ctx context.Context, req *scheduler.Node) (*scheduler.DeleteNodeResponse, error) {
-	mctx, cancel := db.wrap(ctx)
-	defer cancel()
-
-	fmt.Println("DeleteNode", req.Id)
-	_, err := db.nodes().DeleteOne(mctx, bson.M{"id": req.Id})
-	fmt.Println("DeleteNode", req.Id, err)
-	if err == mongo.ErrNoDocuments {
-		return nil, status.Errorf(codes.NotFound, "%v: nodeID: %s", err, req.Id)
-	}
-	return nil, err
+	return &scheduler.DeleteNodeResponse{}, db.deleteNode(ctx, req)
 }
 
 // ListNodes is an API endpoint that returns a list of nodes.
@@ -140,6 +98,9 @@ func (db *MongoDB) ListNodes(ctx context.Context, req *scheduler.ListNodesReques
 
 	err = cursor.All(mctx, &nodes)
 	if err != nil {
+		return nil, err
+	}
+	if err := db.overlayHeartbeats(mctx, nodes); err != nil {
 		return nil, err
 	}
 	return scheduler.NewNodePageResponse(nodes, page.Limit), nil

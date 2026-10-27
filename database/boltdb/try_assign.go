@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"time"
 
 	"github.com/calypr/funnel/compute/scheduler"
 	"github.com/calypr/funnel/tes"
@@ -21,6 +20,22 @@ func (taskBolt *BoltDB) TryAssign(ctx context.Context, task *tes.Task, candidate
 	}
 	if err := ctx.Err(); err != nil {
 		return "", err
+	}
+
+	if candidate == nil {
+		var owner string
+		err := taskBolt.db.View(func(tx *bolt.Tx) error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if getTaskState(tx, task.Id) != tes.State_QUEUED {
+				return nil
+			}
+			var err error
+			owner, err = activeTaskClaim(tx, task.Id)
+			return err
+		})
+		return owner, err
 	}
 
 	var owner string
@@ -51,45 +66,12 @@ func (taskBolt *BoltDB) TryAssign(ctx context.Context, task *tes.Task, candidate
 		}
 		queuedTask.State = tes.State_QUEUED
 
-		assignedOwner, err := findTaskAssignment(nodes, task.Id)
-		if err != nil {
+		if claim := claims.Get(key); claim != nil {
+			var err error
+			owner, err = activeTaskClaim(tx, task.Id)
 			return err
 		}
 
-		if claim := claims.Get(key); claim != nil {
-			owner = string(claim)
-			if owner == "" {
-				return fmt.Errorf("task %q has an empty persisted node claim", task.Id)
-			}
-			if assignedOwner == owner {
-				return nil
-			}
-			if assignedOwner != "" {
-				return fmt.Errorf("task %q claim names node %q but node %q already contains it", task.Id, owner, assignedOwner)
-			}
-			if nodes.Get([]byte(owner)) == nil {
-				// Return the durable owner so the scheduler can report a missing node.
-				return nil
-			}
-			return fmt.Errorf("task %q has persisted claim for node %q without a node assignment", task.Id, owner)
-		}
-
-		if assignedOwner != "" {
-			// Adopt an assignment written by the pre-claim scheduler. It already
-			// consumes node capacity, so only the missing claim is persisted.
-			owner = assignedOwner
-			if candidate == nil {
-				return nil
-			}
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			return claims.Put(key, []byte(owner))
-		}
-
-		if candidate == nil {
-			return nil
-		}
 		if candidate.GetId() == "" {
 			return fmt.Errorf("candidate node ID is required")
 		}
@@ -102,9 +84,31 @@ func (taskBolt *BoltDB) TryAssign(ctx context.Context, task *tes.Task, candidate
 		if err := proto.Unmarshal(data, current); err != nil {
 			return fmt.Errorf("unmarshal candidate node %q: %w", candidate.Id, err)
 		}
-		if err := appendTaskToNode(current, queuedTask); err != nil {
-			return fmt.Errorf("assign task %q to node %q: %w", task.Id, candidate.Id, err)
+		if slices.Contains(current.TaskIds, task.Id) {
+			return fmt.Errorf("node reservation has no task claim")
 		}
+		used, err := readNodeUsage(tx, current.Id)
+		if err != nil {
+			return err
+		}
+		current.Available = used.Available(current.Resources)
+		if !scheduler.Match(current, queuedTask, scheduler.DefaultPredicates) {
+			return fmt.Errorf("task no longer fits node %q", current.Id)
+		}
+		reserved, err := scheduler.TaskResourceUsage(queuedTask)
+		if err != nil {
+			return err
+		}
+		used, err = used.Add(reserved)
+		if err != nil {
+			return err
+		}
+		if err := saveNodeUsage(tx, current.Id, used); err != nil {
+			return err
+		}
+		current.TaskIds = append(current.TaskIds, task.Id)
+		current.Available = used.Available(current.Resources)
+		current.Version++
 
 		updated, err := proto.Marshal(current)
 		if err != nil {
@@ -116,7 +120,7 @@ func (taskBolt *BoltDB) TryAssign(ctx context.Context, task *tes.Task, candidate
 		if err := nodes.Put([]byte(candidate.Id), updated); err != nil {
 			return err
 		}
-		if err := claims.Put(key, []byte(candidate.Id)); err != nil {
+		if err := putTaskClaim(tx, task.Id, candidate.Id); err != nil {
 			return err
 		}
 		owner = candidate.Id
@@ -128,47 +132,17 @@ func (taskBolt *BoltDB) TryAssign(ctx context.Context, task *tes.Task, candidate
 	return owner, nil
 }
 
-// findTaskAssignment returns the unique node containing taskID, if any.
-func findTaskAssignment(nodes *bolt.Bucket, taskID string) (string, error) {
-	var owner string
-	count := 0
-	err := nodes.ForEach(func(k, v []byte) error {
-		if v == nil {
-			return nil
-		}
-		node := &scheduler.Node{}
-		if err := proto.Unmarshal(v, node); err != nil {
-			return fmt.Errorf("unmarshal node %q while checking task assignment: %w", string(k), err)
-		}
-		if slices.Contains(node.TaskIds, taskID) {
-			count++
-			owner = node.Id
-		}
-		return nil
-	})
-	if err != nil {
-		return "", err
+func activeTaskClaim(tx *bolt.Tx, id string) (string, error) {
+	owner := tx.Bucket(TaskClaims).Get([]byte(id))
+	if owner == nil {
+		return "", nil
 	}
-	if count > 1 {
-		return "", fmt.Errorf("task %q is assigned to multiple nodes", taskID)
+	if len(owner) == 0 {
+		return "", fmt.Errorf("task %q has an empty claim", id)
 	}
-	return owner, nil
-}
-
-func appendTaskToNode(node *scheduler.Node, task *tes.Task) error {
-	for _, id := range node.TaskIds {
-		if id == task.Id {
-			return nil
-		}
+	allocations := tx.Bucket(NodeClaims).Bucket(owner)
+	if allocations == nil || allocations.Get([]byte(id)) == nil {
+		return "", fmt.Errorf("task %q has an inactive allocation", id)
 	}
-	if !scheduler.Match(node, task, scheduler.DefaultPredicates) {
-		return fmt.Errorf("task does not fit node resources or predicates")
-	}
-	node.TaskIds = append(node.TaskIds, task.Id)
-	node.Available = scheduler.SubtractResources(task, node.Available)
-	// Updating a node through PutNode refreshes LastPing and increments Version.
-	// Keep the same observable node bookkeeping for the atomic assignment path.
-	node.LastPing = time.Now().UnixNano()
-	node.Version++
-	return nil
+	return string(owner), nil
 }

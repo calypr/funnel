@@ -38,6 +38,9 @@ func (taskBolt *BoltDB) WriteEvent(ctx context.Context, req *events.Event) error
 		}
 		// Combine task storage and queueing into single transaction to avoid BoltDB write lock contention
 		err = taskBolt.db.Update(func(tx *bolt.Tx) error {
+			if tx.Bucket(TaskClaims).Get(idBytes) != nil {
+				return fmt.Errorf("cannot recreate assigned task %q", task.Id)
+			}
 			if err := tx.Bucket(TaskBucket).Put(idBytes, taskString); err != nil {
 				return err
 			}
@@ -233,6 +236,12 @@ func transitionTaskState(tx *bolt.Tx, id string, target tes.State) error {
 
 	default:
 		return fmt.Errorf("Unknown target state: %s", target.String())
+	}
+
+	if tes.TerminalState(target) {
+		if err := releaseTaskReservation(tx, id); err != nil {
+			return err
+		}
 	}
 
 	return tx.Bucket(TaskState).Put(idBytes, []byte(target.String()))
