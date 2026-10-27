@@ -442,9 +442,11 @@ LocalStorage:
 # HTTPStorage downloads inputs with GET and uploads outputs with PUT, for URLs
 # that need no credentials, such as public or presigned URLs.
 HTTPStorage:
-  # Timeout for http(s) requests, including the transfer itself.
+  # Wait up to one minute for response headers after sending the request.
+  # For uploads, this wait starts after the file has been sent.
+  # Optional total request deadline, including the entire file transfer.
   Timeout:
-    duration: 30s
+    disabled: true
 
 AmazonS3:
   Disabled: false

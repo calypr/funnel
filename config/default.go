@@ -159,9 +159,7 @@ func DefaultConfig() *Config {
 		},
 		HTTPStorage: &HTTPStorage{
 			Timeout: &TimeoutConfig{
-				TimeoutOption: &TimeoutConfig_Duration{
-					Duration: durationpb.New(time.Second * 60),
-				},
+				TimeoutOption: &TimeoutConfig_Disabled{Disabled: true},
 			},
 		},
 		FTPStorage: &FTPStorage{

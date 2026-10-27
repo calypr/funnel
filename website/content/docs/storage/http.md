@@ -44,9 +44,19 @@ worker config:
 ```yaml
 HTTPStorage:
   Disabled: false
-  # Timeout for http(s) requests, including the transfer itself.
-  Timeout: 30s
+  # Optional total request deadline, including the entire file transfer.
+  Timeout:
+    disabled: true
 ```
+
+By default, HTTP transfers have no overall deadline. Go's default transport
+limits connection and TLS handshake waits. Funnel waits up to one minute for
+response headers after sending the request. For downloads, this starts after
+sending the GET request. For uploads, it starts after sending the file. Task
+cancellation stops transfers. Set `Timeout.duration` to a duration such as `30s`
+to limit the whole request. There is no separate transfer inactivity timeout, so
+a response body that stops sending data can wait until canceled or until the
+configured total deadline expires.
 
 ### Example task
 ```json
