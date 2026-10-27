@@ -75,3 +75,32 @@ test('signs in from the dashboard and loads tasks', async ({ browser }) => {
   await expect(anonymousPage.getByText('Sign in required.')).toHaveCount(0);
   await anonymous.close();
 });
+
+test('summarizes resources for active nodes', async ({ browser }) => {
+  const context = await browser.newContext({ httpCredentials: { username: 'test-user', password: 'test-password' } });
+  const page = await context.newPage();
+  let nodes = [
+    { id: 'active-1', state: 'ALIVE', resources: { cpus: 4, ramGb: 8, diskGb: 20 }, available: { cpus: 2, ramGb: 3, diskGb: 10 } },
+    { id: 'active-2', state: 'ALIVE', resources: { cpus: 2, ramGb: 4, diskGb: 10 }, available: { cpus: 1, ramGb: 2, diskGb: 5 } },
+    { id: 'dead', state: 'DEAD', resources: { cpus: 100, ramGb: 100, diskGb: 100 }, available: { cpus: 100, ramGb: 100, diskGb: 100 } },
+    { id: 'draining', state: 'DRAIN', resources: { cpus: 100 }, available: { cpus: 100 } },
+  ];
+  await page.route('**/v1/nodes', route => route.fulfill({ json: { nodes } }));
+  await page.goto(`${address}/nodes`);
+  const summary = page.getByRole('table', { name: 'Resources on active nodes' });
+  await expect(summary.getByRole('row', { name: 'CPU 3 cores 6 cores' })).toBeVisible();
+  await expect(summary.getByRole('row', { name: 'RAM 5 GB 12 GB' })).toBeVisible();
+  await expect(summary.getByRole('row', { name: 'Disk 15 GB 30 GB' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'dead', exact: true })).toBeVisible();
+
+  nodes = [{ id: 'incomplete', state: 'ALIVE', resources: { cpus: 2 }, available: null }];
+  await page.reload();
+  await expect(summary.getByRole('row', { name: 'CPU Unavailable 2 cores' })).toBeVisible();
+  await expect(summary.getByRole('row', { name: 'RAM Unavailable 0 GB' })).toBeVisible();
+
+  nodes = [];
+  await page.reload();
+  await expect(page.getByText('No active nodes')).toBeVisible();
+  await expect(summary).toHaveCount(0);
+  await context.close();
+});

@@ -56,7 +56,7 @@ jobs:
       - name: Build Funnel for browser integration test
         run: go build -v -o "$RUNNER_TEMP/funnel-browser-test" .
 
-      - name: Test dashboard authentication with Funnel
+      - name: Test dashboard browser workflows with Funnel
         working-directory: webdash
         env:
           FUNNEL_TEST_BINARY: ${{ runner.temp }}/funnel-browser-test
