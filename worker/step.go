@@ -19,6 +19,9 @@ type stepWorker struct {
 }
 
 func (s *stepWorker) Run(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	var wg sync.WaitGroup
 	defer wg.Wait()
 	_ = s.Event.StartTime(time.Now())
@@ -57,22 +60,46 @@ func (s *stepWorker) Run(ctx context.Context) error {
 	s.Command.SetStdout(stdout)
 	s.Command.SetStderr(stderr)
 
+	commandCtx := subctx
+	var cancelCommand context.CancelFunc
+	if _, ok := s.Command.(*DockerCommand); ok {
+		commandCtx, cancelCommand = context.WithCancel(context.WithoutCancel(ctx))
+		defer cancelCommand()
+	}
 	go func() {
-		done <- s.Command.Run(subctx)
+		done <- s.Command.Run(commandCtx)
 	}()
 
 	for {
 		select {
 		case <-ctx.Done():
-			// Likely the task was canceled.
-			_ = s.Command.Stop()
-			<-done
+			stopErr := s.Command.Stop()
+			var result error
+			if cancelCommand != nil && stopErr == nil {
+				select {
+				case result = <-done:
+				case <-time.After(5 * time.Second):
+					cancelCommand()
+					result = <-done
+				}
+			} else {
+				if cancelCommand != nil {
+					cancelCommand()
+				}
+				result = <-done
+			}
+			if code, err := getExitCode(result); err == nil && code >= 0 {
+				_ = s.Event.ExitCode(code)
+			}
 			_ = s.Event.EndTime(time.Now())
 			return ctx.Err()
 
 		case result := <-done:
 			if ctx.Err() != nil {
 				_ = s.Command.Stop()
+				if code, err := getExitCode(result); err == nil && code >= 0 {
+					_ = s.Event.ExitCode(code)
+				}
 				_ = s.Event.EndTime(time.Now())
 				return ctx.Err()
 			}

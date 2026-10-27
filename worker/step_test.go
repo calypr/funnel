@@ -10,6 +10,7 @@ import (
 
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/tes"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
@@ -32,6 +33,36 @@ func (c *cancellationCommand) Stop() error {
 	return nil
 }
 
+type canceledWithExitCode struct {
+	Command
+	started chan struct{}
+}
+
+func (c *canceledWithExitCode) Run(ctx context.Context) error {
+	close(c.started)
+	<-ctx.Done()
+	return &K8sExecutorErr{ExitCode: 42}
+}
+
+func (c *canceledWithExitCode) Stop() error { return nil }
+
+func TestStepRecordsReportedExitCodeDuringCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	command := &canceledWithExitCode{started: make(chan struct{})}
+	builder := &events.TaskBuilder{Task: &tes.Task{}}
+	step := &stepWorker{Conf: &config.Worker{}, Command: command, Event: events.NewExecutorWriter("task", 0, 0, builder)}
+	done := make(chan error, 1)
+	go func() { done <- step.Run(ctx) }()
+	<-command.started
+	cancel()
+	if err := <-done; err != context.Canceled {
+		t.Fatalf("got %v, want context canceled", err)
+	}
+	if got := builder.Task.Logs[0].Logs[0].GetExitCode(); got != 42 {
+		t.Fatalf("exit code = %d, want 42", got)
+	}
+}
+
 func TestStepStopsCommandWhenCancellationAndCompletionRace(t *testing.T) {
 	for i := 0; i < 10000; i++ {
 		ctx, cancel := context.WithCancel(context.Background())
@@ -47,6 +78,21 @@ func TestStepStopsCommandWhenCancellationAndCompletionRace(t *testing.T) {
 		if !command.stopped.Load() {
 			t.Fatalf("iteration %d: canceled command was not stopped", i)
 		}
+	}
+}
+
+func TestStepDoesNotStartWhenAlreadyCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	command := &cancellationCommand{started: make(chan struct{})}
+	step := &stepWorker{Conf: &config.Worker{}, Command: command, Event: events.NewExecutorWriter("task", 0, 0, events.Noop{})}
+	if err := step.Run(ctx); err != context.Canceled {
+		t.Fatalf("got %v, want context canceled", err)
+	}
+	select {
+	case <-command.started:
+		t.Fatal("command started after cancellation")
+	default:
 	}
 }
 
