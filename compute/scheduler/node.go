@@ -106,8 +106,8 @@ func (n *NodeProcess) Run(ctx context.Context) error {
 			// close grpc client connection
 			n.client.Close()
 
-			// The workers get 10 seconds to finish up.
-			if werr := n.workers.Wait(time.Second * 10); werr != nil {
+			// Give workers enough time to finish container cleanup.
+			if werr := n.workers.Wait(time.Second * 30); werr != nil {
 				n.log.Error("workers did not finish before shutdown deadline", "error", werr)
 			}
 			return nil
