@@ -13,6 +13,7 @@ import (
 
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/tes"
 )
 
 func TestDockerCancellationStopsContainer(t *testing.T) {
@@ -28,7 +29,8 @@ func TestDockerCancellationStopsContainer(t *testing.T) {
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	event := events.NewExecutorWriter("test", 0, 0, events.Noop{})
+	builder := &events.TaskBuilder{Task: &tes.Task{}}
+	event := events.NewExecutorWriter("test", 0, 0, builder)
 	conf := config.DefaultConfig().Worker
 	command := &DockerCommand{Name: name, DriverCommand: "docker", PullCommand: "image inspect {{.Image}}", RunCommand: conf.Container.RunCommand, StopCommand: conf.Container.StopCommand, RemoveContainer: true, Event: event, Command: Command{Image: "alpine:latest", ShellCommand: []string{"sleep", "60"}}}
 	step := &stepWorker{Conf: conf, Command: command, Event: event}
@@ -60,6 +62,9 @@ func TestDockerCancellationStopsContainer(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("worker did not stop")
+	}
+	if code := builder.Task.GetLogs()[0].GetLogs()[0].GetExitCode(); code != 137 {
+		t.Fatalf("exit code = %d, want 137 after force removal", code)
 	}
 	out, err := exec.Command("docker", "inspect", "--format", "{{.State.Running}}", name).CombinedOutput()
 	if err != nil && !strings.Contains(string(out), "No such object") && !strings.Contains(string(out), "No such container") {

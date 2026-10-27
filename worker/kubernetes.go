@@ -303,6 +303,9 @@ func (kcmd KubernetesCommand) Run(ctx context.Context) error {
 	logger.Debug("Streaming pod logs", "podName", pod.Name)
 	err = streamPodLogs(ctx, clientset, kcmd.JobsNamespace, pod.Name, executorContainerName, kcmd.Stdout, kcmd.Stderr)
 	if err != nil {
+		if status := findContainerStatus(pod, executorContainerName); status != nil && status.State.Terminated != nil && kcmd.Event != nil {
+			_ = kcmd.Event.ExitCode(int(status.State.Terminated.ExitCode))
+		}
 		return &K8sSystemErr{
 			Reason:  "LogStreamingFailed",
 			Message: fmt.Sprintf("Failed to stream logs from pod %s", pod.Name),

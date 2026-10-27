@@ -10,10 +10,12 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/calypr/funnel/compute/kubernetes/storageplan"
+	"github.com/calypr/funnel/events"
 	"github.com/calypr/funnel/tes"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -223,6 +225,7 @@ spec:
 func TestRunUsesNamedExecutorForLogsAndExitClassification(t *testing.T) {
 	var mu sync.Mutex
 	var logContainer string
+	var failLogs atomic.Bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Logf("Kubernetes request %s %s", r.Method, r.URL.String())
 		switch {
@@ -251,6 +254,10 @@ func TestRunUsesNamedExecutorForLogsAndExitClassification(t *testing.T) {
 				Object json.RawMessage `json:"object"`
 			}{Type: watch.Modified, Object: pod})
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/log"):
+			if failLogs.Load() {
+				http.Error(w, "log stream unavailable", http.StatusInternalServerError)
+				return
+			}
 			mu.Lock()
 			logContainer = r.URL.Query().Get("container")
 			mu.Unlock()
@@ -315,8 +322,20 @@ spec:
 	}
 
 	mu.Lock()
-	defer mu.Unlock()
 	if logContainer != "task-runner" {
 		t.Fatalf("log container query = %q, want task-runner", logContainer)
+	}
+	mu.Unlock()
+
+	failLogs.Store(true)
+	builder := &events.TaskBuilder{Task: &tes.Task{}}
+	cmd.Event = events.NewExecutorWriter("task-123", 0, 0, builder)
+	err = cmd.Run(ctx)
+	var systemErr *K8sSystemErr
+	if !errors.As(err, &systemErr) || systemErr.Reason != "LogStreamingFailed" {
+		t.Fatalf("Run error = %v, want LogStreamingFailed", err)
+	}
+	if got := builder.Task.Logs[0].Logs[0].GetExitCode(); got != 23 {
+		t.Fatalf("exit code after log stream failure = %d, want 23", got)
 	}
 }
