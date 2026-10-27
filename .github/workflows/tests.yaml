@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   unitTest:
-    name: Go tests (race detector and coverage)
+    name: Go tests (race, coverage, BoltDB and PostgreSQL)
     runs-on: ubuntu-latest
     permissions:
       contents: read
