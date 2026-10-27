@@ -60,6 +60,7 @@ func NewServer(ctx context.Context, conf *config.Config, log *logger.Logger) (*S
 	var database Database
 	var reader tes.ReadOnlyServer
 	var nodes scheduler.SchedulerServiceServer
+	var atomicAssigner scheduler.AtomicTaskAssigner
 	var sched *scheduler.Scheduler
 	var queue scheduler.TaskQueue
 
@@ -141,6 +142,9 @@ func NewServer(ctx context.Context, conf *config.Config, log *logger.Logger) (*S
 	default:
 		return nil, fmt.Errorf("unknown database: '%s'", conf.Database)
 	}
+	if assigner, ok := database.(scheduler.AtomicTaskAssigner); ok {
+		atomicAssigner = assigner
+	}
 
 	// Initialize the Database
 	// Note: This is where Funnel waits until the given database is ready to accept requests.
@@ -212,11 +216,12 @@ func NewServer(ctx context.Context, conf *config.Config, log *logger.Logger) (*S
 		}
 
 		sched = &scheduler.Scheduler{
-			Conf:  conf.Scheduler,
-			Log:   log.Sub("scheduler"),
-			Nodes: nodes,
-			Queue: queue,
-			Event: &events.ErrLogger{Writer: writer, Log: log.Sub("scheduler")},
+			Conf:           conf.Scheduler,
+			Log:            log.Sub("scheduler"),
+			Nodes:          nodes,
+			Queue:          queue,
+			AtomicAssigner: atomicAssigner,
+			Event:          &events.ErrLogger{Writer: writer, Log: log.Sub("scheduler")},
 		}
 		compute = events.Backend{}
 

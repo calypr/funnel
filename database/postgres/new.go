@@ -164,6 +164,12 @@ func (db *Postgres) createTables(ctx context.Context) error {
 		return fmt.Errorf("failed to create 'tasks' table: %w", err)
 	}
 
+	// Keep the scheduler's claim separate from the public TES task document.
+	// ALTER TABLE makes this migration safe for existing installations.
+	if _, err := db.client.Exec(ctx, `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS claim_owner VARCHAR(255)`); err != nil {
+		return fmt.Errorf("failed to add 'tasks.claim_owner' column: %w", err)
+	}
+
 	// Nodes
 	nodes := `
     CREATE TABLE IF NOT EXISTS nodes (

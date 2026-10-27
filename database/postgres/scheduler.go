@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/calypr/funnel/compute/scheduler"
 	"github.com/calypr/funnel/tes"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -68,63 +70,44 @@ func (db *Postgres) PutNode(ctx context.Context, node *scheduler.Node) (*schedul
 	ctx, cancel := db.context()
 	defer cancel()
 
-	// Try to get existing node
-	if err := db.client.QueryRow(ctx, "SELECT data FROM nodes WHERE id = $1", node.Id).Scan(&[]byte{}); err != nil {
-		if err == pgx.ErrNoRows {
-			// Node does not exist, insert it.
-			return db.insertNode(ctx, node)
+	var data []byte
+	var version int64
+	err := db.client.QueryRow(ctx, "SELECT data, version FROM nodes WHERE id = $1", node.Id).Scan(&data, &version)
+	isNew := err == pgx.ErrNoRows
+	if err != nil && !isNew {
+		return nil, err
+	}
+	existing := &scheduler.Node{}
+	if !isNew {
+		if err := json.Unmarshal(data, existing); err != nil {
+			return nil, fmt.Errorf("unmarshaling node %s: %w", node.Id, err)
 		}
+		if node.Version != version {
+			return nil, fmt.Errorf("node %s version outdated", node.Id)
+		}
+	}
+	if err := scheduler.UpdateNode(ctx, db, node, existing); err != nil {
 		return nil, err
 	}
-
-	// 2. Fetch the full existing node structure (simplified for brevity)
-	// NOTE: A robust implementation needs to fetch, update, and persist like TaskState.
-	// For now, we update core fields and overwrite JSONB.
-	node.Version = node.GetVersion() + 1
-
-	nodeJSON, err := json.Marshal(node)
+	node.Version = version + 1
+	data, err = json.Marshal(node)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal node to JSON: %w", err)
+		return nil, fmt.Errorf("marshaling node %s: %w", node.Id, err)
 	}
-
-	updateSQL := `
-		UPDATE nodes 
-		SET state = $1, version = $2, last_heartbeat = $3, data = $4::jsonb
-		WHERE id = $5
-	`
-	_, err = db.client.Exec(ctx, updateSQL,
-		node.State.String(),
-		node.Version,
-		nodeJSON,
-		node.Id)
-
+	heartbeat := time.Unix(0, node.LastPing)
+	if isNew {
+		_, err = db.client.Exec(ctx, `INSERT INTO nodes (id, state, version, last_heartbeat, data) VALUES ($1, $2, $3, $4, $5::jsonb)`, node.Id, node.State.String(), node.Version, heartbeat, data)
+	} else {
+		var tag pgconn.CommandTag
+		tag, err = db.client.Exec(ctx, `UPDATE nodes SET state = $1, version = $2, last_heartbeat = $3, data = $4::jsonb WHERE id = $5 AND version = $6`, node.State.String(), node.Version, heartbeat, data, node.Id, version)
+		if err == nil && tag.RowsAffected() == 0 {
+			return nil, fmt.Errorf("node %s version outdated", node.Id)
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
-
 	return &scheduler.PutNodeResponse{}, nil
-}
-
-// insertNode inserts a new node into the database.
-func (db *Postgres) insertNode(ctx context.Context, node *scheduler.Node) (*scheduler.PutNodeResponse, error) {
-	node.Version = 1
-
-	nodeJSON, err := json.Marshal(node)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal node to JSON: %w", err)
-	}
-
-	insertSQL := `
-        INSERT INTO nodes (id, state, version, last_heartbeat, data)
-        VALUES ($1, $2, $3, $4, $5::jsonb)
-    `
-	_, err = db.client.Exec(ctx, insertSQL,
-		node.Id,
-		node.State.String(),
-		node.Version,
-		nodeJSON)
-
-	return &scheduler.PutNodeResponse{}, err
 }
 
 // GetNode gets a node
@@ -185,14 +168,12 @@ func (db *Postgres) ListNodes(ctx context.Context, req *scheduler.ListNodesReque
 	for rows.Next() {
 		var nodeJSON []byte
 		if err := rows.Scan(&nodeJSON); err != nil {
-			fmt.Println("Error scanning node row:", err)
-			continue
+			return nil, fmt.Errorf("scanning node row: %w", err)
 		}
 
 		var node scheduler.Node
 		if err := json.Unmarshal(nodeJSON, &node); err != nil {
-			fmt.Println("Error unmarshaling node JSON:", err)
-			continue
+			return nil, fmt.Errorf("unmarshaling node JSON: %w", err)
 		}
 		nodes = append(nodes, &node)
 	}
