@@ -107,18 +107,18 @@ func (b *Backend) submit(ctx context.Context, task *tes.Task) error {
 	if task.Resources != nil {
 		ram := int64(task.Resources.RamGb * 953.674)
 		if ram > 0 {
-			req.ContainerOverrides.Memory = aws.Int32(int32(ram))
-			req.ContainerOverrides.ResourceRequirements = []types.ResourceRequirement{
-				{
-					Type:  types.ResourceTypeMemory,
-					Value: aws.String(strconv.FormatInt(ram, 10)),
-				},
-			}
+			req.ContainerOverrides.ResourceRequirements = append(req.ContainerOverrides.ResourceRequirements, types.ResourceRequirement{
+				Type:  types.ResourceTypeMemory,
+				Value: aws.String(strconv.FormatInt(ram, 10)),
+			})
 		}
 
 		vcpus := int64(task.Resources.CpuCores)
 		if vcpus > 0 {
-			req.ContainerOverrides.Vcpus = aws.Int32(int32(vcpus))
+			req.ContainerOverrides.ResourceRequirements = append(req.ContainerOverrides.ResourceRequirements, types.ResourceRequirement{
+				Type:  types.ResourceTypeVcpu,
+				Value: aws.String(strconv.FormatInt(vcpus, 10)),
+			})
 		}
 	}
 

@@ -3,10 +3,12 @@ package aws_batch
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/batch"
+	"github.com/aws/aws-sdk-go-v2/service/batch/types"
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/events"
 	"github.com/calypr/funnel/logger"
@@ -111,7 +113,7 @@ func TestBatchRequestContexts(t *testing.T) {
 			if got != ctx {
 				t.Error("submission lost caller context")
 			}
-			if req.Parameters["taskID"] != "task-1" || aws.ToInt32(req.ContainerOverrides.Vcpus) != 2 || aws.ToInt32(req.ContainerOverrides.Memory) != 3814 {
+			if req.Parameters["taskID"] != "task-1" || req.ContainerOverrides.Vcpus != nil || req.ContainerOverrides.Memory != nil || !reflect.DeepEqual(resourceValues(req.ContainerOverrides.ResourceRequirements), map[string]string{"MEMORY": "3814", "VCPU": "2"}) {
 				t.Fatalf("incorrect resource overrides %v", req)
 			}
 			return nil, got.Err()
@@ -138,6 +140,40 @@ func TestBatchRequestContexts(t *testing.T) {
 	if !submitted || !canceled {
 		t.Fatal("submission or cancellation was skipped")
 	}
+}
+
+func TestSubmitResourceRequirements(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		resources *tes.Resources
+		want      map[string]string
+	}{
+		{"none", nil, map[string]string{}},
+		{"memory only", &tes.Resources{RamGb: 4}, map[string]string{"MEMORY": "3814"}},
+		{"cpu only", &tes.Resources{CpuCores: 2}, map[string]string{"VCPU": "2"}},
+		{"both", &tes.Resources{RamGb: 4, CpuCores: 2}, map[string]string{"MEMORY": "3814", "VCPU": "2"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client := &mockClient{SubmitJobFunc: func(_ context.Context, req *batch.SubmitJobInput) (*batch.SubmitJobOutput, error) {
+				if req.ContainerOverrides.Memory != nil || req.ContainerOverrides.Vcpus != nil || !reflect.DeepEqual(resourceValues(req.ContainerOverrides.ResourceRequirements), tc.want) {
+					t.Fatalf("unexpected overrides: %+v", req.ContainerOverrides)
+				}
+				return &batch.SubmitJobOutput{JobId: aws.String("job")}, nil
+			}}
+			backend := &Backend{client: client, conf: &config.AWSBatch{}, event: &noopEventWriter{}}
+			if err := backend.Submit(&tes.Task{Id: "task", Resources: tc.resources}); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func resourceValues(requirements []types.ResourceRequirement) map[string]string {
+	values := make(map[string]string)
+	for _, requirement := range requirements {
+		values[string(requirement.Type)] = aws.ToString(requirement.Value)
+	}
+	return values
 }
 
 func TestNewBackendPreservesRetryAttempts(t *testing.T) {
