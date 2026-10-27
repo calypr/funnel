@@ -13,7 +13,7 @@ import (
 )
 
 // ReadQueue returns a slice of queued Tasks. Up to "n" tasks are returned.
-func (db *Postgres) ReadQueue(n int) []*tes.Task {
+func (db *Postgres) ReadQueue(n int, after *tes.Task) []*tes.Task {
 	ctx, cancel := db.context()
 	defer cancel()
 
@@ -23,11 +23,17 @@ func (db *Postgres) ReadQueue(n int) []*tes.Task {
 		SELECT data 
 		FROM tasks 
 		WHERE state = $1 
-		ORDER BY creation_time ASC 
+		AND ($3::timestamptz IS NULL OR (creation_time, id) > ($3::timestamptz, $4))
+		ORDER BY creation_time ASC, id ASC
 		LIMIT $2
 	`
 
-	rows, err := db.client.Query(ctx, selectSQL, tes.State_QUEUED.String(), n)
+	var creationTime any
+	var id string
+	if after != nil {
+		creationTime, id = after.CreationTime, after.Id
+	}
+	rows, err := db.client.Query(ctx, selectSQL, tes.State_QUEUED.String(), n, creationTime, id)
 	if err != nil {
 		fmt.Println("Error reading queue:", err)
 		return nil

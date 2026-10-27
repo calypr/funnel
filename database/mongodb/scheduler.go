@@ -15,13 +15,17 @@ import (
 )
 
 // ReadQueue returns a slice of queued Tasks. Up to "n" tasks are returned.
-func (db *MongoDB) ReadQueue(n int) []*tes.Task {
+func (db *MongoDB) ReadQueue(n int, after *tes.Task) []*tes.Task {
 	ctx, cancel := db.context()
 	defer cancel()
 
 	fmt.Println("Reading queue!")
-	opts := options.Find().SetSort(bson.M{"creationtime": 1}).SetLimit(int64(n))
-	cursor, err := db.tasks().Find(ctx, bson.M{"state": tes.State_QUEUED}, opts)
+	opts := options.Find().SetSort(bson.D{{Key: "creationtime", Value: 1}, {Key: "id", Value: 1}}).SetLimit(int64(n))
+	query := bson.M{"state": tes.State_QUEUED}
+	if after != nil {
+		query["$or"] = bson.A{bson.M{"creationtime": bson.M{"$gt": after.CreationTime}}, bson.M{"creationtime": after.CreationTime, "id": bson.M{"$gt": after.Id}}}
+	}
+	cursor, err := db.tasks().Find(ctx, query, opts)
 	if err != nil {
 		fmt.Println(err)
 		return nil

@@ -203,3 +203,30 @@ func TestPostgresOperations(t *testing.T) {
 		}
 	})
 }
+
+func TestReadQueueContinuesAfterRemovedTask(t *testing.T) {
+	db, container := getTestPostgres(t)
+	t.Cleanup(func() { db.Close(); _ = testcontainers.TerminateContainer(container) })
+	ctx := getUserContext()
+	for _, id := range []string{"queue-a", "queue-b", "queue-c"} {
+		if err := db.WriteEvent(ctx, events.NewTaskCreated(newTestTask(id, id, testUser))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Tasks with the same timestamp must still be visited in ID order.
+	_, err := db.client.Exec(ctx, `UPDATE tasks SET creation_time = '2026-01-01T00:00:00Z', data = jsonb_set(data, '{creation_time}', to_jsonb('2026-01-01T00:00:00Z'::text)) WHERE id LIKE 'queue-%'`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := db.ReadQueue(2, nil)
+	if len(first) != 2 {
+		t.Fatalf("first page: got %d tasks, want 2", len(first))
+	}
+	if err := db.WriteEvent(ctx, events.NewState(first[1].Id, tes.State_INITIALIZING)); err != nil {
+		t.Fatal(err)
+	}
+	next := db.ReadQueue(2, first[1])
+	if len(next) != 1 || next[0].Id != "queue-c" {
+		t.Fatalf("next page: got %v, want queue-c", next)
+	}
+}

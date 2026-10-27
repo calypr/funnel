@@ -34,13 +34,16 @@ var (
 )
 
 // ReadQueue returns a slice of queued Tasks. Up to "n" tasks are returned.
-func (es *Elastic) ReadQueue(n int) []*tes.Task {
-	res, err := es.client.Search().Index(es.taskIndex).
+func (es *Elastic) ReadQueue(n int, after *tes.Task) []*tes.Task {
+	search := es.client.Search().Index(es.taskIndex).
 		Query(readQueueQuery).
 		SourceExcludes_(basicExclude...).
 		Size(n).
-		Sort(readQueueSort).
-		Do(context.Background())
+		Sort(readQueueSort)
+	if after != nil {
+		search = search.SearchAfter(after.Id)
+	}
+	res, err := search.Do(context.Background())
 	if err != nil {
 		fmt.Println(err)
 		return nil
