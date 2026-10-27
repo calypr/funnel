@@ -21,19 +21,20 @@ import (
 
 // DockerCommand is responsible for configuring and running a docker container.
 type DockerCommand struct {
-	Id              string
-	Name            string
-	Volumes         []Volume
-	Workdir         string
-	RemoveContainer bool
-	Event           *events.ExecutorWriter
-	DriverCommand   string
-	RunCommand      string // template string
-	PullCommand     string // template string
-	StopCommand     string // template string
-	EnableTags      bool
-	Tags            map[string]string
-	Resources       *tes.Resources
+	Id               string
+	Name             string
+	Volumes          []Volume
+	Workdir          string
+	RemoveContainer  bool
+	Event            *events.ExecutorWriter
+	DriverCommand    string
+	RunCommand       string // template string
+	PullCommand      string // template string
+	StopCommand      string // template string
+	EnableTags       bool
+	Tags             map[string]string
+	Resources        *tes.Resources
+	EnforceResources bool
 	Command
 }
 

@@ -414,14 +414,15 @@ func (r *DefaultWorker) runExecutors(ctx context.Context, event *events.TaskWrit
 				Workdir: d.Workdir,
 				Name:    fmt.Sprintf("%s-%d", task.Id, i),
 				// TODO make RemoveContainer configurable
-				RemoveContainer: true,
-				Event:           event.NewExecutorWriter(uint32(i)),
-				DriverCommand:   r.Conf.Container.DriverCommand,
-				RunCommand:      r.Conf.Container.RunCommand,
-				PullCommand:     r.Conf.Container.PullCommand,
-				StopCommand:     r.Conf.Container.StopCommand,
-				Resources:       resources,
-				Command:         command,
+				RemoveContainer:  true,
+				Event:            event.NewExecutorWriter(uint32(i)),
+				DriverCommand:    r.Conf.Container.DriverCommand,
+				RunCommand:       r.Conf.Container.RunCommand,
+				PullCommand:      r.Conf.Container.PullCommand,
+				StopCommand:      r.Conf.Container.StopCommand,
+				Resources:        resources,
+				EnforceResources: r.Conf.Container.EnforceResources,
+				Command:          command,
 			}
 
 			// TODO: Hide this behind explicit flag/option in configuration

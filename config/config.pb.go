@@ -1160,22 +1160,23 @@ func (x *Worker) GetDriverCommand() string {
 
 // ContainerConfig describes container configuration.
 type ContainerConfig struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	Id              string                 `protobuf:"bytes,1,opt,name=Id,proto3" json:"Id,omitempty"`
-	Image           string                 `protobuf:"bytes,2,opt,name=Image,proto3" json:"Image,omitempty"`
-	Name            string                 `protobuf:"bytes,3,opt,name=Name,proto3" json:"Name,omitempty"`
-	Command         []string               `protobuf:"bytes,4,rep,name=Command,proto3" json:"Command,omitempty"`
-	Workdir         string                 `protobuf:"bytes,5,opt,name=Workdir,proto3" json:"Workdir,omitempty"`
-	RemoveContainer bool                   `protobuf:"varint,6,opt,name=RemoveContainer,proto3" json:"RemoveContainer,omitempty"`
-	Env             map[string]string      `protobuf:"bytes,7,rep,name=Env,proto3" json:"Env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	DriverCommand   string                 `protobuf:"bytes,8,opt,name=DriverCommand,proto3" json:"DriverCommand,omitempty"`
-	RunCommand      string                 `protobuf:"bytes,9,opt,name=RunCommand,proto3" json:"RunCommand,omitempty"`
-	PullCommand     string                 `protobuf:"bytes,10,opt,name=PullCommand,proto3" json:"PullCommand,omitempty"`
-	StopCommand     string                 `protobuf:"bytes,11,opt,name=StopCommand,proto3" json:"StopCommand,omitempty"`
-	EnableTags      bool                   `protobuf:"varint,12,opt,name=EnableTags,proto3" json:"EnableTags,omitempty"`
-	Tags            map[string]string      `protobuf:"bytes,13,rep,name=Tags,proto3" json:"Tags,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // Note: io.Reader and io.Writer (Stdin, Stdout, Stderr) are omitted as they are not serializable in Protobuf
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Id               string                 `protobuf:"bytes,1,opt,name=Id,proto3" json:"Id,omitempty"`
+	Image            string                 `protobuf:"bytes,2,opt,name=Image,proto3" json:"Image,omitempty"`
+	Name             string                 `protobuf:"bytes,3,opt,name=Name,proto3" json:"Name,omitempty"`
+	Command          []string               `protobuf:"bytes,4,rep,name=Command,proto3" json:"Command,omitempty"`
+	Workdir          string                 `protobuf:"bytes,5,opt,name=Workdir,proto3" json:"Workdir,omitempty"`
+	RemoveContainer  bool                   `protobuf:"varint,6,opt,name=RemoveContainer,proto3" json:"RemoveContainer,omitempty"`
+	Env              map[string]string      `protobuf:"bytes,7,rep,name=Env,proto3" json:"Env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	DriverCommand    string                 `protobuf:"bytes,8,opt,name=DriverCommand,proto3" json:"DriverCommand,omitempty"`
+	RunCommand       string                 `protobuf:"bytes,9,opt,name=RunCommand,proto3" json:"RunCommand,omitempty"`
+	PullCommand      string                 `protobuf:"bytes,10,opt,name=PullCommand,proto3" json:"PullCommand,omitempty"`
+	StopCommand      string                 `protobuf:"bytes,11,opt,name=StopCommand,proto3" json:"StopCommand,omitempty"`
+	EnableTags       bool                   `protobuf:"varint,12,opt,name=EnableTags,proto3" json:"EnableTags,omitempty"`
+	Tags             map[string]string      `protobuf:"bytes,13,rep,name=Tags,proto3" json:"Tags,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	EnforceResources bool                   `protobuf:"varint,14,opt,name=EnforceResources,proto3" json:"EnforceResources,omitempty"` // Note: io.Reader and io.Writer (Stdin, Stdout, Stderr) are omitted as they are not serializable in Protobuf
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *ContainerConfig) Reset() {
@@ -1297,6 +1298,13 @@ func (x *ContainerConfig) GetTags() map[string]string {
 		return x.Tags
 	}
 	return nil
+}
+
+func (x *ContainerConfig) GetEnforceResources() bool {
+	if x != nil {
+		return x.EnforceResources
+	}
+	return false
 }
 
 // HPCBackend describes the configuration for an HPC scheduler backend.
@@ -3550,7 +3558,7 @@ const file_config_config_proto_rawDesc = "" +
 	"\fLeaveWorkDir\x18\x06 \x01(\bR\fLeaveWorkDir\x122\n" +
 	"\x14MaxParallelTransfers\x18\a \x01(\x05R\x14MaxParallelTransfers\x125\n" +
 	"\tContainer\x18\b \x01(\v2\x17.config.ContainerConfigR\tContainer\x12$\n" +
-	"\rDriverCommand\x18\t \x01(\tR\rDriverCommand\"\xaf\x04\n" +
+	"\rDriverCommand\x18\t \x01(\tR\rDriverCommand\"\xdb\x04\n" +
 	"\x0fContainerConfig\x12\x0e\n" +
 	"\x02Id\x18\x01 \x01(\tR\x02Id\x12\x14\n" +
 	"\x05Image\x18\x02 \x01(\tR\x05Image\x12\x12\n" +
@@ -3569,7 +3577,8 @@ const file_config_config_proto_rawDesc = "" +
 	"\n" +
 	"EnableTags\x18\f \x01(\bR\n" +
 	"EnableTags\x125\n" +
-	"\x04Tags\x18\r \x03(\v2!.config.ContainerConfig.TagsEntryR\x04Tags\x1a6\n" +
+	"\x04Tags\x18\r \x03(\v2!.config.ContainerConfig.TagsEntryR\x04Tags\x12*\n" +
+	"\x10EnforceResources\x18\x0e \x01(\bR\x10EnforceResources\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a7\n" +

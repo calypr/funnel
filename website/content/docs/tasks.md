@@ -269,6 +269,15 @@ POST /v1/tasks/b85l8tirl6qkqbhg8vj0:cancel
 ```
 
 
+### Docker resource limits
+
+By default, Funnel does not enforce task CPU and RAM requests on Docker
+containers. To apply them as limits, set `Worker.Container.EnforceResources`
+to `true`. Each specified CPU or RAM request is applied independently. A RAM
+limit also disables container swap. A process that exceeds its RAM limit may
+be killed by the kernel. Existing custom `Worker.Container.RunCommand`
+templates must include the resource flags themselves.
+
 ### Full task spec
 
 Here's a more detailed description of a task.  
