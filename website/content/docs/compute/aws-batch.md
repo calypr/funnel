@@ -48,6 +48,14 @@ $ funnel aws batch create-all-resources --region us-west-2
 
 This command will create a compute environment, job queue, IAM role and job definition.
 
+### Pull private Amazon ECR images
+
+To run a task with a private ECR image, configure registry authentication for
+the Docker client used by the Funnel worker. The worker also needs AWS
+credentials with permission to pull the image. See the AWS guide to
+[private registry authentication](https://docs.aws.amazon.com/AmazonECR/latest/userguide/registry_auth.html),
+including the ECR Docker credential helper.
+
 ## Configuring the Funnel Server
 
 Below is an example configuration. Note that the `Key`
