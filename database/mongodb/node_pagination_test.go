@@ -2,7 +2,6 @@ package mongodb
 
 import (
 	"context"
-	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -10,18 +9,17 @@ import (
 
 	"github.com/calypr/funnel/compute/scheduler"
 	"github.com/calypr/funnel/config"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
+	"github.com/calypr/funnel/tests/mongotest"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 func TestMongoNodePagination(t *testing.T) {
-	addr := startMongoNodePaginationContainer(t)
+	addr := mongotest.Start(t)
 
 	t.Run("pages nodes in sorted bounded batches", func(t *testing.T) {
-		db := newMongoNodePaginationDB(t, addr, "node_pages")
+		db := newMongoTestDB(t, addr, "node_pages")
 		if err := db.Init(); err != nil {
 			t.Fatalf("initialize MongoDB: %v", err)
 		}
@@ -66,7 +64,7 @@ func TestMongoNodePagination(t *testing.T) {
 	})
 
 	t.Run("adds simple unique ID index to existing collection", func(t *testing.T) {
-		db := newMongoNodePaginationDB(t, addr, "node_index_upgrade")
+		db := newMongoTestDB(t, addr, "node_index_upgrade")
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := db.database.CreateCollection(ctx, "nodes", options.CreateCollection().SetCollation(&options.Collation{
@@ -97,7 +95,7 @@ func TestMongoNodePagination(t *testing.T) {
 	})
 
 	t.Run("duplicate IDs fail initialization and keep records", func(t *testing.T) {
-		db := newMongoNodePaginationDB(t, addr, "node_duplicate_ids")
+		db := newMongoTestDB(t, addr, "node_duplicate_ids")
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if _, err := db.nodes().InsertMany(ctx, []interface{}{
@@ -125,43 +123,7 @@ func TestMongoNodePagination(t *testing.T) {
 	})
 }
 
-func startMongoNodePaginationContainer(t *testing.T) string {
-	t.Helper()
-	if testing.Short() {
-		t.Skip("Mongo integration test requires Docker")
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: testcontainers.ContainerRequest{
-			Image:        "mongo:7",
-			ExposedPorts: []string{"27017/tcp"},
-			WaitingFor:   wait.ForLog("Waiting for connections").WithStartupTimeout(90 * time.Second),
-		},
-		Started: true,
-	})
-	if err != nil {
-		t.Fatalf("start MongoDB container: %v", err)
-	}
-	t.Cleanup(func() {
-		if err := testcontainers.TerminateContainer(container); err != nil {
-			t.Errorf("terminate MongoDB container: %v", err)
-		}
-	})
-
-	host, err := container.Host(ctx)
-	if err != nil {
-		t.Fatalf("get MongoDB container host: %v", err)
-	}
-	port, err := container.MappedPort(ctx, "27017/tcp")
-	if err != nil {
-		t.Fatalf("get mapped MongoDB port: %v", err)
-	}
-	return fmt.Sprintf("%s:%s", host, port.Port())
-}
-
-func newMongoNodePaginationDB(t *testing.T, addr, database string) *MongoDB {
+func newMongoTestDB(t *testing.T, addr, database string) *MongoDB {
 	t.Helper()
 	db, err := NewMongoDB(&config.MongoDB{
 		Addrs:    []string{addr},

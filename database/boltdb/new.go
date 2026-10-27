@@ -30,6 +30,10 @@ var TaskState = []byte("tasks-state")
 // TaskClaims maps task ID -> scheduler-assigned node ID.
 var TaskClaims = []byte("tasks-claims")
 
+// NodeClaims indexes active task claims by node ID. Its creation marks the
+// transactional migration from legacy node task-ID arrays.
+var NodeClaims = []byte("node-claims")
+
 // TasksLog defines the name of a bucket which maps
 // task ID -> tes.TaskLog struct
 var TasksLog = []byte("tasks-log")
@@ -133,7 +137,13 @@ func (taskBolt *BoltDB) Init() error {
 				return err
 			}
 		}
-		return nil
+		if err := migrateTaskClaims(tx); err != nil {
+			return err
+		}
+		if err := migrateNodeHeartbeats(tx); err != nil {
+			return err
+		}
+		return migrateResourceReservations(tx)
 	})
 }
 

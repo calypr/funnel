@@ -17,11 +17,13 @@ import (
 	"github.com/calypr/funnel/compute/scheduler"
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/database/boltdb"
+	"github.com/calypr/funnel/database/mongodb"
 	"github.com/calypr/funnel/database/postgres"
 	"github.com/calypr/funnel/events"
 	"github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/server"
 	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/tests/mongotest"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/jackc/pgx/v5"
 	"github.com/testcontainers/testcontainers-go"
@@ -36,6 +38,7 @@ type store interface {
 	scheduler.SchedulerServiceServer
 	scheduler.TaskQueue
 	scheduler.AtomicTaskAssigner
+	scheduler.NodeHealthStore
 	events.Writer
 	GetTask(context.Context, *tes.GetTaskRequest) (*tes.Task, error)
 }
@@ -44,8 +47,8 @@ type storeFactory func(*testing.T) store
 
 func TestSchedulerContract(t *testing.T) {
 	selected := os.Getenv("FUNNEL_SCHEDULER_TEST_BACKEND")
-	if selected != "" && selected != "boltdb" && selected != "postgres" {
-		t.Fatalf("invalid FUNNEL_SCHEDULER_TEST_BACKEND %q; want empty, boltdb, or postgres", selected)
+	if selected != "" && selected != "boltdb" && selected != "postgres" && selected != "mongodb" {
+		t.Fatalf("invalid FUNNEL_SCHEDULER_TEST_BACKEND %q; want empty, boltdb, postgres, or mongodb", selected)
 	}
 
 	if selected == "" || selected == "boltdb" {
@@ -58,15 +61,38 @@ func TestSchedulerContract(t *testing.T) {
 			runPostgresContract(t)
 		})
 	}
+	if selected == "" || selected == "mongodb" {
+		t.Run("mongodb", func(t *testing.T) {
+			uri := mongotest.Start(t)
+			var nextDatabase int
+			runContract(t, func(t *testing.T) store {
+				nextDatabase++
+				conf := config.DefaultConfig().MongoDB
+				conf.Addrs = []string{uri}
+				conf.Database = fmt.Sprintf("scheduler_contract_%d", nextDatabase)
+				db, err := mongodb.NewMongoDB(conf)
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(db.Close)
+				if err := db.Init(); err != nil {
+					t.Fatal(err)
+				}
+				return db
+			})
+		})
+	}
+
 }
 
 func runContract(t *testing.T, open storeFactory) {
+	runReservationContracts(t, open)
 	t.Run("node pages use stable IDs and traverse the full fleet", func(t *testing.T) {
 		db := open(t)
 		testNodePagination(t, db)
 	})
 
-	t.Run("heartbeat advances after assignment", func(t *testing.T) {
+	t.Run("assignment does not refresh node liveness", func(t *testing.T) {
 		db := open(t)
 		ctx := testContext()
 		task := createTask(t, db, ctx, "heartbeat-task")
@@ -84,8 +110,8 @@ func runContract(t *testing.T, open storeFactory) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if after.LastPing <= before.LastPing {
-			t.Fatalf("assignment LastPing = %d; want later than %d", after.LastPing, before.LastPing)
+		if after.LastPing != before.LastPing {
+			t.Fatalf("assignment LastPing = %d; want unchanged %d", after.LastPing, before.LastPing)
 		}
 	})
 
@@ -843,9 +869,8 @@ func (n *nodeReadBarrier) ListNodes(ctx context.Context, req *scheduler.ListNode
 		return nil, err
 	}
 	n.calls++
-	// CheckNodes reads nodes before the queue. Synchronize the next read so both
-	// schedulers choose from the same pre-assignment snapshot.
-	if n.calls == 2 {
+	// Each scheduler now reads one snapshot before it reads the queue.
+	if n.calls == 1 {
 		if n.reverse {
 			for left, right := 0, len(resp.Nodes)-1; left < right; left, right = left+1, right-1 {
 				resp.Nodes[left], resp.Nodes[right] = resp.Nodes[right], resp.Nodes[left]
@@ -864,6 +889,10 @@ func (n *nodeReadBarrier) ListNodes(ctx context.Context, req *scheduler.ListNode
 	return resp, nil
 }
 
+func (n *nodeReadBarrier) SetNodeState(ctx context.Context, observed *scheduler.Node) (*scheduler.Node, error) {
+	return n.SchedulerServiceServer.(scheduler.NodeHealthStore).SetNodeState(ctx, observed)
+}
+
 // heartbeatBeforeAssignment performs a real GetNode/PutNode heartbeat after the
 // scheduler has read its candidate snapshot and before its atomic assignment.
 type heartbeatBeforeAssignment struct {
@@ -878,12 +907,13 @@ func (a *heartbeatBeforeAssignment) TryAssign(ctx context.Context, task *tes.Tas
 		if err != nil {
 			return "", fmt.Errorf("get node for heartbeat: %w", err)
 		}
+		version, stamp := node.Version, node.LastPing
 		_, err = a.nodes.PutNode(ctx, node)
 		if err != nil {
 			return "", fmt.Errorf("write competing heartbeat: %w", err)
 		}
-		if node.Version <= candidate.Version {
-			return "", fmt.Errorf("heartbeat version = %d; want later than scheduler snapshot %d", node.Version, candidate.Version)
+		if node.Version != version || node.LastPing <= stamp {
+			return "", fmt.Errorf("heartbeat changed reservation version or failed to advance liveness")
 		}
 		a.writes++
 	}
@@ -921,7 +951,9 @@ type countingAssigner struct {
 
 func (a *countingAssigner) TryAssign(ctx context.Context, task *tes.Task, candidate *scheduler.Node) (string, error) {
 	owner, err := a.AtomicTaskAssigner.TryAssign(ctx, task, candidate)
-	a.counter.record(err)
+	if candidate != nil {
+		a.counter.record(err)
+	}
 	return owner, err
 }
 

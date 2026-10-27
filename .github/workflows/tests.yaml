@@ -27,6 +27,8 @@ jobs:
             label: BoltDB
           - backend: postgres
             label: PostgreSQL
+          - backend: mongodb
+            label: MongoDB
     env:
       CGO_ENABLED: "1"
       FUNNEL_SCHEDULER_TEST_BACKEND: ${{ matrix.backend }}

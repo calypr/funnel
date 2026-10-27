@@ -201,6 +201,13 @@ func NewServer(ctx context.Context, conf *config.Config, log *logger.Logger) (*S
 					"a task queue", conf.Database)
 		}
 
+		if atomicAssigner == nil {
+			return nil, fmt.Errorf("database %s does not implement atomic task assignment", conf.Database)
+		}
+		if _, ok := nodes.(scheduler.NodeHealthStore); !ok {
+			return nil, fmt.Errorf("database %s does not implement heartbeat-fenced node state updates", conf.Database)
+		}
+
 		sched = &scheduler.Scheduler{
 			Conf:           conf.Scheduler,
 			Log:            log.Sub("scheduler"),

@@ -60,30 +60,10 @@ func (taskBolt *BoltDB) ReadQueue(n int, after *tes.Task) []*tes.Task {
 // doesn't match the version in the database, an error is returned.
 func (taskBolt *BoltDB) PutNode(ctx context.Context, node *scheduler.Node) (*scheduler.PutNodeResponse, error) {
 	err := taskBolt.db.Update(func(tx *bolt.Tx) error {
-
-		existing := &scheduler.Node{}
-		data := tx.Bucket(Nodes).Get([]byte(node.Id))
-		if data != nil {
-			if err := proto.Unmarshal(data, existing); err != nil {
-				return fmt.Errorf("unmarshaling existing node %s: %w", node.Id, err)
-			}
-		}
-
-		if existing.GetVersion() != 0 && node.Version != existing.GetVersion() {
-			return fmt.Errorf("Version outdated")
-		}
-
-		err := scheduler.UpdateNode(ctx, taskBolt, node, existing)
-		if err != nil {
+		if err := ctx.Err(); err != nil {
 			return err
 		}
-
-		node.Version = existing.GetVersion() + 1
-		data, err = proto.Marshal(node)
-		if err != nil {
-			return err
-		}
-		return tx.Bucket(Nodes).Put([]byte(node.Id), data)
+		return putReportedNode(tx, node)
 	})
 	return &scheduler.PutNodeResponse{}, err
 }
@@ -99,7 +79,11 @@ func (taskBolt *BoltDB) GetNode(ctx context.Context, req *scheduler.GetNodeReque
 		}
 
 		node = &scheduler.Node{}
-		return proto.Unmarshal(data, node)
+		if err := proto.Unmarshal(data, node); err != nil {
+			return err
+		}
+		node.LastPing = loadHeartbeat(tx, node.Id)
+		return nil
 	})
 
 	if err == errNotFound {
@@ -117,6 +101,23 @@ func (taskBolt *BoltDB) GetNode(ctx context.Context, req *scheduler.GetNodeReque
 func (taskBolt *BoltDB) DeleteNode(ctx context.Context, node *scheduler.Node) (*scheduler.DeleteNodeResponse, error) {
 	// TODO we don't check version on delete. should we?
 	return &scheduler.DeleteNodeResponse{}, taskBolt.db.Update(func(tx *bolt.Tx) error {
+		if node.Version != 0 {
+			data := tx.Bucket(Nodes).Get([]byte(node.Id))
+			if data == nil {
+				return scheduler.ErrNodeChanged
+			}
+			var current scheduler.Node
+			if err := proto.Unmarshal(data, &current); err != nil {
+				return err
+			}
+			finishedCleanup := node.State == scheduler.NodeState_GONE && current.State == scheduler.NodeState_GONE && len(current.TaskIds) == 0
+			if (current.Version != node.Version && !finishedCleanup) || loadHeartbeat(tx, node.Id) != node.LastPing {
+				return scheduler.ErrNodeChanged
+			}
+		}
+		if err := tx.Bucket(NodeHeartbeats).Delete([]byte(node.Id)); err != nil {
+			return err
+		}
 		return tx.Bucket(Nodes).Delete([]byte(node.Id))
 	})
 }
@@ -154,6 +155,7 @@ func (taskBolt *BoltDB) ListNodes(ctx context.Context, req *scheduler.ListNodesR
 			if err != nil {
 				return err
 			}
+			node.LastPing = loadHeartbeat(tx, node.Id)
 			nodes = append(nodes, node)
 		}
 		return nil

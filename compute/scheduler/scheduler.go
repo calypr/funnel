@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strings"
 	"time"
 
 	"context"
@@ -33,6 +32,11 @@ type AtomicTaskAssigner interface {
 	TryAssign(ctx context.Context, task *tes.Task, candidate *Node) (string, error)
 }
 
+// NodeHealthStore fences a health transition against the observed heartbeat.
+type NodeHealthStore interface {
+	SetNodeState(context.Context, *Node) (*Node, error)
+}
+
 // Scheduler handles scheduling tasks to nodes and support many backends.
 type Scheduler struct {
 	Conf           *config.Scheduler
@@ -58,6 +62,9 @@ func (s *Scheduler) Run(ctx context.Context) error {
 		case <-ticker.C:
 			err := s.Schedule(ctx)
 			if err != nil {
+				if ctx.Err() != nil {
+					return nil
+				}
 				return fmt.Errorf("schedule error: %s", err)
 			}
 		}
@@ -74,10 +81,25 @@ func (s *Scheduler) CheckNodes() error {
 		return err
 	}
 
+	return s.checkNodes(ctx, nodes)
+}
+
+func (s *Scheduler) checkNodes(ctx context.Context, nodes []*Node) error {
 	updated := UpdateNodeState(nodes, s.Conf)
 
 	for _, node := range updated {
 		var err error
+		health, ok := s.Nodes.(NodeHealthStore)
+		if !ok {
+			return fmt.Errorf("scheduler requires heartbeat-fenced node state updates")
+		}
+		node, err = health.SetNodeState(ctx, node)
+		if errors.Is(err, ErrNodeChanged) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
 
 		if node.State == NodeState_GONE {
 			stateWriteFailed := false
@@ -100,10 +122,11 @@ func (s *Scheduler) CheckNodes() error {
 				continue
 			}
 			_, err = s.Nodes.DeleteNode(ctx, node)
-		} else {
-			_, err = s.Nodes.PutNode(ctx, node)
 		}
 
+		if errors.Is(err, ErrNodeChanged) {
+			continue
+		}
 		if err != nil {
 			return err
 		}
@@ -117,10 +140,18 @@ func (s *Scheduler) CheckNodes() error {
 // and calls the given scheduler backend. If the backend returns a valid offer, the
 // task is assigned to the offered node.
 func (s *Scheduler) Schedule(ctx context.Context) error {
-	err := s.CheckNodes()
+	if s.AtomicAssigner == nil {
+		return fmt.Errorf("scheduler requires atomic task assignment")
+	}
+	nodes, err := ListAllNodes(ctx, s.Nodes)
 	if err != nil {
+		s.Log.Error("Error reading scheduling snapshot", err)
+		return nil
+	}
+	if err := s.checkNodes(ctx, nodes); err != nil {
 		s.Log.Error("Error checking nodes", err)
 	}
+	snapshot := newNodeSnapshot(nodes)
 
 	count := int(s.Conf.ScheduleChunk)
 	if count <= 0 {
@@ -134,66 +165,44 @@ func (s *Scheduler) Schedule(ctx context.Context) error {
 		s.queueCursor = tasks[len(tasks)-1]
 	}
 	for _, task := range tasks {
-		s.scheduleTask(ctx, task)
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		s.scheduleTask(ctx, task, snapshot)
 	}
 	return nil
 }
 
-func (s *Scheduler) scheduleTask(ctx context.Context, task *tes.Task) {
-	nodes, err := ListAllNodes(ctx, s.Nodes)
-	if err != nil {
-		s.Log.Error("Error checking existing task assignments", "taskID", task.Id, "error", err)
-		return
-	}
-
-	var assignedNodeIDs []string
-	var assignedNode *Node
-	for _, node := range nodes {
-		if slices.Contains(node.TaskIds, task.Id) {
-			assignedNodeIDs = append(assignedNodeIDs, node.Id)
-			assignedNode = node
-		}
-	}
-	if len(assignedNodeIDs) > 1 {
-		s.logAssignmentConflict(ctx, task.Id, "task appears on multiple nodes", map[string]string{
-			"nodeIDs": strings.Join(assignedNodeIDs, ","),
-		})
-		return
-	}
-
-	if s.AtomicAssigner != nil {
-		s.scheduleTaskAtomic(ctx, task, nodes, assignedNode)
-		return
-	}
-
-	s.scheduleTaskLegacy(ctx, task, nodes, assignedNode)
-}
-
-// scheduleTaskAtomic uses a backend transaction to reserve task and node
+// scheduleTask uses a backend transaction to reserve task and node
 // ownership together. This path never performs a separate node write.
-func (s *Scheduler) scheduleTaskAtomic(ctx context.Context, task *tes.Task, nodes []*Node, assignedNode *Node) {
-	candidate := assignedNode
-	if candidate == nil {
-		if offer := DefaultScheduleAlgorithm(task, nodes, nil); offer != nil {
-			candidate = offer.Node
-		}
-	}
-
-	ownerID, err := s.AtomicAssigner.TryAssign(ctx, task, candidate)
+func (s *Scheduler) scheduleTask(ctx context.Context, task *tes.Task, snapshot *nodeSnapshot) {
+	// The durable claim is authoritative, including when its owner disappeared.
+	ownerID, err := s.AtomicAssigner.TryAssign(ctx, task, nil)
 	if err != nil {
-		nodeID := ""
-		if candidate != nil {
-			nodeID = candidate.Id
-		}
-		s.logAssignTaskFailure(ctx, task.Id, nodeID, err)
+		s.logAssignTaskFailure(ctx, task.Id, "", err)
 		return
 	}
-	if ownerID == "" {
-		return
+	alreadyAssigned := ownerID != ""
+	if !alreadyAssigned {
+
+		offer := DefaultScheduleAlgorithm(task, snapshot.nodes, nil)
+		if offer == nil {
+			return
+		}
+		ownerID, err = s.AtomicAssigner.TryAssign(ctx, task, offer.Node)
+		if err != nil {
+			s.logAssignTaskFailure(ctx, task.Id, offer.Node.Id, err)
+			s.refreshSnapshot(ctx, snapshot, offer.Node.Id)
+			return
+		}
+		if ownerID == "" {
+			return
+		}
 	}
 
 	node, err := s.Nodes.GetNode(ctx, &GetNodeRequest{Id: ownerID})
 	if err != nil {
+		snapshot.replace(ownerID, nil)
 		if status.Code(err) == codes.NotFound {
 			s.failClaimedTask(ctx, task.Id, ownerID, "claimed node is missing")
 		} else {
@@ -201,19 +210,13 @@ func (s *Scheduler) scheduleTaskAtomic(ctx context.Context, task *tes.Task, node
 		}
 		return
 	}
+	snapshot.replace(ownerID, node)
 	if node == nil {
 		s.Log.Error("Claimed task node lookup returned no node", "taskID", task.Id, "nodeID", ownerID)
 		return
 	}
 	if node.State == NodeState_GONE {
 		s.failClaimedTask(ctx, task.Id, ownerID, "claimed node is gone")
-		return
-	}
-	if assignedNode != nil && assignedNode.Id != ownerID {
-		s.logAssignmentConflict(ctx, task.Id, "existing assignment conflicts with durable node claim", map[string]string{
-			"nodeID":        assignedNode.Id,
-			"claimedNodeID": ownerID,
-		})
 		return
 	}
 	if !slices.Contains(node.TaskIds, task.Id) {
@@ -226,34 +229,10 @@ func (s *Scheduler) scheduleTaskAtomic(ctx context.Context, task *tes.Task, node
 		return
 	}
 
-	if assignedNode == nil {
+	if !alreadyAssigned {
 		s.logTaskAssignment(ctx, task, node)
 	}
 	s.writeInitializing(ctx, task.Id, node.Id)
-}
-
-// scheduleTaskLegacy preserves the scheduler's original node-CAS flow for
-// backends that do not provide atomic task assignment.
-func (s *Scheduler) scheduleTaskLegacy(ctx context.Context, task *tes.Task, nodes []*Node, assignedNode *Node) {
-	if assignedNode != nil {
-		// A previous assignment may have succeeded before its state update failed.
-		s.writeInitializing(ctx, task.Id, assignedNode.Id)
-		return
-	}
-
-	offer := DefaultScheduleAlgorithm(task, nodes, nil)
-	if offer == nil {
-		s.Log.Debug("Scheduling failed for task", "taskID", task.Id)
-		return
-	}
-
-	s.logTaskAssignment(ctx, task, offer.Node)
-	offer.Node.TaskIds = append(offer.Node.TaskIds, task.Id)
-	if _, err := s.Nodes.PutNode(ctx, offer.Node); err != nil {
-		s.logAssignTaskFailure(ctx, task.Id, offer.Node.Id, err)
-		return
-	}
-	s.writeInitializing(ctx, task.Id, offer.Node.Id)
 }
 
 func (s *Scheduler) logTaskAssignment(ctx context.Context, task *tes.Task, node *Node) {

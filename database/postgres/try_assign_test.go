@@ -5,7 +5,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/calypr/funnel/compute/scheduler"
 	"github.com/calypr/funnel/events"
@@ -88,13 +87,14 @@ func TestTryAssignReservesNodeAndLeavesStateToEventWriter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get reserved node: %v", err)
 	}
-	var heartbeat time.Time
-	if err := db.client.QueryRow(ctx, "SELECT last_heartbeat FROM nodes WHERE id = $1", nodeID).Scan(&heartbeat); err != nil {
-		t.Fatalf("read node heartbeat: %v", err)
+	var heartbeat int64
+	if err := db.client.QueryRow(ctx, "SELECT last_ping FROM node_heartbeats WHERE id=$1", nodeID).Scan(&heartbeat); err != nil {
+		t.Fatal(err)
 	}
-	if heartbeat.UnixMicro() != time.Unix(0, storedNode.LastPing).UnixMicro() {
-		t.Fatalf("node heartbeat %v does not match LastPing %d", heartbeat, storedNode.LastPing)
+	if storedNode.LastPing != node.LastPing || heartbeat != node.LastPing {
+		t.Fatalf("assignment changed liveness: before=%d after=%d stored=%d", node.LastPing, storedNode.LastPing, heartbeat)
 	}
+
 	if len(storedNode.TaskIds) != 1 || storedNode.TaskIds[0] != taskID {
 		t.Fatalf("node task IDs = %v, want [%s]", storedNode.TaskIds, taskID)
 	}
@@ -302,67 +302,54 @@ func TestConcurrentTryAssignReservesTaskOnOnlyOneNode(t *testing.T) {
 	}
 }
 
-func TestTryAssignRepairsSingleLegacyAssignmentAndRejectsAmbiguousOnes(t *testing.T) {
+func TestInitMigratesLegacyAssignmentAndRejectsAmbiguousOnes(t *testing.T) {
 	db, ctx := newTryAssignDB(t)
-	const legacyTaskID = "legacy-assignment-task"
-	if err := db.WriteEvent(ctx, events.NewTaskCreated(newTestTask(legacyTaskID, legacyTaskID, testUser))); err != nil {
-		t.Fatalf("create legacy task: %v", err)
+	task := newTestTask("legacy-task", "legacy-task", testUser)
+	if err := db.WriteEvent(ctx, events.NewTaskCreated(task)); err != nil {
+		t.Fatal(err)
 	}
-	legacyNode := createTryAssignNode(t, db, ctx, "legacy-assignment-node")
-	legacyNode.TaskIds = []string{legacyTaskID}
-	if _, err := db.PutNode(ctx, legacyNode); err != nil {
-		t.Fatalf("write legacy node assignment: %v", err)
+	node := createTryAssignNode(t, db, ctx, "legacy-node")
+	node.TaskIds = []string{task.Id}
+	seedLegacyClaimMigration(t, db, node)
+	if err := db.Init(); err != nil {
+		t.Fatal(err)
 	}
-	legacyNode, err := db.GetNode(ctx, &scheduler.GetNodeRequest{Id: legacyNode.Id})
+	if owner, err := db.TryAssign(ctx, task, nil); err != nil || owner != node.Id {
+		t.Fatalf("migrated owner = %q %v", owner, err)
+	}
+	before, err := db.GetNode(ctx, &scheduler.GetNodeRequest{Id: node.Id})
 	if err != nil {
-		t.Fatalf("get legacy node: %v", err)
+		t.Fatal(err)
 	}
-
-	owner, err := db.TryAssign(ctx, newTestTask(legacyTaskID, legacyTaskID, testUser), nil)
-	if err != nil || owner != legacyNode.Id {
-		t.Fatalf("read legacy assignment = (%q, %v), want owner %q", owner, err, legacyNode.Id)
+	if len(before.TaskIds) != 1 || before.Available.Cpus != 3 {
+		t.Fatalf("migration lost/recharged allocation: %v", before)
 	}
-	if got := taskClaimOwner(t, db, ctx, legacyTaskID); got != "" {
-		t.Fatalf("read-only legacy lookup created claim owner %q", got)
+	if err := db.Init(); err != nil {
+		t.Fatal(err)
 	}
-
-	owner, err = db.TryAssign(ctx, newTestTask(legacyTaskID, legacyTaskID, testUser), legacyNode)
-	if err != nil || owner != legacyNode.Id {
-		t.Fatalf("repair legacy assignment = (%q, %v), want owner %q", owner, err, legacyNode.Id)
-	}
-	if got := taskClaimOwner(t, db, ctx, legacyTaskID); got != legacyNode.Id {
-		t.Fatalf("repaired claim owner = %q, want %q", got, legacyNode.Id)
-	}
-	storedLegacyNode, err := db.GetNode(ctx, &scheduler.GetNodeRequest{Id: legacyNode.Id})
+	after, err := db.GetNode(ctx, &scheduler.GetNodeRequest{Id: node.Id})
 	if err != nil {
-		t.Fatalf("get repaired legacy node: %v", err)
+		t.Fatal(err)
 	}
-	if len(storedLegacyNode.TaskIds) != 1 || storedLegacyNode.Available.Cpus != 3 {
-		t.Fatalf("legacy repair duplicated or recharged task: IDs=%v available=%v", storedLegacyNode.TaskIds, storedLegacyNode.Available)
+	if !proto.Equal(before, after) {
+		t.Fatalf("repeated Init changed allocation: before=%v after=%v", before, after)
 	}
-
-	const ambiguousTaskID = "ambiguous-assignment-task"
-	if err := db.WriteEvent(ctx, events.NewTaskCreated(newTestTask(ambiguousTaskID, ambiguousTaskID, testUser))); err != nil {
-		t.Fatalf("create ambiguous task: %v", err)
+	ambiguous := newTestTask("ambiguous-task", "ambiguous-task", testUser)
+	if err := db.WriteEvent(ctx, events.NewTaskCreated(ambiguous)); err != nil {
+		t.Fatal(err)
 	}
-	nodeA := createTryAssignNode(t, db, ctx, "ambiguous-node-a")
-	nodeB := createTryAssignNode(t, db, ctx, "ambiguous-node-b")
-	for _, node := range []*scheduler.Node{nodeA, nodeB} {
-		node.TaskIds = []string{ambiguousTaskID}
-		if _, err := db.PutNode(ctx, node); err != nil {
-			t.Fatalf("write ambiguous assignment to %q: %v", node.Id, err)
-		}
+	a := createTryAssignNode(t, db, ctx, "ambiguous-a")
+	b := createTryAssignNode(t, db, ctx, "ambiguous-b")
+	a.TaskIds = []string{ambiguous.Id}
+	b.TaskIds = []string{ambiguous.Id}
+	seedLegacyClaimMigration(t, db, a, b)
+	if err := db.Init(); err == nil {
+		t.Fatal("ambiguous owners migrated")
 	}
-	nodeA, err = db.GetNode(ctx, &scheduler.GetNodeRequest{Id: nodeA.Id})
-	if err != nil {
-		t.Fatalf("get ambiguous node: %v", err)
+	if owner := taskClaimOwner(t, db, ctx, ambiguous.Id); owner != "" {
+		t.Fatalf("failed migration created claim %q", owner)
 	}
-	if _, err := db.TryAssign(ctx, newTestTask(ambiguousTaskID, ambiguousTaskID, testUser), nodeA); err == nil {
-		t.Fatal("TryAssign accepted task already stored on multiple nodes")
-	}
-	if got := taskClaimOwner(t, db, ctx, ambiguousTaskID); got != "" {
-		t.Fatalf("ambiguous assignment created claim owner %q", got)
-	}
+	assertClaimMigrationPending(t, db)
 }
 
 func TestTryAssignRejectsOrphanClaimAndReturnsMissingOwner(t *testing.T) {
@@ -402,9 +389,14 @@ func TestTryAssignRejectsOrphanClaimAndReturnsMissingOwner(t *testing.T) {
 		t.Fatalf("create missing-node task: %v", err)
 	}
 	const missingNodeID = "missing-durable-owner"
-	if _, err := db.client.Exec(ctx, `UPDATE tasks SET claim_owner = $1 WHERE id = $2`, missingNodeID, missingNodeTaskID); err != nil {
-		t.Fatalf("seed missing-node claim: %v", err)
+	missingNode := createTryAssignNode(t, db, ctx, missingNodeID)
+	if _, err := db.TryAssign(ctx, newTestTask(missingNodeTaskID, missingNodeTaskID, testUser), missingNode); err != nil {
+		t.Fatal(err)
 	}
+	if _, err := db.DeleteNode(ctx, &scheduler.Node{Id: missingNodeID}); err != nil {
+		t.Fatal(err)
+	}
+
 	owner, err := db.TryAssign(ctx, newTestTask(missingNodeTaskID, missingNodeTaskID, testUser), nil)
 	if err != nil || owner != missingNodeID {
 		t.Fatalf("TryAssign missing claimed node = (%q, %v), want owner %q", owner, err, missingNodeID)
