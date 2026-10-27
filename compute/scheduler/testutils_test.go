@@ -31,14 +31,16 @@ func newTestNode(conf *config.Config, t *testing.T) testNode {
 	res, _ := detectResources(conf.Node, conf.Worker.WorkDir)
 	s := new(MockClient)
 	n := &NodeProcess{
-		conf:      conf,
-		client:    s,
-		log:       log,
-		resources: res,
-		workerRun: NoopWorker,
-		workers:   newRunSet(),
-		timeout:   util.NewIdleTimeout(conf.Node.Timeout.GetDuration().AsDuration()),
-		state:     NodeState_ALIVE,
+		conf:          conf,
+		client:        s,
+		log:           log,
+		resources:     res,
+		workerRun:     NoopWorker,
+		workers:       newRunSet(),
+		timeout:       util.NewIdleTimeout(conf.Node.Timeout.GetDuration().AsDuration()),
+		state:         NodeState_ALIVE,
+		drained:       make(chan struct{}),
+		drainRequests: make(chan struct{}, 1),
 	}
 
 	s.On("PutNode", mock.Anything, mock.Anything).
