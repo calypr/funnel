@@ -124,14 +124,31 @@ func (db *MongoDB) Init() error {
 	}
 
 	if !found["nodes"] {
-		indexKeys := &bson.D{
-			{Key: "-id", Value: -1},
-		}
-		if err := db.createCollection("nodes", indexKeys); err != nil {
+		ctx, cancel := db.context()
+		err := db.database.CreateCollection(ctx, "nodes", nil)
+		cancel()
+		if err != nil {
 			return err
 		}
 	}
 
+	return db.ensureNodeIDIndex()
+}
+
+func (db *MongoDB) ensureNodeIDIndex() error {
+	ctx, cancel := db.context()
+	defer cancel()
+
+	index := mongo.IndexModel{
+		Keys: bson.D{{Key: "id", Value: 1}},
+		Options: options.Index().
+			SetName("id_1").
+			SetUnique(true).
+			SetCollation(&options.Collation{Locale: "simple"}),
+	}
+	if _, err := db.nodes().Indexes().CreateOne(ctx, index); err != nil {
+		return fmt.Errorf("ensuring unique simple-collation index on nodes.id (duplicate legacy node IDs must be resolved before startup): %w", err)
+	}
 	return nil
 }
 

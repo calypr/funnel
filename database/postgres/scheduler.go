@@ -154,11 +154,19 @@ func (db *Postgres) DeleteNode(ctx context.Context, req *scheduler.Node) (*sched
 
 // ListNodes is an API endpoint that returns a list of nodes.
 func (db *Postgres) ListNodes(ctx context.Context, req *scheduler.ListNodesRequest) (*scheduler.ListNodesResponse, error) {
-	ctx, cancel := db.context()
+	page, err := scheduler.ParseNodePage(req)
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, db.conf.GetTimeout().GetDuration().AsDuration())
 	defer cancel()
 
-	selectSQL := `SELECT data FROM nodes`
-	rows, err := db.client.Query(ctx, selectSQL)
+	var rows pgx.Rows
+	if page.AfterID == "" {
+		rows, err = db.client.Query(ctx, `SELECT data FROM nodes ORDER BY id ASC LIMIT $1`, page.Limit+1)
+	} else {
+		rows, err = db.client.Query(ctx, `SELECT data FROM nodes WHERE id > $1 ORDER BY id ASC LIMIT $2`, page.AfterID, page.Limit+1)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -182,7 +190,5 @@ func (db *Postgres) ListNodes(ctx context.Context, req *scheduler.ListNodesReque
 		return nil, rows.Err()
 	}
 
-	return &scheduler.ListNodesResponse{
-		Nodes: nodes,
-	}, nil
+	return scheduler.NewNodePageResponse(nodes, page.Limit), nil
 }

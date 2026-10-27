@@ -33,6 +33,23 @@
             }
           }
         },
+        "parameters": [
+          {
+            "name": "page_size",
+            "description": "Maximum number of nodes to return. Zero uses the default page size of 500.\nValues from 1 through 1000 are accepted.",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "page_token",
+            "description": "Opaque continuation token from a previous ListNodes response.",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
         "tags": [
           "SchedulerService"
         ]
@@ -110,6 +127,10 @@
             "type": "object",
             "$ref": "#/definitions/schedulerNode"
           }
+        },
+        "next_page_token": {
+          "type": "string",
+          "description": "Opaque continuation token. Empty when there are no more nodes."
         }
       }
     },

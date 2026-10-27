@@ -22,3 +22,9 @@ MongoDB:
   Username: ""
   Password: ""
 ```
+
+When Funnel initializes the MongoDB backend, it ensures a unique `id` index
+with simple collation on the existing `nodes` collection. If legacy node
+documents contain duplicate IDs, initialization fails and reports that the
+duplicates must be resolved before startup. The index migration does not
+delete node documents or remove existing indexes.
