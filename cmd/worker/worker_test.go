@@ -98,3 +98,10 @@ func TestTaskFileOption(t *testing.T) {
 	c.SetArgs([]string{"run", "-b", "abcd"})
 	c.Execute()
 }
+
+func TestNewTaskReaderRejectsUnknownDatabase(t *testing.T) {
+	_, err := newTaskReader(context.Background(), &config.Config{Database: "elastic"}, &Options{})
+	if err == nil || !strings.Contains(err.Error(), "unknown database: 'elastic'") {
+		t.Fatalf("newTaskReader error = %v, want unknown database error", err)
+	}
+}

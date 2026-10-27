@@ -22,11 +22,6 @@ func (c *Config) Safe() *Config {
 		safe.Postgres.AdminPassword = redact(safe.Postgres.AdminPassword)
 	}
 
-	if safe.Elastic != nil {
-		safe.Elastic.Password = redact(safe.Elastic.Password)
-		safe.Elastic.APIKey = redact(safe.Elastic.APIKey)
-		safe.Elastic.ServiceToken = redact(safe.Elastic.ServiceToken)
-	}
 
 	// Cloud provider credentials
 	if safe.AWSBatch != nil && safe.AWSBatch.AWSConfig != nil {

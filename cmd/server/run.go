@@ -20,7 +20,6 @@ import (
 	"github.com/calypr/funnel/database/boltdb"
 	"github.com/calypr/funnel/database/datastore"
 	"github.com/calypr/funnel/database/dynamodb"
-	"github.com/calypr/funnel/database/elastic"
 	"github.com/calypr/funnel/database/mongodb"
 	"github.com/calypr/funnel/database/postgres"
 	"github.com/calypr/funnel/events"
@@ -106,17 +105,6 @@ func NewServer(ctx context.Context, conf *config.Config, log *logger.Logger) (*S
 		reader = d
 		writers = append(writers, d)
 
-	case "elastic":
-		e, err := elastic.NewElastic(conf.Elastic)
-		if err != nil {
-			return nil, dberr(err)
-		}
-		database = e
-		reader = e
-		nodes = e
-		queue = e
-		writers = append(writers, e)
-
 	case "mongodb":
 		m, err := mongodb.NewMongoDB(conf.MongoDB)
 		if err != nil {
@@ -177,8 +165,6 @@ func NewServer(ctx context.Context, conf *config.Config, log *logger.Logger) (*S
 			writer, err = badger.NewBadger(conf.Badger)
 		case "dynamodb":
 			writer, err = dynamodb.NewDynamoDB(conf.DynamoDB)
-		case "elastic":
-			writer, err = elastic.NewElastic(conf.Elastic)
 		case "kafka":
 			writer, err = events.NewKafkaWriter(ctx, conf.Kafka)
 		case "pubsub":

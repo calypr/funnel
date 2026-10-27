@@ -15,7 +15,6 @@ func EmptyConfig() *Config {
 		BoltDB:        &BoltDB{},
 		Badger:        &Badger{},
 		DynamoDB:      &DynamoDB{AWSConfig: &AWSConfig{}},
-		Elastic:       &Elastic{},
 		MongoDB:       &MongoDB{Timeout: &TimeoutConfig{}},
 		Postgres:      &Postgres{Timeout: &TimeoutConfig{}},
 		Kafka:         &Kafka{},

@@ -127,10 +127,6 @@ func DefaultConfig() *Config {
 			TableBasename: "funnel",
 			AWSConfig:     &AWSConfig{},
 		},
-		Elastic: &Elastic{
-			URL:         "http://localhost:9200",
-			IndexPrefix: "funnel",
-		},
 		MongoDB: &MongoDB{
 			Addrs: []string{"localhost"},
 			Timeout: &TimeoutConfig{

@@ -1,5 +1,5 @@
 # The name of the active server database backend
-# Available backends: boltdb, badger, datastore, dynamodb, elastic, mongodb
+# Available backends: boltdb, badger, datastore, dynamodb, mongodb
 ---
 Database: boltdb
 
@@ -8,7 +8,7 @@ Database: boltdb
 Compute: local
 
 # The name of the active event writer backend(s).
-# Available backends: log, boltdb, badger, datastore, dynamodb, elastic, mongodb, kafka
+# Available backends: log, boltdb, badger, datastore, dynamodb, mongodb, kafka
 EventWriters:
   - boltdb
   - log
@@ -190,22 +190,6 @@ DynamoDB:
     Key: ""
     # AWS Secret Access Key
     Secret: ""
-
-Elastic:
-  # Prefix to use for indexes (task, events, nodes)
-  IndexPrefix: funnel
-  # URL of the elasticsearch server.
-  URL: http://localhost:9200
-  # Optional. Username for HTTP Basic Authentication.
-  Username:
-  # Optional. Password for HTTP Basic Authentication.
-  Password:
-  # Optional. Endpoint for the Elastic Service (https://elastic.co/cloud).
-  CloudID:
-  # Optional. Base64-encoded token for authorization; if set, overrides username/password and service token.
-  APIKey:
-  # Optional. Service token for authorization; if set, overrides username/password.
-  ServiceToken:
 
 # Google Cloud Datastore task database.
 Datastore:

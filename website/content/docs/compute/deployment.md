@@ -36,8 +36,8 @@ claims and can assign the same task to another node. Check the server logs for
 conflicting existing assignments before restarting task submission.
 
 With BoltDB and PostgreSQL, the scheduler records a task claim and its node
-reservation together. MongoDB and Elasticsearch retain their existing scheduler
-behavior and do not provide the same concurrent-assignment guarantee.
+reservation together. MongoDB retains its existing scheduler behavior and does
+not provide the same concurrent-assignment guarantee.
 
 The available scheduler and node config:
 ```yaml

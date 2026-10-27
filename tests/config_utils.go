@@ -59,7 +59,6 @@ func TestifyConfig(conf *config.Config) *config.Config {
 	conf.Worker.PollingRate = durationpb.New(time.Millisecond * 100)
 
 	prefix := "funnel-e2e-tests-" + RandomString(6)
-	conf.Elastic.IndexPrefix = prefix
 	conf.MongoDB.Database = prefix
 	conf.DynamoDB.TableBasename = prefix
 	conf.Datastore.Project = prefix
