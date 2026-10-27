@@ -56,7 +56,7 @@ func TestWorkerReportsFinalStateWriteFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeErr := errors.New("task state database unavailable")
-	runner := &worker.DefaultWorker{Conf: conf.Worker, Store: &storage.Mux{}, TaskReader: worker.NewGenericTaskReader(db.GetTask, task.Id, func() {}), EventWriter: &rejectFinalStateWriter{Writer: db, err: writeErr, state: tes.Complete}}
+	runner := &worker.DefaultWorker{Conf: conf.Worker, Store: &storage.Mux{}, TaskReader: worker.NewGenericTaskReader(db.GetTask, task.Id, func() {}), ExecutionClaimer: db, EventWriter: &rejectFinalStateWriter{Writer: db, err: writeErr, state: tes.Complete}}
 	err = runner.Run(ctx)
 	if !errors.Is(err, writeErr) || !strings.Contains(err.Error(), "COMPLETE") {
 		t.Fatalf("worker error = %v, want COMPLETE write failure", err)
@@ -96,7 +96,7 @@ func TestWorkerPreservesExecutorErrorWhenFinalStateWriteFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeErr := errors.New("task state database unavailable")
-	runner := &worker.DefaultWorker{Conf: conf.Worker, Store: &storage.Mux{}, TaskReader: worker.NewGenericTaskReader(db.GetTask, task.Id, func() {}), EventWriter: &rejectFinalStateWriter{Writer: db, err: writeErr, state: tes.ExecutorError}}
+	runner := &worker.DefaultWorker{Conf: conf.Worker, Store: &storage.Mux{}, TaskReader: worker.NewGenericTaskReader(db.GetTask, task.Id, func() {}), ExecutionClaimer: db, EventWriter: &rejectFinalStateWriter{Writer: db, err: writeErr, state: tes.ExecutorError}}
 	err = runner.Run(ctx)
 	var exitErr *exec.ExitError
 	if !errors.Is(err, writeErr) || !errors.As(err, &exitErr) || exitErr.ExitCode() != 7 {

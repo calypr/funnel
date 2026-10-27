@@ -15,6 +15,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  docker-resource-integration:
+    name: Docker worker integration tests
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - name: Set up Go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: go.mod
+    - name: Pull test container image
+      run: docker pull alpine:latest
+    - name: Test Docker worker execution admission
+      env:
+        FUNNEL_TEST_DOCKER_INTEGRATION: "1"
+      run: go test -v ./worker -run '^TestExecutionAdmissionDockerIntegration$' -count=1 -timeout=3m
+
   scheduler-tests:
     name: Scheduler tests (${{ matrix.label }})
     runs-on: ubuntu-latest

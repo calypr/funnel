@@ -87,6 +87,7 @@ func TestSchedulerContract(t *testing.T) {
 
 func runContract(t *testing.T, open storeFactory) {
 	runReservationContracts(t, open)
+	runExecutionClaimContracts(t, open)
 	t.Run("node pages use stable IDs and traverse the full fleet", func(t *testing.T) {
 		db := open(t)
 		testNodePagination(t, db)
@@ -532,7 +533,7 @@ func postgresURL(host, user, password, database string) string {
 }
 
 func testContext() context.Context {
-	return context.WithValue(context.Background(), server.UserInfoKey, server.UserInfo{
+	return context.WithValue(context.Background(), server.UserInfoKey, &server.UserInfo{
 		Username: "scheduler-contract",
 		IsAdmin:  true,
 	})

@@ -135,3 +135,47 @@ transactions during normal reservation/release. MongoDB uses snapshot transactio
 with majority writes and retries write conflicts against fresh task and node
 records. BoltDB retains its embedded single-writer transaction model. None of
 these backends requires an external event log.
+
+### Execution admission
+
+Workers using BoltDB, PostgreSQL, or MongoDB acquire a durable execution claim
+before preparing files or starting any executor. The database checks the task
+state and records the claim with `RUNNING` in one transaction. Only the worker
+that receives a successful acquisition proceeds. A second worker observes the
+task until it reaches a terminal state, without preparing files, running an
+executor, or writing task events. This prevents a duplicate batch worker from
+signaling successful completion while the original execution is still active.
+An observer exiting successfully means observation finished; the TES task state
+still reports whether execution completed, failed, or was canceled.
+A failed claim request or an unsupported claim endpoint cannot authorize a launch.
+Local tasks passed directly from a file or the command line do not use this
+distributed claim.
+
+Claims have no expiration and do not transfer automatically. If a worker crashes
+after acquiring its claim, or loses the successful response, another worker
+cannot rerun that task ID. The task and duplicate observers can remain active until a user cancels the
+task or the existing backend failure-recovery path records a failure. Inspect the original runtime
+before submitting replacement work with a new task ID. Changing the old task's
+state or retrying its claim does not grant another execution.
+
+This protects execution admission. It does not recover running containers,
+stop an unreachable process, or guarantee exactly-once writes to external
+systems. Resource release still follows TES terminal state and does not prove
+that an unreachable runtime has stopped.
+
+Stop older servers, workers, and node processes before upgrading. Older workers
+do not acquire execution claims and can bypass this protection. Initialize the
+database with the upgraded server, then start upgraded workers. An upgraded RPC
+worker requires an upgraded server; mixed-version rollouts do not provide this
+protection. Existing running
+and terminal tasks are treated as having consumed execution admission during
+the startup migration.
+
+The claim is an internal worker operation. It does not change the TES task
+schema or introduce a public TES endpoint. Worker RPC authentication and task
+access rules also apply to acquisition. Database-backed workers using an
+unsupported claim implementation fail before execution rather than silently
+running without this guard. Datastore, DynamoDB, and Badger do not currently
+implement execution admission; use BoltDB, PostgreSQL, or MongoDB for remote
+workers with this version. Custom callers of `DefaultWorker` must supply an
+`ExecutionClaimer` for non-local task readers.

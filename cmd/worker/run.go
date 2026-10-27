@@ -65,6 +65,16 @@ func NewWorker(ctx context.Context, conf *config.Config, log *logger.Logger, opt
 	if err != nil {
 		return nil, fmt.Errorf("creating task reader: %v", err)
 	}
+	var executionClaimer worker.ExecutionClaimer
+	if opts.TaskFile == "" && opts.TaskBase64 == "" {
+		var ok bool
+		executionClaimer, ok = reader.(worker.ExecutionClaimer)
+		if !ok {
+			reader.Close()
+			writer.Close()
+			return nil, fmt.Errorf("task reader %T does not support execution claims", reader)
+		}
+	}
 
 	// The executor always defaults to docker, unless explicitly set to kubernetes.
 	var readMounts []storage.S3ReadMount
@@ -113,11 +123,12 @@ func NewWorker(ctx context.Context, conf *config.Config, log *logger.Logger, opt
 	mux.AttachLogger(log)
 
 	return &worker.DefaultWorker{
-		Executor:    executor,
-		Conf:        conf.Worker,
-		Store:       mux,
-		TaskReader:  reader,
-		EventWriter: writer,
+		Executor:         executor,
+		Conf:             conf.Worker,
+		Store:            mux,
+		TaskReader:       reader,
+		ExecutionClaimer: executionClaimer,
+		EventWriter:      writer,
 	}, nil
 }
 
@@ -138,19 +149,19 @@ func newTaskReader(ctx context.Context, conf *config.Config, opts *Options) (wor
 	// These readers will connect to the configured task database.
 	case "datastore":
 		db, err := datastore.NewDatastore(conf.Datastore)
-		return newDatabaseTaskReader(opts.TaskID, db, err)
+		return newDatabaseTaskReader(opts.TaskID, "datastore", db, err)
 
 	case "dynamodb":
 		db, err := dynamodb.NewDynamoDB(conf.DynamoDB)
-		return newDatabaseTaskReader(opts.TaskID, db, err)
+		return newDatabaseTaskReader(opts.TaskID, "dynamodb", db, err)
 
 	case "mongodb":
 		db, err := mongodb.NewMongoDB(conf.MongoDB)
-		return newDatabaseTaskReader(opts.TaskID, db, err)
+		return newDatabaseTaskReader(opts.TaskID, "mongodb", db, err)
 
 	case "postgres":
 		db, err := postgres.NewPostgres(conf.Postgres)
-		return newDatabaseTaskReader(opts.TaskID, db, err)
+		return newDatabaseTaskReader(opts.TaskID, "postgres", db, err)
 
 	// These databases are embedded in the server, so workers use RPC.
 	case "", "boltdb", "badger", "grpc", "rpc":
@@ -163,11 +174,26 @@ func newTaskReader(ctx context.Context, conf *config.Config, opts *Options) (wor
 
 // newDatabaseTaskReader helps create a generic task reader wrapper
 // for the given database backend.
-func newDatabaseTaskReader(taskID string, db tes.ReadOnlyServer, err error) (worker.TaskReader, error) {
+func newDatabaseTaskReader(taskID, database string, db tes.ReadOnlyServer, err error) (worker.TaskReader, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating database task reader: %v", err)
 	}
-	return worker.NewGenericTaskReader(db.GetTask, taskID, db.Close), nil
+	reader := worker.NewGenericTaskReader(db.GetTask, taskID, db.Close)
+	claimer, _ := db.(worker.ExecutionClaimer)
+	return &databaseTaskReader{GenericTaskReader: reader, database: database, claimer: claimer}, nil
+}
+
+type databaseTaskReader struct {
+	*worker.GenericTaskReader
+	database string
+	claimer  worker.ExecutionClaimer
+}
+
+func (r *databaseTaskReader) ClaimExecution(ctx context.Context, taskID string) (bool, error) {
+	if r.claimer == nil {
+		return false, fmt.Errorf("database %q does not support execution claims", r.database)
+	}
+	return r.claimer.ClaimExecution(ctx, taskID)
 }
 
 // eventWriterBuilder is a helper for building a set of event writers,

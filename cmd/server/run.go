@@ -134,6 +134,8 @@ func NewServer(ctx context.Context, conf *config.Config, log *logger.Logger) (*S
 		atomicAssigner = assigner
 	}
 
+	executionClaimer, _ := database.(events.ExecutionClaimer)
+
 	// Initialize the Database
 	// Note: This is where Funnel waits until the given database is ready to accept requests.
 	if err := database.Init(); err != nil {
@@ -300,7 +302,7 @@ func NewServer(ctx context.Context, conf *config.Config, log *logger.Logger) (*S
 				Log:     log,
 				Config:  conf,
 			},
-			Events:  &events.Service{Writer: writer},
+			Events:  &events.Service{Writer: writer, Claimer: executionClaimer},
 			Nodes:   nodes,
 			Plugins: conf.Plugins,
 		},

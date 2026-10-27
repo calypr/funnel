@@ -38,6 +38,9 @@ func (taskBolt *BoltDB) WriteEvent(ctx context.Context, req *events.Event) error
 		}
 		// Combine task storage and queueing into single transaction to avoid BoltDB write lock contention
 		err = taskBolt.db.Update(func(tx *bolt.Tx) error {
+			if tx.Bucket(TaskBucket).Get(idBytes) != nil {
+				return fmt.Errorf("task %q already exists", task.Id)
+			}
 			if tx.Bucket(TaskClaims).Get(idBytes) != nil {
 				return fmt.Errorf("cannot recreate assigned task %q", task.Id)
 			}
