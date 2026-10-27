@@ -16,7 +16,7 @@ type queueStub struct {
 	tasks []*tes.Task
 }
 
-func (q *queueStub) ReadQueue(count int) []*tes.Task {
+func (q *queueStub) ReadQueue(count int, after *tes.Task) []*tes.Task {
 	return q.tasks
 }
 
@@ -153,5 +153,89 @@ func TestSchedulePutNodeFailureSkipsInitializing(t *testing.T) {
 
 	if states := stateEvents(writer); len(states) != 0 {
 		t.Fatalf("failed PutNode must not mark the task INITIALIZING, got %v", states)
+	}
+}
+
+type limitedQueue struct{ tasks []*tes.Task }
+
+func (q *limitedQueue) ReadQueue(count int, after *tes.Task) []*tes.Task {
+	start := 0
+	if after != nil {
+		for start < len(q.tasks) && q.tasks[start].Id <= after.Id {
+			start++
+		}
+	}
+	end := start + count
+	if end > len(q.tasks) {
+		end = len(q.tasks)
+	}
+	return q.tasks[start:end]
+}
+
+func TestScheduleReachesRunnableTaskBeyondBlockedChunk(t *testing.T) {
+	node := newNode("node-zone-b")
+	node.Zone = "b"
+	queue := &limitedQueue{tasks: []*tes.Task{
+		{Id: "blocked-1", Resources: &tes.Resources{Zones: []string{"a"}}},
+		{Id: "blocked-2", Resources: &tes.Resources{Zones: []string{"a"}}},
+		{Id: "runnable", Resources: &tes.Resources{Zones: []string{"b"}}},
+	}}
+	s := newTestScheduler([]*Node{node}, queue, &recordingWriter{})
+	s.Conf.ScheduleChunk = 2
+	for i := 0; i < 2; i++ {
+		if err := s.Schedule(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(node.TaskIds) != 1 || node.TaskIds[0] != "runnable" {
+		t.Fatalf("runnable task remained queued after 2 scheduling passes; node assignments: %v", node.TaskIds)
+	}
+}
+
+func TestScheduleReturnsToBlockedTasks(t *testing.T) {
+	node := newNode("node")
+	node.Zone = "b"
+	q := &limitedQueue{tasks: []*tes.Task{
+		{Id: "a", Resources: &tes.Resources{Zones: []string{"a"}}},
+		{Id: "b", Resources: &tes.Resources{Zones: []string{"a"}}},
+		{Id: "c", Resources: &tes.Resources{Zones: []string{"a"}}},
+	}}
+	s := newTestScheduler([]*Node{node}, q, &recordingWriter{})
+	s.Conf.ScheduleChunk = 2
+	if err := s.Schedule(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Schedule(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	node.Zone = "a"
+	if err := s.Schedule(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(node.TaskIds) != 2 || node.TaskIds[0] != "a" || node.TaskIds[1] != "b" {
+		t.Fatalf("scheduler did not return to first blocked tasks: %v", node.TaskIds)
+	}
+}
+
+func TestScheduleContinuesThroughQueueInOrder(t *testing.T) {
+	node := newNode("node")
+	node.Zone = "b"
+	q := &limitedQueue{tasks: []*tes.Task{}}
+	for _, id := range []string{"a", "b", "c", "d", "e", "f"} {
+		q.tasks = append(q.tasks, &tes.Task{Id: id, Resources: &tes.Resources{Zones: []string{"a"}}})
+	}
+	s := newTestScheduler([]*Node{node}, q, &recordingWriter{})
+	s.Conf.ScheduleChunk = 2
+	for i := 0; i < 2; i++ {
+		if err := s.Schedule(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	node.Zone = "a"
+	if err := s.Schedule(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(node.TaskIds) != 2 || node.TaskIds[0] != "e" || node.TaskIds[1] != "f" {
+		t.Fatalf("did not continue to the next queued tasks: %v", node.TaskIds)
 	}
 }

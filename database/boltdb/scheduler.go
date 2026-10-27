@@ -27,12 +27,19 @@ func (taskBolt *BoltDB) queueTask(task *tes.Task) error {
 }
 
 // ReadQueue returns a slice of queued Tasks. Up to "n" tasks are returned.
-func (taskBolt *BoltDB) ReadQueue(n int) []*tes.Task {
+func (taskBolt *BoltDB) ReadQueue(n int, after *tes.Task) []*tes.Task {
 	tasks := make([]*tes.Task, 0)
 	if err := taskBolt.db.View(func(tx *bolt.Tx) error {
 		// Iterate over the TasksQueued bucket, reading the first `n` tasks
 		c := tx.Bucket(TasksQueued).Cursor()
-		for k, _ := c.First(); k != nil && len(tasks) < n; k, _ = c.Next() {
+		k, _ := c.First()
+		if after != nil {
+			k, _ = c.Seek([]byte(after.Id))
+			if k != nil && string(k) == after.Id {
+				k, _ = c.Next()
+			}
+		}
+		for ; k != nil && len(tasks) < n; k, _ = c.Next() {
 			id := string(k)
 			task, err := getTaskView(tx, id, tes.View_FULL, nil)
 			if err != nil {

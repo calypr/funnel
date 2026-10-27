@@ -14,18 +14,19 @@ import (
 	"github.com/calypr/funnel/tes"
 )
 
-// TaskQueue describes the interface the scheduler uses to find tasks that need scheduling.
+// TaskQueue returns queued tasks in a stable order, starting strictly after the cursor.
 type TaskQueue interface {
-	ReadQueue(count int) []*tes.Task
+	ReadQueue(count int, after *tes.Task) []*tes.Task
 }
 
 // Scheduler handles scheduling tasks to nodes and support many backends.
 type Scheduler struct {
-	Conf  *config.Scheduler
-	Log   *logger.Logger
-	Nodes SchedulerServiceServer
-	Queue TaskQueue
-	Event events.Writer
+	Conf        *config.Scheduler
+	Log         *logger.Logger
+	Nodes       SchedulerServiceServer
+	Queue       TaskQueue
+	Event       events.Writer
+	queueCursor *tes.Task
 }
 
 // Run starts the scheduling loop. This blocks.
@@ -106,7 +107,18 @@ func (s *Scheduler) Schedule(ctx context.Context) error {
 		s.Log.Error("Error checking nodes", err)
 	}
 
-	for _, task := range s.Queue.ReadQueue(int(s.Conf.ScheduleChunk)) {
+	count := int(s.Conf.ScheduleChunk)
+	if count <= 0 {
+		return nil
+	}
+	// Continue through the queue in order and restart after reaching its end.
+	tasks := s.Queue.ReadQueue(count, s.queueCursor)
+	if len(tasks) < count {
+		s.queueCursor = nil
+	} else {
+		s.queueCursor = tasks[len(tasks)-1]
+	}
+	for _, task := range tasks {
 		offer := s.GetOffer(task)
 		if offer != nil {
 			s.Log.Info("Assigning task to node",
