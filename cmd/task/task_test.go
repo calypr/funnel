@@ -4,11 +4,28 @@ import (
 	"errors"
 	"io"
 	"net"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
 )
+
+func TestTaskListReportsHTTPError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"error":"access denied"}`))
+	}))
+	defer server.Close()
+	cmd := NewCommand()
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"list", "--server", server.URL})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "403] Forbidden: access denied") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
 
 func TestConnectionFailureHint(t *testing.T) {
 	server := httptest.NewServer(nil)
