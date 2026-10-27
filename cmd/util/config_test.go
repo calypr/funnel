@@ -4,9 +4,32 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/calypr/funnel/config"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
+
+func TestHTTPStorageTimeoutDefaultsAndOverrides(t *testing.T) {
+	defaults, err := MergeConfigFileWithFlags("", config.EmptyConfig())
+	if err != nil || !defaults.HTTPStorage.Timeout.GetDisabled() {
+		t.Fatalf("expected disabled default timeout, got %v, %v", defaults.HTTPStorage.Timeout, err)
+	}
+	fileConfig := config.EmptyConfig()
+	fileConfig.HTTPStorage.Timeout.TimeoutOption = &config.TimeoutConfig_Duration{Duration: durationpb.New(3 * time.Minute)}
+	file, cleanup := TempConfigFile(fileConfig, "config.yaml")
+	defer cleanup()
+	merged, err := MergeConfigFileWithFlags(file, config.EmptyConfig())
+	if err != nil || merged.HTTPStorage.Timeout.GetDuration().AsDuration() != 3*time.Minute {
+		t.Fatalf("expected configured timeout, got %v, %v", merged.HTTPStorage.Timeout, err)
+	}
+	flags := config.EmptyConfig()
+	flags.HTTPStorage.Timeout.TimeoutOption = &config.TimeoutConfig_Duration{Duration: durationpb.New(4 * time.Minute)}
+	merged, err = MergeConfigFileWithFlags(file, flags)
+	if err != nil || merged.HTTPStorage.Timeout.GetDuration().AsDuration() != 4*time.Minute {
+		t.Fatalf("expected flag timeout, got %v, %v", merged.HTTPStorage.Timeout, err)
+	}
+}
 
 func TestMergeConfigFileWithFlags(t *testing.T) {
 	fileConfig := config.DefaultConfig()

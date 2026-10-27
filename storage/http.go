@@ -9,6 +9,7 @@ import (
 	urllib "net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/util/fsutil"
@@ -22,9 +23,12 @@ type HTTP struct {
 
 // NewHTTP creates a new HTTP instance.
 func NewHTTP(conf *config.HTTPStorage) (*HTTP, error) {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.ResponseHeaderTimeout = time.Minute
 	client := &http.Client{
 		Timeout:       conf.Timeout.GetDuration().AsDuration(),
 		CheckRedirect: checkRedirect,
+		Transport:     transport,
 	}
 	return &HTTP{client}, nil
 }
