@@ -30,6 +30,15 @@ funnel node run --config node.config.yml
 
 To activate the Funnel scheduler, use the `manual` backend in the config.
 
+When upgrading to the task-claim scheduler, stop all older Funnel server
+instances before starting the new version. Older schedulers do not consult
+claims and can assign the same task to another node. Check the server logs for
+conflicting existing assignments before restarting task submission.
+
+With BoltDB and PostgreSQL, the scheduler records a task claim and its node
+reservation together. MongoDB and Elasticsearch retain their existing scheduler
+behavior and do not provide the same concurrent-assignment guarantee.
+
 The available scheduler and node config:
 ```yaml
 # Activate the Funnel scheduler.

@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/calypr/funnel/config"
@@ -9,6 +10,8 @@ import (
 	"github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/tes"
 	"github.com/stretchr/testify/mock"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // queueStub returns a fixed set of tasks on every ReadQueue call.
@@ -18,6 +21,12 @@ type queueStub struct {
 
 func (q *queueStub) ReadQueue(count int, after *tes.Task) []*tes.Task {
 	return q.tasks
+}
+
+type atomicTaskAssignerFunc func(context.Context, *tes.Task, *Node) (string, error)
+
+func (f atomicTaskAssignerFunc) TryAssign(ctx context.Context, task *tes.Task, candidate *Node) (string, error) {
+	return f(ctx, task, candidate)
 }
 
 // recordingWriter captures events so tests can assert on state transitions.
@@ -52,6 +61,22 @@ func newTestScheduler(nodes []*Node, queue TaskQueue, event events.Writer) *Sche
 		Return(&ListNodesResponse{Nodes: nodes}, nil)
 	nodesServer.On("PutNode", mock.Anything, mock.Anything).
 		Return(nil, nil)
+	nodesServer.On("GetNode", mock.Anything, mock.Anything).
+		Return(func(_ context.Context, req *GetNodeRequest) *Node {
+			for _, node := range nodes {
+				if node.Id == req.Id {
+					return node
+				}
+			}
+			return nil
+		}, func(_ context.Context, req *GetNodeRequest) error {
+			for _, node := range nodes {
+				if node.Id == req.Id {
+					return nil
+				}
+			}
+			return status.Error(codes.NotFound, "node not found")
+		})
 	return &Scheduler{
 		Conf:  conf.Scheduler,
 		Log:   logger.NewLogger("test-scheduler", logger.DefaultConfig()),
@@ -138,7 +163,6 @@ func TestSchedulePutNodeFailureSkipsInitializing(t *testing.T) {
 		Return(&ListNodesResponse{Nodes: []*Node{node}}, nil)
 	nodesServer.On("PutNode", mock.Anything, mock.Anything).
 		Return(nil, context.DeadlineExceeded)
-
 	s := &Scheduler{
 		Conf:  conf.Scheduler,
 		Log:   logger.NewLogger("test-scheduler", logger.DefaultConfig()),
@@ -153,6 +177,142 @@ func TestSchedulePutNodeFailureSkipsInitializing(t *testing.T) {
 
 	if states := stateEvents(writer); len(states) != 0 {
 		t.Fatalf("failed PutNode must not mark the task INITIALIZING, got %v", states)
+	}
+}
+
+func TestScheduleUsesAtomicAssignerOwnerAndFetchesFreshNode(t *testing.T) {
+	nodeA := newNode("node-a")
+	nodeB := newNode("node-b")
+	task := &tes.Task{Id: "task-owner"}
+	writer := &recordingWriter{}
+	s := newTestScheduler([]*Node{nodeA, nodeB}, &queueStub{tasks: []*tes.Task{task}}, writer)
+	candidateID := ""
+	s.AtomicAssigner = atomicTaskAssignerFunc(func(_ context.Context, task *tes.Task, candidate *Node) (string, error) {
+		candidateID = candidate.Id
+		nodeB.TaskIds = append(nodeB.TaskIds, task.Id)
+		return nodeB.Id, nil
+	})
+
+	if err := s.Schedule(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if candidateID == "" {
+		t.Fatal("expected scheduler to pass a candidate to the atomic assigner")
+	}
+	if len(nodeA.TaskIds) != 0 || len(nodeB.TaskIds) != 1 || nodeB.TaskIds[0] != task.Id {
+		t.Fatalf("task was not assigned to the claimed owner: node-a=%v node-b=%v", nodeA.TaskIds, nodeB.TaskIds)
+	}
+	nodeServer := s.Nodes.(*MockSchedulerServiceServer)
+	nodeServer.AssertCalled(t, "GetNode", mock.Anything, &GetNodeRequest{Id: nodeB.Id})
+}
+
+func TestScheduleRetriesInitializingForExistingClaimedAssignment(t *testing.T) {
+	node := newNode("node-existing")
+	node.TaskIds = []string{"task-existing"}
+	writer := &recordingWriter{}
+	s := newTestScheduler([]*Node{node}, &queueStub{tasks: []*tes.Task{{Id: "task-existing"}}}, writer)
+	s.AtomicAssigner = atomicTaskAssignerFunc(func(_ context.Context, task *tes.Task, candidate *Node) (string, error) {
+		if candidate.Id != node.Id || task.Id != "task-existing" {
+			t.Fatalf("atomic recovery used unexpected task or candidate: %s %v", task.Id, candidate)
+		}
+		return node.Id, nil
+	})
+
+	if err := s.Schedule(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	s.Nodes.(*MockSchedulerServiceServer).AssertNotCalled(t, "PutNode", mock.Anything, mock.Anything)
+	states := stateEvents(writer)
+	if len(states) != 1 || states[0] != tes.State_INITIALIZING {
+		t.Fatalf("expected only an INITIALIZING retry, got %v", states)
+	}
+}
+
+func TestScheduleFailsTaskWhenAtomicOwnerNodeIsMissing(t *testing.T) {
+	task := &tes.Task{Id: "task-missing-owner"}
+	writer := &recordingWriter{}
+	s := newTestScheduler(nil, &queueStub{tasks: []*tes.Task{task}}, writer)
+	passedCandidate := (*Node)(nil)
+	s.AtomicAssigner = atomicTaskAssignerFunc(func(_ context.Context, _ *tes.Task, candidate *Node) (string, error) {
+		passedCandidate = candidate
+		return "missing-node", nil
+	})
+
+	if err := s.Schedule(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if passedCandidate != nil {
+		t.Fatalf("expected nil candidate when no node is eligible, got %v", passedCandidate)
+	}
+	states := stateEvents(writer)
+	if len(states) != 1 || states[0] != tes.State_SYSTEM_ERROR {
+		t.Fatalf("expected missing claimed node to fail the task, got states %v", states)
+	}
+	s.Nodes.(*MockSchedulerServiceServer).AssertNotCalled(t, "PutNode", mock.Anything, mock.Anything)
+}
+
+func TestScheduleLeavesTaskQueuedWhenLegacyAssignmentAppearsOnMultipleNodes(t *testing.T) {
+	nodeA := newNode("node-a")
+	nodeA.TaskIds = []string{"task-duplicate"}
+	nodeB := newNode("node-b")
+	nodeB.TaskIds = []string{"task-duplicate"}
+	writer := &recordingWriter{}
+	s := newTestScheduler([]*Node{nodeA, nodeB}, &queueStub{tasks: []*tes.Task{{Id: "task-duplicate"}}}, writer)
+	called := false
+	s.AtomicAssigner = atomicTaskAssignerFunc(func(_ context.Context, _ *tes.Task, _ *Node) (string, error) {
+		called = true
+		return "node-a", nil
+	})
+
+	if err := s.Schedule(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if called {
+		t.Fatal("scheduler attempted atomic assignment with conflicting legacy assignments")
+	}
+	s.Nodes.(*MockSchedulerServiceServer).AssertNotCalled(t, "PutNode", mock.Anything, mock.Anything)
+	if states := stateEvents(writer); len(states) != 0 {
+		t.Fatalf("conflicting assignments must leave task queued, got states %v", states)
+	}
+	if len(writer.events) != 1 || writer.events[0].GetSystemLog() == nil || writer.events[0].GetSystemLog().Msg == "" {
+		t.Fatalf("expected an assignment conflict diagnostic, got events %v", writer.events)
+	}
+}
+
+func TestScheduleRetriesAtomicAssignmentAfterNodeVersionConflict(t *testing.T) {
+	node := newNode("node-no-claimer")
+	writer := &recordingWriter{}
+	s := newTestScheduler([]*Node{node}, &queueStub{tasks: []*tes.Task{{Id: "task-no-claimer"}}}, writer)
+	callCount := 0
+	s.AtomicAssigner = atomicTaskAssignerFunc(func(_ context.Context, task *tes.Task, candidate *Node) (string, error) {
+		callCount++
+		if callCount == 1 {
+			return "", errors.New("node version conflict")
+		}
+		candidate.TaskIds = append(candidate.TaskIds, task.Id)
+		return candidate.Id, nil
+	})
+
+	if err := s.Schedule(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if states := stateEvents(writer); len(states) != 0 {
+		t.Fatalf("atomic reservation error must not mark task INITIALIZING, got %v", states)
+	}
+	if err := s.Schedule(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if callCount != 2 {
+		t.Fatalf("expected retry after atomic node conflict, got %d attempts", callCount)
+	}
+	s.Nodes.(*MockSchedulerServiceServer).AssertNotCalled(t, "PutNode", mock.Anything, mock.Anything)
+	if states := stateEvents(writer); len(states) != 1 || states[0] != tes.State_INITIALIZING {
+		t.Fatalf("expected one INITIALIZING event after successful retry, got %v", states)
 	}
 }
 

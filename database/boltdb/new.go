@@ -27,6 +27,9 @@ var TaskOwner = []byte("tasks-owner")
 // TaskState maps: task ID -> state string
 var TaskState = []byte("tasks-state")
 
+// TaskClaims maps task ID -> scheduler-assigned node ID.
+var TaskClaims = []byte("tasks-claims")
+
 // TasksLog defines the name of a bucket which maps
 // task ID -> tes.TaskLog struct
 var TasksLog = []byte("tasks-log")
@@ -92,6 +95,11 @@ func (taskBolt *BoltDB) Init() error {
 		}
 		if tx.Bucket(TaskState) == nil {
 			if _, err := tx.CreateBucket(TaskState); err != nil {
+				return err
+			}
+		}
+		if tx.Bucket(TaskClaims) == nil {
+			if _, err := tx.CreateBucket(TaskClaims); err != nil {
 				return err
 			}
 		}

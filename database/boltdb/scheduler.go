@@ -78,6 +78,7 @@ func (taskBolt *BoltDB) PutNode(ctx context.Context, node *scheduler.Node) (*sch
 			return err
 		}
 
+		node.Version = existing.GetVersion() + 1
 		data, err = proto.Marshal(node)
 		if err != nil {
 			return err
