@@ -4,7 +4,9 @@ This suite runs the same scheduler scenarios against real BoltDB, PostgreSQL,
 and MongoDB stores. It covers concurrent assignment, resource contention, retry on another
 node, recovery after a committed reservation, and failed state writes or lost
 responses. It also covers heartbeat fencing, capacity changes, duplicate terminal
-writes, and one node snapshot per batch. The tests run Funnel's scheduler
+writes, and one node snapshot per batch. Execution admission cases also race
+multiple acquisition requests, preserve active reservations, reject unauthorized
+and canceled requests, and prevent another claim after state edits or retries. The tests run Funnel's scheduler
 directly; they do not launch task workers.
 
 Run all three backends locally with Docker available for PostgreSQL and MongoDB:

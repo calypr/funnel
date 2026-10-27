@@ -98,7 +98,10 @@ func (db *MongoDB) Init() error {
 	if _, err := db.tasks().Indexes().CreateMany(ctx, indexes); err != nil {
 		return fmt.Errorf("ensuring task identity and scheduler indexes: %w", err)
 	}
-	return db.migrateScheduler(ctx)
+	if err := db.migrateScheduler(ctx); err != nil {
+		return err
+	}
+	return db.migrateExecutionClaims(ctx)
 }
 
 func (db *MongoDB) ensureNodeIDIndex() error {

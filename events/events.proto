@@ -70,9 +70,18 @@ message Event {
 
 message WriteEventResponse{}
 
+message ClaimExecutionRequest {
+  string task_id = 1;
+}
+
+message ClaimExecutionResponse {
+  bool claimed = 1;
+}
+
 /**
  * Event Service
  */
 service EventService {
   rpc WriteEvent(Event) returns (WriteEventResponse) {};
+  rpc ClaimExecution(ClaimExecutionRequest) returns (ClaimExecutionResponse) {};
 }

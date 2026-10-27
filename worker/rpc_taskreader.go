@@ -2,18 +2,23 @@ package worker
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/events"
 	"github.com/calypr/funnel/tes"
 	util "github.com/calypr/funnel/util/rpc"
+	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/retry"
 	"google.golang.org/grpc"
 )
 
 // RPCTaskReader provides read access to tasks from the funnel server over gRPC.
 type RPCTaskReader struct {
-	client tes.TaskServiceClient
-	conn   *grpc.ClientConn
-	taskID string
+	client      tes.TaskServiceClient
+	eventClient events.EventServiceClient
+	conn        *grpc.ClientConn
+	taskID      string
 }
 
 // NewRPCTaskReader returns a new RPC-based task reader.
@@ -23,7 +28,12 @@ func NewRPCTaskReader(ctx context.Context, conf *config.RPCClient, taskID string
 		return nil, err
 	}
 	cli := tes.NewTaskServiceClient(conn)
-	return &RPCTaskReader{cli, conn, taskID}, nil
+	return &RPCTaskReader{
+		client:      cli,
+		eventClient: events.NewEventServiceClient(conn),
+		conn:        conn,
+		taskID:      taskID,
+	}, nil
 }
 
 // Task returns the task descriptor.
@@ -41,6 +51,21 @@ func (r *RPCTaskReader) State(ctx context.Context) (tes.State, error) {
 		View: tes.View_MINIMAL.String(),
 	})
 	return t.GetState(), err
+}
+
+// ClaimExecution asks the server to atomically admit this worker for the task.
+func (r *RPCTaskReader) ClaimExecution(ctx context.Context, taskID string) (bool, error) {
+	if taskID != r.taskID {
+		return false, fmt.Errorf("task reader is bound to task %q, not %q", r.taskID, taskID)
+	}
+	response, err := r.eventClient.ClaimExecution(ctx, &events.ClaimExecutionRequest{TaskId: taskID}, grpc_retry.Disable())
+	if err != nil {
+		return false, err
+	}
+	if response == nil {
+		return false, errors.New("claim execution response was empty")
+	}
+	return response.GetClaimed(), nil
 }
 
 // Close closes the connection.

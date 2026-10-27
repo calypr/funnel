@@ -23,11 +23,12 @@ var (
 // Inline preserves the existing BSON task/node schema. Claim fields are internal
 // and never become part of the TES response.
 type taskRecord struct {
-	Task           *tes.Task                `bson:",inline"`
-	Owner          string                   `bson:"owner"`
-	ClaimOwner     string                   `bson:"claim_owner,omitempty"`
-	ClaimActive    bool                     `bson:"claim_active"`
-	ClaimResources *scheduler.ResourceUsage `bson:"claim_resources,omitempty"`
+	Task             *tes.Task                `bson:",inline"`
+	Owner            string                   `bson:"owner"`
+	ClaimOwner       string                   `bson:"claim_owner,omitempty"`
+	ClaimActive      bool                     `bson:"claim_active"`
+	ClaimResources   *scheduler.ResourceUsage `bson:"claim_resources,omitempty"`
+	ExecutionClaimed bool                     `bson:"execution_claimed"`
 }
 
 type nodeRecord struct {

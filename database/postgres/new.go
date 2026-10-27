@@ -63,7 +63,10 @@ func (db *Postgres) Init() error {
 	if err := db.migrateNodeHeartbeats(ctx); err != nil {
 		return err
 	}
-	return db.migrateResourceReservations(ctx)
+	if err := db.migrateResourceReservations(ctx); err != nil {
+		return err
+	}
+	return db.migrateExecutionClaims(ctx)
 }
 
 func (db *Postgres) context() (context.Context, context.CancelFunc) {
@@ -201,6 +204,7 @@ func (db *Postgres) createTables(ctx context.Context) error {
 		`CREATE TABLE IF NOT EXISTS node_heartbeats (id VARCHAR(255) PRIMARY KEY, last_ping BIGINT NOT NULL)`,
 		`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS claim_resources JSONB`,
 		`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS claim_active BOOLEAN NOT NULL DEFAULT false`,
+		`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS execution_claimed BOOLEAN NOT NULL DEFAULT false`,
 		`ALTER TABLE nodes ADD COLUMN IF NOT EXISTS reserved JSONB NOT NULL DEFAULT '{}'::jsonb`,
 		`DROP INDEX IF EXISTS idx_tasks_active_claim`,
 	} {

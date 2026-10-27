@@ -30,6 +30,7 @@ import (
 type rejectCompletionRPC struct {
 	events.UnimplementedEventServiceServer
 	writer   events.Writer
+	claimer  events.ExecutionClaimer
 	rejected atomic.Bool
 }
 
@@ -51,6 +52,14 @@ func (s *rejectCompletionRPC) WriteEvent(ctx context.Context, event *events.Even
 		return nil, err
 	}
 	return &events.WriteEventResponse{}, nil
+}
+
+func (s *rejectCompletionRPC) ClaimExecution(ctx context.Context, req *events.ClaimExecutionRequest) (*events.ClaimExecutionResponse, error) {
+	acquired, err := s.claimer.ClaimExecution(ctx, req.GetTaskId())
+	if err != nil {
+		return nil, err
+	}
+	return &events.ClaimExecutionResponse{Claimed: acquired}, nil
 }
 
 func TestWorkerFinalStateFailureRecoveryLive(t *testing.T) {
@@ -111,7 +120,7 @@ func TestWorkerFinalStateFailureRecoveryLive(t *testing.T) {
 	}
 	defer listener.Close()
 	rpcServer := grpc.NewServer()
-	fixture := &rejectCompletionRPC{writer: db}
+	fixture := &rejectCompletionRPC{writer: db, claimer: db}
 	events.RegisterEventServiceServer(rpcServer, fixture)
 	tes.RegisterTaskServiceServer(rpcServer, &taskReaderRPC{database: db})
 	go func() { _ = rpcServer.Serve(listener) }()

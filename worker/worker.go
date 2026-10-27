@@ -22,11 +22,12 @@ import (
 // sequential process of task initialization, execution, finalization,
 // and logging.
 type DefaultWorker struct {
-	Executor    Executor
-	Conf        *config.Worker
-	Store       storage.Storage
-	TaskReader  TaskReader
-	EventWriter events.Writer
+	Executor         Executor
+	Conf             *config.Worker
+	Store            storage.Storage
+	TaskReader       TaskReader
+	ExecutionClaimer ExecutionClaimer
+	EventWriter      events.Writer
 	Command
 }
 
@@ -94,18 +95,41 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 		runerr = run.syserr
 		return
 	}
+	localTask := false
+	switch r.TaskReader.(type) {
+	case *FileTaskReader, *Base64TaskReader:
+		localTask = true
+	}
+	if !localTask && r.ExecutionClaimer == nil {
+		return errors.New("execution claimer is required for non-local task readers")
+	}
 
 	// Task assignment moves a task to INITIALIZING before the node receives it.
 	// Local task readers also use UNKNOWN or QUEUED before execution. Other states
 	// indicate that this assignment is stale or the task is already in progress.
 	switch task.GetState() {
 	case tes.State_UNKNOWN, tes.State_QUEUED, tes.State_INITIALIZING:
+	case tes.State_RUNNING:
+		if !localTask {
+			return r.waitForExecution(pctx)
+		}
+		return nil
 	default:
 		return
 	}
 
 	if plan := r.Executor.StoragePlan; plan != nil && plan.TaskID != task.Id {
 		return fmt.Errorf("storage plan belongs to task %q, not %q", plan.TaskID, task.Id)
+	}
+	claimed := false
+	if !localTask {
+		claimed, run.syserr = r.ExecutionClaimer.ClaimExecution(pctx, task.Id)
+		if run.syserr != nil {
+			return fmt.Errorf("claim task execution: %w", run.syserr)
+		}
+		if !claimed {
+			return r.waitForExecution(pctx)
+		}
 	}
 
 	// set up task specific utilities
@@ -120,7 +144,9 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 	}
 
 	_ = event.Info("Version", version.LogFields()...)
-	_ = event.State(tes.State_INITIALIZING)
+	if !claimed {
+		_ = event.State(tes.State_INITIALIZING)
+	}
 	_ = event.StartTime(time.Now())
 
 	if name, err := os.Hostname(); err == nil {
@@ -189,7 +215,7 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 		run.syserr = DownloadInputs(ctx, mapper.Inputs, r.Store, event, int(r.Conf.MaxParallelTransfers))
 	}
 
-	if run.ok() {
+	if run.ok() && !claimed {
 		_ = event.State(tes.State_RUNNING)
 	}
 
@@ -219,6 +245,31 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 	r.processOutputs(ctx, event, mapper, &run)
 
 	return
+}
+
+func (r *DefaultWorker) waitForExecution(ctx context.Context) error {
+	interval := time.Second
+	if r.Conf != nil && r.Conf.PollingRate != nil && r.Conf.PollingRate.AsDuration() > 0 {
+		interval = r.Conf.PollingRate.AsDuration()
+	}
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		state, err := r.TaskReader.State(ctx)
+		if err == nil && tes.TerminalState(state) {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
+
 }
 
 func (r *DefaultWorker) Close() {
