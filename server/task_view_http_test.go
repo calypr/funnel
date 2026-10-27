@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"github.com/calypr/funnel/tes"
-	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +11,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/calypr/funnel/tes"
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 )
 
 type responseViewReader struct {
@@ -136,8 +137,10 @@ func TestServeTaskViewsThroughGRPCGateway(t *testing.T) {
 	}}, Log: s.Log}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
+	client := &http.Client{Timeout: time.Second, Transport: &http.Transport{}}
 	go func() { done <- s.Serve(ctx) }()
 	t.Cleanup(func() {
+		client.CloseIdleConnections()
 		cancel()
 		select {
 		case err := <-done:
@@ -148,12 +151,12 @@ func TestServeTaskViewsThroughGRPCGateway(t *testing.T) {
 			t.Error("server did not stop")
 		}
 	})
-	client := &http.Client{Timeout: time.Second}
 	base := "http://127.0.0.1:" + httpPort
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		resp, err := client.Get(base + "/healthz")
 		if err == nil {
+			_, _ = io.Copy(io.Discard, resp.Body)
 			resp.Body.Close()
 			break
 		}
