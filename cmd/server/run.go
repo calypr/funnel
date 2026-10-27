@@ -65,6 +65,7 @@ func NewServer(ctx context.Context, conf *config.Config, log *logger.Logger) (*S
 
 	writers := events.MultiWriter{}
 
+	log.Info("Initializing database", "backend", conf.Database)
 	// Database
 	switch strings.ToLower(conf.Database) {
 	case "boltdb":
@@ -141,6 +142,7 @@ func NewServer(ctx context.Context, conf *config.Config, log *logger.Logger) (*S
 	if err := database.Init(); err != nil {
 		return nil, fmt.Errorf("error creating database resources: %v", err)
 	}
+	log.Info("Database initialized", "backend", conf.Database)
 
 	// Event writers
 	var writer events.Writer
