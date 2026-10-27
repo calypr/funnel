@@ -331,11 +331,7 @@ func streamPodLogs(ctx context.Context, namespace string, podName string, stdout
 	}
 
 	// Get logs from any pod state - Kubernetes API supports fetching logs from terminated pods
-	// Follow=true ensures we stream logs until the pod completely finishes (closes the stream),
-	// catching the final error logs that might be missed due to race conditions.
-	req := clientset.CoreV1().Pods(namespace).GetLogs(podName, &corev1.PodLogOptions{
-		Follow: true,
-	})
+	req := clientset.CoreV1().Pods(namespace).GetLogs(podName, &corev1.PodLogOptions{})
 
 	podLogs, err := req.Stream(ctx)
 	if err != nil {
