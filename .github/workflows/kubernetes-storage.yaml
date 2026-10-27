@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   storage-e2e:
-    name: Kubernetes task storage (k3d, PVCs, and S3)
+    name: Kubernetes storage and failure recovery (k3d)
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -33,7 +33,7 @@ jobs:
           chmod +x "$install_dir/k3d"
           "$install_dir/k3d" version
           echo "$install_dir" >> "$GITHUB_PATH"
-      - name: Test PR binary with local-path PVCs and S3 artifacts
+      - name: Test storage and task failure recovery in k3d
         env:
           FUNNEL_E2E_OUTPUT_DIR: ${{ runner.temp }}/funnel-storage-e2e
         run: tests/kubernetes-storage/run.sh
