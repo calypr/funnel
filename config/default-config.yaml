@@ -459,6 +459,8 @@ AmazonS3:
     Secret: ""
   # Server Side Encryption (SSE) settings
   SSE:
+    # Request S3-managed AES256 encryption explicitly (SSE-S3).
+    S3Managed: false
     # Customer Provided Key
     # ref: https://docs.aws.amazon.com/AmazonS3/latest/userguide/ServerSideEncryptionCustomerKeys.html
     CustomerKeyFile: ""
