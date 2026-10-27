@@ -19,6 +19,8 @@ func Get(server string, ids []string, taskView string, w io.Writer) error {
 	}
 
 	res := []string{}
+	marshaler := *cli.Marshaler
+	marshaler.EmitDefaultValues = true
 
 	taskValue, err := getTaskView(taskView)
 	taskView = tes.View_name[taskValue]
@@ -34,7 +36,7 @@ func Get(server string, ids []string, taskView string, w io.Writer) error {
 		if err != nil {
 			return err
 		}
-		out := cli.Marshaler.Format(resp)
+		out := marshaler.Format(resp)
 		res = append(res, out)
 	}
 

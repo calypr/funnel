@@ -48,7 +48,7 @@ function TaskInfoRaw(props) {
         console.log("renderRow: formatFunc was not a function:", typeof(formatFunc));
       }
     }
-    if ( key && val ) {
+    if ( key && (val || val === 0) ) {
       return (
         <TableRow key={key} sx={styles.row}>
           <TableCell sx={keyCellSx}><b>{key}</b></TableCell>

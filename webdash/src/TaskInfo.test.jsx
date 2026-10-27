@@ -3,6 +3,23 @@ import { createRoot } from 'react-dom/client';
 import { expect, it } from 'vitest';
 import { TaskInfo } from './TaskInfo';
 
+it('shows a zero exit code for an executor', async () => {
+  const container = document.createElement('div');
+  const root = createRoot(container);
+  const task = {
+    id: 'task-1',
+    executors: [{ command: ['true'], image: 'alpine' }],
+    logs: [{ logs: [{ exit_code: 0 }] }],
+    outputs: [{ path: '/output', type: 'FILE' }],
+  };
+  await act(async () => root.render(<TaskInfo task={task} />));
+  const rows = [...container.querySelectorAll('tr')];
+  const exitRow = rows.find(row => row.cells[0]?.textContent === 'Exit Code');
+  expect(exitRow?.cells[1]?.textContent).toBe('0');
+  expect(container.textContent).toContain('FILE');
+  act(() => root.unmount());
+});
+
 it.each(['system_logs', 'systemLogs'])('shows complete commands from %s', async (field) => {
   const container = document.createElement('div');
   const root = createRoot(container);
