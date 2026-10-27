@@ -184,10 +184,6 @@ func (db *Postgres) TryAssign(ctx context.Context, task *tes.Task, candidate *sc
 	if node.Version != nodeVersion {
 		return "", fmt.Errorf("candidate node %q has inconsistent stored version %d (row version %d)", candidate.Id, node.Version, nodeVersion)
 	}
-	if candidate.Version != nodeVersion {
-		return "", fmt.Errorf("candidate node %q version outdated: have %d, current %d", candidate.Id, candidate.Version, nodeVersion)
-	}
-
 	// A legacy assignment may already be present without a claim. Repair only
 	// the missing claim; do not append or subtract the task a second time.
 	if !slices.Contains(node.TaskIds, task.Id) {

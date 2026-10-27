@@ -24,9 +24,11 @@ type TaskQueue interface {
 }
 
 // AtomicTaskAssigner claims a queued task and reserves it on a node in one
-// database transaction. It returns the owner, or an empty string when no
-// assignment is made. A nil candidate only looks up an existing assignment.
-// An error must not leave a new claim or node reservation committed.
+// database transaction. The candidate selects a node from a scheduler
+// snapshot; implementations must check that node's current eligibility before
+// reserving it. It returns the owner, or an empty string when no assignment is
+// made. A nil candidate only looks up an existing assignment. An error must
+// not leave a new claim or node reservation committed.
 type AtomicTaskAssigner interface {
 	TryAssign(ctx context.Context, task *tes.Task, candidate *Node) (string, error)
 }

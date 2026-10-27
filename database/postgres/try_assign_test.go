@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/calypr/funnel/events"
 	"github.com/calypr/funnel/tes"
 	"github.com/testcontainers/testcontainers-go"
+	"google.golang.org/protobuf/proto"
 )
 
 func newTryAssignDB(t *testing.T) (*Postgres, context.Context) {
@@ -129,7 +131,7 @@ func TestTryAssignReservesNodeAndLeavesStateToEventWriter(t *testing.T) {
 	}
 }
 
-func TestTryAssignRollsBackClaimOnStaleNodeAndSkipsCanceledTask(t *testing.T) {
+func TestTryAssignChecksCurrentEligibilityAndRollsBackClaim(t *testing.T) {
 	db, ctx := newTryAssignDB(t)
 	const nodeID = "versioned-node"
 	staleNode := createTryAssignNode(t, db, ctx, nodeID)
@@ -151,19 +153,35 @@ func TestTryAssignRollsBackClaimOnStaleNodeAndSkipsCanceledTask(t *testing.T) {
 	if owner := taskClaimOwner(t, db, ctx, "conflict-task"); owner != "" {
 		t.Fatalf("lookup without candidate created claim owner %q", owner)
 	}
-	if _, err := db.TryAssign(ctx, newTestTask("conflict-task", "conflict-task", testUser), staleNode); err == nil {
-		t.Fatal("TryAssign with stale node version succeeded; want conflict")
+	currentNode, err := db.GetNode(ctx, &scheduler.GetNodeRequest{Id: nodeID})
+	if err != nil {
+		t.Fatalf("get node before reducing capacity: %v", err)
+	}
+	staleEligibleSnapshot := proto.Clone(currentNode).(*scheduler.Node)
+	currentNode.Resources = &scheduler.Resources{Cpus: 1, RamGb: 8, DiskGb: 10}
+	if _, err := db.PutNode(ctx, currentNode); err != nil {
+		t.Fatalf("reduce current node capacity: %v", err)
+	}
+	if _, err := db.TryAssign(ctx, newTestTask("conflict-task", "conflict-task", testUser), staleEligibleSnapshot); err == nil {
+		t.Fatal("TryAssign with stale snapshot of eligible node succeeded after current capacity was exhausted")
 	}
 	if owner := taskClaimOwner(t, db, ctx, "conflict-task"); owner != "" {
-		t.Fatalf("stale-version conflict left claim owner %q, want empty", owner)
+		t.Fatalf("ineligible-node conflict left claim owner %q, want empty", owner)
 	}
 
 	if err := db.WriteEvent(ctx, events.NewTaskCreated(newTestTask("rollback-task", "rollback-task", testUser))); err != nil {
 		t.Fatalf("create rollback task: %v", err)
 	}
-	currentNode, err := db.GetNode(ctx, &scheduler.GetNodeRequest{Id: nodeID})
+	currentNode, err = db.GetNode(ctx, &scheduler.GetNodeRequest{Id: nodeID})
 	if err != nil {
 		t.Fatalf("get current node: %v", err)
+	}
+	currentNode.Resources = &scheduler.Resources{Cpus: 4, RamGb: 8, DiskGb: 10}
+	if _, err := db.PutNode(ctx, currentNode); err != nil {
+		t.Fatalf("restore node capacity for rollback check: %v", err)
+	}
+	if currentNode.Available.Cpus != 3 {
+		t.Fatalf("restored node available CPUs = %d; want 3", currentNode.Available.Cpus)
 	}
 	_, err = db.client.Exec(ctx, `
 		CREATE FUNCTION reject_try_assign_node_update() RETURNS trigger AS $$
@@ -185,8 +203,8 @@ func TestTryAssignRollsBackClaimOnStaleNodeAndSkipsCanceledTask(t *testing.T) {
 	if err != nil {
 		t.Fatalf("install reservation failure trigger: %v", err)
 	}
-	if _, err := db.TryAssign(ctx, newTestTask("rollback-task", "rollback-task", testUser), currentNode); err == nil {
-		t.Fatal("TryAssign succeeded despite node reservation failure")
+	if _, err := db.TryAssign(ctx, newTestTask("rollback-task", "rollback-task", testUser), currentNode); err == nil || !strings.Contains(err.Error(), "forced reservation failure") {
+		t.Fatalf("TryAssign error = %v; want forced reservation failure", err)
 	}
 	if owner := taskClaimOwner(t, db, ctx, "rollback-task"); owner != "" {
 		t.Fatalf("failed node reservation left claim owner %q, want empty", owner)
@@ -196,7 +214,7 @@ func TestTryAssignRollsBackClaimOnStaleNodeAndSkipsCanceledTask(t *testing.T) {
 		t.Fatalf("get node after rollback: %v", err)
 	}
 	if len(afterRollback.TaskIds) != 1 || afterRollback.TaskIds[0] != "stale-task" || afterRollback.Available.Cpus != 3 {
-		t.Fatalf("failed reservation changed node: IDs=%v available=%v", afterRollback.TaskIds, afterRollback.Available)
+		t.Fatalf("failed reservation changed node: IDs=%v available=%v; want unchanged assignment with 3 CPUs", afterRollback.TaskIds, afterRollback.Available)
 	}
 
 	if err := db.WriteEvent(ctx, events.NewTaskCreated(newTestTask("canceled-task", "canceled-task", testUser))); err != nil {

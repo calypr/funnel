@@ -113,19 +113,25 @@ func TestTryAssignStoresClaimAndNodeAssignmentButLeavesTaskQueued(t *testing.T) 
 	}
 }
 
-func TestTryAssignVersionConflictDoesNotPersistClaim(t *testing.T) {
+func TestTryAssignRejectsStaleCandidateWhenNodeIsIneligible(t *testing.T) {
 	db := openTryAssignDB(t)
 	task := createTryAssignTask(t, db, "task-1")
 	stale := createTryAssignNode(t, db, "node-1")
 	other := createTryAssignNode(t, db, "node-2")
 
-	// Change node-1 after the candidate snapshot so TryAssign sees a stale CAS.
-	changed := &scheduler.Node{Id: stale.Id, Version: stale.Version, State: stale.State, Resources: stale.Resources, Metadata: map[string]string{"updated": "true"}}
+	// Exhaust node-1 after the candidate snapshot. TryAssign must use the
+	// current resources rather than assigning from its stale eligibility view.
+	changed := &scheduler.Node{
+		Id:        stale.Id,
+		Version:   stale.Version,
+		State:     stale.State,
+		Resources: &scheduler.Resources{Cpus: 0, RamGb: 2, DiskGb: 2},
+	}
 	if _, err := db.PutNode(context.Background(), changed); err != nil {
 		t.Fatal(err)
 	}
 	if owner, err := db.TryAssign(context.Background(), task, stale); err == nil || owner != "" {
-		t.Fatalf("stale TryAssign = %q, %v; want conflict and no owner", owner, err)
+		t.Fatalf("TryAssign with stale ineligible candidate = %q, %v; want eligibility error and no owner", owner, err)
 	}
 	var claim string
 	if err := db.db.View(func(tx *bolt.Tx) error {
