@@ -9,6 +9,7 @@ import (
 
 	"github.com/calypr/funnel/config"
 	"github.com/stretchr/testify/mock"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
@@ -29,6 +30,96 @@ func TestStopNode(t *testing.T) {
 	stop()
 	n.Wait()
 	n.Client.AssertCalled(t, "Close")
+}
+
+func TestDrainPublishesBeforeNextUpdate(t *testing.T) {
+	conf := config.DefaultConfig()
+	conf.Node.UpdateRate = durationpb.New(time.Hour)
+	n := newTestNode(conf, t)
+
+	client := new(MockClient)
+	client.On("Close").Return()
+	n.Client = client
+	n.client = client
+
+	getNodeCalls := atomic.Int32{}
+	client.On("GetNode", mock.Anything, mock.Anything, mock.Anything).
+		Return(func(context.Context, *GetNodeRequest, ...grpc.CallOption) *Node {
+			if getNodeCalls.Add(1) == 2 {
+				return &Node{TaskIds: []string{"active-task"}}
+			}
+			return &Node{}
+		}, nil)
+
+	workerStarted := make(chan struct{})
+	workerCanceled := make(chan struct{}, 1)
+	finishWorker := make(chan struct{})
+	n.workerRun = func(ctx context.Context, _ string) error {
+		close(workerStarted)
+		select {
+		case <-ctx.Done():
+			workerCanceled <- struct{}{}
+		case <-finishWorker:
+		}
+		return nil
+	}
+
+	putStates := make(chan NodeState, 4)
+	client.On("PutNode", mock.Anything, mock.Anything).
+		Return(nil, nil).Run(func(args mock.Arguments) {
+		putStates <- args.Get(1).(*Node).State
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	runDone := make(chan struct{})
+	go func() {
+		_ = n.Run(ctx)
+		close(runDone)
+	}()
+	defer func() {
+		cancel()
+		close(finishWorker)
+		select {
+		case <-runDone:
+		case <-time.After(time.Second):
+			t.Fatal("node did not stop during test cleanup")
+		}
+	}()
+
+	select {
+	case state := <-putStates:
+		if state != NodeState_ALIVE {
+			t.Fatalf("first node update state = %v, want ALIVE", state)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("node did not publish its initial state")
+	}
+	select {
+	case <-workerStarted:
+	case <-time.After(time.Second):
+		t.Fatal("worker did not start")
+	}
+	n.Drain()
+
+	select {
+	case state := <-putStates:
+		if state != NodeState_DRAIN {
+			t.Fatalf("node update state = %v, want DRAIN", state)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("node did not publish DRAIN before the next update")
+	}
+
+	select {
+	case <-workerCanceled:
+		t.Fatal("draining canceled the active worker")
+	default:
+	}
+	select {
+	case <-runDone:
+		t.Fatal("node exited before the active worker finished")
+	default:
+	}
 }
 
 // Mainly exercising a panic bug caused by an unhandled
