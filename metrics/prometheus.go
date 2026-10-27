@@ -171,13 +171,13 @@ func WatchNodes(ctx context.Context, nodes scheduler.SchedulerServiceServer) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			resp, err := nodes.ListNodes(ctx, &scheduler.ListNodesRequest{})
+			allNodes, err := scheduler.ListAllNodes(ctx, nodes)
 			if err != nil {
 				break
 			}
 
 			resetNodes()
-			for _, node := range resp.Nodes {
+			for _, node := range allNodes {
 				nodeStates.WithLabelValues(node.GetState().String()).Inc()
 				res := node.GetResources()
 				nodeTotalCPU.Set(float64(res.GetCpus()))

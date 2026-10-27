@@ -2,8 +2,12 @@ package schedulercontract
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sync"
@@ -18,9 +22,12 @@ import (
 	"github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/server"
 	"github.com/calypr/funnel/tes"
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/jackc/pgx/v5"
 	"github.com/testcontainers/testcontainers-go"
 	postgrescontainer "github.com/testcontainers/testcontainers-go/modules/postgres"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
@@ -54,6 +61,11 @@ func TestSchedulerContract(t *testing.T) {
 }
 
 func runContract(t *testing.T, open storeFactory) {
+	t.Run("node pages use stable IDs and traverse the full fleet", func(t *testing.T) {
+		db := open(t)
+		testNodePagination(t, db)
+	})
+
 	t.Run("heartbeat advances after assignment", func(t *testing.T) {
 		db := open(t)
 		ctx := testContext()
@@ -556,17 +568,217 @@ func getTask(t *testing.T, db store, ctx context.Context, id string) *tes.Task {
 
 func assignedTasks(t *testing.T, ctx context.Context, db store) map[string][]string {
 	t.Helper()
-	resp, err := db.ListNodes(ctx, &scheduler.ListNodesRequest{})
+	nodes, err := scheduler.ListAllNodes(ctx, db)
 	if err != nil {
 		t.Fatal(err)
 	}
 	assigned := make(map[string][]string)
-	for _, node := range resp.Nodes {
+	for _, node := range nodes {
 		for _, id := range node.TaskIds {
 			assigned[id] = append(assigned[id], node.Id)
 		}
 	}
 	return assigned
+}
+
+func testNodePagination(t *testing.T, db store) {
+	t.Helper()
+	ctx := testContext()
+	for _, id := range []string{"cursor-a", "cursor-b", "cursor-c", "cursor-d"} {
+		createNode(t, db, ctx, id, 1)
+	}
+
+	first, err := db.ListNodes(ctx, &scheduler.ListNodesRequest{PageSize: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertNodeIDs(t, first.Nodes, "cursor-a", "cursor-b")
+	if first.NextPageToken == "" {
+		t.Fatal("first page has no continuation token")
+	}
+	assertHTTPNodePagination(t, db, first.NextPageToken)
+
+	second, err := db.ListNodes(ctx, &scheduler.ListNodesRequest{PageSize: 2, PageToken: first.NextPageToken})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertNodeIDs(t, second.Nodes, "cursor-c", "cursor-d")
+	if second.NextPageToken != "" {
+		t.Fatalf("exact-multiple final page has token %q", second.NextPageToken)
+	}
+	if _, err := db.DeleteNode(ctx, &scheduler.Node{Id: "cursor-b"}); err != nil {
+		t.Fatalf("delete cursor node: %v", err)
+	}
+	deletedCursor, err := db.ListNodes(ctx, &scheduler.ListNodesRequest{PageSize: 2, PageToken: first.NextPageToken})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertNodeIDs(t, deletedCursor.Nodes, "cursor-c", "cursor-d")
+	if deletedCursor.NextPageToken != "" {
+		t.Fatalf("page after deleted cursor has token %q", deletedCursor.NextPageToken)
+	}
+
+	createNode(t, db, ctx, "cursor-e", 1)
+	partial, err := db.ListNodes(ctx, &scheduler.ListNodesRequest{PageSize: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertNodeIDs(t, partial.Nodes, "cursor-a", "cursor-c", "cursor-d")
+	if partial.NextPageToken == "" {
+		t.Fatal("partial page did not have a continuation token")
+	}
+	partialFinal, err := db.ListNodes(ctx, &scheduler.ListNodesRequest{PageSize: 3, PageToken: partial.NextPageToken})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertNodeIDs(t, partialFinal.Nodes, "cursor-e")
+	if partialFinal.NextPageToken != "" {
+		t.Fatalf("partial final page has token %q", partialFinal.NextPageToken)
+	}
+
+	if _, err := db.ListNodes(ctx, &scheduler.ListNodesRequest{PageSize: -1}); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("negative page_size error = %v, want InvalidArgument", err)
+	}
+	if _, err := db.ListNodes(ctx, &scheduler.ListNodesRequest{PageSize: scheduler.MaxNodePageSize + 1}); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("oversized page_size error = %v, want InvalidArgument", err)
+	}
+	if _, err := db.ListNodes(ctx, &scheduler.ListNodesRequest{PageToken: "invalid"}); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("invalid page_token error = %v, want InvalidArgument", err)
+	}
+
+	for i := 0; i < 1005; i++ {
+		createNode(t, db, ctx, fmt.Sprintf("many-%04d", i), 1)
+	}
+	defaultPage, err := db.ListNodes(ctx, &scheduler.ListNodesRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(defaultPage.Nodes) != scheduler.DefaultNodePageSize || defaultPage.NextPageToken == "" {
+		t.Fatalf("default page = %d nodes, token %q", len(defaultPage.Nodes), defaultPage.NextPageToken)
+	}
+
+	all, err := db.ListNodes(ctx, &scheduler.ListNodesRequest{PageSize: scheduler.MaxNodePageSize})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all.Nodes) != scheduler.MaxNodePageSize || all.NextPageToken == "" {
+		t.Fatalf("first maximum page = %d nodes, token %q", len(all.Nodes), all.NextPageToken)
+	}
+	remaining, err := db.ListNodes(ctx, &scheduler.ListNodesRequest{
+		PageSize:  scheduler.MaxNodePageSize,
+		PageToken: all.NextPageToken,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(remaining.Nodes) != 9 || remaining.NextPageToken != "" {
+		t.Fatalf("last page = %d nodes, token %q; want 9 nodes and no token", len(remaining.Nodes), remaining.NextPageToken)
+	}
+
+	nodes, err := scheduler.ListAllNodes(ctx, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) != 1009 {
+		t.Fatalf("ListAllNodes returned %d nodes, want 1009", len(nodes))
+	}
+	seen := make(map[string]bool, len(nodes))
+	for _, node := range nodes {
+		if seen[node.Id] {
+			t.Fatalf("ListAllNodes repeated node %q", node.Id)
+		}
+		seen[node.Id] = true
+	}
+	if len(seen) != 1009 {
+		t.Fatalf("ListAllNodes contained %d unique IDs, want 1009", len(seen))
+	}
+}
+
+func assertHTTPNodePagination(t *testing.T, db store, expectedToken string) {
+	t.Helper()
+	mux := runtime.NewServeMux(runtime.WithMarshalerOption(runtime.MIMEWildcard, server.NewMarshaler()))
+	if err := scheduler.RegisterSchedulerServiceHandlerServer(context.Background(), mux, db); err != nil {
+		t.Fatalf("register scheduler HTTP gateway: %v", err)
+	}
+
+	first := serveNodeListRequest(t, mux, "page_size=2")
+	assertHTTPNodeIDs(t, first, "cursor-a", "cursor-b")
+	if token := responseToken(t, first); token != expectedToken {
+		t.Fatalf("HTTP next_page_token = %q, want %q", token, expectedToken)
+	}
+
+	second := serveNodeListRequest(t, mux, "page_size=2&page_token="+url.QueryEscape(expectedToken))
+	assertHTTPNodeIDs(t, second, "cursor-c", "cursor-d")
+	if token := responseToken(t, second); token != "" {
+		t.Fatalf("HTTP final next_page_token = %q, want empty", token)
+	}
+
+	for _, query := range []string{"page_size=1001", "page_token=invalid"} {
+		request := httptest.NewRequest(http.MethodGet, "/v1/nodes?"+query, nil)
+		response := httptest.NewRecorder()
+		mux.ServeHTTP(response, request)
+		if response.Code != http.StatusBadRequest {
+			t.Errorf("GET /v1/nodes?%s status = %d, want 400: %s", query, response.Code, response.Body.String())
+		}
+	}
+}
+
+func serveNodeListRequest(t *testing.T, mux *runtime.ServeMux, query string) map[string]json.RawMessage {
+	t.Helper()
+	request := httptest.NewRequest(http.MethodGet, "/v1/nodes?"+query, nil)
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("GET /v1/nodes?%s status = %d: %s", query, response.Code, response.Body.String())
+	}
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode node list response: %v", err)
+	}
+	return body
+}
+
+func assertHTTPNodeIDs(t *testing.T, body map[string]json.RawMessage, want ...string) {
+	t.Helper()
+	var nodes []struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(body["nodes"], &nodes); err != nil {
+		t.Fatalf("decode response nodes: %v", err)
+	}
+	if len(nodes) != len(want) {
+		t.Fatalf("HTTP page has %d nodes, want %d", len(nodes), len(want))
+	}
+	for i, id := range want {
+		if nodes[i].ID != id {
+			t.Fatalf("HTTP node %d ID = %q, want %q", i, nodes[i].ID, id)
+		}
+	}
+}
+
+func responseToken(t *testing.T, body map[string]json.RawMessage) string {
+	t.Helper()
+	encoded, ok := body["next_page_token"]
+	if !ok {
+		t.Fatalf("response has no next_page_token field: %v", body)
+	}
+	var token string
+	if err := json.Unmarshal(encoded, &token); err != nil {
+		t.Fatalf("decode next_page_token: %v", err)
+	}
+	return token
+}
+
+func assertNodeIDs(t *testing.T, nodes []*scheduler.Node, want ...string) {
+	t.Helper()
+	if len(nodes) != len(want) {
+		t.Fatalf("page has %d nodes, want %d: %v", len(nodes), len(want), nodes)
+	}
+	for i, id := range want {
+		if nodes[i].Id != id {
+			t.Fatalf("node %d has ID %q, want %q", i, nodes[i].Id, id)
+		}
+	}
 }
 
 type rendezvous struct {

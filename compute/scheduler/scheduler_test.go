@@ -230,6 +230,77 @@ func TestScheduleRetriesInitializingForExistingClaimedAssignment(t *testing.T) {
 	}
 }
 
+type pagedSchedulerNodeServer struct {
+	SchedulerServiceServer
+	pages    [][]*Node
+	requests []*ListNodesRequest
+}
+
+func (s *pagedSchedulerNodeServer) ListNodes(_ context.Context, req *ListNodesRequest) (*ListNodesResponse, error) {
+	s.requests = append(s.requests, req)
+	page := 0
+	switch req.PageToken {
+	case "":
+		page = 0
+	case "page-two":
+		page = 1
+	default:
+		return nil, errors.New("unexpected ListNodes page token")
+	}
+	if page >= len(s.pages) {
+		return nil, errors.New("requested page does not exist")
+	}
+	response := &ListNodesResponse{Nodes: s.pages[page]}
+	if page < len(s.pages)-1 {
+		response.NextPageToken = "page-two"
+	}
+	return response, nil
+}
+
+func TestScheduleFindsExistingAssignmentOnLaterNodePage(t *testing.T) {
+	nodeA := newNode("node-a")
+	nodeB := newNode("node-b")
+	nodeB.TaskIds = []string{"task-existing-on-later-page"}
+	task := &tes.Task{Id: "task-existing-on-later-page"}
+	writer := &recordingWriter{}
+	s := newTestScheduler([]*Node{nodeA, nodeB}, &queueStub{tasks: []*tes.Task{task}}, writer)
+	paged := &pagedSchedulerNodeServer{
+		SchedulerServiceServer: s.Nodes,
+		pages:                  [][]*Node{{nodeA}, {nodeB}},
+	}
+	s.Nodes = paged
+	var assignedCandidate string
+	s.AtomicAssigner = atomicTaskAssignerFunc(func(_ context.Context, _ *tes.Task, candidate *Node) (string, error) {
+		assignedCandidate = candidate.Id
+		return nodeB.Id, nil
+	})
+
+	if err := s.Schedule(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if assignedCandidate != nodeB.Id {
+		t.Fatalf("atomic assigner candidate = %q, want existing owner %q", assignedCandidate, nodeB.Id)
+	}
+	if len(paged.requests) != 4 {
+		t.Fatalf("ListNodes requests = %d, want two complete traversals", len(paged.requests))
+	}
+	for i, request := range paged.requests {
+		if request.PageSize != MaxNodePageSize {
+			t.Fatalf("request %d page_size = %d, want %d", i, request.PageSize, MaxNodePageSize)
+		}
+	}
+	if paged.requests[0].PageToken != "" || paged.requests[1].PageToken != "page-two" ||
+		paged.requests[2].PageToken != "" || paged.requests[3].PageToken != "page-two" {
+		t.Fatalf("page token requests = [%q %q %q %q]", paged.requests[0].PageToken, paged.requests[1].PageToken, paged.requests[2].PageToken, paged.requests[3].PageToken)
+	}
+
+	nodeServer := s.Nodes.(*pagedSchedulerNodeServer).SchedulerServiceServer.(*MockSchedulerServiceServer)
+	nodeServer.AssertNotCalled(t, "PutNode", mock.Anything, mock.Anything)
+	if states := stateEvents(writer); len(states) != 1 || states[0] != tes.State_INITIALIZING {
+		t.Fatalf("existing assignment states = %v, want one INITIALIZING event", states)
+	}
+}
+
 func TestScheduleFailsTaskWhenAtomicOwnerNodeIsMissing(t *testing.T) {
 	task := &tes.Task{Id: "task-missing-owner"}
 	writer := &recordingWriter{}

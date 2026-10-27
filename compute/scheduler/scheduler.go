@@ -68,13 +68,13 @@ func (s *Scheduler) Run(ctx context.Context) error {
 // This is not an RPC endpoint
 func (s *Scheduler) CheckNodes() error {
 	ctx := context.Background()
-	resp, err := s.Nodes.ListNodes(ctx, &ListNodesRequest{})
+	nodes, err := ListAllNodes(ctx, s.Nodes)
 
 	if err != nil {
 		return err
 	}
 
-	updated := UpdateNodeState(resp.Nodes, s.Conf)
+	updated := UpdateNodeState(nodes, s.Conf)
 
 	for _, node := range updated {
 		var err error
@@ -140,7 +140,7 @@ func (s *Scheduler) Schedule(ctx context.Context) error {
 }
 
 func (s *Scheduler) scheduleTask(ctx context.Context, task *tes.Task) {
-	resp, err := s.Nodes.ListNodes(ctx, &ListNodesRequest{})
+	nodes, err := ListAllNodes(ctx, s.Nodes)
 	if err != nil {
 		s.Log.Error("Error checking existing task assignments", "taskID", task.Id, "error", err)
 		return
@@ -148,7 +148,7 @@ func (s *Scheduler) scheduleTask(ctx context.Context, task *tes.Task) {
 
 	var assignedNodeIDs []string
 	var assignedNode *Node
-	for _, node := range resp.Nodes {
+	for _, node := range nodes {
 		if slices.Contains(node.TaskIds, task.Id) {
 			assignedNodeIDs = append(assignedNodeIDs, node.Id)
 			assignedNode = node
@@ -162,11 +162,11 @@ func (s *Scheduler) scheduleTask(ctx context.Context, task *tes.Task) {
 	}
 
 	if s.AtomicAssigner != nil {
-		s.scheduleTaskAtomic(ctx, task, resp.Nodes, assignedNode)
+		s.scheduleTaskAtomic(ctx, task, nodes, assignedNode)
 		return
 	}
 
-	s.scheduleTaskLegacy(ctx, task, resp.Nodes, assignedNode)
+	s.scheduleTaskLegacy(ctx, task, nodes, assignedNode)
 }
 
 // scheduleTaskAtomic uses a backend transaction to reserve task and node
@@ -308,9 +308,9 @@ func (s *Scheduler) logAssignmentConflict(ctx context.Context, taskID, message s
 func (s *Scheduler) GetOffer(j *tes.Task) *Offer {
 	// Get the nodes from the funnel server
 	nodes := []*Node{}
-	resp, err := s.Nodes.ListNodes(context.Background(), &ListNodesRequest{})
+	allNodes, err := ListAllNodes(context.Background(), s.Nodes)
 	if err == nil {
-		nodes = resp.Nodes
+		nodes = allNodes
 	}
 	return DefaultScheduleAlgorithm(j, nodes, nil)
 }

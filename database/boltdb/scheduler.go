@@ -123,20 +123,38 @@ func (taskBolt *BoltDB) DeleteNode(ctx context.Context, node *scheduler.Node) (*
 
 // ListNodes is an API endpoint that returns a list of nodes.
 func (taskBolt *BoltDB) ListNodes(ctx context.Context, req *scheduler.ListNodesRequest) (*scheduler.ListNodesResponse, error) {
-	resp := &scheduler.ListNodesResponse{}
+	page, err := scheduler.ParseNodePage(req)
+	if err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	var nodes []*scheduler.Node
 
-	err := taskBolt.db.View(func(tx *bolt.Tx) error {
+	err = taskBolt.db.View(func(tx *bolt.Tx) error {
 
 		bucket := tx.Bucket(Nodes)
 		c := bucket.Cursor()
-
-		for k, v := c.First(); k != nil; k, v = c.Next() {
+		var k, v []byte
+		if page.AfterID == "" {
+			k, v = c.First()
+		} else {
+			k, v = c.Seek([]byte(page.AfterID))
+			if string(k) == page.AfterID {
+				k, v = c.Next()
+			}
+		}
+		for ; k != nil && len(nodes) < page.Limit+1; k, v = c.Next() {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			node := &scheduler.Node{}
 			err := proto.Unmarshal(v, node)
 			if err != nil {
 				return err
 			}
-			resp.Nodes = append(resp.Nodes, node)
+			nodes = append(nodes, node)
 		}
 		return nil
 	})
@@ -145,5 +163,5 @@ func (taskBolt *BoltDB) ListNodes(ctx context.Context, req *scheduler.ListNodesR
 		return nil, err
 	}
 
-	return resp, nil
+	return scheduler.NewNodePageResponse(nodes, page.Limit), nil
 }

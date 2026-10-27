@@ -116,22 +116,31 @@ func (db *MongoDB) DeleteNode(ctx context.Context, req *scheduler.Node) (*schedu
 
 // ListNodes is an API endpoint that returns a list of nodes.
 func (db *MongoDB) ListNodes(ctx context.Context, req *scheduler.ListNodesRequest) (*scheduler.ListNodesResponse, error) {
-	mctx, cancel := db.wrap(ctx)
-	defer cancel()
-
-	var nodes []*scheduler.Node
-	cursor, err := db.nodes().Find(mctx, nil)
+	page, err := scheduler.ParseNodePage(req)
 	if err != nil {
 		return nil, err
 	}
+	mctx, cancel := db.wrap(ctx)
+	defer cancel()
+
+	filter := bson.M{}
+	if page.AfterID != "" {
+		filter["id"] = bson.M{"$gt": page.AfterID}
+	}
+	findOptions := options.Find().
+		SetSort(bson.D{{Key: "id", Value: 1}}).
+		SetLimit(int64(page.Limit + 1)).
+		SetCollation(&options.Collation{Locale: "simple"})
+	var nodes []*scheduler.Node
+	cursor, err := db.nodes().Find(mctx, filter, findOptions)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(mctx)
 
 	err = cursor.All(mctx, &nodes)
 	if err != nil {
 		return nil, err
 	}
-	out := &scheduler.ListNodesResponse{
-		Nodes: nodes,
-	}
-
-	return out, nil
+	return scheduler.NewNodePageResponse(nodes, page.Limit), nil
 }

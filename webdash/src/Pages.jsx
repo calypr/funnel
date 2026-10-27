@@ -170,8 +170,42 @@ TaskList.propTypes = {
   tagsFilter: PropTypes.array.isRequired,
 };
 
+async function getAllNodes(signal) {
+  const nodes = [];
+  const seenTokens = new Set();
+  let pageToken = "";
+
+  while (true) {
+    const url = new URL("/v1/nodes", window.location.origin);
+    url.searchParams.set("page_size", "1000");
+    if (pageToken !== "") {
+      url.searchParams.set("page_token", pageToken);
+    }
+
+    const result = await get(url, false, signal);
+    if (!result || !Array.isArray(result.nodes)) {
+      throw new Error("ListNodes returned an invalid response");
+    }
+    nodes.push(...result.nodes);
+
+    const nextPageToken = result.next_page_token ?? result.nextPageToken ?? "";
+    if (typeof nextPageToken !== "string") {
+      throw new Error("ListNodes returned an invalid page token");
+    }
+    if (nextPageToken === "") {
+      return nodes;
+    }
+    if (seenTokens.has(nextPageToken)) {
+      throw new Error("ListNodes returned a repeated page token");
+    }
+    seenTokens.add(nextPageToken);
+    pageToken = nextPageToken;
+  }
+}
+
 function NodeList() {
-  const [nodes, setNodes] = React.useState([]);
+  const [nodes, setNodes] = React.useState(null);
+  const [loadError, setLoadError] = React.useState(false);
   //const [nodes, setNodes] = React.useState(example_node_list);
 
   const nTasks = (node) => {
@@ -182,24 +216,83 @@ function NodeList() {
   };
 
   React.useEffect(() => {
-    get(new URL("/v1/nodes", window.location.origin))
-      .then(
-        (result) => {
-          if (result.nodes !== undefined) {
-            setNodes(result.nodes);
-          }
-        },
-        (error) => {
+    let active = true;
+    let inFlight = false;
+    let controller;
+    const refresh = () => {
+      if (inFlight) {
+        return;
+      }
+      inFlight = true;
+      const requestController = new AbortController();
+      controller = requestController;
+      getAllNodes(requestController.signal)
+        .then((allNodes) => {
+          if (!active) return;
+          setNodes(allNodes);
+          setLoadError(false);
+        })
+        .catch((error) => {
+          if (!active || error.name === "AbortError") return;
           console.log("listNodes err:", error.toString());
-        },
-      );
-  });
+          setLoadError(true);
+        })
+        .finally(() => {
+          if (controller === requestController) {
+            controller = undefined;
+          }
+          inFlight = false;
+        });
+    };
+    refresh();
+    const timer = setInterval(refresh, 10000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+      controller?.abort();
+    };
+  }, []);
+
+  const activeNodes = (nodes ?? []).filter(node => node.state === 'ALIVE');
+  const fields = [
+    { key: 'cpus', label: 'CPU', unit: 'cores' },
+    { key: 'ramGb', label: 'RAM', unit: 'GB' },
+    { key: 'diskGb', label: 'Disk', unit: 'GB' },
+  ];
+  const resourceTotal = (kind, field, unit) => {
+    if (activeNodes.some(node => !node[kind] || (node[kind][field] != null &&
+      (typeof node[kind][field] !== 'number' || !Number.isFinite(node[kind][field]) || node[kind][field] < 0)))) {
+      return 'Unavailable';
+    }
+    const total = activeNodes.reduce((sum, node) => sum + (node[kind][field] ?? 0), 0);
+    return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(total)} ${unit}`;
+  };
 
   return (
     <div>
       <Typography variant="h4" gutterBottom component="h2">
         Nodes
       </Typography>
+      {loadError && <Typography>Could not load nodes.</Typography>}
+      {nodes !== null && (activeNodes.length === 0 ? (
+        <Typography>No active nodes</Typography>
+      ) : (
+        <Paper sx={{ mb: 2, p: 2 }}>
+          <Typography variant="h6" component="h3">Resources on active nodes</Typography>
+          <Table aria-label="Resources on active nodes" size="small">
+            <TableHead><TableRow><TableCell>Resource</TableCell><TableCell>Available</TableCell><TableCell>Total</TableCell></TableRow></TableHead>
+            <TableBody>
+              {fields.map(({ key, label, unit }) => (
+                <TableRow key={key}>
+                  <TableCell>{label}</TableCell>
+                  <TableCell>{resourceTotal('available', key, unit)}</TableCell>
+                  <TableCell>{resourceTotal('resources', key, unit)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Paper>
+      ))}
       <Paper style={{minWidth: "250px", width: "100%", overflowX: "auto"}}>
         <Table style={{width: "100%"}}>
           <TableHead>
@@ -211,7 +304,7 @@ function NodeList() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {nodes.map(n => (
+            {(nodes ?? []).map(n => (
               <TableRow hover key={n.id}>
                 <TableCell><Link to={"/nodes/" + n.id}>{n.id}</Link></TableCell>
                 <TableCell>{n.hostname}</TableCell>
@@ -236,7 +329,7 @@ function Task() {
     get(url).then(
       (task) => {
         setTask(task);
-      });
+      }).catch((error) => console.log("getTask error:", error));
   }, [task_id]);
 
   const json = (
@@ -283,7 +376,7 @@ function Node() {
     get(url).then(
       (node) => {
         setNode(node);
-      });
+      }).catch((error) => console.log("getNode error:", error));
   }, [node_id]);
 
   const json = (
@@ -320,7 +413,7 @@ function ServiceInfo() {
     get(url).then(
       (info) => {
         setInfo(info);
-      });
+      }).catch((error) => console.log("getServiceInfo error:", error));
   }, []);
 
   const json = (
