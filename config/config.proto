@@ -161,6 +161,7 @@ message ContainerConfig {
   string StopCommand = 11;
   bool EnableTags = 12;
   map<string, string> Tags = 13;
+  bool EnforceResources = 14;
   // Note: io.Reader and io.Writer (Stdin, Stdout, Stderr) are omitted as they are not serializable in Protobuf
 }
 

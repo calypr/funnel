@@ -12,6 +12,7 @@ import (
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/events"
 	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/tes"
 )
 
 var command = Command{
@@ -130,6 +131,56 @@ func TestDefaultDockerRunCommandTmpfs(t *testing.T) {
 	explicitTmp := DockerCommand{Volumes: []Volume{{HostPath: "/host/tmp", ContainerPath: "/tmp"}}}
 	if got := render(explicitTmp); strings.Contains(got, "--tmpfs /tmp") {
 		t.Fatalf("explicit /tmp volume should suppress tmpfs: %q", got)
+	}
+}
+
+func TestDefaultDockerRunCommandResourceLimits(t *testing.T) {
+	tmpl, err := template.New("run-command").Parse(config.DefaultConfig().Worker.Container.RunCommand)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name    string
+		command DockerCommand
+		want    []string
+		absent  []string
+	}{
+		{name: "disabled", command: DockerCommand{Resources: &tes.Resources{CpuCores: 2, RamGb: 1.5}}, absent: []string{"--cpus", "--memory"}},
+		{name: "enabled", command: DockerCommand{EnforceResources: true, Resources: &tes.Resources{CpuCores: 2, RamGb: 1.5}}, want: []string{"--cpus 2", "--memory 1536m", "--memory-swap 1536m"}},
+		{name: "cpu only", command: DockerCommand{EnforceResources: true, Resources: &tes.Resources{CpuCores: 1}}, want: []string{"--cpus 1"}, absent: []string{"--memory"}},
+		{name: "memory only", command: DockerCommand{EnforceResources: true, Resources: &tes.Resources{RamGb: 1}}, want: []string{"--memory 1024m", "--memory-swap 1024m"}, absent: []string{"--cpus"}},
+		{name: "no resources", command: DockerCommand{EnforceResources: true}, absent: []string{"--cpus", "--memory"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var b bytes.Buffer
+			if err := tmpl.Execute(&b, tt.command); err != nil {
+				t.Fatal(err)
+			}
+			for _, flag := range tt.want {
+				if !strings.Contains(b.String(), flag) {
+					t.Errorf("missing %q in %q", flag, b.String())
+				}
+			}
+			for _, flag := range tt.absent {
+				if strings.Contains(b.String(), flag) {
+					t.Errorf("unexpected %q in %q", flag, b.String())
+				}
+			}
+		})
+	}
+}
+
+func TestDockerResourceLimitConfig(t *testing.T) {
+	conf := config.DefaultConfig()
+	if conf.Worker.Container.EnforceResources {
+		t.Fatal("resource enforcement must be disabled by default")
+	}
+	if err := config.Parse([]byte("Worker:\n  Container:\n    EnforceResources: true\n"), conf); err != nil {
+		t.Fatal(err)
+	}
+	if !conf.Worker.Container.EnforceResources {
+		t.Fatal("resource enforcement was not enabled")
 	}
 }
 

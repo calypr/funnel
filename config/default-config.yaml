@@ -157,9 +157,12 @@ Worker:
 
   Container:
     DriverCommand: docker
+    # Apply task CPU and RAM requests as Docker limits. RAM limits disallow swap.
+    EnforceResources: false
 
     RunCommand: |
       run -i --read-only
+      {{if and .EnforceResources .Resources}}{{if gt .Resources.CpuCores 0}}--cpus {{.Resources.CpuCores}}{{end}} {{if .MemoryMB}}--memory {{.MemoryMB}}m --memory-swap {{.MemoryMB}}m{{end}}{{end}}
       {{if .NeedsTmpfs}}--tmpfs /tmp{{end}}
       {{if .RemoveContainer}}--rm{{end}}
       {{.GetEnvArgs}}

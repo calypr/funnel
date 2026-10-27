@@ -27,10 +27,10 @@ jobs:
         go-version-file: go.mod
     - name: Pull test container image
       run: docker pull alpine:latest
-    - name: Test Docker worker execution admission
+    - name: Test Docker worker resource limits and execution admission
       env:
         FUNNEL_TEST_DOCKER_INTEGRATION: "1"
-      run: go test -v ./worker -run '^TestExecutionAdmissionDockerIntegration$' -count=1 -timeout=3m
+      run: go test -v ./worker -run '^(TestDockerResourceLimitsIntegration|TestExecutionAdmissionDockerIntegration)$' -count=1 -timeout=3m
 
   scheduler-tests:
     name: Scheduler tests (${{ matrix.label }})
