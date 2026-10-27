@@ -56,6 +56,18 @@ credentials with permission to pull the image. See the AWS guide to
 [private registry authentication](https://docs.aws.amazon.com/AmazonECR/latest/userguide/registry_auth.html),
 including the ECR Docker credential helper.
 
+### Local storage on AWS Batch
+
+Local file paths must be accessible to the Batch worker. A file on the Funnel
+server is not automatically available to workers on other machines. Use a
+shared filesystem mounted on the workers and configure its path in
+`LocalStorage.AllowedDirs`. If local storage is not needed, disable the backend:
+
+```yaml
+LocalStorage:
+  Disabled: true
+```
+
 ## Configuring the Funnel Server
 
 Below is an example configuration. Note that the `Key`
