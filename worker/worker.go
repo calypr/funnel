@@ -152,6 +152,7 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 	if name, err := os.Hostname(); err == nil {
 		_ = event.Metadata(map[string]string{"hostname": name})
 	}
+	writeBatchInstanceType(pctx, event)
 
 	// TODO: Increment taskgroup waitgroup, defer done on waitgroup
 	// Decrement taskgroup waitgroup on exit to make sure that the final logging step is called

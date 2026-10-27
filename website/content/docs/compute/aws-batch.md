@@ -70,6 +70,13 @@ LocalStorage:
 
 ## Configuring the Funnel Server
 
+For EC2-backed Batch jobs, Funnel records `instance_type` in the task log
+metadata when the worker can reach the EC2 Instance Metadata Service using
+IMDSv2. The field may be absent if metadata access is disabled or the container
+cannot reach it. See the [AWS metadata access guidance](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instancedata-data-retrieval.html)
+for container networking considerations. Jobs still run if metadata is
+unavailable. This field helps estimate costs but is not a bill.
+
 Below is an example configuration. Note that the `Key`
 and `Secret` fields are left blank in the configuration of the components. This is because
 Funnel will, by default, try to automatically load credentials from the environment.
