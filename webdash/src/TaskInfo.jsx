@@ -106,7 +106,7 @@ function TaskInfoRaw(props) {
                  <TableCell sx={keyCellSx}>
                    <b>{k}</b>
                  </TableCell>
-                 <TableCell sx={valueCellSx}>
+                 <TableCell sx={{ ...valueCellSx, whiteSpace: 'pre-line', overflowWrap: 'anywhere' }}>
                    {data[k]}
                  </TableCell>
                </TableRow>
