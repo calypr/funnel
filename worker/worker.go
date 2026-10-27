@@ -126,24 +126,28 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 	// to ensure they always run, even if there's a missed error.
 	defer func() {
 		_ = event.EndTime(time.Now())
+		var finalState tes.State
 		switch {
 		case errors.Is(context.Cause(run.ctx), errTaskCanceled):
 			// The task was canceled.
 			_ = event.Info("Canceled")
-			_ = event.State(tes.State_CANCELED)
+			finalState = tes.State_CANCELED
 			runerr = errTaskCanceled
 		case run.syserr != nil:
 			// Something else failed
 			_ = event.Error("System error", "error", run.syserr)
-			_ = event.State(tes.State_SYSTEM_ERROR)
+			finalState = tes.State_SYSTEM_ERROR
 			runerr = run.syserr
 		case run.execerr != nil:
 			// One of the executors failed
 			_ = event.Error("Exec error", "error", run.execerr)
-			_ = event.State(tes.State_EXECUTOR_ERROR)
+			finalState = tes.State_EXECUTOR_ERROR
 			runerr = run.execerr
 		default:
-			_ = event.State(tes.State_COMPLETE)
+			finalState = tes.State_COMPLETE
+		}
+		if err := event.State(finalState); err != nil {
+			runerr = errors.Join(runerr, fmt.Errorf("recording final task state %s: %w", finalState, err))
 		}
 
 		// cleanup workdir
