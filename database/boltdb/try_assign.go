@@ -102,9 +102,6 @@ func (taskBolt *BoltDB) TryAssign(ctx context.Context, task *tes.Task, candidate
 		if err := proto.Unmarshal(data, current); err != nil {
 			return fmt.Errorf("unmarshal candidate node %q: %w", candidate.Id, err)
 		}
-		if candidate.Version != current.Version {
-			return fmt.Errorf("candidate node %q version conflict: got %d, current %d", candidate.Id, candidate.Version, current.Version)
-		}
 		if err := appendTaskToNode(current, queuedTask); err != nil {
 			return fmt.Errorf("assign task %q to node %q: %w", task.Id, candidate.Id, err)
 		}

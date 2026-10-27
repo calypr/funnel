@@ -77,6 +77,52 @@ func runContract(t *testing.T, open storeFactory) {
 		}
 	})
 
+	t.Run("assignments progress through repeated heartbeat writes", func(t *testing.T) {
+		db := open(t)
+		ctx := testContext()
+		taskIDs := []string{"heartbeat-progress-a", "heartbeat-progress-b", "heartbeat-progress-c"}
+		for _, id := range taskIDs {
+			createTask(t, db, ctx, id)
+		}
+		if _, err := db.PutNode(ctx, &scheduler.Node{
+			Id:        "heartbeat-progress-node",
+			State:     scheduler.NodeState_ALIVE,
+			Resources: &scheduler.Resources{Cpus: 3, RamGb: 3, DiskGb: 3},
+		}); err != nil {
+			t.Fatalf("create heartbeat-progress-node: %v", err)
+		}
+
+		heartbeats := &heartbeatBeforeAssignment{AtomicTaskAssigner: db, nodes: db}
+		s := newScheduler(db, db, heartbeats, db)
+		if err := s.Schedule(ctx); err != nil {
+			t.Fatalf("Schedule: %v", err)
+		}
+		if heartbeats.writes != len(taskIDs) {
+			t.Fatalf("heartbeat writes = %d; want one before each of %d assignments", heartbeats.writes, len(taskIDs))
+		}
+
+		assigned := assignedTasks(t, ctx, db)
+		for _, taskID := range taskIDs {
+			owners := assigned[taskID]
+			if len(owners) != 1 || owners[0] != "heartbeat-progress-node" {
+				t.Fatalf("task %s owners = %v; want exactly one owner on heartbeat-progress-node", taskID, owners)
+			}
+			if state := getTask(t, db, ctx, taskID).State; state != tes.State_INITIALIZING {
+				t.Fatalf("task %s state = %s; want INITIALIZING", taskID, state)
+			}
+		}
+		if len(assigned) != len(taskIDs) {
+			t.Fatalf("assigned tasks = %v; want exactly %d tasks", assigned, len(taskIDs))
+		}
+		node, err := db.GetNode(ctx, &scheduler.GetNodeRequest{Id: "heartbeat-progress-node"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(node.TaskIds) != len(taskIDs) || node.Available.GetCpus() != 0 {
+			t.Fatalf("node task IDs/resources = %v/%v; want %d tasks and 0 CPUs available", node.TaskIds, node.Available, len(taskIDs))
+		}
+	})
+
 	t.Run("concurrent schedulers assign one task once", func(t *testing.T) {
 		db := open(t)
 		ctx := testContext()
@@ -604,6 +650,32 @@ func (n *nodeReadBarrier) ListNodes(ctx context.Context, req *scheduler.ListNode
 		n.barrier.wait()
 	}
 	return resp, nil
+}
+
+// heartbeatBeforeAssignment performs a real GetNode/PutNode heartbeat after the
+// scheduler has read its candidate snapshot and before its atomic assignment.
+type heartbeatBeforeAssignment struct {
+	scheduler.AtomicTaskAssigner
+	nodes  scheduler.SchedulerServiceServer
+	writes int
+}
+
+func (a *heartbeatBeforeAssignment) TryAssign(ctx context.Context, task *tes.Task, candidate *scheduler.Node) (string, error) {
+	if candidate != nil {
+		node, err := a.nodes.GetNode(ctx, &scheduler.GetNodeRequest{Id: candidate.Id})
+		if err != nil {
+			return "", fmt.Errorf("get node for heartbeat: %w", err)
+		}
+		_, err = a.nodes.PutNode(ctx, node)
+		if err != nil {
+			return "", fmt.Errorf("write competing heartbeat: %w", err)
+		}
+		if node.Version <= candidate.Version {
+			return "", fmt.Errorf("heartbeat version = %d; want later than scheduler snapshot %d", node.Version, candidate.Version)
+		}
+		a.writes++
+	}
+	return a.AtomicTaskAssigner.TryAssign(ctx, task, candidate)
 }
 
 type assignmentWriteCounter struct {
