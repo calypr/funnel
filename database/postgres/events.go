@@ -186,6 +186,11 @@ func (db *Postgres) WriteEvent(ctx context.Context, req *events.Event) error {
 func (db *Postgres) insertTask(ctx context.Context, task *tes.Task, owner string) error {
 	task.CreationTime = time.Now().Format(time.RFC3339Nano)
 	task.State = tes.State_QUEUED
+	for _, taskLog := range task.Logs {
+		if taskLog != nil {
+			delete(taskLog.Metadata, events.ExecutionOwnerMetadataKey)
+		}
+	}
 
 	taskJSON, err := json.Marshal(task)
 	if err != nil {

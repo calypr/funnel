@@ -4,11 +4,57 @@ import (
 	"context"
 	"testing"
 
+	"github.com/calypr/funnel/database/postgres"
 	"github.com/calypr/funnel/events"
 	"github.com/calypr/funnel/tes"
 )
 
 func runExecutionOwnerContracts(t *testing.T, open storeFactory) {
+	t.Run("resubmitted task logs cannot seed an execution owner", func(t *testing.T) {
+		db := open(t)
+		ctx := testContext()
+		staleOwnerMetadata, err := events.ExecutionOwnerMetadata(testExecutionOwner("worker-old"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		task := testTask("owner-resubmitted")
+		task.Logs = []*tes.TaskLog{{
+			StartTime: "copied-start",
+			Metadata: map[string]string{
+				events.ExecutionOwnerMetadataKey: staleOwnerMetadata[events.ExecutionOwnerMetadataKey],
+				"ordinary":                       "copied-value",
+			},
+		}}
+		if err := db.WriteEvent(ctx, events.NewTaskCreated(task)); err != nil {
+			t.Fatalf("create resubmitted task: %v", err)
+		}
+
+		stored := getFullTask(t, db, ctx, task.Id)
+		if owner, err := events.TaskExecutionOwner(stored); err != nil || owner != nil {
+			t.Fatalf("execution owner before claim = %v, %v; want nil", owner, err)
+		}
+		if _, ok := db.(*postgres.Postgres); ok {
+			if got := stored.GetLogs()[0].GetStartTime(); got != "copied-start" {
+				t.Fatalf("copied task log start time = %q; want copied-start", got)
+			}
+			if got := stored.GetLogs()[0].GetMetadata()["ordinary"]; got != "copied-value" {
+				t.Fatalf("copied ordinary metadata = %q; want copied-value", got)
+			}
+		}
+
+		winner := testExecutionOwner("worker-new")
+		if claimed, err := db.(events.ExecutionClaimer).ClaimExecution(ctx, task.Id, winner); err != nil || !claimed {
+			t.Fatalf("claim with new owner = %v, %v", claimed, err)
+		}
+		assertExecutionOwner(t, getFullTask(t, db, ctx, task.Id), winner)
+
+		loser := testExecutionOwner("worker-loser")
+		if claimed, err := db.(events.ExecutionClaimer).ClaimExecution(ctx, task.Id, loser); err != nil || claimed {
+			t.Fatalf("losing claim = %v, %v", claimed, err)
+		}
+		assertExecutionOwner(t, getFullTask(t, db, ctx, task.Id), winner)
+	})
+
 	t.Run("quoted metadata key cannot alias the execution owner", func(t *testing.T) {
 		db := open(t)
 		ctx := testContext()
