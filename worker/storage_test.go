@@ -75,7 +75,7 @@ func TestFlattenInputs(t *testing.T) {
 	assert.True(t, protoSlicesEqual(expected, flat))
 }
 
-func TestUploadOutputsFileTypedDirectory(t *testing.T) {
+func TestUploadOutputsOmittedTypeDirectory(t *testing.T) {
 	root := t.TempDir()
 	files := map[string]string{
 		"nested/one.txt": "first file\n",
@@ -91,7 +91,7 @@ func TestUploadOutputsFileTypedDirectory(t *testing.T) {
 		}
 	}
 
-	output := &tes.Output{Url: "s3://bucket/outputs", Path: root, Type: tes.File}
+	output := &tes.Output{Url: "s3://bucket/outputs", Path: root}
 	store := &capturingUploadStorage{uploaded: make(map[string]string)}
 	logs, err := UploadOutputs(context.Background(), []*tes.Output{output}, store,
 		events.NewTaskWriter("task-1", 0, events.Noop{}), 1)
@@ -112,8 +112,71 @@ func TestUploadOutputsFileTypedDirectory(t *testing.T) {
 	if !protoSlicesEqual(wantLogs, logs) {
 		t.Fatalf("output logs = %v, want %v", logs, wantLogs)
 	}
-	if output.Url != "s3://bucket/outputs" || output.Path != root || output.Type != tes.File {
+	if output.Url != "s3://bucket/outputs" || output.Path != root || output.Type != nil {
 		t.Fatalf("declared output was mutated: %+v", output)
+	}
+}
+
+func TestUploadOutputsRejectsExplicitTypeMismatchesWithoutUploading(t *testing.T) {
+	root := t.TempDir()
+	directory := filepath.Join(root, "directory")
+	if err := os.MkdirAll(filepath.Join(directory, "nested"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "nested", "one.txt"), []byte("directory content\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(root, "file.txt")
+	if err := os.WriteFile(file, []byte("file content\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name      string
+		path      string
+		typeValue *tes.FileType
+		wantError string
+		contents  map[string]string
+	}{
+		{
+			name:      "file type pointing to directory",
+			path:      directory,
+			typeValue: tes.File.Enum(),
+			wantError: "declared as a file",
+			contents:  map[string]string{"directory/nested/one.txt": "directory content\n"},
+		},
+		{
+			name:      "directory type pointing to file",
+			path:      file,
+			typeValue: tes.Directory.Enum(),
+			wantError: "declared as a directory",
+			contents:  map[string]string{"file.txt": "file content\n"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := &capturingUploadStorage{uploaded: make(map[string]string)}
+			_, err := UploadOutputs(context.Background(), []*tes.Output{
+				{Url: "s3://bucket/valid.txt", Path: file, Type: tes.File.Enum()},
+				{Url: "s3://bucket/mismatch", Path: tt.path, Type: tt.typeValue},
+			}, store, events.NewTaskWriter("task-1", 0, events.Noop{}), 1)
+			if err == nil || !strings.Contains(err.Error(), tt.wantError) {
+				t.Fatalf("UploadOutputs() error = %v, want error containing %q", err, tt.wantError)
+			}
+			if len(store.attempted) != 0 || len(store.uploaded) != 0 {
+				t.Fatalf("storage uploads = %v, want none", store.attempted)
+			}
+			for rel, want := range tt.contents {
+				got, err := os.ReadFile(filepath.Join(root, rel))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if string(got) != want {
+					t.Errorf("source contents at %q = %q, want %q", rel, got, want)
+				}
+			}
+		})
 	}
 }
 
@@ -121,7 +184,7 @@ func TestUploadOutputsMissingFileStillReachesStorage(t *testing.T) {
 	url := "s3://bucket/missing.txt"
 	store := &capturingUploadStorage{uploaded: make(map[string]string)}
 	logs, err := UploadOutputs(context.Background(), []*tes.Output{
-		{Url: url, Path: filepath.Join(t.TempDir(), "missing.txt"), Type: tes.File},
+		{Url: url, Path: filepath.Join(t.TempDir(), "missing.txt"), Type: tes.File.Enum()},
 	}, store, events.NewTaskWriter("task-1", 0, events.Noop{}), 1)
 	if err == nil {
 		t.Fatal("expected missing source file to fail during upload")
@@ -136,7 +199,7 @@ func TestUploadOutputsMissingFileStillReachesStorage(t *testing.T) {
 
 func TestFlattenOutputsExplicitDirectoryStillRequiresDirectory(t *testing.T) {
 	_, err := FlattenOutputs(context.Background(), []*tes.Output{
-		{Url: "s3://bucket/output", Path: filepath.Join(t.TempDir(), "missing"), Type: tes.Directory},
+		{Url: "s3://bucket/output", Path: filepath.Join(t.TempDir(), "missing"), Type: tes.Directory.Enum()},
 	}, storage.Fake{}, events.NewTaskWriter("task-1", 0, events.Noop{}))
 	if err == nil {
 		t.Fatal("expected missing declared directory to fail")
@@ -145,7 +208,7 @@ func TestFlattenOutputsExplicitDirectoryStillRequiresDirectory(t *testing.T) {
 
 func TestFlattenOutputsUnknownTypeIsSkipped(t *testing.T) {
 	flat, err := FlattenOutputs(context.Background(), []*tes.Output{
-		{Url: "s3://bucket/output", Path: filepath.Join(t.TempDir(), "missing"), Type: tes.FileType(1000)},
+		{Url: "s3://bucket/output", Path: filepath.Join(t.TempDir(), "missing"), Type: tes.FileType(1000).Enum()},
 	}, storage.Fake{}, events.NewTaskWriter("task-1", 0, events.Noop{}))
 	if err != nil {
 		t.Fatal(err)
@@ -240,6 +303,75 @@ func TestResolveWildcardsJoinsWithStorage(t *testing.T) {
 		{Url: "file://" + localDir + "/glob/result#1.txt", Path: localOutDir + "/result#1.txt", PathPrefix: "/outputs/local"},
 	}
 	assert.True(t, protoSlicesEqual(expected, mapper.Outputs))
+}
+
+func TestResolveWildcardsFailsWhenPatternMatchesNothing(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		patternPath string
+		prepare     func(*testing.T, string)
+	}{
+		{
+			name:        "empty directory",
+			patternPath: "empty/*",
+			prepare: func(t *testing.T, workDir string) {
+				t.Helper()
+				if err := os.Mkdir(filepath.Join(workDir, "empty"), 0755); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name:        "regular file as parent",
+			patternPath: "abc/*",
+			prepare: func(t *testing.T, workDir string) {
+				t.Helper()
+				if err := os.WriteFile(filepath.Join(workDir, "abc"), nil, 0644); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			workDir := t.TempDir()
+			if err := os.Mkdir(filepath.Join(workDir, "matched"), 0755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(workDir, "matched", "output.txt"), nil, 0644); err != nil {
+				t.Fatal(err)
+			}
+			tc.prepare(t, workDir)
+
+			mapper := &FileMapper{
+				WorkDir: workDir,
+				Outputs: []*tes.Output{
+					{Url: "s3://bucket/matched", Path: filepath.Join(workDir, "matched", "*.txt")},
+					{Url: "s3://bucket/unmatched", Path: filepath.Join(workDir, tc.patternPath)},
+				},
+			}
+			originalOutputs := append([]*tes.Output(nil), mapper.Outputs...)
+
+			err := resolveWildcards(mapper, &capturingUploadStorage{uploaded: make(map[string]string)})
+			if err == nil {
+				t.Fatal("expected unmatched output pattern to fail")
+			}
+			containerPattern := mapper.ContainerPath(filepath.Join(workDir, tc.patternPath))
+			if !strings.Contains(err.Error(), containerPattern) {
+				t.Errorf("error %q does not include container pattern %q", err, containerPattern)
+			}
+			if strings.Contains(err.Error(), workDir) {
+				t.Errorf("error %q exposes host task directory %q", err, workDir)
+			}
+			if len(mapper.Outputs) != len(originalOutputs) {
+				t.Fatalf("outputs changed after resolution error: got %d outputs, want %d", len(mapper.Outputs), len(originalOutputs))
+			}
+			for i := range originalOutputs {
+				if mapper.Outputs[i] != originalOutputs[i] {
+					t.Fatalf("output %d was replaced after resolution error", i)
+				}
+			}
+		})
+	}
 }
 
 func TestResolveWildcardsReportsJoinError(t *testing.T) {

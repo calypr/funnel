@@ -55,7 +55,7 @@ func TestUploadOutputsReplacesMountedDestinationWithoutChangingAliases(t *testin
 		if err := os.WriteFile(source, bytes.Repeat([]byte{byte('A' + i)}, size), 0600); err != nil {
 			t.Fatal(err)
 		}
-		outputs = append(outputs, &tes.Output{Path: source, Url: "s3://bucket/outputs/shared", Type: tes.File})
+		outputs = append(outputs, &tes.Output{Path: source, Url: "s3://bucket/outputs/shared", Type: tes.File.Enum()})
 	}
 	task := &tes.Task{Id: "task", Executors: []*tes.Executor{{Image: "alpine", Command: []string{"true"}}}, Outputs: outputs}
 	if errs := tes.Validate(task); len(errs) > 0 {

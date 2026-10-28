@@ -66,7 +66,7 @@ func workerOutputFile(t *testing.T, name, content string) *tes.Output {
 	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
 		t.Fatal(err)
 	}
-	return &tes.Output{Url: "s3://outputs/" + name, Path: path, Type: tes.File}
+	return &tes.Output{Url: "s3://outputs/" + name, Path: path, Type: tes.File.Enum()}
 }
 
 func TestUploadOutputsKeepsAcknowledgedFilesOnPartialFailure(t *testing.T) {
@@ -228,7 +228,7 @@ func TestDefaultWorkerWaitsForOutputAcknowledgementBeforeCompletion(t *testing.T
 			if err := os.WriteFile(local, []byte("worker output"), 0600); err != nil {
 				t.Fatal(err)
 			}
-			task := &tes.Task{Id: "task", State: tes.Queued, Outputs: []*tes.Output{{Url: "s3://outputs/result.txt", Path: "/outputs/result.txt", Type: tes.File}}}
+			task := &tes.Task{Id: "task", State: tes.Queued, Outputs: []*tes.Output{{Url: "s3://outputs/result.txt", Path: "/outputs/result.txt", Type: tes.File.Enum()}}}
 			writer := &publicationEvents{}
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
@@ -288,7 +288,7 @@ func TestDefaultWorkerWaitsForOutputAcknowledgementBeforeCompletion(t *testing.T
 func TestWorkerOutputFailureIncludesTaskPathAndOriginalError(t *testing.T) {
 	root := t.TempDir()
 	mapper := NewFileMapper(filepath.Join(root, "work"))
-	output := &tes.Output{Url: "file://" + filepath.Join(root, "destination", "result.txt"), Path: "/outputs/result.txt", Type: tes.File}
+	output := &tes.Output{Url: "file://" + filepath.Join(root, "destination", "result.txt"), Path: "/outputs/result.txt", Type: tes.File.Enum()}
 	if err := mapper.MapTask(&tes.Task{Outputs: []*tes.Output{output}}, "docker"); err != nil {
 		t.Fatal(err)
 	}
@@ -332,7 +332,7 @@ func (s failingOutputStore) Put(context.Context, string, string) (*storage.Objec
 func TestWorkerOutputFailurePreservesStorageError(t *testing.T) {
 	root := t.TempDir()
 	mapper := NewFileMapper(filepath.Join(root, "work"))
-	output := &tes.Output{Url: "s3://bucket/result.txt", Path: "/outputs/result.txt", Type: tes.File}
+	output := &tes.Output{Url: "s3://bucket/result.txt", Path: "/outputs/result.txt", Type: tes.File.Enum()}
 	if err := mapper.MapTask(&tes.Task{Outputs: []*tes.Output{output}}, "docker"); err != nil {
 		t.Fatal(err)
 	}

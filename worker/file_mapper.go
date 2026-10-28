@@ -454,7 +454,7 @@ func (mapper *FileMapper) addOutput(output *tes.Output, rootStreamPaths map[stri
 	hostDir := hostPath
 	containerPath := path.Clean(output.Path)
 	mountDir := containerPath
-	if output.Type == tes.FileType_FILE {
+	if output.GetType() == tes.FileType_FILE {
 		hostDir = path.Dir(hostPath)
 		mountDir = path.Dir(containerPath)
 		if mountDir == "/" && rootStreamPaths[containerPath] {
@@ -466,7 +466,7 @@ func (mapper *FileMapper) addOutput(output *tes.Output, rootStreamPaths map[stri
 		return fmt.Errorf("output path %q requires a container mount at /, which is not allowed", output.Path)
 	}
 
-	if !(output.Type == tes.FileType_FILE && rootStreamPaths[containerPath]) {
+	if !(output.GetType() == tes.FileType_FILE && rootStreamPaths[containerPath]) {
 		err = fsutil.EnsureDir(hostDir)
 		if err != nil {
 			return err

@@ -54,7 +54,7 @@ func ValidateMountPaths(task *Task, executorBackend string) error {
 
 	for i, output := range task.Outputs {
 		outputPath := path.Clean(output.Path)
-		if output.Type == FileType_DIRECTORY {
+		if output.GetType() == FileType_DIRECTORY {
 			if outputPath == "/" {
 				return fmt.Errorf("Task.Outputs[%d].Path: %q requires a mount at /, which is not allowed; use a dedicated output directory such as /outputs", i, output.Path)
 			}
@@ -83,7 +83,7 @@ func ValidateMountPaths(task *Task, executorBackend string) error {
 		}
 		for i, output := range task.Outputs {
 			outputPath := path.Clean(output.Path)
-			if output.Type == FileType_FILE && outputPath == streamPath {
+			if output.GetType() == FileType_FILE && outputPath == streamPath {
 				continue
 			}
 			if pathsOverlap(streamPath, outputPath) {

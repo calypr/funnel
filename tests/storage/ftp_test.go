@@ -47,7 +47,7 @@ func TestFTPStorage(t *testing.T) {
 	dPath := "testdata/test_dir"
 	inDirURL := protocol + testBucket + "/" + dPath
 	_, err = worker.UploadOutputs(ctx, []*tes.Output{
-		{Url: inDirURL, Path: dPath, Type: tes.Directory},
+		{Url: inDirURL, Path: dPath, Type: tes.Directory.Enum()},
 	}, store, ev, parallelXfer)
 	if err != nil {
 		t.Fatal("error uploading test directory:", err)
@@ -74,12 +74,12 @@ func TestFTPStorage(t *testing.T) {
 			{
 				Path: "/opt/workdir/test-output-file.txt",
 				Url:  outFileURL,
-				Type: tes.FileType_FILE,
+				Type: tes.FileType_FILE.Enum(),
 			},
 			{
 				Path: "/opt/workdir/test-output-directory",
 				Url:  outDirURL,
-				Type: tes.FileType_DIRECTORY,
+				Type: tes.FileType_DIRECTORY.Enum(),
 			},
 		},
 		Executors: []*tes.Executor{
@@ -161,7 +161,7 @@ func TestFTPStorage(t *testing.T) {
 			{
 				Path: "/opt/workdir/this/path/does/not/exist/test-output-directory",
 				Url:  outDirURL,
-				Type: tes.FileType_DIRECTORY,
+				Type: tes.FileType_DIRECTORY.Enum(),
 			},
 		},
 		Executors: []*tes.Executor{
@@ -237,7 +237,7 @@ func TestFTPStorageConfigAuth(t *testing.T) {
 	dPath := "testdata/test_dir"
 	inDirURL := protocol + testBucket + "/" + dPath
 	_, err = worker.UploadOutputs(ctx, []*tes.Output{
-		{Url: inDirURL, Path: dPath, Type: tes.Directory},
+		{Url: inDirURL, Path: dPath, Type: tes.Directory.Enum()},
 	}, store, ev, parallelXfer)
 	if err != nil {
 		t.Fatal("error uploading test directory:", err)
@@ -264,12 +264,12 @@ func TestFTPStorageConfigAuth(t *testing.T) {
 			{
 				Path: "/opt/workdir/test-output-file.txt",
 				Url:  outFileURL,
-				Type: tes.FileType_FILE,
+				Type: tes.FileType_FILE.Enum(),
 			},
 			{
 				Path: "/opt/workdir/test-output-directory",
 				Url:  outDirURL,
-				Type: tes.FileType_DIRECTORY,
+				Type: tes.FileType_DIRECTORY.Enum(),
 			},
 		},
 		Executors: []*tes.Executor{
@@ -351,7 +351,7 @@ func TestFTPStorageConfigAuth(t *testing.T) {
 			{
 				Path: "/opt/workdir/this/path/does/not/exist/test-output-directory",
 				Url:  outDirURL,
-				Type: tes.FileType_DIRECTORY,
+				Type: tes.FileType_DIRECTORY.Enum(),
 			},
 		},
 		Executors: []*tes.Executor{

@@ -97,14 +97,27 @@ func FlattenOutputs(ctx context.Context, outputs []*tes.Output, store storage.St
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		if output.Type == tes.File {
-			info, err := os.Stat(output.Path)
-			if err != nil || !info.IsDir() {
+		info, statErr := os.Stat(output.Path)
+		if output.Type == nil {
+			if statErr != nil || !info.IsDir() {
 				flat = append(flat, output)
 				continue
 			}
-		} else if output.Type != tes.Directory {
-			continue
+		} else {
+			switch output.GetType() {
+			case tes.File:
+				if statErr == nil && info.IsDir() {
+					return nil, fmt.Errorf("output path %q is a directory but is declared as a file", output.Path)
+				}
+				flat = append(flat, output)
+				continue
+			case tes.Directory:
+				if statErr == nil && !info.IsDir() {
+					return nil, fmt.Errorf("output path %q is not a directory but is declared as a directory", output.Path)
+				}
+			default:
+				continue
+			}
 		}
 
 		list, err := fsutil.WalkFiles(output.Path)
@@ -283,7 +296,10 @@ func resolveWildcards(mapper *FileMapper, store storage.Storage) error {
 		if strings.Contains(output.Path, "*") {
 			globs, err := filepath.Glob(output.Path)
 			if err != nil {
-				return fmt.Errorf("failed to resolve path %v: %v", output.Path, err)
+				return fmt.Errorf("failed to resolve output pattern %q: %v", mapper.ContainerPath(output.Path), err)
+			}
+			if len(globs) == 0 {
+				return fmt.Errorf("output pattern %q matched no files", mapper.ContainerPath(output.Path))
 			}
 
 			for _, glob := range globs {

@@ -67,12 +67,26 @@ func TestDynamoDBTaskWireFormat(t *testing.T) {
 		}
 	})
 	task := &tes.Task{Id: "task-1", State: tes.Queued, CreationTime: "2026-10-15T00:00:00Z", Tags: map[string]string{"empty": ""}, Resources: &tes.Resources{CpuCores: 2, RamGb: 4}, Inputs: []*tes.Input{{Path: "/input", Content: "inline content"}}}
+	task.Outputs = []*tes.Output{
+		{Path: "/outputs/inferred"},
+		{Path: "/outputs/file", Type: tes.File.Enum()},
+		{Path: "/outputs/directory", Type: tes.Directory.Enum()},
+	}
 	if err := db.WriteEvent(t.Context(), events.NewTaskCreated(task)); err != nil {
 		t.Fatal(err)
 	}
 	got, err := db.GetTask(t.Context(), &tes.GetTaskRequest{Id: task.Id, View: tes.View_BASIC.String()})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(got.Outputs) != len(task.Outputs) {
+		t.Fatalf("outputs lost during storage: %v", got.Outputs)
+	}
+	for i, output := range got.Outputs {
+		want := task.Outputs[i]
+		if (output.Type == nil) != (want.Type == nil) || output.GetType() != want.GetType() {
+			t.Fatalf("output %d type changed during storage: got %v, want %v", i, output, want)
+		}
 	}
 	if got.Id != task.Id || got.CreationTime != task.CreationTime || got.Resources.CpuCores != 2 || contentWrites != 1 {
 		t.Fatalf("task round trip changed %v, content writes %d", got, contentWrites)

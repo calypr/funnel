@@ -54,7 +54,7 @@ func TestMapTask(t *testing.T) {
 				Name: "o9",
 				Url:  "file://" + cwd + "/testdata/o9",
 				Path: "/outputs/sub/o9",
-				Type: tes.FileType_DIRECTORY,
+				Type: tes.FileType_DIRECTORY.Enum(),
 			},
 		},
 		Volumes: []string{"/volone", "/voltwo"},
@@ -90,7 +90,7 @@ func TestMapTask(t *testing.T) {
 			Name: "o9",
 			Url:  "file://" + cwd + "/testdata/o9",
 			Path: tmp + "/outputs/sub/o9",
-			Type: tes.FileType_DIRECTORY,
+			Type: tes.FileType_DIRECTORY.Enum(),
 		},
 	}
 
@@ -170,11 +170,11 @@ func TestMapTaskRejectsRootMountsBeforeCreatingWorkDir(t *testing.T) {
 	}{
 		{
 			name: "ordinary root file output",
-			task: &tes.Task{Outputs: []*tes.Output{{Path: "/result.json", Url: "file:///result.json", Type: tes.FileType_FILE}}},
+			task: &tes.Task{Outputs: []*tes.Output{{Path: "/result.json", Url: "file:///result.json", Type: tes.FileType_FILE.Enum()}}},
 		},
 		{
 			name: "root directory output alias",
-			task: &tes.Task{Outputs: []*tes.Output{{Path: "/tmp/..", Url: "file:///result", Type: tes.FileType_DIRECTORY}}},
+			task: &tes.Task{Outputs: []*tes.Output{{Path: "/tmp/..", Url: "file:///result", Type: tes.FileType_DIRECTORY.Enum()}}},
 		},
 		{
 			name: "root volume alias",
@@ -206,8 +206,8 @@ func TestMapTaskMountsDeclaredRootStreamsAsFiles(t *testing.T) {
 	task := &tes.Task{
 		Inputs: []*tes.Input{{Path: "/inputs", Url: "file:///inputs", Type: tes.FileType_DIRECTORY}},
 		Outputs: []*tes.Output{
-			{Path: "/capture-out", Url: "file:///capture-out", Type: tes.FileType_FILE},
-			{Path: "/capture-err", Url: "file:///capture-err", Type: tes.FileType_FILE},
+			{Path: "/capture-out", Url: "file:///capture-out", Type: tes.FileType_FILE.Enum()},
+			{Path: "/capture-err", Url: "file:///capture-err", Type: tes.FileType_FILE.Enum()},
 		},
 		Executors: []*tes.Executor{
 			{Stdout: "/capture-out"},
@@ -317,7 +317,7 @@ func TestMapTaskInputOutputSameDirNoDuplicateVolume(t *testing.T) {
 				Name: "out1",
 				Url:  "file:///out/output.txt",
 				Path: "/data/output.txt",
-				Type: tes.FileType_FILE,
+				Type: tes.FileType_FILE.Enum(),
 			},
 		},
 	}
@@ -368,7 +368,7 @@ func TestMapTaskInputOutputOverlapNoDuplicateVolume(t *testing.T) {
 				Name: "out1",
 				Url:  "file:///out/result",
 				Path: "/data/result",
-				Type: tes.FileType_DIRECTORY,
+				Type: tes.FileType_DIRECTORY.Enum(),
 			},
 		},
 	}
@@ -405,7 +405,7 @@ func TestMapTaskMultipleInputsAndOutputs(t *testing.T) {
 			{Name: "b", Path: "/data/b.txt", Content: "b"},
 		},
 		Outputs: []*tes.Output{
-			{Name: "out", Url: "file:///out/c.txt", Path: "/data/c.txt", Type: tes.FileType_FILE},
+			{Name: "out", Url: "file:///out/c.txt", Path: "/data/c.txt", Type: tes.FileType_FILE.Enum()},
 		},
 	}
 

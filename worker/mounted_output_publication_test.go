@@ -93,7 +93,7 @@ func TestDefaultWorkerWaitsForMountedOutputHeadBeforeCompletionAndCleanup(t *tes
 		if err := os.WriteFile(local, []byte("worker output"), 0600); err != nil {
 			t.Fatal(err)
 		}
-		task := &tes.Task{Id: "task", State: tes.Queued, Outputs: []*tes.Output{{Url: "s3://bucket/outputs/result.txt", Path: "/outputs/result.txt", Type: tes.File}}}
+		task := &tes.Task{Id: "task", State: tes.Queued, Outputs: []*tes.Output{{Url: "s3://bucket/outputs/result.txt", Path: "/outputs/result.txt", Type: tes.File.Enum()}}}
 		writer := &publicationEvents{}
 		conf := config.EmptyConfig().Worker
 		conf.WorkDir = base
@@ -201,7 +201,7 @@ func TestDefaultWorkerWaitsForMountedOutputHeadBeforeCompletionAndCleanup(t *tes
 		if err := os.WriteFile(local, []byte("worker output"), 0600); err != nil {
 			t.Fatal(err)
 		}
-		task := &tes.Task{Id: "task", State: tes.Queued, Outputs: []*tes.Output{{Url: "s3://bucket/outputs/result.txt", Path: "/outputs/result.txt", Type: tes.File}}}
+		task := &tes.Task{Id: "task", State: tes.Queued, Outputs: []*tes.Output{{Url: "s3://bucket/outputs/result.txt", Path: "/outputs/result.txt", Type: tes.File.Enum()}}}
 		writer := &publicationEvents{}
 		conf := config.EmptyConfig().Worker
 		conf.WorkDir = base
@@ -295,7 +295,7 @@ func TestUploadOutputsMountedDirectoryKeepsAcknowledgedFilesOnPartialFailure(t *
 	if err := os.WriteFile(failed, []byte("failed-data"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	output := &tes.Output{Url: "s3://bucket/outputs/bundle", Path: directory, Type: tes.Directory}
+	output := &tes.Output{Url: "s3://bucket/outputs/bundle", Path: directory, Type: tes.Directory.Enum()}
 	writer := &publicationEvents{}
 	logs, err := UploadOutputs(context.Background(), []*tes.Output{output}, mux, events.NewTaskWriter("task", 0, writer), 1)
 	if err == nil {

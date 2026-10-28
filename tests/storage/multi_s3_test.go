@@ -70,7 +70,7 @@ func TestMultiS3Storage(t *testing.T) {
 
 	g2FileURL := protocol + gconf2.Endpoint + "/" + testBucket + "/" + fPath + tests.RandomString(6)
 	_, err = worker.UploadOutputs(ctx, []*tes.Output{
-		{Url: g2FileURL, Path: fPath, Type: tes.Directory},
+		{Url: g2FileURL, Path: fPath, Type: tes.Directory.Enum()},
 	}, gclient2.fcli, ev, parallelXfer)
 	if err != nil {
 		t.Fatal("error uploading test file:", err)
@@ -96,7 +96,7 @@ func TestMultiS3Storage(t *testing.T) {
 			{
 				Path: "/opt/workdir/test-output-file.txt",
 				Url:  outFileURL,
-				Type: tes.FileType_FILE,
+				Type: tes.FileType_FILE.Enum(),
 			},
 		},
 		Executors: []*tes.Executor{
@@ -165,7 +165,7 @@ func TestMultiS3Storage(t *testing.T) {
 			{
 				Path: "/opt/workdir/test-output-file.txt",
 				Url:  outFileURL,
-				Type: tes.FileType_FILE,
+				Type: tes.FileType_FILE.Enum(),
 			},
 		},
 		Executors: []*tes.Executor{
