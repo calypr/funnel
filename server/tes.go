@@ -66,10 +66,28 @@ func (ts *TaskService) Close() {
 }
 
 func (ts *TaskService) forbiddenPathPrefixes() []string {
-	if ts.Config == nil || ts.Config.Compute != "kubernetes" || ts.Config.Kubernetes == nil {
+	if ts.Config == nil || (strings.ToLower(strings.TrimSpace(ts.Config.Compute)) != "kubernetes" && strings.ToLower(strings.TrimSpace(ts.Config.Compute)) != "k8s") || ts.Config.Kubernetes == nil {
 		return nil
 	}
 	return ts.Config.Kubernetes.GetForbiddenPathPrefixes()
+}
+
+func (ts *TaskService) mountExecutorBackend(ctx context.Context) string {
+	if ts.Config == nil {
+		return ""
+	}
+	compute := ts.Config.Compute
+	if pluginResponse, ok := ctx.Value("pluginResponse").(*proto.JobResponse); ok && pluginResponse.Config != nil && pluginResponse.Config.Compute != "" {
+		compute = pluginResponse.Config.Compute
+	}
+	switch strings.ToLower(strings.TrimSpace(compute)) {
+	case "local", "manual", "aws-batch", "aws", "amazon", "gridengine", "htcondor", "pbs", "slurm":
+		return "docker"
+	case "kubernetes", "k8s":
+		return "kubernetes"
+	default:
+		return ""
+	}
 }
 
 type contextKey string
@@ -147,6 +165,11 @@ func (ts *TaskService) CreateTask(ctx context.Context, task *tes.Task) (*tes.Cre
 
 	if err := tes.InitTaskWithForbiddenPathPrefixes(task, true, ts.forbiddenPathPrefixes()); err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "%v", err.Error())
+	}
+	if executorBackend := ts.mountExecutorBackend(ctx); executorBackend != "" {
+		if err := tes.ValidateMountPaths(task, executorBackend); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "%v", err)
+		}
 	}
 
 	if err := ts.Compute.CheckBackendParameterSupport(task); err != nil {

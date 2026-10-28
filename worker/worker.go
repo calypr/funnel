@@ -204,7 +204,11 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 
 	// Prepare file mapper, which maps task file URLs to host filesystem paths
 	if run.ok() {
-		run.syserr = mapper.MapTask(task)
+		executorBackend := r.Executor.Backend
+		if executorBackend == "" {
+			executorBackend = "docker"
+		}
+		run.syserr = mapper.MapTask(task, executorBackend)
 	}
 
 	if run.ok() {
