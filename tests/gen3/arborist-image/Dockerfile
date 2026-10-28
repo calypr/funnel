@@ -3,7 +3,7 @@ USER 0
 ARG TARGETARCH
 WORKDIR /go/src/github.com/uc-cdis/arborist
 RUN test "$TARGETARCH" = arm64 && \
-    test "$(git -c safe.directory="$PWD" rev-parse HEAD)" = ccf67c19c381edc72a13fea58adc42b83af003e8 && \
+    test "$(git -c safe.directory="$PWD" rev-parse HEAD)" = 506332cc538a12b69ac764db39b50deab31d3aa8 && \
     GITCOMMIT=$(git -c safe.directory="$PWD" rev-parse HEAD) && \
     GITVERSION=$(git -c safe.directory="$PWD" describe --always --tags) && \
     git config --global --add safe.directory "$PWD" && \
