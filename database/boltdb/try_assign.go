@@ -3,12 +3,10 @@ package boltdb
 import (
 	"context"
 	"fmt"
-	"slices"
 
 	"github.com/calypr/funnel/compute/scheduler"
 	"github.com/calypr/funnel/tes"
 	bolt "go.etcd.io/bbolt"
-	"google.golang.org/protobuf/proto"
 )
 
 // TryAssign atomically claims a queued task and records it on an eligible node.
@@ -60,11 +58,11 @@ func (taskBolt *BoltDB) TryAssign(ctx context.Context, task *tes.Task, candidate
 
 		// Use the task persisted in the same transaction as the state check so
 		// capacity is charged using the database's authoritative request.
-		queuedTask := &tes.Task{}
-		if err := proto.Unmarshal(taskData, queuedTask); err != nil {
-			return fmt.Errorf("unmarshal queued task %q: %w", task.Id, err)
+		resources, err := taskResourceProjection(taskData)
+		if err != nil {
+			return fmt.Errorf("project queued task %q resources: %w", task.Id, err)
 		}
-		queuedTask.State = tes.State_QUEUED
+		queuedTask := &tes.Task{Id: task.Id, State: tes.State_QUEUED, Resources: resources}
 
 		if claim := claims.Get(key); claim != nil {
 			var err error
@@ -81,10 +79,21 @@ func (taskBolt *BoltDB) TryAssign(ctx context.Context, task *tes.Task, candidate
 			return fmt.Errorf("candidate node %q does not exist", candidate.Id)
 		}
 		current := &scheduler.Node{}
-		if err := proto.Unmarshal(data, current); err != nil {
+		if err := unmarshalNodeWithoutTaskIDs(data, current); err != nil {
 			return fmt.Errorf("unmarshal candidate node %q: %w", candidate.Id, err)
 		}
-		if slices.Contains(current.TaskIds, task.Id) {
+		if current.Id != candidate.Id {
+			return fmt.Errorf("candidate node row %q contains node ID %q", candidate.Id, current.Id)
+		}
+		version, err := readNodeVersion(tx, current.Id)
+		if err != nil {
+			return err
+		}
+		if version != 0 {
+			current.Version = version
+		}
+		nodeClaims := tx.Bucket(NodeClaims).Bucket([]byte(current.Id))
+		if nodeClaims != nil && nodeClaims.Get(key) != nil {
 			return fmt.Errorf("node reservation has no task claim")
 		}
 		used, err := readNodeUsage(tx, current.Id)
@@ -103,24 +112,14 @@ func (taskBolt *BoltDB) TryAssign(ctx context.Context, task *tes.Task, candidate
 		if err != nil {
 			return err
 		}
-		if err := saveNodeUsage(tx, current.Id, used); err != nil {
-			return err
-		}
-		current.TaskIds = append(current.TaskIds, task.Id)
-		current.Available = used.Available(current.Resources)
-		current.Version++
-
-		updated, err := proto.Marshal(current)
-		if err != nil {
-			return fmt.Errorf("marshal candidate node %q: %w", candidate.Id, err)
-		}
+		currentVersion := current.Version + 1
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := nodes.Put([]byte(candidate.Id), updated); err != nil {
+		if err := saveNodeUsageVersion(tx, current.Id, used, currentVersion); err != nil {
 			return err
 		}
-		if err := putTaskClaim(tx, task.Id, candidate.Id); err != nil {
+		if err := putTaskClaim(tx, task.Id, candidate.Id, reserved); err != nil {
 			return err
 		}
 		owner = candidate.Id

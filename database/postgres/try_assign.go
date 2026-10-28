@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"slices"
 
 	"github.com/calypr/funnel/compute/scheduler"
 	"github.com/calypr/funnel/tes"
@@ -51,14 +50,14 @@ func (db *Postgres) TryAssign(ctx context.Context, task *tes.Task, candidate *sc
 	defer func() { _ = tx.Rollback(context.Background()) }()
 
 	var taskState, claimedOwner string
-	var taskJSON []byte
+	var taskResourcesJSON []byte
 	var claimActive bool
 	err = tx.QueryRow(ctx, `
-		SELECT state, COALESCE(claim_owner, ''), data,claim_active
+		SELECT state, COALESCE(claim_owner, ''), data->'resources',claim_active
 		FROM tasks
 		WHERE id = $1
 		FOR UPDATE
-	`, task.Id).Scan(&taskState, &claimedOwner, &taskJSON, &claimActive)
+	`, task.Id).Scan(&taskState, &claimedOwner, &taskResourcesJSON, &claimActive)
 	if err == pgx.ErrNoRows {
 		return "", nil
 	}
@@ -68,12 +67,13 @@ func (db *Postgres) TryAssign(ctx context.Context, task *tes.Task, candidate *sc
 	if taskState != tes.State_QUEUED.String() {
 		return "", nil
 	}
-	var storedTask tes.Task
-	if err := json.Unmarshal(taskJSON, &storedTask); err != nil {
-		return "", fmt.Errorf("unmarshal task %q for assignment: %w", task.Id, err)
+	storedTask := tes.Task{Id: task.Id, State: tes.State_QUEUED}
+	if len(taskResourcesJSON) != 0 && string(taskResourcesJSON) != "null" {
+		storedTask.Resources = &tes.Resources{}
+		if err := json.Unmarshal(taskResourcesJSON, storedTask.Resources); err != nil {
+			return "", fmt.Errorf("unmarshal task resources %q for assignment: %w", task.Id, err)
+		}
 	}
-	storedTask.Id = task.Id
-	storedTask.State = tes.State_QUEUED
 
 	if claimedOwner != "" {
 		if !claimActive {
@@ -86,14 +86,16 @@ func (db *Postgres) TryAssign(ctx context.Context, task *tes.Task, candidate *sc
 		return "", nil
 	}
 
-	var nodeJSON, usageJSON []byte
+	var nodeID, storedNodeID, nodeState, nodeZone string
+	var resourcesJSON, metadataJSON, usageJSON []byte
+	var preemptible bool
 	var nodeVersion int64
 	err = tx.QueryRow(ctx, `
-		SELECT data, version,reserved
+		SELECT id,COALESCE(data->>'id',''),state,version,data->'resources',COALESCE((data->>'preemptible')::boolean,false),COALESCE(data->>'zone',''),COALESCE(data->'metadata','{}'::jsonb),reserved
 		FROM nodes
 		WHERE id = $1
 		FOR UPDATE
-	`, candidate.Id).Scan(&nodeJSON, &nodeVersion, &usageJSON)
+	`, candidate.Id).Scan(&nodeID, &storedNodeID, &nodeState, &nodeVersion, &resourcesJSON, &preemptible, &nodeZone, &metadataJSON, &usageJSON)
 	if err == pgx.ErrNoRows {
 		return "", fmt.Errorf("try assign task %q: candidate node %q not found", task.Id, candidate.Id)
 	}
@@ -101,18 +103,24 @@ func (db *Postgres) TryAssign(ctx context.Context, task *tes.Task, candidate *sc
 		return "", fmt.Errorf("lock candidate node %q for task %q: %w", candidate.Id, task.Id, err)
 	}
 
-	var node scheduler.Node
-	if err := json.Unmarshal(nodeJSON, &node); err != nil {
-		return "", fmt.Errorf("unmarshal candidate node %q: %w", candidate.Id, err)
+	state, ok := scheduler.NodeState_value[nodeState]
+	if !ok {
+		return "", fmt.Errorf("candidate node %q has invalid state %q", candidate.Id, nodeState)
 	}
-	if node.Id != candidate.Id {
-		return "", fmt.Errorf("candidate node row %q contains node ID %q", candidate.Id, node.Id)
+	if storedNodeID != nodeID {
+		return "", fmt.Errorf("candidate node row %q contains node ID %q", nodeID, storedNodeID)
 	}
-	if node.Version != nodeVersion {
-		return "", fmt.Errorf("candidate node %q has inconsistent stored version %d (row version %d)", candidate.Id, node.Version, nodeVersion)
+	node := scheduler.Node{Id: nodeID, State: scheduler.NodeState(state), Version: nodeVersion, Preemptible: preemptible, Zone: nodeZone}
+	if len(resourcesJSON) != 0 && string(resourcesJSON) != "null" {
+		node.Resources = &scheduler.Resources{}
+		if err := json.Unmarshal(resourcesJSON, node.Resources); err != nil {
+			return "", fmt.Errorf("unmarshal candidate node resources %q: %w", candidate.Id, err)
+		}
 	}
-	if slices.Contains(node.TaskIds, task.Id) {
-		return "", fmt.Errorf("node %q has a reservation for task %q without its authoritative claim", node.Id, task.Id)
+	if len(metadataJSON) != 0 && string(metadataJSON) != "null" {
+		if err := json.Unmarshal(metadataJSON, &node.Metadata); err != nil {
+			return "", fmt.Errorf("unmarshal candidate node metadata %q: %w", candidate.Id, err)
+		}
 	}
 	var used scheduler.ResourceUsage
 	if err := json.Unmarshal(usageJSON, &used); err != nil {
@@ -134,9 +142,6 @@ func (db *Postgres) TryAssign(ctx context.Context, task *tes.Task, candidate *sc
 	if err != nil {
 		return "", err
 	}
-	node.TaskIds = append(node.TaskIds, task.Id)
-	node.Available = used.Available(node.Resources)
-
 	claimTag, err := tx.Exec(ctx, `
 		UPDATE tasks
 		SET claim_owner = $1,claim_active=true,claim_resources=$4::jsonb
@@ -151,7 +156,6 @@ func (db *Postgres) TryAssign(ctx context.Context, task *tes.Task, candidate *sc
 		return "", fmt.Errorf("task %q changed while reserving it on node %q", task.Id, node.Id)
 	}
 
-	node.Version = nodeVersion + 1
 	if err := saveReservedNode(ctx, tx, &node, used); err != nil {
 		return "", err
 	}

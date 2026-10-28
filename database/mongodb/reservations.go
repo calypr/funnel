@@ -3,7 +3,6 @@ package mongodb
 import (
 	"context"
 	"fmt"
-	"slices"
 
 	"github.com/calypr/funnel/compute/scheduler"
 	"github.com/calypr/funnel/server"
@@ -49,14 +48,42 @@ func (db *MongoDB) transaction(ctx context.Context, fn func(context.Context) (an
 }
 
 func (db *MongoDB) saveReservedNode(ctx context.Context, record *nodeRecord) error {
-	record.Node.Version++
-	record.Node.Available = record.Reserved.Available(record.Node.Resources)
+	version := record.Node.Version + 1
+	available := record.Reserved.Available(record.Node.Resources)
+	filter := bson.M{"id": record.Node.Id, "version": record.Node.Version}
+	if record.Node.Version == 0 {
+		filter = bson.M{"id": record.Node.Id, "$or": bson.A{
+			bson.M{"version": 0},
+			bson.M{"version": bson.M{"$exists": false}},
+		}}
+	}
+	result, err := db.nodes().UpdateOne(ctx,
+		filter,
+		bson.M{
+			"$set":   bson.M{"reserved": record.Reserved, "available": available, "version": version},
+			"$unset": bson.M{"taskids": "", "task_ids": "", "taskIds": ""},
+		},
+		options.UpdateOne().SetCollation(&options.Collation{Locale: "simple"}),
+	)
+	if err != nil {
+		return err
+	}
+	if result.MatchedCount != 1 {
+		return fmt.Errorf("reservation node %q changed or disappeared", record.Node.Id)
+	}
+	record.Node.Version = version
+	record.Node.Available = available
+	record.Node.TaskIds = nil
+	return nil
+}
+
+func (db *MongoDB) replaceReportedNode(ctx context.Context, record *nodeRecord) error {
 	result, err := db.nodes().ReplaceOne(ctx, bson.M{"id": record.Node.Id}, record, options.Replace().SetCollation(&options.Collation{Locale: "simple"}))
 	if err != nil {
 		return err
 	}
 	if result.MatchedCount != 1 {
-		return fmt.Errorf("reservation node %q disappeared", record.Node.Id)
+		return fmt.Errorf("node %q disappeared", record.Node.Id)
 	}
 	return nil
 }
@@ -69,7 +96,7 @@ func (db *MongoDB) TryAssign(ctx context.Context, task *tes.Task, candidate *sch
 	}
 	assign := func(ctx context.Context) (any, error) {
 		var stored taskRecord
-		findOptions := options.FindOne()
+		findOptions := options.FindOne().SetProjection(bson.M{"id": 1, "state": 1, "resources": 1, "claim_owner": 1, "claim_active": 1})
 		if candidate == nil {
 			findOptions.SetProjection(bson.M{"state": 1, "claim_owner": 1, "claim_active": 1})
 		}
@@ -93,11 +120,9 @@ func (db *MongoDB) TryAssign(ctx context.Context, task *tes.Task, candidate *sch
 			return "", nil
 		}
 		var node nodeRecord
-		if err := db.nodes().FindOne(ctx, bson.M{"id": candidate.Id}, options.FindOne().SetCollation(&options.Collation{Locale: "simple"})).Decode(&node); err != nil {
+		nodeProjection := bson.M{"id": 1, "state": 1, "resources": 1, "preemptible": 1, "zone": 1, "metadata": 1, "version": 1, "reserved": 1}
+		if err := db.nodes().FindOne(ctx, bson.M{"id": candidate.Id}, options.FindOne().SetProjection(nodeProjection).SetCollation(&options.Collation{Locale: "simple"})).Decode(&node); err != nil {
 			return nil, err
-		}
-		if slices.Contains(node.Node.TaskIds, task.Id) {
-			return nil, fmt.Errorf("node %q has task %q without its authoritative claim", candidate.Id, task.Id)
 		}
 		node.Node.Available = node.Reserved.Available(node.Node.Resources)
 		if !scheduler.Match(&node.Node, stored.Task, scheduler.DefaultPredicates) {
@@ -111,7 +136,7 @@ func (db *MongoDB) TryAssign(ctx context.Context, task *tes.Task, candidate *sch
 		if err != nil {
 			return nil, err
 		}
-		node.Node.TaskIds = append(node.Node.TaskIds, task.Id)
+		node.Node.TaskIds = nil
 		if _, err := db.tasks().UpdateOne(ctx, bson.M{"id": task.Id}, bson.M{"$set": bson.M{
 			"claim_owner": candidate.Id, "claim_active": true, "claim_resources": held,
 		}}); err != nil {
@@ -171,7 +196,6 @@ func (db *MongoDB) transitionReservedTask(ctx context.Context, id string, target
 				if err != nil {
 					return nil, err
 				}
-				node.Node.TaskIds = slices.DeleteFunc(node.Node.TaskIds, func(tid string) bool { return tid == id })
 				if err := db.saveReservedNode(ctx, &node); err != nil {
 					return nil, err
 				}

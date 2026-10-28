@@ -98,6 +98,35 @@ func (db *MongoDB) migrateScheduler(ctx context.Context) error {
 	return err
 }
 
+func (db *MongoDB) migrateNodeTaskIDProjection(ctx context.Context) error {
+	const migration = "node-taskids-projection-v1"
+	migrations := db.collection("scheduler_migrations")
+	if _, err := migrations.UpdateOne(ctx, bson.M{"_id": migration}, bson.M{"$setOnInsert": bson.M{"done": false}}, options.UpdateOne().SetUpsert(true)); err != nil {
+		return err
+	}
+	_, err := db.transaction(ctx, func(ctx context.Context) (any, error) {
+		var marker struct {
+			Done bool `bson:"done"`
+		}
+		if err := migrations.FindOne(ctx, bson.M{"_id": migration}).Decode(&marker); err != nil {
+			return nil, err
+		}
+		if marker.Done {
+			return nil, nil
+		}
+		if _, err := migrations.UpdateOne(ctx, bson.M{"_id": migration}, bson.M{"$inc": bson.M{"revision": 1}}); err != nil {
+			return nil, err
+		}
+		_, err := db.nodes().UpdateMany(ctx, bson.M{}, bson.M{"$unset": bson.M{"taskids": "", "task_ids": "", "taskIds": ""}})
+		if err != nil {
+			return nil, err
+		}
+		_, err = migrations.UpdateOne(ctx, bson.M{"_id": migration}, bson.M{"$set": bson.M{"done": true}})
+		return nil, err
+	})
+	return err
+}
+
 func (db *MongoDB) requireTransactions(ctx context.Context) error {
 	var hello struct {
 		SetName string `bson:"setName"`

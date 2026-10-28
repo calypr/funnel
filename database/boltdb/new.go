@@ -167,7 +167,10 @@ func (taskBolt *BoltDB) Init() error {
 		if err := migrateNodeHeartbeats(tx); err != nil {
 			return err
 		}
-		return migrateResourceReservations(tx)
+		if err := migrateResourceReservations(tx); err != nil {
+			return err
+		}
+		return migrateNodeTaskIDProjection(tx)
 	})
 }
 

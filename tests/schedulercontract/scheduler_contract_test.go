@@ -39,6 +39,7 @@ type store interface {
 	scheduler.TaskQueue
 	scheduler.AtomicTaskAssigner
 	scheduler.NodeHealthStore
+	scheduler.CandidateNodeSource
 	events.Writer
 	GetTask(context.Context, *tes.GetTaskRequest) (*tes.Task, error)
 }
@@ -87,6 +88,7 @@ func TestSchedulerContract(t *testing.T) {
 
 func runContract(t *testing.T, open storeFactory) {
 	runReservationContracts(t, open)
+	runNodeCandidateContracts(t, open)
 	runExecutionClaimContracts(t, open)
 	t.Run("node pages use stable IDs and traverse the full fleet", func(t *testing.T) {
 		db := open(t)

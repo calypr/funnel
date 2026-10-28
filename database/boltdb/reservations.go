@@ -3,7 +3,6 @@ package boltdb
 import (
 	"encoding/json"
 	"fmt"
-	"slices"
 
 	"github.com/calypr/funnel/compute/scheduler"
 	"github.com/calypr/funnel/tes"
@@ -13,22 +12,39 @@ import (
 
 var NodeUsage = []byte("node-resource-usage")
 
+type nodeBudget struct {
+	scheduler.ResourceUsage
+	Version int64 `json:"version,omitempty"`
+}
+
 func readNodeUsage(tx *bolt.Tx, id string) (scheduler.ResourceUsage, error) {
-	var usage scheduler.ResourceUsage
+	var budget nodeBudget
 	if data := tx.Bucket(NodeUsage).Get([]byte(id)); data != nil {
-		if err := json.Unmarshal(data, &usage); err != nil {
-			return usage, err
+		if err := json.Unmarshal(data, &budget); err != nil {
+			return budget.ResourceUsage, err
 		}
 	}
-	return usage, nil
+	return budget.ResourceUsage, nil
 }
-func saveNodeUsage(tx *bolt.Tx, id string, usage scheduler.ResourceUsage) error {
-	data, err := json.Marshal(usage)
+
+func readNodeVersion(tx *bolt.Tx, id string) (int64, error) {
+	var budget nodeBudget
+	if data := tx.Bucket(NodeUsage).Get([]byte(id)); data != nil {
+		if err := json.Unmarshal(data, &budget); err != nil {
+			return 0, err
+		}
+	}
+	return budget.Version, nil
+}
+
+func saveNodeUsageVersion(tx *bolt.Tx, id string, usage scheduler.ResourceUsage, version int64) error {
+	data, err := json.Marshal(nodeBudget{ResourceUsage: usage, Version: version})
 	if err != nil {
 		return err
 	}
 	return tx.Bucket(NodeUsage).Put([]byte(id), data)
 }
+
 func migrateResourceReservations(tx *bolt.Tx) error {
 	if tx.Bucket(NodeUsage) != nil {
 		return nil
@@ -80,7 +96,7 @@ func migrateResourceReservations(tx *bolt.Tx) error {
 				return err
 			}
 		}
-		return saveNodeUsage(tx, string(owner), total)
+		return saveNodeUsageVersion(tx, string(owner), total, 0)
 	}); err != nil {
 		return err
 	}
@@ -91,21 +107,19 @@ func migrateResourceReservations(tx *bolt.Tx) error {
 	}
 	if err := tx.Bucket(Nodes).ForEach(func(id, data []byte) error {
 		var node scheduler.Node
-		if err := proto.Unmarshal(data, &node); err != nil {
+		if err := unmarshalNodeWithoutTaskIDs(data, &node); err != nil {
 			return err
 		}
 		node.TaskIds = nil
-		if claims := tx.Bucket(NodeClaims).Bucket(id); claims != nil {
-			if err := claims.ForEach(func(taskID, _ []byte) error { node.TaskIds = append(node.TaskIds, string(taskID)); return nil }); err != nil {
-				return err
-			}
-		}
 		usage, err := readNodeUsage(tx, node.Id)
 		if err != nil {
 			return err
 		}
 		node.Available = usage.Available(node.Resources)
 		node.Version++
+		if err := saveNodeUsageVersion(tx, node.Id, usage, node.Version); err != nil {
+			return err
+		}
 		data, err = proto.Marshal(&node)
 		if err != nil {
 			return err
@@ -150,22 +164,19 @@ func releaseTaskReservation(tx *bolt.Tx, id string) error {
 	if err := claims.Delete([]byte(id)); err != nil {
 		return err
 	}
-	if err := saveNodeUsage(tx, string(owner), used); err != nil {
-		return err
-	}
 	if data := tx.Bucket(Nodes).Get(owner); data != nil {
 		var node scheduler.Node
-		if err := proto.Unmarshal(data, &node); err != nil {
+		if err := unmarshalNodeWithoutTaskIDs(data, &node); err != nil {
 			return err
 		}
-		node.TaskIds = slices.DeleteFunc(node.TaskIds, func(taskID string) bool { return taskID == id })
-		node.Available = used.Available(node.Resources)
-		node.Version++
-		data, err = proto.Marshal(&node)
+		version, err := readNodeVersion(tx, node.Id)
 		if err != nil {
 			return err
 		}
-		return tx.Bucket(Nodes).Put(owner, data)
+		if version == 0 {
+			version = node.Version
+		}
+		return saveNodeUsageVersion(tx, string(owner), used, version+1)
 	}
-	return nil
+	return saveNodeUsageVersion(tx, string(owner), used, 0)
 }

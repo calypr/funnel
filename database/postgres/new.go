@@ -66,6 +66,9 @@ func (db *Postgres) Init() error {
 	if err := db.migrateResourceReservations(ctx); err != nil {
 		return err
 	}
+	if err := db.migrateNodeTaskIDProjection(ctx); err != nil {
+		return err
+	}
 	return db.migrateExecutionClaims(ctx)
 }
 
@@ -214,6 +217,7 @@ func (db *Postgres) createTables(ctx context.Context) error {
 	}
 	indices := []string{
 		`CREATE INDEX IF NOT EXISTS idx_tasks_live_allocation ON tasks (claim_owner,id) WHERE claim_active;`,
+		`CREATE INDEX IF NOT EXISTS idx_tasks_queue_order ON tasks (creation_time ASC, id ASC) WHERE state = 'QUEUED';`,
 		"CREATE INDEX IF NOT EXISTS idx_tasks_state ON tasks (state);",
 		"CREATE INDEX IF NOT EXISTS idx_tasks_owner ON tasks (owner);",
 		"CREATE INDEX IF NOT EXISTS idx_tasks_creation_time ON tasks (creation_time DESC);",

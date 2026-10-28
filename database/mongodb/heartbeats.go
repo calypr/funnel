@@ -41,7 +41,7 @@ func (db *MongoDB) putReportedNode(ctx context.Context, report *scheduler.Node) 
 			return nil, err
 		}
 		var stored nodeRecord
-		err = db.nodes().FindOne(ctx, bson.M{"id": report.Id}, options.FindOne().SetCollation(&options.Collation{Locale: "simple"})).Decode(&stored)
+		err = db.nodes().FindOne(ctx, bson.M{"id": report.Id}, options.FindOne().SetProjection(bson.M{"taskids": 0, "task_ids": 0, "taskIds": 0}).SetCollation(&options.Collation{Locale: "simple"})).Decode(&stored)
 		isNew := err == mongo.ErrNoDocuments
 		if err != nil && !isNew {
 			return nil, err
@@ -63,18 +63,26 @@ func (db *MongoDB) putReportedNode(ctx context.Context, report *scheduler.Node) 
 			}
 			stored.Node.Id = report.Id
 			scheduler.ApplyNodeReport(&stored.Node, report)
+			stored.Node.TaskIds = nil
 			if isNew {
 				stored.Node.Version = 1
 				stored.Node.Available = stored.Reserved.Available(stored.Node.Resources)
 				_, err = db.nodes().InsertOne(ctx, &stored)
 			} else {
-				err = db.saveReservedNode(ctx, &stored)
+				stored.Node.Version++
+				stored.Node.Available = stored.Reserved.Available(stored.Node.Resources)
+				err = db.replaceReportedNode(ctx, &stored)
 			}
 			if err != nil {
 				return nil, err
 			}
 		}
 		stored.Node.LastPing = stamp
+		activeIDs, err := db.activeTaskIDs(ctx, []string{report.Id})
+		if err != nil {
+			return nil, err
+		}
+		stored.Node.TaskIds = activeIDs[report.Id]
 		return &stored.Node, nil
 	})
 	if err != nil {
@@ -106,7 +114,7 @@ func (db *MongoDB) SetNodeState(ctx context.Context, observed *scheduler.Node) (
 			return nil, err
 		}
 		var stored nodeRecord
-		err := db.nodes().FindOne(ctx, bson.M{"id": observed.Id}, options.FindOne().SetCollation(&options.Collation{Locale: "simple"})).Decode(&stored)
+		err := db.nodes().FindOne(ctx, bson.M{"id": observed.Id}, options.FindOne().SetProjection(bson.M{"taskids": 0, "task_ids": 0, "taskIds": 0}).SetCollation(&options.Collation{Locale: "simple"})).Decode(&stored)
 		if err == mongo.ErrNoDocuments {
 			return nil, scheduler.ErrNodeChanged
 		}
@@ -118,11 +126,18 @@ func (db *MongoDB) SetNodeState(ctx context.Context, observed *scheduler.Node) (
 		}
 		if stored.Node.State != observed.State {
 			stored.Node.State = observed.State
-			if err := db.saveReservedNode(ctx, &stored); err != nil {
+			stored.Node.Version++
+			stored.Node.Available = stored.Reserved.Available(stored.Node.Resources)
+			if err := db.replaceReportedNode(ctx, &stored); err != nil {
 				return nil, err
 			}
 		}
 		stored.Node.LastPing = observed.LastPing
+		activeIDs, err := db.activeTaskIDs(ctx, []string{observed.Id})
+		if err != nil {
+			return nil, err
+		}
+		stored.Node.TaskIds = activeIDs[observed.Id]
 		return &stored.Node, nil
 	})
 	if err != nil {
@@ -143,14 +158,18 @@ func (db *MongoDB) deleteNode(ctx context.Context, observed *scheduler.Node) err
 			}
 		}
 		var stored nodeRecord
-		err := db.nodes().FindOne(ctx, bson.M{"id": observed.Id}, options.FindOne().SetCollation(&options.Collation{Locale: "simple"})).Decode(&stored)
+		err := db.nodes().FindOne(ctx, bson.M{"id": observed.Id}, options.FindOne().SetProjection(bson.M{"taskids": 0, "task_ids": 0, "taskIds": 0}).SetCollation(&options.Collation{Locale: "simple"})).Decode(&stored)
 		if err == mongo.ErrNoDocuments {
 			return nil, status.Error(codes.NotFound, "node not found")
 		}
 		if err != nil {
 			return nil, err
 		}
-		safeCleanup := observed.State == scheduler.NodeState_GONE && stored.Node.State == scheduler.NodeState_GONE && len(stored.Node.TaskIds) == 0
+		active, err := db.hasActiveTaskIDs(ctx, observed.Id)
+		if err != nil {
+			return nil, err
+		}
+		safeCleanup := observed.State == scheduler.NodeState_GONE && stored.Node.State == scheduler.NodeState_GONE && !active
 		if observed.Version != 0 && stored.Node.Version != observed.Version && !safeCleanup {
 			return nil, scheduler.ErrNodeChanged
 		}

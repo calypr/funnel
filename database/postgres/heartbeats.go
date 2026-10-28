@@ -55,9 +55,10 @@ func (db *Postgres) putReportedNode(ctx context.Context, report *scheduler.Node)
   RETURNING last_ping`, report.Id, time.Now().UnixNano()).Scan(&stamp); err != nil {
 		return err
 	}
-	var data []byte
+	var data, reservedJSON []byte
 	var version int64
-	err = tx.QueryRow(ctx, `SELECT data,version FROM nodes WHERE id=$1`, report.Id).Scan(&data, &version)
+	var nodeState string
+	err = tx.QueryRow(ctx, `SELECT data,version,state,reserved FROM nodes WHERE id=$1`, report.Id).Scan(&data, &version, &nodeState, &reservedJSON)
 	isNew := err == pgx.ErrNoRows
 	if err != nil && !isNew {
 		return err
@@ -72,20 +73,38 @@ func (db *Postgres) putReportedNode(ctx context.Context, report *scheduler.Node)
 		}
 	}
 	current := &scheduler.Node{}
+	var used scheduler.ResourceUsage
 	if !isNew {
 		if err := json.Unmarshal(data, current); err != nil {
+			return err
+		}
+		state, ok := scheduler.NodeState_value[nodeState]
+		if !ok {
+			return fmt.Errorf("node %q has invalid state %q", report.Id, nodeState)
+		}
+		current.State, current.Version = scheduler.NodeState(state), version
+		if err := json.Unmarshal(reservedJSON, &used); err != nil {
 			return err
 		}
 		if current.State == scheduler.NodeState_GONE && report.State != scheduler.NodeState_GONE {
 			return fmt.Errorf("gone node %q cannot re-register with the same ID", report.Id)
 		}
 	}
-	if isNew || scheduler.NodeReportChanged(report, current) {
+	nodeChanged := isNew || scheduler.NodeReportChanged(report, current)
+	if nodeChanged {
 		if !isNew {
-			if err := tx.QueryRow(ctx, `SELECT data,version FROM nodes WHERE id=$1 FOR UPDATE`, report.Id).Scan(&data, &version); err != nil {
+			if err := tx.QueryRow(ctx, `SELECT data,version,state,reserved FROM nodes WHERE id=$1 FOR UPDATE`, report.Id).Scan(&data, &version, &nodeState, &reservedJSON); err != nil {
 				return err
 			}
 			if err := json.Unmarshal(data, current); err != nil {
+				return err
+			}
+			state, ok := scheduler.NodeState_value[nodeState]
+			if !ok {
+				return fmt.Errorf("node %q has invalid state %q", report.Id, nodeState)
+			}
+			current.State, current.Version = scheduler.NodeState(state), version
+			if err := json.Unmarshal(reservedJSON, &used); err != nil {
 				return err
 			}
 		}
@@ -94,18 +113,9 @@ func (db *Postgres) putReportedNode(ctx context.Context, report *scheduler.Node)
 		}
 		current.Id = report.Id
 		scheduler.ApplyNodeReport(current, report)
-		var used scheduler.ResourceUsage
-		if !isNew {
-			var usage []byte
-			if err := tx.QueryRow(ctx, `SELECT reserved FROM nodes WHERE id=$1`, report.Id).Scan(&usage); err != nil {
-				return err
-			}
-			if err := json.Unmarshal(usage, &used); err != nil {
-				return err
-			}
-		}
 		current.Available = used.Available(current.Resources)
 		current.Version = version + 1
+		current.TaskIds = nil
 		data, err = json.Marshal(current)
 		if err != nil {
 			return err
@@ -118,6 +128,16 @@ func (db *Postgres) putReportedNode(ctx context.Context, report *scheduler.Node)
 		if err != nil {
 			return err
 		}
+	}
+	current.Available = used.Available(current.Resources)
+	if isNew {
+		current.Version = 1
+	} else if !nodeChanged {
+		current.Version = version
+	}
+	current.TaskIds, err = activeTaskIDsForNode(ctx, tx, report.Id)
+	if err != nil {
+		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return err
@@ -141,9 +161,10 @@ func (db *Postgres) SetNodeState(ctx context.Context, observed *scheduler.Node) 
 	if err != nil {
 		return nil, err
 	}
-	var data []byte
+	var data, reservedJSON []byte
 	var version int64
-	err = tx.QueryRow(ctx, `SELECT data,version FROM nodes WHERE id=$1 FOR UPDATE`, observed.Id).Scan(&data, &version)
+	var state string
+	err = tx.QueryRow(ctx, `SELECT data,version,state,reserved FROM nodes WHERE id=$1 FOR UPDATE`, observed.Id).Scan(&data, &version, &state, &reservedJSON)
 	if err == pgx.ErrNoRows {
 		return nil, scheduler.ErrNodeChanged
 	}
@@ -157,16 +178,27 @@ func (db *Postgres) SetNodeState(ctx context.Context, observed *scheduler.Node) 
 	if err := json.Unmarshal(data, &node); err != nil {
 		return nil, err
 	}
+	stateValue, ok := scheduler.NodeState_value[state]
+	if !ok {
+		return nil, fmt.Errorf("node %q has invalid state %q", observed.Id, state)
+	}
+	node.State, node.Version = scheduler.NodeState(stateValue), version
+	var used scheduler.ResourceUsage
+	if err := json.Unmarshal(reservedJSON, &used); err != nil {
+		return nil, err
+	}
+	node.Available = used.Available(node.Resources)
+	node.TaskIds = nil
 	if node.State != observed.State {
 		node.State = observed.State
 		node.Version = version + 1
-		data, err = json.Marshal(&node)
-		if err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE nodes SET state=$2,version=$3 WHERE id=$1 AND version=$4`, node.Id, node.State.String(), node.Version, version); err != nil {
 			return nil, err
 		}
-		if _, err := tx.Exec(ctx, `UPDATE nodes SET state=$2,version=$3,data=$4::jsonb WHERE id=$1`, node.Id, node.State.String(), node.Version, data); err != nil {
-			return nil, err
-		}
+	}
+	node.TaskIds, err = activeTaskIDsForNode(ctx, tx, node.Id)
+	if err != nil {
+		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
