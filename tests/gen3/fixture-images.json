@@ -3,15 +3,15 @@
     "quay.io/cdis/arborist:master": {
       "platforms": {
         "amd64": {
-          "config": "sha256:9c17fee8fd7303ce4e6c31b29d24bbb5a0aae035affbc6f9fb52f887f54ee865",
-          "manifest": "sha256:bd44b9df83e452c96551694cdc0efb2310c763ed62ff13bb008379d882ef9ce5"
+          "config": "sha256:f32e7c1d5d997d62fc920f55df64d5222b663efe7f9c9fb07bf47909cd1067f2",
+          "manifest": "sha256:77ec3b0df0e44792ba2b72afd8f5d605b918fb81398e00746cffd8ff4d65056e"
         },
         "arm64": {
-          "config": "sha256:f28f0cff26093f1ab2e83a60512e5ae294b53fcb72d9c7c481a7c458ccb4e11f",
-          "manifest": "sha256:ef631c76595eb496204c7f5d53f685fbe07926e92dae7f3d3680b169bce3cd84"
+          "config": "sha256:2af214e313be162553fa5b8c34ba69b5be427d402e347b3b58b97ff1cd79c7c6",
+          "manifest": "sha256:6de08df7d01cbf84dd46eab35b9c9c430f2dd7e3ec74377033b87cebb0782e4d"
         }
       },
-      "reference": "quay.io/cdis/arborist:master@sha256:1177d8614452ad512bf7e022eec21899a1cbcef086e337a135749b2e0edfe27e"
+      "reference": "quay.io/cdis/arborist:master@sha256:308c09045826cc764ca1e4c0b4bf0f6d9b32ac47cabf249ba72e44bc437b9932"
     },
     "quay.io/cdis/docker-bitnami-pgvector:master": {
       "platforms": {
@@ -42,15 +42,15 @@
     "quay.io/cdis/gen3-workflow:master": {
       "platforms": {
         "amd64": {
-          "config": "sha256:7bdf4687af254b2474391240ac571a6db05bad201677c42ce282bb9a70d62305",
-          "manifest": "sha256:04593306f0f3e669aa10773355d6d1ad1cd2c2a9c5c7daac33521dbb3ddfef11"
+          "config": "sha256:a9bcc99e32cfa56df7ebf6e34402d5e98e43e4bfe70b39c549d5cba7c85f9b1c",
+          "manifest": "sha256:6bd9b3e7fae006b6d7af52b4d75e2925f548d4bc88772887ca03c5b574bb6953"
         },
         "arm64": {
-          "config": "sha256:f12c1d059c7557579c2b934103b07d462289a6e3c56c5d4627abe085d96b50de",
-          "manifest": "sha256:7b8ca47d4f5d3201ca15e54b5965dfb0ce03753fcd93f687ee03a87302f50bb8"
+          "config": "sha256:e630c6dd7e864af0ece442e7b645bac4c4648b00371617cb7784d1379efca27b",
+          "manifest": "sha256:65387bf22fb2d8a3ff2815121b8a8ae7d0c00c05b8590c5a88518912a985dd8f"
         }
       },
-      "reference": "quay.io/cdis/gen3-workflow:master@sha256:7dc54615269202c6b497714c9cd54a15704fe709d3e25342b5c5cb70078abb19"
+      "reference": "quay.io/cdis/gen3-workflow:master@sha256:699ba8771eb7fecd767388e6b904c80ea9cb60f67f03236f24644450ba34ce61"
     },
     "quay.io/cdis/indexd:master": {
       "platforms": {

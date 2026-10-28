@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"errors"
+
 	"google.golang.org/protobuf/proto"
 )
 

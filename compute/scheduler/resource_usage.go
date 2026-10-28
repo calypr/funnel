@@ -2,8 +2,9 @@ package scheduler
 
 import (
 	"fmt"
-	"github.com/calypr/funnel/tes"
 	"math"
+
+	"github.com/calypr/funnel/tes"
 )
 
 // ResourceUsage is a reservation snapshot or the sum of active reservations.
