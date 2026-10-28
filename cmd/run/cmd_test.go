@@ -82,7 +82,7 @@ func TestParse(t *testing.T) {
 					Name: "o9",
 					Url:  "file://" + cwd + "/testdata/o9",
 					Path: "/outputs" + cwd + "/testdata/o9",
-					Type: tes.FileType_DIRECTORY,
+					Type: tes.FileType_DIRECTORY.Enum(),
 				},
 			},
 			Resources: &tes.Resources{

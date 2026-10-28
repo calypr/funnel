@@ -12,11 +12,11 @@ func TestValidateMountPathsRejectsRootMounts(t *testing.T) {
 	}{
 		{
 			name: "file output parent",
-			task: &Task{Outputs: []*Output{{Path: "/result.json", Url: "file:///result.json", Type: FileType_FILE}}},
+			task: &Task{Outputs: []*Output{{Path: "/result.json", Url: "file:///result.json", Type: FileType_FILE.Enum()}}},
 		},
 		{
 			name: "directory output alias",
-			task: &Task{Outputs: []*Output{{Path: "/tmp/..", Url: "file:///result", Type: FileType_DIRECTORY}}},
+			task: &Task{Outputs: []*Output{{Path: "/tmp/..", Url: "file:///result", Type: FileType_DIRECTORY.Enum()}}},
 		},
 		{
 			name: "volume alias",
@@ -45,8 +45,8 @@ func TestValidateMountPathsAllowsDeclaredDockerRootStreams(t *testing.T) {
 	task := &Task{
 		Inputs: []*Input{{Path: "/inputs", Url: "file:///inputs", Type: FileType_DIRECTORY}},
 		Outputs: []*Output{
-			{Path: "/capture-out", Url: "file:///capture-out", Type: FileType_FILE},
-			{Path: "/capture-err", Url: "file:///capture-err", Type: FileType_FILE},
+			{Path: "/capture-out", Url: "file:///capture-out", Type: FileType_FILE.Enum()},
+			{Path: "/capture-err", Url: "file:///capture-err", Type: FileType_FILE.Enum()},
 		},
 		Executors: []*Executor{
 			{Stdout: "/capture-out"},
@@ -82,7 +82,7 @@ func TestValidateMountPathsRejectsRootStreamConflicts(t *testing.T) {
 		{
 			name: "directory output",
 			task: &Task{
-				Outputs:   []*Output{{Path: "/capture", Url: "file:///capture", Type: FileType_DIRECTORY}},
+				Outputs:   []*Output{{Path: "/capture", Url: "file:///capture", Type: FileType_DIRECTORY.Enum()}},
 				Executors: []*Executor{{Stdout: "/capture"}},
 			},
 		},

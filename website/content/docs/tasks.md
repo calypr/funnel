@@ -96,6 +96,19 @@ Tasks also have state and logs:
 There are logs for each task attempt and each executor. Notice that the stdout is
 conveniently captured by `logs[0].logs[0].stdout`.
 
+## Output types and patterns
+
+An output can declare `"type": "FILE"` or `"type": "DIRECTORY"`. The Funnel worker
+fails output collection if the declared type does not match the produced path. If
+`type` is omitted, Funnel keeps its existing behavior and inspects the path to
+determine whether to upload a file or the files within a directory.
+
+An output path containing `*` must match at least one path. An unmatched pattern,
+including `abc/*` when `abc` is a file, fails output collection. If the executor
+succeeded, these collection errors put the task in `SYSTEM_ERROR`. An existing
+empty directory still produces a warning and uploads no files. These checks apply
+to backends that run the Funnel worker. GCP Batch uses a separate output path.
+
 ## Container paths and output mounts
 
 Funnel's Docker and Kubernetes workers use filesystem mounts to make task files

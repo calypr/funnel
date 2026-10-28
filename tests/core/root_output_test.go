@@ -64,7 +64,7 @@ func TestRootStreamOutputsDocker(t *testing.T) {
 			t.Fatal(err)
 		}
 		paths[name] = p
-		outputs = append(outputs, &tes.Output{Path: "/" + name, Url: (&url.URL{Scheme: "file", Path: p}).String(), Type: tes.File})
+		outputs = append(outputs, &tes.Output{Path: "/" + name, Url: (&url.URL{Scheme: "file", Path: p}).String(), Type: tes.File.Enum()})
 	}
 	task := &tes.Task{
 		Inputs:  []*tes.Input{{Path: "/mnt/command", Content: "printf 'hello\\n'; printf 'warning\\n' >&2", Type: tes.File}},

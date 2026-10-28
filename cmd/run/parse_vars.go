@@ -170,7 +170,7 @@ func valsToTask(vals flagVals) (task *tes.Task, err error) {
 			Name: k,
 			Url:  url,
 			Path: path,
-			Type: tes.FileType_DIRECTORY,
+			Type: tes.FileType_DIRECTORY.Enum(),
 		})
 	}
 

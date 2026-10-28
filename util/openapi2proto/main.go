@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"os"
 	"sort"
 	"strings"
 	"text/template"
@@ -16,6 +15,7 @@ type Field struct {
 	Name     string
 	Type     string
 	Repeated bool
+	Optional bool
 	ID       int
 	Source   *openapi3.SchemaRef
 }
@@ -143,6 +143,7 @@ func getFieldsWithView(schema *openapi3.SchemaRef, view string) []Field {
 func parseMessageSchema(name string, schema *openapi3.SchemaRef, view string) (Message, error) {
 	if schema.Value.Properties != nil {
 		fields := getFieldsWithView(schema, view)
+		markOutputTypeOptional(name, fields)
 		m := Message{Name: name, Fields: fields}
 		return m, nil
 	} else if schema.Value.AllOf != nil {
@@ -167,6 +168,7 @@ func parseMessageSchema(name string, schema *openapi3.SchemaRef, view string) (M
 		for i := range fields {
 			fields[i].ID = i + 1
 		}
+		markOutputTypeOptional(name, fields)
 		m := Message{Name: name, Fields: fields}
 		return m, nil
 	} else if schema.Value.Enum != nil {
@@ -174,6 +176,17 @@ func parseMessageSchema(name string, schema *openapi3.SchemaRef, view string) (M
 	} else {
 		m := Message{Name: name, Fields: []Field{}}
 		return m, nil
+	}
+}
+
+func markOutputTypeOptional(messageName string, fields []Field) {
+	if !strings.HasSuffix(messageName, "tesOutput") {
+		return
+	}
+	for i := range fields {
+		if fields[i].Name == "type" && fields[i].Type == "tesFileType" {
+			fields[i].Optional = true
+		}
 	}
 }
 
@@ -402,6 +415,14 @@ func main() {
 
 	cleanSchema(messages, enums, services)
 
+	source, err := renderProto(messages, enums, services)
+	if err != nil {
+		log.Fatalf("Template Error: %s\n", err)
+	}
+	fmt.Print(source)
+}
+
+func renderProto(messages []Message, enums []Enum, services []ServicePath) (string, error) {
 	tmpl, err := template.New("proto").Parse(`
 syntax = "proto3";
 
@@ -418,7 +439,7 @@ enum {{$enum.Name}} { {{range $j, $value := $enum.Values}}
 {{end}}
 {{range $i, $message := .messages}}
 message {{$message.Name}} { {{range $j, $field := $message.Fields}}
-	{{if $field.Repeated}}repeated {{end}}{{$field.Type}} {{$field.Name}} = {{$field.ID}};{{end}}
+	{{if $field.Repeated}}repeated {{else if $field.Optional}}optional {{end}}{{$field.Type}} {{$field.Name}} = {{$field.ID}};{{end}}
 }
 {{end}}
 
@@ -446,11 +467,13 @@ service TaskService {
 
 `)
 	if err != nil {
-		log.Fatalf("Template Error: %s\n", err)
+		return "", err
 	}
 
-	err = tmpl.Execute(os.Stdout, map[string]interface{}{"messages": messages, "enums": enums, "services": services})
+	var source strings.Builder
+	err = tmpl.Execute(&source, map[string]interface{}{"messages": messages, "enums": enums, "services": services})
 	if err != nil {
-		log.Fatalf("Template Execution Error: %s", err)
+		return "", err
 	}
+	return source.String(), nil
 }

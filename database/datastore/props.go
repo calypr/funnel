@@ -122,7 +122,7 @@ type executor struct {
 
 type param struct {
 	Name, Description, Url, Path, Content string `datastore:",noindex,omitempty"` // nolint
-	Type                                  int32  `datastore:",noindex,omitempty"`
+	Type                                  *int32 `datastore:",noindex,omitempty"`
 }
 
 func marshalTask(t *tes.Task, ctx context.Context) ([]*datastore.Key, []interface{}) {
@@ -158,21 +158,27 @@ func marshalTask(t *tes.Task, ctx context.Context) ([]*datastore.Key, []interfac
 		})
 	}
 	for _, i := range t.Inputs {
+		fileType := int32(i.Type)
 		z.Inputs = append(z.Inputs, param{
 			Name:        i.Name,
 			Description: i.Description,
 			Url:         i.Url,
 			Path:        i.Path,
-			Type:        int32(i.Type),
+			Type:        &fileType,
 		})
 	}
 	for _, i := range t.Outputs {
+		var fileType *int32
+		if i.Type != nil {
+			value := int32(*i.Type)
+			fileType = &value
+		}
 		z.Outputs = append(z.Outputs, param{
 			Name:        i.Name,
 			Description: i.Description,
 			Url:         i.Url,
 			Path:        i.Path,
-			Type:        int32(i.Type),
+			Type:        fileType,
 		})
 	}
 	for _, i := range t.Logs {
@@ -233,21 +239,29 @@ func (c *task) unmarshal() *tes.Task {
 		})
 	}
 	for _, i := range c.Inputs {
+		fileType := tes.FileType_FILE
+		if i.Type != nil {
+			fileType = tes.FileType(*i.Type)
+		}
 		z.Inputs = append(z.Inputs, &tes.Input{
 			Name:        i.Name,
 			Description: i.Description,
 			Url:         i.Url,
 			Path:        i.Path,
-			Type:        tes.FileType(i.Type),
+			Type:        fileType,
 		})
 	}
 	for _, i := range c.Outputs {
+		var fileType *tes.FileType
+		if i.Type != nil {
+			fileType = tes.FileType(*i.Type).Enum()
+		}
 		z.Outputs = append(z.Outputs, &tes.Output{
 			Name:        i.Name,
 			Description: i.Description,
 			Url:         i.Url,
 			Path:        i.Path,
-			Type:        tes.FileType(i.Type),
+			Type:        fileType,
 		})
 	}
 	for _, i := range c.TaskLogs {

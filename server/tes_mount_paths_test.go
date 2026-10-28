@@ -72,7 +72,7 @@ func TestCreateTaskLeavesIndependentGCPMountPolicyAlone(t *testing.T) {
 
 	if _, err := service.CreateTask(context.Background(), &tes.Task{
 		Executors: []*tes.Executor{{Image: "alpine", Command: []string{"true"}}},
-		Outputs:   []*tes.Output{{Path: "/result.json", Url: "file:///result.json", Type: tes.FileType_FILE}},
+		Outputs:   []*tes.Output{{Path: "/result.json", Url: "file:///result.json", Type: tes.FileType_FILE.Enum()}},
 	}); err != nil {
 		t.Fatalf("CreateTask() rejected the independent GCP backend task: %v", err)
 	}
