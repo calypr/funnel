@@ -11,6 +11,7 @@ import Divider from '@mui/material/Divider';
 import IconButton from '@mui/material/IconButton';
 import MenuIcon from '@mui/icons-material/Menu';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import Alert from '@mui/material/Alert';
 
 import { NavListItems, TaskFilters } from './DrawerFilters';
 import { TaskList, Task, Node, NodeList, ServiceInfo, NoMatch } from './Pages';
@@ -26,6 +27,15 @@ function Dashboard() {
   const [nextPageToken, setNextPageToken] = React.useState("");
   const [prevPageToken, setPrevPageToken] = React.useState([]);
   const [open, setOpen] = React.useState(window.innerWidth > 500);
+  const [accessError, setAccessError] = React.useState(null);
+
+  React.useEffect(() => {
+    const onAccessError = (event) => setAccessError(event.detail);
+    window.addEventListener('funnel-access-error', onAccessError);
+    return () => window.removeEventListener('funnel-access-error', onAccessError);
+  }, []);
+
+  React.useEffect(() => setAccessError(null), [location.pathname]);
 
   const handleDrawerOpen = () => {
     setOpen(true);
@@ -128,6 +138,11 @@ function Dashboard() {
         overflow: 'auto',
       })}>
         <Box sx={theme => theme.mixins.toolbar} />
+        {accessError && (
+          <Alert severity="error" onClose={() => setAccessError(null)}>
+            {accessError === 401 ? <>Sign in required. <a href="/login">Sign in</a> and try again.</> : 'You do not have permission to access this resource.'}
+          </Alert>
+        )}
         <Routes>
           <Route path="/" element={<Navigate to="/tasks" replace />} />
           <Route path="/v1/tasks" element={(
