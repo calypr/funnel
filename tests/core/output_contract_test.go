@@ -28,22 +28,23 @@ func TestOutputContractDocker(t *testing.T) {
 	t.Cleanup(f.Cleanup)
 
 	for _, tt := range []struct {
-		name      string
-		typeField string
-		path      string
-		command   string
-		state     tes.State
-		child     string
+		name        string
+		typeField   string
+		path        string
+		command     string
+		state       tes.State
+		child       string
+		warningPath string
 	}{
-		{"omitted directory", "", "/outputs/result", "mkdir -p /outputs/result; echo hello > /outputs/result/child.txt", tes.State_COMPLETE, "child.txt"},
-		{"omitted file", "", "/outputs/result", "echo hello > /outputs/result", tes.State_COMPLETE, ""},
-		{"explicit file", `,"type":"FILE"`, "/outputs/result", "echo hello > /outputs/result", tes.State_COMPLETE, ""},
-		{"explicit directory", `,"type":"DIRECTORY"`, "/outputs/result", "echo hello > /outputs/result/child.txt", tes.State_COMPLETE, "child.txt"},
-		{"directory declared file", `,"type":"FILE"`, "/outputs/result", "mkdir -p /outputs/result; echo hello > /outputs/result/child.txt", tes.State_SYSTEM_ERROR, ""},
-		{"file declared directory", `,"type":"DIRECTORY"`, "/outputs/result", "rm -rf /outputs/result; echo hello > /outputs/result", tes.State_SYSTEM_ERROR, ""},
-		{"matched pattern", `,"type":"FILE"`, "/outputs/*.txt", "echo hello > /outputs/matched.txt", tes.State_COMPLETE, "matched.txt"},
-		{"unmatched pattern", "", "/outputs/missing-*.txt", "echo hello > /outputs/other.txt", tes.State_SYSTEM_ERROR, ""},
-		{"pattern beneath file", "", "/outputs/result/*", "rm -rf /outputs/result; echo hello > /outputs/result", tes.State_SYSTEM_ERROR, ""},
+		{"omitted directory", "", "/outputs/result", "mkdir -p /outputs/result; echo hello > /outputs/result/child.txt", tes.State_COMPLETE, "child.txt", ""},
+		{"omitted file", "", "/outputs/result", "echo hello > /outputs/result", tes.State_COMPLETE, "", ""},
+		{"explicit file", `,"type":"FILE"`, "/outputs/result", "echo hello > /outputs/result", tes.State_COMPLETE, "", ""},
+		{"explicit directory", `,"type":"DIRECTORY"`, "/outputs/result", "echo hello > /outputs/result/child.txt", tes.State_COMPLETE, "child.txt", ""},
+		{"directory declared file", `,"type":"FILE"`, "/outputs/result", "mkdir -p /outputs/result; echo hello > /outputs/result/child.txt", tes.State_SYSTEM_ERROR, "", ""},
+		{"file declared directory", `,"type":"DIRECTORY"`, "/outputs/result", "rm -rf /outputs/result; echo hello > /outputs/result", tes.State_SYSTEM_ERROR, "", ""},
+		{"matched pattern", `,"type":"FILE"`, "/outputs/*.txt", "echo hello > /outputs/matched.txt", tes.State_COMPLETE, "matched.txt", ""},
+		{"unmatched pattern", "", "/outputs/missing-*.txt", "echo hello > /outputs/other.txt", tes.State_COMPLETE, "", "/outputs/missing-*.txt"},
+		{"pattern beneath file", "", "/outputs/result/*", "rm -rf /outputs/result; echo hello > /outputs/result", tes.State_COMPLETE, "", "/outputs/result/*"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
@@ -97,6 +98,18 @@ func TestOutputContractDocker(t *testing.T) {
 					if len(got.Logs) != 1 || len(got.Logs[0].Logs) != 1 || got.Logs[0].Logs[0].ExitCode != 0 {
 						t.Fatalf("executor did not succeed: %v", got.Logs)
 					}
+					if tt.warningPath != "" {
+						warningFound := false
+						for _, systemLog := range got.Logs[0].SystemLogs {
+							if strings.Contains(systemLog, "output pattern matched no files") && strings.Contains(systemLog, "path='"+tt.warningPath+"'") {
+								warningFound = true
+								break
+							}
+						}
+						if !warningFound {
+							t.Fatalf("missing persisted unmatched output warning for %q: %v", tt.warningPath, got.Logs[0].SystemLogs)
+						}
+					}
 					if (got.Outputs[0].Type != nil) != (tt.typeField != "") {
 						t.Fatalf("output type presence changed during task storage: %v", got.Outputs[0])
 					}
@@ -108,7 +121,7 @@ func TestOutputContractDocker(t *testing.T) {
 				case <-ticker.C:
 				}
 			}
-			if tt.state == tes.State_SYSTEM_ERROR {
+			if tt.state == tes.State_SYSTEM_ERROR || tt.warningPath != "" {
 				if _, err := os.Stat(dest); !os.IsNotExist(err) {
 					t.Fatalf("failed task published output: stat error = %v", err)
 				}

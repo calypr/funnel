@@ -506,11 +506,16 @@ func (r *DefaultWorker) processOutputs(ctx context.Context, event *events.TaskWr
 	}
 
 	if run.syserr == nil {
-		if err := resolveWildcards(mapper, r.Store); err != nil {
+		unmatched, err := resolveWildcards(mapper, r.Store)
+		if err != nil {
 			if run.execerr != nil {
 				_ = event.Error("Failed to resolve wildcard outputs after executor error", "error", err)
 			} else {
 				run.syserr = err
+			}
+		} else {
+			for _, pattern := range unmatched {
+				_ = event.Warn("output pattern matched no files", "path", pattern)
 			}
 		}
 	}

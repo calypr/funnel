@@ -358,3 +358,127 @@ func TestWorkerOutputFailurePreservesStorageError(t *testing.T) {
 	}
 	t.Fatal("missing upload failure event")
 }
+
+func TestProcessOutputsWarnsAndPublishesOtherOutputsForUnmatchedGlob(t *testing.T) {
+	executorErr := errors.New("executor failed")
+	for _, tc := range []struct {
+		name    string
+		execErr error
+	}{
+		{name: "executor succeeds"},
+		{name: "executor fails", execErr: executorErr},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			workDir := filepath.Join(t.TempDir(), "task")
+			globDir := filepath.Join(workDir, "outputs", "glob")
+			if err := os.MkdirAll(globDir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			files := map[string]string{
+				filepath.Join(globDir, "matched.txt"):          "matched output",
+				filepath.Join(workDir, "outputs", "exact.txt"): "exact output",
+			}
+			for path, content := range files {
+				if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			pattern := filepath.Join(workDir, "outputs", "missing-*.txt")
+			mapper := NewFileMapper(workDir)
+			mapper.Outputs = []*tes.Output{
+				{Url: "s3://outputs/missing", Path: pattern, PathPrefix: "/outputs", Type: tes.File.Enum()},
+				{Url: "s3://outputs", Path: filepath.Join(globDir, "*.txt"), PathPrefix: "/outputs", Type: tes.File.Enum()},
+				{Url: "s3://outputs/exact.txt", Path: filepath.Join(workDir, "outputs", "exact.txt"), Type: tes.File.Enum()},
+			}
+			store := &capturingUploadStorage{uploaded: make(map[string]string)}
+			writer := &publicationEvents{}
+			run := &helper{execerr: tc.execErr}
+			worker := &DefaultWorker{Conf: &config.Worker{MaxParallelTransfers: 1}, Store: store}
+			worker.processOutputs(context.Background(), events.NewTaskWriter("task", 0, writer), mapper, run)
+
+			if run.syserr != nil {
+				t.Fatalf("unmatched glob set system error: %v", run.syserr)
+			}
+			if run.execerr != tc.execErr {
+				t.Fatalf("executor error = %v, want %v", run.execerr, tc.execErr)
+			}
+			if len(store.uploaded) != 2 || store.uploaded["s3://outputs/glob/matched.txt"] != "matched output" || store.uploaded["s3://outputs/exact.txt"] != "exact output" {
+				t.Fatalf("uploaded outputs = %v", store.uploaded)
+			}
+			if len(store.attempted) != 2 {
+				t.Fatalf("upload attempts = %v, want only the matched glob and exact output", store.attempted)
+			}
+
+			warningCount := 0
+			for _, ev := range writer.snapshot() {
+				log := ev.GetSystemLog()
+				if log.GetMsg() != "output pattern matched no files" {
+					continue
+				}
+				warningCount++
+				if log.GetLevel() != "warning" {
+					t.Errorf("unmatched pattern log level = %q, want warning", log.GetLevel())
+				}
+				if got, want := log.GetFields()["path"], mapper.ContainerPath(pattern); got != want {
+					t.Errorf("warning path = %q, want container path %q", got, want)
+				}
+			}
+			if warningCount != 1 {
+				t.Fatalf("unmatched output warnings = %d, want 1; events = %v", warningCount, writer.snapshot())
+			}
+		})
+	}
+}
+
+func TestProcessOutputsDoesNotWarnBeforeHardResolutionError(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		badPattern string
+		store      func() storage.Storage
+	}{
+		{
+			name:       "malformed glob",
+			badPattern: "bad-[*.txt",
+			store:      func() storage.Storage { return &capturingUploadStorage{uploaded: make(map[string]string)} },
+		},
+		{
+			name:       "storage join error",
+			badPattern: "*.txt",
+			store:      func() storage.Storage { return &storage.Mux{} },
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			workDir := t.TempDir()
+			if tc.name == "storage join error" {
+				if err := os.WriteFile(filepath.Join(workDir, "output.txt"), []byte("output"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			mapper := NewFileMapper(workDir)
+			mapper.Outputs = []*tes.Output{
+				{Url: "s3://outputs/missing", Path: filepath.Join(workDir, "missing-*.txt")},
+				{Url: "gs://outputs/error", Path: filepath.Join(workDir, tc.badPattern)},
+			}
+			originalOutputs := append([]*tes.Output(nil), mapper.Outputs...)
+			writer := &publicationEvents{}
+			worker := &DefaultWorker{Conf: &config.Worker{MaxParallelTransfers: 1}, Store: tc.store()}
+			run := &helper{}
+			worker.processOutputs(context.Background(), events.NewTaskWriter("task", 0, writer), mapper, run)
+
+			if run.syserr == nil {
+				t.Fatal("hard output resolution error was not reported")
+			}
+			for i := range originalOutputs {
+				if mapper.Outputs[i] != originalOutputs[i] {
+					t.Fatalf("output %d changed after hard resolution error", i)
+				}
+			}
+			for _, ev := range writer.snapshot() {
+				if ev.GetSystemLog().GetMsg() == "output pattern matched no files" {
+					t.Fatalf("emitted unmatched warning before hard error: %v", ev.GetSystemLog())
+				}
+			}
+		})
+	}
+}

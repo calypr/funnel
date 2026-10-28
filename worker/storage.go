@@ -288,18 +288,20 @@ func fixLinks(mapper *FileMapper, basepath string) {
 }
 
 // resolveWildcards resolves any wildcards/globs in the output paths.
-func resolveWildcards(mapper *FileMapper, store storage.Storage) error {
+func resolveWildcards(mapper *FileMapper, store storage.Storage) ([]string, error) {
 	var outputs []*tes.Output
+	var unmatched []string
 
 	for _, output := range mapper.Outputs {
 		// If path contains a wildcard, handle globbing and upload each file individually
 		if strings.Contains(output.Path, "*") {
 			globs, err := filepath.Glob(output.Path)
 			if err != nil {
-				return fmt.Errorf("failed to resolve output pattern %q: %v", mapper.ContainerPath(output.Path), err)
+				return nil, fmt.Errorf("failed to resolve output pattern %q: %v", mapper.ContainerPath(output.Path), err)
 			}
 			if len(globs) == 0 {
-				return fmt.Errorf("output pattern %q matched no files", mapper.ContainerPath(output.Path))
+				unmatched = append(unmatched, mapper.ContainerPath(output.Path))
+				continue
 			}
 
 			for _, glob := range globs {
@@ -316,7 +318,7 @@ func resolveWildcards(mapper *FileMapper, store storage.Storage) error {
 				fixPath := strings.TrimPrefix(globPath, output.PathPrefix)
 				out.Url, err = store.Join(output.Url, strings.TrimPrefix(fixPath, "/"))
 				if err != nil {
-					return fmt.Errorf("failed to join URL: %v", err)
+					return nil, fmt.Errorf("failed to join URL: %v", err)
 				}
 
 				outputs = append(outputs, out)
@@ -327,5 +329,5 @@ func resolveWildcards(mapper *FileMapper, store storage.Storage) error {
 	}
 
 	mapper.Outputs = outputs
-	return nil
+	return unmatched, nil
 }
