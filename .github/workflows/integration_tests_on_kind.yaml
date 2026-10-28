@@ -15,10 +15,9 @@ jobs:
     with:
       EXTERNAL_TO_CTDS: "true"
       SERVICE_TO_TEST: gen3_workflow
-      TEST_REPO_BRANCH: test/decrease_timeout_tes_test
-      SETUP_SCRIPT_1: https://raw.githubusercontent.com/uc-cdis/gen3-workflow/refs/heads/chore/disable_s3files_in_kind/.github/workflows/integration_tests_on_kind/ci_start_kind_cluster.sh
-      SETUP_SCRIPT_2: https://raw.githubusercontent.com/uc-cdis/gen3-workflow/refs/heads/chore/disable_s3files_in_kind/.github/workflows/integration_tests_on_kind/ci_override_config_and_start_minio.sh
-      SETUP_SCRIPT_3: https://raw.githubusercontent.com/uc-cdis/gen3-workflow/refs/heads/chore/disable_s3files_in_kind/.github/workflows/integration_tests_on_kind/ci_expose_kind_cluster.sh
+      SETUP_SCRIPT_1: https://raw.githubusercontent.com/uc-cdis/gen3-workflow/refs/heads/master/.github/workflows/integration_tests_on_kind/ci_start_kind_cluster.sh
+      SETUP_SCRIPT_2: https://raw.githubusercontent.com/uc-cdis/gen3-workflow/refs/heads/master/.github/workflows/integration_tests_on_kind/ci_override_config_and_start_minio.sh
+      SETUP_SCRIPT_3: https://raw.githubusercontent.com/uc-cdis/gen3-workflow/refs/heads/master/.github/workflows/integration_tests_on_kind/ci_expose_kind_cluster.sh
     secrets:
       CI_TEST_ORCID_USERID: ""
       CI_TEST_ORCID_PASSWORD: ""
