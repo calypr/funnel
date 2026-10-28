@@ -32,6 +32,11 @@ jobs:
         FUNNEL_TEST_DOCKER_INTEGRATION: "1"
       run: go test -v ./worker -run '^(TestDockerResourceLimitsIntegration|TestDockerCancellationStopsContainer|TestDockerCancellationWithSlowCleanup|TestExecutionAdmissionDockerIntegration)$' -count=1 -timeout=3m
 
+    - name: Test root stream outputs through BoltDB and Docker
+      env:
+        FUNNEL_TEST_DOCKER_INTEGRATION: "1"
+      run: go test -v ./tests/core -run '^TestRootStreamOutputsDocker$' -count=1 -timeout=2m
+
   scheduler-tests:
     name: Scheduler tests (${{ matrix.label }})
     runs-on: ubuntu-latest

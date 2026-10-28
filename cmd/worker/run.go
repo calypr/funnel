@@ -83,7 +83,7 @@ func NewWorker(ctx context.Context, conf *config.Config, log *logger.Logger, opt
 		Backend: "docker",
 	}
 
-	if conf.Compute == "kubernetes" {
+	if compute := strings.ToLower(strings.TrimSpace(conf.Compute)); compute == "kubernetes" || compute == "k8s" {
 		executor.Backend = "kubernetes"
 		executor.Template = conf.Kubernetes.ExecutorTemplate
 		executor.Namespace = conf.Kubernetes.Namespace

@@ -96,6 +96,54 @@ Tasks also have state and logs:
 There are logs for each task attempt and each executor. Notice that the stdout is
 conveniently captured by `logs[0].logs[0].stdout`.
 
+## Container paths and output mounts
+
+Funnel's Docker and Kubernetes workers use filesystem mounts to make task files
+available to executor containers. A file output normally mounts its parent
+directory. A directory output mounts the directory itself. Choose a dedicated
+task directory, such as `/task` or `/outputs`, that does not contain files the
+container image needs or overlap mounts in your executor template.
+
+Mounting over the container root `/` is unsupported. This includes a volume at
+`/`, a directory output at `/`, and ordinary file outputs such as `/result.json`
+whose parent is `/`. Root-level input files can also require a root mount when
+Funnel groups their input directories. Funnel rejects unsupported mappings before
+starting the executor. Move these paths beneath a dedicated directory and update
+the task's commands and path declarations together. Funnel does not rewrite paths
+inside commands or scripts.
+
+For example, capture stdout at `/task/stdout` and publish that same path:
+
+```json
+{
+  "executors": [{
+    "image": "alpine",
+    "command": ["echo", "hello"],
+    "stdout": "/task/stdout"
+  }],
+  "outputs": [{
+    "path": "/task/stdout",
+    "url": "s3://results/stdout.txt",
+    "type": "FILE"
+  }]
+}
+```
+
+Docker has a limited exception for root-level file outputs that exactly match an
+executor's `stdout` or `stderr` path. Funnel mounts those individual files so later
+executors can read them. These paths are taken from the task, not from fixed names
+such as `/stdout`. A container can read and write these files, but cannot unlink
+or replace their file mount points. Input and directory conflicts are rejected.
+
+Kubernetes does not use this exception. Its shared storage can require the
+executor to create stream files itself, so pre-creating a file for a Kubernetes
+file mount is not safe for every supported storage driver. Use stream paths under
+a dedicated directory for tasks that must run on both backends.
+
+These are Funnel storage limitations, not TES requirements. TES does not require
+parent-directory mounts. Rejecting `/` mounts also does not prevent a non-root
+mount from hiding files already present in the container image.
+
 ### Task API
 
 The API lets you create, get, list, and cancel tasks.

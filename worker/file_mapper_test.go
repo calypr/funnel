@@ -3,6 +3,7 @@ package worker
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/calypr/funnel/tes"
@@ -58,7 +59,7 @@ func TestMapTask(t *testing.T) {
 		Volumes: []string{"/volone", "/voltwo"},
 	}
 
-	err = f.MapTask(task)
+	err = f.MapTask(task, "docker")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,6 +180,135 @@ func TestMapTask(t *testing.T) {
 	}
 }
 
+func TestMapTaskRejectsRootMountsBeforeCreatingWorkDir(t *testing.T) {
+	tests := []struct {
+		name string
+		task *tes.Task
+	}{
+		{
+			name: "ordinary root file output",
+			task: &tes.Task{Outputs: []*tes.Output{{Path: "/result.json", Url: "file:///result.json", Type: tes.FileType_FILE}}},
+		},
+		{
+			name: "root directory output alias",
+			task: &tes.Task{Outputs: []*tes.Output{{Path: "/tmp/..", Url: "file:///result", Type: tes.FileType_DIRECTORY}}},
+		},
+		{
+			name: "root volume alias",
+			task: &tes.Task{Volumes: []string{"/tmp/.."}},
+		},
+		{
+			name: "root file input parent",
+			task: &tes.Task{Inputs: []*tes.Input{{Path: "/input.txt", Url: "file:///input.txt", Type: tes.FileType_FILE}}},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			workDir := filepath.Join(t.TempDir(), "task")
+			mapper := NewFileMapper(workDir)
+			if err := mapper.MapTask(test.task, "docker"); err == nil {
+				t.Fatal("MapTask() accepted a task that requires a mount at /")
+			}
+			if _, err := os.Stat(workDir); !os.IsNotExist(err) {
+				t.Fatalf("MapTask() created work directory before rejecting root mount: stat error = %v", err)
+			}
+		})
+	}
+}
+
+func TestMapTaskMountsDeclaredRootStreamsAsFiles(t *testing.T) {
+	workDir := t.TempDir()
+	mapper := NewFileMapper(workDir)
+	task := &tes.Task{
+		Inputs: []*tes.Input{{Path: "/inputs", Url: "file:///inputs", Type: tes.FileType_DIRECTORY}},
+		Outputs: []*tes.Output{
+			{Path: "/capture-out", Url: "file:///capture-out", Type: tes.FileType_FILE},
+			{Path: "/capture-err", Url: "file:///capture-err", Type: tes.FileType_FILE},
+		},
+		Executors: []*tes.Executor{
+			{Stdout: "/capture-out"},
+			{Stderr: "/capture-err"},
+		},
+	}
+	if err := mapper.MapTask(task, "docker"); err != nil {
+		t.Fatalf("MapTask() error = %v", err)
+	}
+
+	want := map[string]bool{filepath.Join(workDir, "capture-out"): true, filepath.Join(workDir, "capture-err"): true}
+	seenInputs := false
+	for _, volume := range mapper.Volumes {
+		if volume.ContainerPath == "/" {
+			t.Fatal("MapTask() created a root mount for declared stream files")
+		}
+		if volume.ContainerPath == "/inputs" {
+			seenInputs = true
+		}
+		if _, ok := want[volume.HostPath]; ok {
+			if volume.ContainerPath != "/"+filepath.Base(volume.HostPath) {
+				t.Errorf("stream volume = %+v, want exact file mount", volume)
+			}
+			delete(want, volume.HostPath)
+		}
+	}
+	if len(want) != 0 {
+		t.Errorf("missing exact stream file mounts for %v, got %+v", want, mapper.Volumes)
+	}
+	if !seenInputs {
+		t.Errorf("directory input was not kept at /inputs: %+v", mapper.Volumes)
+	}
+	for hostPath := range map[string]bool{
+		filepath.Join(workDir, "capture-out"): true,
+		filepath.Join(workDir, "capture-err"): true,
+	} {
+		info, err := os.Stat(hostPath)
+		if err != nil || !info.Mode().IsRegular() {
+			t.Errorf("precreated stream file %q: info=%v, error=%v", hostPath, info, err)
+		}
+	}
+}
+
+func TestMapTaskRejectsRootStreamInputConflictWithoutTruncatingInput(t *testing.T) {
+	workDir := t.TempDir()
+	inputPath := filepath.Join(workDir, "capture")
+	if err := os.WriteFile(inputPath, []byte("preserve input"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	mapper := NewFileMapper(workDir)
+	task := &tes.Task{
+		Inputs:    []*tes.Input{{Path: "/capture", Url: "file:///capture", Type: tes.FileType_FILE}},
+		Executors: []*tes.Executor{{Stdout: "/capture"}},
+	}
+	if err := mapper.MapTask(task, "docker"); err == nil {
+		t.Fatal("MapTask() accepted an input and stream that share a path")
+	}
+	got, err := os.ReadFile(inputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "preserve input" {
+		t.Fatalf("conflicting stream preparation changed input content to %q", got)
+	}
+}
+
+func TestMapTaskUsesPathBoundariesForMountOverlap(t *testing.T) {
+	mapper := NewFileMapper(t.TempDir())
+	task := &tes.Task{Inputs: []*tes.Input{
+		{Path: "/data/item", Content: "data"},
+		{Path: "/database/item", Content: "database"},
+	}}
+	if err := mapper.MapTask(task, "docker"); err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for _, volume := range mapper.Volumes {
+		seen[volume.ContainerPath] = true
+	}
+	if !seen["/data"] || !seen["/database"] || seen["/"] {
+		t.Fatalf("path overlap merged separate mount roots: %+v", mapper.Volumes)
+	}
+}
+
 // TestMapTaskInputOutputSameDirNoDuplicateVolume reproduces the bug where a
 // task with both an input and an output that resolve to the same container
 // directory produced a duplicate volume mount (invalid in Kubernetes).
@@ -209,7 +339,7 @@ func TestMapTaskInputOutputSameDirNoDuplicateVolume(t *testing.T) {
 		},
 	}
 
-	if err := f.MapTask(task); err != nil {
+	if err := f.MapTask(task, "docker"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -260,7 +390,7 @@ func TestMapTaskInputOutputOverlapNoDuplicateVolume(t *testing.T) {
 		},
 	}
 
-	if err := f.MapTask(task); err != nil {
+	if err := f.MapTask(task, "docker"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -296,7 +426,7 @@ func TestMapTaskMultipleInputsAndOutputs(t *testing.T) {
 		},
 	}
 
-	if err := f.MapTask(task); err != nil {
+	if err := f.MapTask(task, "docker"); err != nil {
 		t.Fatal(err)
 	}
 

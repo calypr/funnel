@@ -86,11 +86,14 @@ func TestDefaultWorkerWaitsForMountedOutputHeadBeforeCompletionAndCleanup(t *tes
 		if err := os.MkdirAll(workdir, 0700); err != nil {
 			t.Fatal(err)
 		}
-		local := filepath.Join(workdir, "result.txt")
+		local := filepath.Join(workdir, "outputs", "result.txt")
+		if err := os.MkdirAll(filepath.Dir(local), 0700); err != nil {
+			t.Fatal(err)
+		}
 		if err := os.WriteFile(local, []byte("worker output"), 0600); err != nil {
 			t.Fatal(err)
 		}
-		task := &tes.Task{Id: "task", State: tes.Queued, Outputs: []*tes.Output{{Url: "s3://bucket/outputs/result.txt", Path: "/result.txt", Type: tes.File}}}
+		task := &tes.Task{Id: "task", State: tes.Queued, Outputs: []*tes.Output{{Url: "s3://bucket/outputs/result.txt", Path: "/outputs/result.txt", Type: tes.File}}}
 		writer := &publicationEvents{}
 		conf := config.EmptyConfig().Worker
 		conf.WorkDir = base
@@ -142,7 +145,7 @@ func TestDefaultWorkerWaitsForMountedOutputHeadBeforeCompletionAndCleanup(t *tes
 			if ev.GetOutputs() != nil {
 				outputIndex = index
 				values := ev.GetOutputs().Value
-				if len(values) != 1 || values[0].Url != "s3://bucket/outputs/result.txt" || values[0].Path != "/result.txt" || values[0].SizeBytes != "13" {
+				if len(values) != 1 || values[0].Url != "s3://bucket/outputs/result.txt" || values[0].Path != "/outputs/result.txt" || values[0].SizeBytes != "13" {
 					t.Fatalf("worker output log: %+v", values)
 				}
 			}
@@ -191,11 +194,14 @@ func TestDefaultWorkerWaitsForMountedOutputHeadBeforeCompletionAndCleanup(t *tes
 		if err := os.MkdirAll(workdir, 0700); err != nil {
 			t.Fatal(err)
 		}
-		local := filepath.Join(workdir, "result.txt")
+		local := filepath.Join(workdir, "outputs", "result.txt")
+		if err := os.MkdirAll(filepath.Dir(local), 0700); err != nil {
+			t.Fatal(err)
+		}
 		if err := os.WriteFile(local, []byte("worker output"), 0600); err != nil {
 			t.Fatal(err)
 		}
-		task := &tes.Task{Id: "task", State: tes.Queued, Outputs: []*tes.Output{{Url: "s3://bucket/outputs/result.txt", Path: "/result.txt", Type: tes.File}}}
+		task := &tes.Task{Id: "task", State: tes.Queued, Outputs: []*tes.Output{{Url: "s3://bucket/outputs/result.txt", Path: "/outputs/result.txt", Type: tes.File}}}
 		writer := &publicationEvents{}
 		conf := config.EmptyConfig().Worker
 		conf.WorkDir = base
