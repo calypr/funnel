@@ -14,8 +14,7 @@ func TestSafeRedactsFreeFormConfiguration(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := &Config{
-		Elastic:  &Elastic{URL: "https://user:url-secret@search.example/path-secret?token=query-secret#fragment-secret"},
-		AWSBatch: &AWSBatch{AWSConfig: &AWSConfig{Endpoint: "https://user:batch-secret@batch.example"}},
+		AWSBatch: &AWSBatch{AWSConfig: &AWSConfig{Endpoint: "https://user:batch-secret@batch.example/path-secret?token=query-secret#fragment-secret"}},
 		AmazonS3: &AmazonS3Storage{SSE: &SSE{CustomerKeyFile: "keyfile-secret"}},
 		Node:     &Node{Metadata: map[string]string{"arbitrary": "node-secret"}},
 		Worker: &Worker{DriverCommand: "driver-secret", Container: &ContainerConfig{
@@ -30,13 +29,13 @@ func TestSafeRedactsFreeFormConfiguration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, secret := range []string{"url-secret", "path-secret", "query-secret", "fragment-secret", "batch-secret", "keyfile-secret", "node-secret", "driver-secret", "environment-secret", "tag-secret", "command-secret", "run-secret", "pull-secret", "stop-secret", "slurm-secret", "template-secret", "selector-secret", "toleration-secret", "volume-secret"} {
+	for _, secret := range []string{"batch-secret", "path-secret", "query-secret", "fragment-secret", "keyfile-secret", "node-secret", "driver-secret", "environment-secret", "tag-secret", "command-secret", "run-secret", "pull-secret", "stop-secret", "slurm-secret", "template-secret", "selector-secret", "toleration-secret", "volume-secret"} {
 		if strings.Contains(string(data), secret) {
 			t.Errorf("safe config exposes %q", secret)
 		}
 	}
-	if !strings.Contains(safe.Elastic.URL, "search.example") {
-		t.Errorf("endpoint hostname missing: %q", safe.Elastic.URL)
+	if !strings.Contains(safe.AWSBatch.AWSConfig.Endpoint, "batch.example") {
+		t.Errorf("endpoint hostname missing: %q", safe.AWSBatch.AWSConfig.Endpoint)
 	}
 	if c.Worker.Container.Env["ARBITRARY"] != "environment-secret" || c.Kubernetes.Storage.Volumes[0].Fields["secret"].GetStringValue() != "volume-secret" {
 		t.Fatal("Safe modified the original configuration")
