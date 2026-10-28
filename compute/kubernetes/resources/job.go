@@ -22,6 +22,9 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 )
 
+// WorkerContainerAnnotation selects the regular Pod container running Funnel's worker.
+const WorkerContainerAnnotation = "funnel.calypr.org/worker-container"
+
 // SanitizeLabelValue converts an arbitrary string into a valid Kubernetes label
 // value: replaces any character outside [A-Za-z0-9._-] with '-', strips
 // leading/trailing non-alphanumeric characters, and truncates to 63 chars.
@@ -121,6 +124,9 @@ func CreateJob(ctx context.Context, task *tes.Task, conf *config.Config, client 
 			return nil, fmt.Errorf("binding worker storage: %w", err)
 		}
 	}
+	if err := annotateWorkerContainer(job, plan); err != nil {
+		return nil, fmt.Errorf("selecting worker container: %w", err)
+	}
 	configureWorkerAttempts(job)
 
 	log.Debug("Creating job", "Job", job.Name, "JobsNamespace", conf.Kubernetes.JobsNamespace)
@@ -130,6 +136,33 @@ func CreateJob(ctx context.Context, task *tes.Task, conf *config.Config, client 
 	}
 
 	return created, nil
+}
+
+func annotateWorkerContainer(job *v1.Job, plan *storageplan.Plan) error {
+	containers := job.Spec.Template.Spec.Containers
+	selected := ""
+	if plan != nil {
+		selected = plan.WorkerContainer
+	}
+	if selected == "" && len(containers) == 1 {
+		selected = containers[0].Name
+	}
+	if selected == "" && job.Spec.Template.Annotations != nil {
+		selected = job.Spec.Template.Annotations[WorkerContainerAnnotation]
+	}
+	if selected == "" {
+		return nil
+	}
+	for _, container := range containers {
+		if container.Name == selected {
+			if job.Spec.Template.Annotations == nil {
+				job.Spec.Template.Annotations = make(map[string]string)
+			}
+			job.Spec.Template.Annotations[WorkerContainerAnnotation] = selected
+			return nil
+		}
+	}
+	return fmt.Errorf("pod template annotation %s names no regular container %q", WorkerContainerAnnotation, selected)
 }
 
 func configureWorkerAttempts(job *v1.Job) {

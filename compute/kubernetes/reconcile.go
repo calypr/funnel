@@ -14,6 +14,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/calypr/funnel/compute/kubernetes/resources"
 	"github.com/calypr/funnel/compute/kubernetes/storageplan"
 	"github.com/calypr/funnel/events"
 	"github.com/calypr/funnel/tes"
@@ -140,7 +141,10 @@ func (b *Backend) reconcileRecordedOwner(ctx context.Context, j *v1.Job, disable
 		b.log.Error("reconcile: reading task execution owner metadata", "taskID", j.Name, "error", err)
 		return false
 	}
-	if owner == nil || owner.Namespace != j.Namespace || j.UID == "" {
+	if owner == nil {
+		return b.retireExitedWorkerPod(ctx, j)
+	}
+	if owner.Namespace != j.Namespace || j.UID == "" {
 		return false
 	}
 
@@ -158,6 +162,20 @@ func (b *Backend) reconcileRecordedOwner(ctx context.Context, j *v1.Job, disable
 		return false
 	case pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed:
 		reason = fmt.Sprintf("exited in phase %s", pod.Status.Phase)
+	case pod.Status.Phase == corev1.PodRunning:
+		workerName, known := workerContainerName(j)
+		if !known {
+			return false
+		}
+		for _, status := range pod.Status.ContainerStatuses {
+			if status.Name == workerName && status.State.Terminated != nil {
+				reason = fmt.Sprintf("worker container %q exited with code %d", workerName, status.State.Terminated.ExitCode)
+				break
+			}
+		}
+		if reason == "" {
+			return false
+		}
 	default:
 		return false
 	}
@@ -168,6 +186,67 @@ func (b *Backend) reconcileRecordedOwner(ctx context.Context, j *v1.Job, disable
 		b.cleanResourcesIfEnabled(ctx, j.Name, disableCleanup)
 	}
 	return true
+}
+
+func workerContainerName(job *v1.Job) (string, bool) {
+	if job == nil {
+		return "", false
+	}
+	if name, exists := job.Spec.Template.Annotations[resources.WorkerContainerAnnotation]; exists {
+		if name == "" {
+			return "", false
+		}
+		for _, container := range job.Spec.Template.Spec.Containers {
+			if container.Name == name {
+				return name, true
+			}
+		}
+		return "", false
+	}
+	if len(job.Spec.Template.Spec.Containers) == 1 {
+		return job.Spec.Template.Spec.Containers[0].Name, true
+	}
+	return "", false
+}
+
+func (b *Backend) retireExitedWorkerPod(ctx context.Context, job *v1.Job) bool {
+	workerName, known := workerContainerName(job)
+	if !known || job.UID == "" {
+		return false
+	}
+	pods, err := b.client.CoreV1().Pods(job.Namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: fmt.Sprintf("job-name=%s", job.Name),
+	})
+	if err != nil {
+		b.log.Error("reconcile: listing worker pods for retirement", "taskID", job.Name, "error", err)
+		return false
+	}
+	for i := range pods.Items {
+		pod := &pods.Items[i]
+		if pod.Status.Phase != corev1.PodRunning || pod.DeletionTimestamp != nil || pod.UID == "" || !podControlledByJob(pod, job) {
+			continue
+		}
+		workerExited := false
+		for _, status := range pod.Status.ContainerStatuses {
+			if status.Name == workerName && status.State.Terminated != nil {
+				workerExited = true
+				break
+			}
+		}
+		if !workerExited {
+			continue
+		}
+
+		uid := pod.UID
+		err := b.client.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{
+			Preconditions: &metav1.Preconditions{UID: &uid},
+		})
+		if err != nil && !apierrors.IsNotFound(err) {
+			b.log.Error("reconcile: retiring exited worker pod", "taskID", job.Name, "pod", pod.Name, "podUID", uid, "error", err)
+		}
+		return true
+	}
+	return false
 }
 
 func podControlledByJob(pod *corev1.Pod, job *v1.Job) bool {

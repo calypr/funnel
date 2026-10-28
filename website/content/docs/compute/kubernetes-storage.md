@@ -174,6 +174,8 @@ With explicit storage, Funnel renders Job templates with `NeedsPVC: false` and a
 
 Funnel selects the sole regular container by default. For templates with sidecars, set `Storage.WorkerContainer` and `Storage.ExecutorContainer` to the main container names. Funnel adds storage and worker configuration only to those containers. Init containers and sidecars keep their template-defined mounts.
 
+For a multi-container worker template without explicit storage, identify the worker with the pod-template annotation `funnel.calypr.org/worker-container`. Its value must match the worker container's name. Funnel records this selection when submitting the Job so worker failure handling does not wait for sidecars to exit. With explicit storage, `Storage.WorkerContainer` takes precedence over the annotation.
+
 The worker Job name must equal `TaskId`. `Worker.WorkDir` must be absolute. Per-task plugin overrides cannot change `JobsNamespace`, because a backend reconciles one configured Jobs namespace.
 
 `Kubernetes.WorkerImage` selects the image supplied to the worker Job template and skips server Pod discovery. When it is absent, Funnel keeps the existing image discovery behavior. Templates use `{{.Image}}` to consume that setting.

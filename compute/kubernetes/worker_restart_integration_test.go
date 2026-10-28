@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -19,20 +20,33 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
 type lostOwnerClaimRPC struct {
 	events.UnimplementedEventServiceServer
-	writer           events.Writer
-	claimer          events.ExecutionClaimer
-	markRunning      bool
-	firstOwner       chan *events.ExecutionOwner
-	replacementOwner chan *events.ExecutionOwner
+	writer               events.Writer
+	claimer              events.ExecutionClaimer
+	markRunning          bool
+	failBeforeFirstClaim bool
+	preclaimFailure      sync.Once
+	firstOwner           chan *events.ExecutionOwner
+	replacementOwner     chan *events.ExecutionOwner
+}
+
+type workerRestartScenario struct {
+	name                 string
+	markRunning          bool
+	deleteOwner          bool
+	withSidecar          bool
+	failBeforeFirstClaim bool
+	wantState            tes.State
 }
 
 func (s *lostOwnerClaimRPC) WriteEvent(ctx context.Context, event *events.Event) (*events.WriteEventResponse, error) {
@@ -43,6 +57,11 @@ func (s *lostOwnerClaimRPC) WriteEvent(ctx context.Context, event *events.Event)
 }
 
 func (s *lostOwnerClaimRPC) ClaimExecution(ctx context.Context, req *events.ClaimExecutionRequest) (*events.ClaimExecutionResponse, error) {
+	preclaimFailure := false
+	s.preclaimFailure.Do(func() { preclaimFailure = s.failBeforeFirstClaim })
+	if preclaimFailure {
+		return nil, status.Error(codes.Unavailable, "injected worker claim failure before claim")
+	}
 	owner := req.GetOwner()
 	claimed, err := s.claimer.ClaimExecution(ctx, req.GetTaskId(), owner)
 	if err != nil {
@@ -97,6 +116,43 @@ spec:
             name: owner-recovery-worker-config
 `
 
+const liveRestartSidecarWorkerTemplate = `apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{.TaskId}}
+  namespace: {{.JobsNamespace}}
+  labels:
+    app: funnel-worker
+spec:
+  backoffLimit: {{.BackoffLimit}}
+  template:
+    metadata:
+      labels:
+        app: funnel-worker
+      annotations:
+        funnel.calypr.org/worker-container: worker
+    spec:
+      terminationGracePeriodSeconds: 1
+      restartPolicy: OnFailure
+      containers:
+        - name: worker
+          image: {{.Image}}
+          imagePullPolicy: IfNotPresent
+          args: [worker, run, --config, /config/config.yaml, --taskID, "{{.TaskId}}"]
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+        - name: sidecar
+          image: {{.Image}}
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c", "sleep 3600"]
+      volumes:
+        - name: config
+          configMap:
+            name: owner-recovery-worker-config
+`
+
 func TestWorkerRestartRecoveryLive(t *testing.T) {
 	kubeconfig := os.Getenv("FUNNEL_KUBERNETES_TEST_KUBECONFIG")
 	if kubeconfig == "" {
@@ -115,23 +171,19 @@ func TestWorkerRestartRecoveryLive(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, tc := range []struct {
-		name        string
-		markRunning bool
-		deleteOwner bool
-		wantState   tes.State
-	}{
+	for _, tc := range []workerRestartScenario{
 		{name: "initializing", wantState: tes.State_INITIALIZING},
 		{name: "running", markRunning: true, wantState: tes.State_RUNNING},
 		{name: "deleted-owner", deleteOwner: true, wantState: tes.State_INITIALIZING},
+		{name: "sidecar-before-and-after-claim", markRunning: true, withSidecar: true, failBeforeFirstClaim: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			runWorkerRestartRecoveryLive(t, client, image, tc.name, tc.markRunning, tc.deleteOwner, tc.wantState)
+			runWorkerRestartRecoveryLive(t, client, image, tc)
 		})
 	}
 }
 
-func runWorkerRestartRecoveryLive(t *testing.T, client kubernetes.Interface, image, suffix string, markRunning, deleteOwner bool, wantState tes.State) {
+func runWorkerRestartRecoveryLive(t *testing.T, client kubernetes.Interface, image string, scenario workerRestartScenario) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
@@ -165,7 +217,7 @@ func runWorkerRestartRecoveryLive(t *testing.T, client kubernetes.Interface, ima
 	if err := db.Init(); err != nil {
 		t.Fatal(err)
 	}
-	taskID := "worker-restart-" + suffix
+	taskID := "worker-restart-" + scenario.name
 	task := &tes.Task{
 		Id:    taskID,
 		State: tes.State_INITIALIZING,
@@ -185,11 +237,12 @@ func runWorkerRestartRecoveryLive(t *testing.T, client kubernetes.Interface, ima
 	defer listener.Close()
 	rpcServer := grpc.NewServer()
 	fixture := &lostOwnerClaimRPC{
-		writer:           db,
-		claimer:          db,
-		markRunning:      markRunning,
-		firstOwner:       make(chan *events.ExecutionOwner, 1),
-		replacementOwner: make(chan *events.ExecutionOwner, 1),
+		writer:               db,
+		claimer:              db,
+		markRunning:          scenario.markRunning,
+		failBeforeFirstClaim: scenario.failBeforeFirstClaim,
+		firstOwner:           make(chan *events.ExecutionOwner, 1),
+		replacementOwner:     make(chan *events.ExecutionOwner, 1),
 	}
 	events.RegisterEventServiceServer(rpcServer, fixture)
 	tes.RegisterTaskServiceServer(rpcServer, &taskReaderRPC{database: db})
@@ -213,6 +266,9 @@ func runWorkerRestartRecoveryLive(t *testing.T, client kubernetes.Interface, ima
 	}
 
 	serverConfig.Kubernetes.WorkerTemplate = liveRestartWorkerTemplate
+	if scenario.withSidecar {
+		serverConfig.Kubernetes.WorkerTemplate = liveRestartSidecarWorkerTemplate
+	}
 	serverConfig.Kubernetes.WorkerImage = image
 	job, err := resources.CreateJob(ctx, task, serverConfig, client, logger.NewLogger("worker-restart-live", logger.DefaultConfig()), nil)
 	if err != nil {
@@ -223,6 +279,10 @@ func runWorkerRestartRecoveryLive(t *testing.T, client kubernetes.Interface, ima
 	}
 	if job.Spec.Template.Spec.RestartPolicy != corev1.RestartPolicyNever {
 		t.Fatalf("worker restartPolicy = %s, want Never", job.Spec.Template.Spec.RestartPolicy)
+	}
+	if scenario.failBeforeFirstClaim {
+		runWorkerSidecarRetryRecoveryLive(t, ctx, client, ns, taskID, serverConfig, db, fixture)
+		return
 	}
 
 	var owner *events.ExecutionOwner
@@ -243,8 +303,8 @@ func runWorkerRestartRecoveryLive(t *testing.T, client kubernetes.Interface, ima
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.State != wantState {
-		t.Fatalf("before reconciliation state = %s, want %s", got.State, wantState)
+	if got.State != scenario.wantState {
+		t.Fatalf("before reconciliation state = %s, want %s", got.State, scenario.wantState)
 	}
 	storedOwner, err := events.TaskExecutionOwner(got)
 	if err != nil {
@@ -257,7 +317,7 @@ func runWorkerRestartRecoveryLive(t *testing.T, client kubernetes.Interface, ima
 		t.Fatal(err)
 	}
 
-	if wantState == tes.State_INITIALIZING {
+	if scenario.wantState == tes.State_INITIALIZING {
 		select {
 		case deniedOwner := <-fixture.replacementOwner:
 			if deniedOwner == nil || deniedOwner.GetPodUid() != replacement.GetPodUid() {
@@ -277,7 +337,7 @@ func runWorkerRestartRecoveryLive(t *testing.T, client kubernetes.Interface, ima
 		t.Fatalf("replacement pod %q acquired the execution claim", replacement.GetPodName())
 	}
 
-	if deleteOwner {
+	if scenario.deleteOwner {
 		if err := client.CoreV1().Pods(ns).Delete(ctx, owner.PodName, metav1.DeleteOptions{}); err != nil {
 			t.Fatal(err)
 		}
@@ -322,6 +382,181 @@ func runWorkerRestartRecoveryLive(t *testing.T, client kubernetes.Interface, ima
 		t.Fatal(err)
 	}
 	t.Logf("lost claim response for pod %s/%s; replacement stayed idle; reconciliation recorded SYSTEM_ERROR", owner.GetPodName(), owner.GetPodUid())
+}
+
+func runWorkerSidecarRetryRecoveryLive(t *testing.T, ctx context.Context, client kubernetes.Interface, namespace, taskID string, conf *config.Config, db *boltdb.BoltDB, fixture *lostOwnerClaimRPC) {
+	t.Helper()
+	backend := &Backend{
+		client:   client,
+		conf:     conf,
+		event:    db,
+		database: db,
+		log:      logger.NewLogger("worker-sidecar-recovery-live", logger.DefaultConfig()),
+	}
+	firstPod, err := waitForWorkerExitWithRunningSidecar(ctx, client, namespace, taskID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := db.GetTask(ctx, &tes.GetTaskRequest{Id: taskID, View: tes.View_FULL.String()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before.State != tes.State_QUEUED {
+		t.Fatalf("task state before preclaim retry = %s, want QUEUED", before.State)
+	}
+	if owner, err := events.TaskExecutionOwner(before); err != nil || owner != nil {
+		t.Fatalf("owner before preclaim retry = %+v, %v, want none", owner, err)
+	}
+	if err := assertNoExecutorWork(before, client, ctx, namespace, taskID); err != nil {
+		t.Fatal(err)
+	}
+
+	backend.reconcileOnce(ctx, false)
+	replacement, job, err := waitForUnclaimedJobRetry(ctx, client, namespace, taskID, firstPod.UID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.Spec.BackoffLimit == nil || *job.Spec.BackoffLimit != 3 || job.Status.Failed < 1 {
+		t.Fatalf("Job retry state = backoffLimit %v, failed %d, want backoffLimit 3 and at least one failure", job.Spec.BackoffLimit, job.Status.Failed)
+	}
+	if err := waitForPodSidecarStopped(ctx, client, namespace, firstPod.Name, firstPod.UID); err != nil {
+		t.Fatal(err)
+	}
+
+	var owner *events.ExecutionOwner
+	select {
+	case owner = <-fixture.firstOwner:
+	case <-ctx.Done():
+		t.Fatalf("waiting for replacement worker to acquire the first execution claim: %v", ctx.Err())
+	}
+	if owner == nil || owner.PodUid == string(firstPod.UID) || owner.PodUid != string(replacement.UID) {
+		t.Fatalf("replacement claim owner = %+v, want replacement Pod UID %q", owner, replacement.UID)
+	}
+	claimedPod, err := waitForWorkerExitWithRunningSidecar(ctx, client, namespace, taskID, owner.PodUid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claimedPod.Status.Phase != corev1.PodRunning {
+		t.Fatalf("claimed worker Pod phase = %s, want Running while sidecar stays alive", claimedPod.Status.Phase)
+	}
+	claimedTask, err := db.GetTask(ctx, &tes.GetTaskRequest{Id: taskID, View: tes.View_FULL.String()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	storedOwner, err := events.TaskExecutionOwner(claimedTask)
+	if err != nil || storedOwner == nil || storedOwner.PodUid != owner.PodUid {
+		t.Fatalf("recorded owner = %+v, %v, want %q", storedOwner, err, owner.PodUid)
+	}
+	if err := assertNoExecutorWork(claimedTask, client, ctx, namespace, taskID); err != nil {
+		t.Fatal(err)
+	}
+
+	backend.reconcileOnce(ctx, false)
+	after, err := db.GetTask(ctx, &tes.GetTaskRequest{Id: taskID, View: tes.View_FULL.String()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.State != tes.State_SYSTEM_ERROR {
+		t.Fatalf("task state after claimed worker exits with sidecar alive = %s, want SYSTEM_ERROR", after.State)
+	}
+	if len(after.Logs) == 0 || len(after.Logs[0].SystemLogs) == 0 || !strings.Contains(strings.Join(after.Logs[0].SystemLogs, "\n"), owner.PodUid) {
+		t.Fatalf("SYSTEM_ERROR diagnostic does not identify claimed Pod UID %q: %+v", owner.PodUid, after.GetLogs())
+	}
+	if err := assertNoExecutorWork(after, client, ctx, namespace, taskID); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err := db.ClaimExecution(ctx, taskID, &events.ExecutionOwner{Namespace: namespace, PodName: "replacement-worker", PodUid: "replacement-worker-uid"})
+	if err != nil || claimed {
+		t.Fatalf("new worker claim after postclaim failure = %t, %v, want false", claimed, err)
+	}
+	t.Logf("preclaim worker Pod %s failed and stopped its sidecar; Job recorded failure %d and retried as %s; the replacement claim stayed permanent when its worker exited with the sidecar still running", firstPod.Name, job.Status.Failed, replacement.Name)
+}
+
+func waitForWorkerExitWithRunningSidecar(ctx context.Context, client kubernetes.Interface, namespace, taskID, podUID string) (*corev1.Pod, error) {
+	for {
+		pods, err := client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: "job-name=" + taskID})
+		if err != nil {
+			return nil, err
+		}
+		for i := range pods.Items {
+			pod := &pods.Items[i]
+			if podUID != "" && string(pod.UID) != podUID {
+				continue
+			}
+			if pod.Status.Phase != corev1.PodRunning {
+				continue
+			}
+			workerFailed, sidecarRunning := false, false
+			for _, status := range pod.Status.ContainerStatuses {
+				switch status.Name {
+				case "worker":
+					workerFailed = status.State.Terminated != nil && status.State.Terminated.ExitCode != 0
+				case "sidecar":
+					sidecarRunning = status.State.Running != nil
+				}
+			}
+			if workerFailed && sidecarRunning {
+				return pod.DeepCopy(), nil
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("waiting for worker container failure with a live sidecar: %w", ctx.Err())
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+}
+
+func waitForUnclaimedJobRetry(ctx context.Context, client kubernetes.Interface, namespace, taskID string, failedUID types.UID) (*corev1.Pod, *batchv1.Job, error) {
+	for {
+		job, err := client.BatchV1().Jobs(namespace).Get(ctx, taskID, metav1.GetOptions{})
+		if err != nil {
+			return nil, nil, err
+		}
+		pods, err := client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: "job-name=" + taskID})
+		if err != nil {
+			return nil, nil, err
+		}
+		var replacement *corev1.Pod
+		for i := range pods.Items {
+			pod := &pods.Items[i]
+			if pod.UID == failedUID || !podControlledByJob(pod, job) || pod.Status.Phase == corev1.PodFailed || pod.Status.Phase == corev1.PodSucceeded {
+				continue
+			}
+			replacement = pod.DeepCopy()
+			break
+		}
+		if job.Status.Failed > 0 && job.Status.Active > 0 && replacement != nil {
+			return replacement, job, nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil, nil, fmt.Errorf("waiting for a failed Job attempt and active replacement (failed=%d active=%d): %w", job.Status.Failed, job.Status.Active, ctx.Err())
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+}
+
+func waitForPodSidecarStopped(ctx context.Context, client kubernetes.Interface, namespace, podName string, podUID types.UID) error {
+	for {
+		pod, err := client.CoreV1().Pods(namespace).Get(ctx, podName, metav1.GetOptions{})
+		if apierrors.IsNotFound(err) || (err == nil && pod.UID != podUID) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		for _, status := range pod.Status.ContainerStatuses {
+			if status.Name == "sidecar" && status.State.Terminated != nil {
+				return nil
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("waiting for sidecar termination in Pod %s/%s: %w", namespace, podName, ctx.Err())
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
 }
 
 func waitForOwnerRetry(ctx context.Context, client kubernetes.Interface, namespace, taskID, failedUID string) (*events.ExecutionOwner, error) {
