@@ -22,7 +22,6 @@ func (c *Config) Safe() *Config {
 		safe.Postgres.AdminPassword = redact(safe.Postgres.AdminPassword)
 	}
 
-
 	// Cloud provider credentials
 	if safe.AWSBatch != nil && safe.AWSBatch.AWSConfig != nil {
 		safe.AWSBatch.AWSConfig.Key = redact(safe.AWSBatch.AWSConfig.Key)
