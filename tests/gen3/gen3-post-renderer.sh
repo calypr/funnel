@@ -55,6 +55,7 @@ FUNNEL_CI_IMAGE_REF="$FUNNEL_CI_IMAGE_REF" FUNNEL_CI_PLUGIN_IMAGE_REF="$FUNNEL_C
     (select(.kind == "ConfigMap" and .metadata.name == "funnel-server-config") |
       .data."funnel-server.yaml" |= (
         from_yaml |
+        del(.Elastic) |
         .Kubernetes.WorkerTemplate |= sub("imagePullPolicy: Always"; "imagePullPolicy: Never") |
         to_yaml
       )
