@@ -60,12 +60,12 @@ func TestTaskInputContentValidation(t *testing.T) {
 			{
 				Content: "foo",
 				Url:     "",
-				Path:    "/bar",
+				Path:    "/inputs/bar",
 			},
 		},
 	})
 	if err != nil {
-		t.Error("unexpected validation error")
+		t.Errorf("unexpected validation error: %v", err)
 	}
 }
 
