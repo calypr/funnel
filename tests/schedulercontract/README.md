@@ -34,6 +34,12 @@ per-backend JUnit artifacts. The general Go test job skips `TestSchedulerContrac
 backends. The required `unitTest` check depends on the general tests and the
 scheduler matrix.
 
+The separate [scheduler process tests](../schedulerprocess/README.md) run
+independent servers and nodes with real Docker tasks against PostgreSQL and
+MongoDB. They cover shared capacity and process crashes after assignment or
+execution admission commits. Both process-test matrix jobs also feed the
+required `unitTest` check.
+
 To add a backend, provide a fixture implementing the suite's store interface and
 register it in `TestSchedulerContract`. Add the backend to the workflow matrix;
 it will run every common scenario. Keep tests requiring private storage access,
