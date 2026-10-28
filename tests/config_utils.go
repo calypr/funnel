@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"net"
 	"os"
 	"path"
+	"strconv"
 	"testing"
 	"time"
 
@@ -20,9 +22,6 @@ import (
 var configFile string
 
 func ParseConfig() {
-	// nanoseconds are important because the tests run faster than a millisecond
-	// which can cause port conflicts
-	rand.New(rand.NewSource(time.Now().UTC().UnixNano()))
 	flag.StringVar(&configFile, "funnel-config", configFile, "Funnel config file. Must be an absolute path.")
 	flag.Parse()
 }
@@ -80,20 +79,38 @@ func TestifyConfig(conf *config.Config) *config.Config {
 	return conf
 }
 
-// RandomPort returns a random port string between 10000 and 20000.
+// RandomPort returns an available port selected by the operating system.
 func RandomPort() string {
-	min := 10000
-	max := 40000
-	n := rand.Intn(max-min) + min
-	return fmt.Sprintf("%d", n)
+	return randomPorts(1)[0]
 }
 
 // RandomPortConfig returns a modified config with random HTTP and RPC ports.
 func RandomPortConfig(conf *config.Config) *config.Config {
-	conf.Server.RPCPort = RandomPort()
-	conf.Server.HTTPPort = RandomPort()
+	ports := randomPorts(2)
+	conf.Server.RPCPort = ports[0]
+	conf.Server.HTTPPort = ports[1]
 	conf.RPCClient.ServerAddress = conf.Server.RPCAddress()
 	return conf
+}
+
+func randomPorts(count int) []string {
+	listeners := make([]net.Listener, 0, count)
+	defer func() {
+		for _, listener := range listeners {
+			_ = listener.Close()
+		}
+	}()
+
+	ports := make([]string, 0, count)
+	for i := 0; i < count; i++ {
+		listener, err := net.Listen("tcp", ":0")
+		if err != nil {
+			panic(fmt.Errorf("allocate test port: %w", err))
+		}
+		listeners = append(listeners, listener)
+		ports = append(ports, strconv.Itoa(listener.Addr().(*net.TCPAddr).Port))
+	}
+	return ports
 }
 
 // TempDirConfig returns a modified config with workdir and db path set to a temp. directory.
