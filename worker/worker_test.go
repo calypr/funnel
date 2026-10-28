@@ -215,13 +215,13 @@ func workerOrder(t *testing.T, path string) []string {
 
 type executionClaimFunc func(context.Context, string) (bool, error)
 
-func (f executionClaimFunc) ClaimExecution(ctx context.Context, taskID string) (bool, error) {
+func (f executionClaimFunc) ClaimExecution(ctx context.Context, taskID string, _ *events.ExecutionOwner) (bool, error) {
 	return f(ctx, taskID)
 }
 
 type grantExecutionClaim struct{}
 
-func (grantExecutionClaim) ClaimExecution(context.Context, string) (bool, error) {
+func (grantExecutionClaim) ClaimExecution(context.Context, string, *events.ExecutionOwner) (bool, error) {
 	return true, nil
 }
 

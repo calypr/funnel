@@ -70,8 +70,15 @@ message Event {
 
 message WriteEventResponse{}
 
+message ExecutionOwner {
+  string namespace = 1;
+  string pod_name = 2;
+  string pod_uid = 3;
+}
+
 message ClaimExecutionRequest {
   string task_id = 1;
+  ExecutionOwner owner = 2;
 }
 
 message ClaimExecutionResponse {

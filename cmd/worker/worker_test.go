@@ -10,6 +10,7 @@ import (
 
 	"github.com/calypr/funnel/cmd/util"
 	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/events"
 	"github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/tes"
 	funnelworker "github.com/calypr/funnel/worker"
@@ -133,7 +134,7 @@ func (db *readOnlyDatabaseWithClaim) GetTask(context.Context, *tes.GetTaskReques
 	return &tes.Task{Id: db.taskID}, nil
 }
 
-func (db *readOnlyDatabaseWithClaim) ClaimExecution(_ context.Context, taskID string) (bool, error) {
+func (db *readOnlyDatabaseWithClaim) ClaimExecution(_ context.Context, taskID string, _ *events.ExecutionOwner) (bool, error) {
 	return taskID == db.taskID && db.claimed, nil
 }
 
@@ -148,7 +149,7 @@ func TestDatabaseTaskReaderFailsClosedWithoutClaims(t *testing.T) {
 	if !ok {
 		t.Fatal("database reader does not expose the execution claim boundary")
 	}
-	claimed, err := claimer.ClaimExecution(context.Background(), "task")
+	claimed, err := claimer.ClaimExecution(context.Background(), "task", nil)
 	if err == nil || !strings.Contains(err.Error(), `database "datastore" does not support execution claims`) {
 		t.Fatalf("ClaimExecution() error = %v, want explicit unsupported-backend error", err)
 	}
@@ -167,7 +168,7 @@ func TestDatabaseTaskReaderDelegatesExecutionClaim(t *testing.T) {
 	if !ok {
 		t.Fatal("database reader does not expose its execution claimer")
 	}
-	claimed, err := claimer.ClaimExecution(context.Background(), "task")
+	claimed, err := claimer.ClaimExecution(context.Background(), "task", nil)
 	if err != nil || !claimed {
 		t.Fatalf("ClaimExecution() = %t, %v, want true, nil", claimed, err)
 	}

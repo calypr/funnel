@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/calypr/funnel/events"
@@ -83,15 +84,23 @@ func (db *Postgres) WriteEvent(ctx context.Context, req *events.Event) error {
 
 		// Task Metadata
 		case events.Type_TASK_METADATA:
-			for k, v := range req.GetMetadata().Value {
-				path := fmt.Sprintf("{logs,%v,metadata,%s}", req.Attempt, k)
+			metadata := req.GetMetadata().Value
+			if _, reserved := metadata[events.ExecutionOwnerMetadataKey]; reserved {
+				return fmt.Errorf("task metadata key %q is reserved", events.ExecutionOwnerMetadataKey)
+			}
+			for k, v := range metadata {
+				path := []string{"logs", strconv.FormatUint(uint64(req.Attempt), 10), "metadata", k}
 				updateSQL := `
                     UPDATE tasks 
                     SET data = jsonb_set(data, $1::text[], $2::jsonb, true)
                     WHERE id = $3
                 `
-				if _, err := db.client.Exec(ctx, updateSQL, path, fmt.Sprintf(`"%s"`, v), selector); err != nil {
-					return fmt.Errorf("failed to update task metadata '%s': %w", path, err)
+				value, err := json.Marshal(v)
+				if err != nil {
+					return err
+				}
+				if _, err := db.client.Exec(ctx, updateSQL, path, value, selector); err != nil {
+					return fmt.Errorf("failed to update task metadata %q: %w", k, err)
 				}
 			}
 			return nil

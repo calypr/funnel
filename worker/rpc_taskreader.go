@@ -54,11 +54,11 @@ func (r *RPCTaskReader) State(ctx context.Context) (tes.State, error) {
 }
 
 // ClaimExecution asks the server to atomically admit this worker for the task.
-func (r *RPCTaskReader) ClaimExecution(ctx context.Context, taskID string) (bool, error) {
+func (r *RPCTaskReader) ClaimExecution(ctx context.Context, taskID string, owner *events.ExecutionOwner) (bool, error) {
 	if taskID != r.taskID {
 		return false, fmt.Errorf("task reader is bound to task %q, not %q", r.taskID, taskID)
 	}
-	response, err := r.eventClient.ClaimExecution(ctx, &events.ClaimExecutionRequest{TaskId: taskID}, grpc_retry.Disable())
+	response, err := r.eventClient.ClaimExecution(ctx, &events.ClaimExecutionRequest{TaskId: taskID, Owner: owner}, grpc_retry.Disable())
 	if err != nil {
 		return false, err
 	}

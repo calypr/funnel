@@ -10,6 +10,7 @@ import (
 	"time"
 
 	v1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -122,12 +123,74 @@ func (b *Backend) writeSystemError(ctx context.Context, jobName string, errAttri
 	return true
 }
 
+func (b *Backend) reconcileRecordedOwner(ctx context.Context, j *v1.Job, disableCleanup bool) bool {
+	if b.database == nil {
+		return false
+	}
+	task, err := b.database.GetTask(ctx, &tes.GetTaskRequest{Id: j.Name, View: tes.View_FULL.String()})
+	if err != nil {
+		b.log.Error("reconcile: reading task execution owner", "taskID", j.Name, "error", err)
+		return false
+	}
+	if task == nil || tes.TerminalState(task.State) {
+		return false
+	}
+	owner, err := events.TaskExecutionOwner(task)
+	if err != nil {
+		b.log.Error("reconcile: reading task execution owner metadata", "taskID", j.Name, "error", err)
+		return false
+	}
+	if owner == nil || owner.Namespace != j.Namespace || j.UID == "" {
+		return false
+	}
+
+	pod, err := b.client.CoreV1().Pods(owner.Namespace).Get(ctx, owner.PodName, metav1.GetOptions{})
+	var reason string
+	switch {
+	case apierrors.IsNotFound(err):
+		reason = "is missing"
+	case err != nil:
+		b.log.Error("reconcile: reading execution owner Pod", "taskID", j.Name, "namespace", owner.Namespace, "pod", owner.PodName, "error", err)
+		return false
+	case string(pod.UID) != owner.PodUid:
+		reason = "was replaced by a different pod UID"
+	case !podControlledByJob(pod, j):
+		return false
+	case pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed:
+		reason = fmt.Sprintf("exited in phase %s", pod.Status.Phase)
+	default:
+		return false
+	}
+
+	ownerDescription := fmt.Sprintf("execution owner Pod %s/%s (UID %s) %s", owner.Namespace, owner.PodName, owner.PodUid, reason)
+	b.log.Debug("reconcile: recorded execution owner Pod exited or was lost", "taskID", j.Name, "ownerPod", ownerDescription)
+	if b.writeSystemError(ctx, j.Name, map[string]string{"error": ownerDescription}, "Kubernetes worker pod that claimed task execution exited or was lost") {
+		b.cleanResourcesIfEnabled(ctx, j.Name, disableCleanup)
+	}
+	return true
+}
+
+func podControlledByJob(pod *corev1.Pod, job *v1.Job) bool {
+	if pod.Namespace != job.Namespace || job.UID == "" {
+		return false
+	}
+	for _, owner := range pod.OwnerReferences {
+		if owner.Kind == "Job" && owner.Name == job.Name && owner.Controller != nil && *owner.Controller && owner.UID == job.UID {
+			return true
+		}
+	}
+	return false
+}
+
 func (b *Backend) reconcileJob(ctx context.Context, j *v1.Job, disableCleanup bool) {
 	jobName := j.Name
 	if j.DeletionTimestamp != nil && slices.Contains(j.Finalizers, storageplan.Finalizer) {
 		if err := b.cleanResources(ctx, jobName); err != nil {
 			b.log.Error("reconcile: completing storage cleanup", "taskID", jobName, "error", err)
 		}
+		return
+	}
+	if b.reconcileRecordedOwner(ctx, j, disableCleanup) {
 		return
 	}
 	status := j.Status

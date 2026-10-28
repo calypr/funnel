@@ -9,7 +9,7 @@ import (
 
 // ExecutionClaimer atomically admits one worker to execute a task.
 type ExecutionClaimer interface {
-	ClaimExecution(context.Context, string) (bool, error)
+	ClaimExecution(context.Context, string, *ExecutionOwner) (bool, error)
 }
 
 // Service is a wrapper for providing a Writer as a gRPC service.
@@ -34,7 +34,7 @@ func (s *Service) ClaimExecution(ctx context.Context, req *ClaimExecutionRequest
 	if s.Claimer == nil {
 		return nil, status.Error(codes.FailedPrecondition, "execution claims are not supported by this database")
 	}
-	claimed, err := s.Claimer.ClaimExecution(ctx, req.GetTaskId())
+	claimed, err := s.Claimer.ClaimExecution(ctx, req.GetTaskId(), req.GetOwner())
 	if err != nil {
 		return nil, err
 	}

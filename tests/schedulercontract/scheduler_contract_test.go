@@ -90,6 +90,7 @@ func runContract(t *testing.T, open storeFactory) {
 	runReservationContracts(t, open)
 	runNodeCandidateContracts(t, open)
 	runExecutionClaimContracts(t, open)
+	runExecutionOwnerContracts(t, open)
 	t.Run("node pages use stable IDs and traverse the full fleet", func(t *testing.T) {
 		db := open(t)
 		testNodePagination(t, db)

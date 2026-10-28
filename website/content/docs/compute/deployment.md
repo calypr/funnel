@@ -198,8 +198,26 @@ distributed claim.
 
 Claims have no expiration and do not transfer automatically. If a worker crashes
 after acquiring its claim, or loses the successful response, another worker
-cannot rerun that task ID. The task and duplicate observers can remain active until a user cancels the
-task or the existing backend failure-recovery path records a failure. Inspect the original runtime
+cannot rerun that task ID. Kubernetes workers record their pod identity atomically
+with the claim. Funnel submits worker pods with `restartPolicy: Never`, including
+when a custom worker template specifies `OnFailure`. The Job's `backoffLimit` is
+preserved, so failures before a claim is acquired can still start a replacement pod.
+
+If the pod that owns a claim exits or is lost before the task reaches a terminal state,
+the Kubernetes reconciler records `SYSTEM_ERROR` and performs the configured
+resource cleanup. It checks the pod UID and controlling Job UID before treating
+pod termination as evidence that the claimed worker exited. A missing owner pod
+or a different UID at its recorded name means that the owner was lost. It does not replay
+the task or let a replacement worker take over its claim. A duplicate worker
+continues observing the task while the original worker is alive.
+
+Claims created before this upgrade, manually launched workers without the pod
+identity environment, and other compute backends do not have this pod ownership
+information. Those tasks and duplicate observers can remain active until a user
+cancels the task or existing backend failure recovery records a failure. An
+unavailable Kubernetes API defers owner reconciliation. Failing a task after its
+pod is deleted does not prove that a process on an unreachable node has stopped.
+Inspect the original runtime
 before submitting replacement work with a new task ID. Changing the old task's
 state or retrying its claim does not grant another execution.
 

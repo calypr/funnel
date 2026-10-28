@@ -38,7 +38,7 @@ func TestMongoClaimExecutionIsDurableAndOneShot(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			claimed, err := db.ClaimExecution(ctx, "concurrent")
+			claimed, err := db.ClaimExecution(ctx, "concurrent", nil)
 			results <- claimed
 			errors <- err
 		}()
@@ -62,7 +62,7 @@ func TestMongoClaimExecutionIsDurableAndOneShot(t *testing.T) {
 		t.Fatalf("concurrent claims succeeded %d times, want once", wins)
 	}
 	assertMongoClaimState(t, db, ctx, "concurrent", tes.State_INITIALIZING, true)
-	if claimed, err := db.ClaimExecution(ctx, "concurrent"); err != nil || claimed {
+	if claimed, err := db.ClaimExecution(ctx, "concurrent", nil); err != nil || claimed {
 		t.Fatalf("retry claim = %t, %v; want false, nil", claimed, err)
 	}
 	if err := db.WriteEvent(ctx, events.NewState("concurrent", tes.State_COMPLETE)); err != nil {
@@ -72,7 +72,7 @@ func TestMongoClaimExecutionIsDurableAndOneShot(t *testing.T) {
 	if err := db.insertTask(ctx, &tes.Task{Id: "concurrent"}); err == nil {
 		t.Fatal("task creation reused an existing execution ID")
 	}
-	if claimed, err := db.ClaimExecution(ctx, "concurrent"); err != nil || claimed {
+	if claimed, err := db.ClaimExecution(ctx, "concurrent", nil); err != nil || claimed {
 		t.Fatalf("claim after terminal state = %t, %v; want false, nil", claimed, err)
 	}
 
@@ -82,7 +82,7 @@ func TestMongoClaimExecutionIsDurableAndOneShot(t *testing.T) {
 	}).Err(); err != nil {
 		t.Fatal(err)
 	}
-	if claimed, err := db.ClaimExecution(ctx, "rollback"); err == nil || claimed {
+	if claimed, err := db.ClaimExecution(ctx, "rollback", nil); err == nil || claimed {
 		t.Fatalf("claim with rejecting validator = %t, %v; want false, error", claimed, err)
 	}
 	assertMongoClaimState(t, db, ctx, "rollback", tes.State_QUEUED, false)
@@ -92,7 +92,7 @@ func TestMongoClaimExecutionIsDurableAndOneShot(t *testing.T) {
 	}).Err(); err != nil {
 		t.Fatal(err)
 	}
-	if claimed, err := db.ClaimExecution(ctx, "rollback"); err != nil || !claimed {
+	if claimed, err := db.ClaimExecution(ctx, "rollback", nil); err != nil || !claimed {
 		t.Fatalf("claim after rollback repair = %t, %v; want true, nil", claimed, err)
 	}
 
@@ -105,7 +105,7 @@ func TestMongoClaimExecutionIsDurableAndOneShot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if claimed, err := db.ClaimExecution(unauthorized, "private"); err != tes.ErrNotPermitted || claimed {
+	if claimed, err := db.ClaimExecution(unauthorized, "private", nil); err != tes.ErrNotPermitted || claimed {
 		t.Fatalf("unauthorized claim = %t, %v; want false, not permitted", claimed, err)
 	}
 	assertMongoClaimState(t, db, ctx, "private", tes.State_QUEUED, false)
@@ -122,7 +122,7 @@ func TestMongoClaimExecutionIsDurableAndOneShot(t *testing.T) {
 	if err := db.migrateExecutionClaims(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if claimed, err := db.ClaimExecution(ctx, "legacy-terminal"); err != nil || claimed {
+	if claimed, err := db.ClaimExecution(ctx, "legacy-terminal", nil); err != nil || claimed {
 		t.Fatalf("legacy terminal claim = %t, %v; want false, nil", claimed, err)
 	}
 	assertMongoClaimState(t, db, ctx, "legacy-terminal", tes.State_SYSTEM_ERROR, true)
