@@ -103,11 +103,16 @@ fails output collection if the declared type does not match the produced path. I
 `type` is omitted, Funnel keeps its existing behavior and inspects the path to
 determine whether to upload a file or the files within a directory.
 
-An output path containing `*` must match at least one path. An unmatched pattern,
-including `abc/*` when `abc` is a file, fails output collection. If the executor
-succeeded, these collection errors put the task in `SYSTEM_ERROR`. An existing
-empty directory still produces a warning and uploads no files. These checks apply
-to backends that run the Funnel worker. GCP Batch uses a separate output path.
+An output pattern containing `*` that matches no paths produces a warning and
+uploads nothing for that pattern. Other outputs are still collected. This includes
+`abc/*` when `abc` is a file. An empty directory output also produces a warning and
+uploads no files. If a task requires a nonempty result, its executor must check
+for that result and exit with an error when it is missing.
+
+Missing exact output paths, malformed patterns, explicit type mismatches, and
+upload failures remain collection errors. If the executor succeeded, a collection
+error puts the task in `SYSTEM_ERROR`. These checks apply to backends that run the
+Funnel worker. GCP Batch uses a separate output path.
 
 ## Container paths and output mounts
 

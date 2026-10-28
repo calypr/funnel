@@ -279,8 +279,12 @@ func TestResolveWildcardsJoinsWithStorage(t *testing.T) {
 			{Url: "file://" + localDir + "/glob", Path: localOutDir + "/*.txt", PathPrefix: "/outputs/local"},
 		},
 	}
-	if err := resolveWildcards(mapper, store); err != nil {
+	unmatched, err := resolveWildcards(mapper, store)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if len(unmatched) != 0 {
+		t.Fatalf("unmatched patterns = %v, want none", unmatched)
 	}
 
 	// FTP and HTTP escape each name and keep the query; local storage keeps the
@@ -305,7 +309,7 @@ func TestResolveWildcardsJoinsWithStorage(t *testing.T) {
 	assert.True(t, protoSlicesEqual(expected, mapper.Outputs))
 }
 
-func TestResolveWildcardsFailsWhenPatternMatchesNothing(t *testing.T) {
+func TestResolveWildcardsReportsAndSkipsUnmatchedPatterns(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
 		patternPath string
@@ -345,46 +349,75 @@ func TestResolveWildcardsFailsWhenPatternMatchesNothing(t *testing.T) {
 			mapper := &FileMapper{
 				WorkDir: workDir,
 				Outputs: []*tes.Output{
-					{Url: "s3://bucket/matched", Path: filepath.Join(workDir, "matched", "*.txt")},
+					{Url: "s3://bucket/matched", Path: filepath.Join(workDir, "matched", "*.txt"), PathPrefix: "/matched"},
 					{Url: "s3://bucket/unmatched", Path: filepath.Join(workDir, tc.patternPath)},
 				},
 			}
-			originalOutputs := append([]*tes.Output(nil), mapper.Outputs...)
 
-			err := resolveWildcards(mapper, &capturingUploadStorage{uploaded: make(map[string]string)})
-			if err == nil {
-				t.Fatal("expected unmatched output pattern to fail")
+			unmatched, err := resolveWildcards(mapper, &capturingUploadStorage{uploaded: make(map[string]string)})
+			if err != nil {
+				t.Fatalf("unmatched pattern failed resolution: %v", err)
 			}
 			containerPattern := mapper.ContainerPath(filepath.Join(workDir, tc.patternPath))
-			if !strings.Contains(err.Error(), containerPattern) {
-				t.Errorf("error %q does not include container pattern %q", err, containerPattern)
+			if len(unmatched) != 1 || unmatched[0] != containerPattern {
+				t.Fatalf("unmatched patterns = %v, want [%q]", unmatched, containerPattern)
 			}
-			if strings.Contains(err.Error(), workDir) {
-				t.Errorf("error %q exposes host task directory %q", err, workDir)
-			}
-			if len(mapper.Outputs) != len(originalOutputs) {
-				t.Fatalf("outputs changed after resolution error: got %d outputs, want %d", len(mapper.Outputs), len(originalOutputs))
-			}
-			for i := range originalOutputs {
-				if mapper.Outputs[i] != originalOutputs[i] {
-					t.Fatalf("output %d was replaced after resolution error", i)
-				}
+			wantOutputs := []*tes.Output{{Url: "s3://bucket/matched/output.txt", Path: filepath.Join(workDir, "matched", "output.txt"), PathPrefix: "/matched"}}
+			if !protoSlicesEqual(wantOutputs, mapper.Outputs) {
+				t.Fatalf("resolved outputs = %v, want %v", mapper.Outputs, wantOutputs)
 			}
 		})
 	}
 }
 
-func TestResolveWildcardsReportsJoinError(t *testing.T) {
+func TestResolveWildcardsMalformedPatternAfterUnmatchedLeavesOutputsUnchanged(t *testing.T) {
+	workDir := t.TempDir()
+	mapper := &FileMapper{
+		WorkDir: workDir,
+		Outputs: []*tes.Output{
+			{Url: "s3://bucket/missing", Path: filepath.Join(workDir, "missing-*.txt")},
+			{Url: "s3://bucket/malformed", Path: filepath.Join(workDir, "bad-[*.txt")},
+		},
+	}
+	originalOutputs := append([]*tes.Output(nil), mapper.Outputs...)
+
+	unmatched, err := resolveWildcards(mapper, &capturingUploadStorage{uploaded: make(map[string]string)})
+	if err == nil {
+		t.Fatal("expected malformed glob to fail")
+	}
+	if len(unmatched) != 0 {
+		t.Fatalf("returned warnings on hard error: %v", unmatched)
+	}
+	for i := range originalOutputs {
+		if mapper.Outputs[i] != originalOutputs[i] {
+			t.Fatalf("output %d was replaced after resolution error", i)
+		}
+	}
+}
+
+func TestResolveWildcardsReportsJoinErrorAfterUnmatchedWithoutChangingOutputs(t *testing.T) {
 	workDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(workDir, "out.txt"), nil, 0644); err != nil {
 		t.Fatal(err)
 	}
 	mapper := &FileMapper{
 		WorkDir: workDir,
-		// No storage backend handles this URL, so Join fails.
-		Outputs: []*tes.Output{{Url: "gs://bucket/glob", Path: workDir + "/*.txt"}},
+		Outputs: []*tes.Output{
+			{Url: "gs://bucket/missing", Path: filepath.Join(workDir, "missing-*.txt")},
+			{Url: "gs://bucket/glob", Path: filepath.Join(workDir, "*.txt")},
+		},
 	}
-	if err := resolveWildcards(mapper, &storage.Mux{}); err == nil {
+	originalOutputs := append([]*tes.Output(nil), mapper.Outputs...)
+	unmatched, err := resolveWildcards(mapper, &storage.Mux{})
+	if err == nil {
 		t.Error("expected an error for an output URL that no storage backend supports")
+	}
+	if len(unmatched) != 0 {
+		t.Fatalf("returned warnings on hard error: %v", unmatched)
+	}
+	for i := range originalOutputs {
+		if mapper.Outputs[i] != originalOutputs[i] {
+			t.Fatalf("output %d was replaced after resolution error", i)
+		}
 	}
 }
