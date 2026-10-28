@@ -183,10 +183,12 @@ these backends requires an external event log.
 
 Workers using BoltDB, PostgreSQL, or MongoDB acquire a durable execution claim
 before preparing files or starting any executor. The database checks the task
-state and records the claim with `RUNNING` in one transaction. Only the worker
-that receives a successful acquisition proceeds. A second worker observes the
-task until it reaches a terminal state, without preparing files, running an
-executor, or writing task events. This prevents a duplicate batch worker from
+state and records the claim with `INITIALIZING` in one transaction. After task
+preparation, the worker sets `RUNNING` just before it dispatches the first executor.
+This transition reports dispatch, not confirmation that a container has started.
+Only the worker that receives a successful acquisition proceeds. A second worker
+observes the task until it reaches a terminal state, without preparing files,
+running an executor, or writing task events. This prevents a duplicate batch worker from
 signaling successful completion while the original execution is still active.
 An observer exiting successfully means observation finished; the TES task state
 still reports whether execution completed, failed, or was canceled.

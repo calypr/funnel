@@ -3,9 +3,11 @@ package worker
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -107,6 +109,110 @@ type startupEventWriter struct {
 	events []*events.Event
 }
 
+type orderedEventWriter struct {
+	startupEventWriter
+	mu            sync.Mutex
+	orderPath     string
+	rejectRunning error
+}
+
+func (w *orderedEventWriter) WriteEvent(ctx context.Context, event *events.Event) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if event.Type == events.Type_TASK_STATE {
+		if event.GetState() == tes.State_RUNNING && w.rejectRunning != nil {
+			return w.rejectRunning
+		}
+		if w.orderPath != "" {
+			f, err := os.OpenFile(w.orderPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+			if err != nil {
+				return err
+			}
+			_, writeErr := fmt.Fprintln(f, "state:"+event.GetState().String())
+			closeErr := f.Close()
+			if writeErr != nil {
+				return writeErr
+			}
+			if closeErr != nil {
+				return closeErr
+			}
+		}
+	}
+	return w.startupEventWriter.WriteEvent(ctx, event)
+}
+
+func (w *orderedEventWriter) snapshotEvents() []*events.Event {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return append([]*events.Event(nil), w.events...)
+}
+
+type workerTestStorage struct {
+	storage.Storage
+	downloadStarted chan struct{}
+	releaseDownload <-chan struct{}
+}
+
+func (s *workerTestStorage) Get(ctx context.Context, url, path string) (*storage.Object, error) {
+	if s.downloadStarted != nil {
+		close(s.downloadStarted)
+	}
+	if s.releaseDownload != nil {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-s.releaseDownload:
+		}
+	}
+	if err := os.WriteFile(path, []byte("input"), 0600); err != nil {
+		return nil, err
+	}
+	return &storage.Object{URL: url, Name: filepath.Base(path)}, nil
+}
+
+func (s *workerTestStorage) UnsupportedOperations(string) storage.UnsupportedOperations {
+	return storage.AllSupported()
+}
+
+func writeWorkerTestDriver(t *testing.T) string {
+	t.Helper()
+	driver := filepath.Join(t.TempDir(), "executor-driver")
+	script := "#!/bin/sh\n" +
+		"case \"$1\" in\n" +
+		"version) printf '{\"Server\":\"1\",\"Client\":\"1\"}' ;;\n" +
+		"run) printf 'launch\\n' >> \"$TASK_ORDER_FILE\" ;;\n" +
+		"esac\n"
+	if err := os.WriteFile(driver, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	return driver
+}
+
+func workerTaskStates(evs []*events.Event) []tes.State {
+	var states []tes.State
+	for _, event := range evs {
+		if event.Type == events.Type_TASK_STATE {
+			states = append(states, event.GetState())
+		}
+	}
+	return states
+}
+
+func workerOrder(t *testing.T, path string) []string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lines []string
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		if line != "" {
+			lines = append(lines, line)
+		}
+	}
+	return lines
+}
+
 type executionClaimFunc func(context.Context, string) (bool, error)
 
 func (f executionClaimFunc) ClaimExecution(ctx context.Context, taskID string) (bool, error) {
@@ -124,6 +230,222 @@ func (w *startupEventWriter) WriteEvent(_ context.Context, event *events.Event) 
 	return nil
 }
 func (w *startupEventWriter) Close() {}
+
+func (w *orderedEventWriter) Close() {}
+
+func TestWorkerRemainsInitializingDuringInputDownload(t *testing.T) {
+	dir := t.TempDir()
+	orderPath := filepath.Join(dir, "order")
+	t.Setenv("TASK_ORDER_FILE", orderPath)
+	conf := config.DefaultConfig().Worker
+	conf.WorkDir = dir
+	conf.PollingRate = durationpb.New(time.Hour)
+	conf.Container.DriverCommand = writeWorkerTestDriver(t)
+	conf.Container.PullCommand = "pull {{.Image}}"
+	conf.Container.RunCommand = "run {{.Image}}"
+	task := &tes.Task{
+		Id:    "preparing-task",
+		State: tes.State_INITIALIZING,
+		Inputs: []*tes.Input{{
+			Url:  "test://input.txt",
+			Path: "/inputs/sub/input.txt",
+			Type: tes.FileType_FILE,
+		}},
+		Executors: []*tes.Executor{{Image: "test", Command: []string{"true"}}},
+	}
+	downloadStarted := make(chan struct{})
+	releaseDownload := make(chan struct{})
+	writer := &orderedEventWriter{orderPath: orderPath}
+	worker := &DefaultWorker{
+		Conf:             conf,
+		Store:            &workerTestStorage{downloadStarted: downloadStarted, releaseDownload: releaseDownload},
+		TaskReader:       &startupTaskReader{task: task},
+		ExecutionClaimer: grantExecutionClaim{},
+		EventWriter:      writer,
+	}
+	done := make(chan error, 1)
+	go func() { done <- worker.Run(context.Background()) }()
+	select {
+	case <-downloadStarted:
+	case err := <-done:
+		t.Fatalf("Run() finished before input download started: %v", err)
+	}
+	state, err := worker.TaskReader.State(context.Background())
+	if err != nil || state != tes.State_INITIALIZING {
+		t.Fatalf("task state during input download = %s, error = %v, want INITIALIZING", state, err)
+	}
+	if got := workerTaskStates(writer.snapshotEvents()); len(got) != 0 {
+		t.Fatalf("state events during input download = %v, want none", got)
+	}
+	close(releaseDownload)
+	if err := <-done; err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if got := workerTaskStates(writer.snapshotEvents()); len(got) != 2 || got[0] != tes.State_RUNNING || got[1] != tes.State_COMPLETE {
+		t.Fatalf("task states = %v, want [RUNNING COMPLETE]", got)
+	}
+}
+
+func TestWorkerMarksRunningOnceBeforeFirstExecutorDispatch(t *testing.T) {
+	dir := t.TempDir()
+	orderPath := filepath.Join(dir, "order")
+	t.Setenv("TASK_ORDER_FILE", orderPath)
+	conf := config.DefaultConfig().Worker
+	conf.WorkDir = dir
+	conf.PollingRate = durationpb.New(time.Hour)
+	conf.Container.DriverCommand = writeWorkerTestDriver(t)
+	conf.Container.PullCommand = "pull {{.Image}}"
+	conf.Container.RunCommand = "run {{.Image}}"
+	task := &tes.Task{
+		Id:    "two-executor-task",
+		State: tes.State_UNKNOWN,
+		Executors: []*tes.Executor{
+			{Image: "first", Command: []string{"true"}},
+			{Image: "second", Command: []string{"true"}},
+		},
+	}
+	writer := &orderedEventWriter{orderPath: orderPath}
+	worker := &DefaultWorker{
+		Conf:        conf,
+		TaskReader:  &FileTaskReader{task: task},
+		EventWriter: writer,
+	}
+	if err := worker.Run(context.Background()); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	wantOrder := []string{"state:INITIALIZING", "state:RUNNING", "launch", "launch", "state:COMPLETE"}
+	if got := workerOrder(t, orderPath); len(got) != len(wantOrder) {
+		t.Fatalf("event and executor order = %v, want %v", got, wantOrder)
+	} else {
+		for i := range wantOrder {
+			if got[i] != wantOrder[i] {
+				t.Fatalf("event and executor order = %v, want %v", got, wantOrder)
+			}
+		}
+	}
+	if got := workerTaskStates(writer.snapshotEvents()); len(got) != 3 || got[0] != tes.State_INITIALIZING || got[1] != tes.State_RUNNING || got[2] != tes.State_COMPLETE {
+		t.Fatalf("task states = %v, want [INITIALIZING RUNNING COMPLETE]", got)
+	}
+}
+
+func TestWorkerDoesNotMarkRunningWhenExecutorLogPreparationFails(t *testing.T) {
+	dir := t.TempDir()
+	orderPath := filepath.Join(dir, "order")
+	t.Setenv("TASK_ORDER_FILE", orderPath)
+	conf := config.DefaultConfig().Worker
+	conf.WorkDir = dir
+	conf.PollingRate = durationpb.New(time.Hour)
+	conf.Container.DriverCommand = writeWorkerTestDriver(t)
+	conf.Container.PullCommand = "pull {{.Image}}"
+	conf.Container.RunCommand = "run {{.Image}}"
+	task := &tes.Task{
+		Id:    "failed-preparation-task",
+		State: tes.State_UNKNOWN,
+		Inputs: []*tes.Input{{
+			Url:  "test://input.txt",
+			Path: "/inputs/sub/input.txt",
+			Type: tes.FileType_FILE,
+		}},
+		Executors: []*tes.Executor{{Image: "test", Command: []string{"true"}, Stdout: "/inputs/sub"}},
+	}
+	writer := &orderedEventWriter{orderPath: orderPath}
+	worker := &DefaultWorker{
+		Conf:        conf,
+		Store:       &workerTestStorage{},
+		TaskReader:  &FileTaskReader{task: task},
+		EventWriter: writer,
+	}
+	if err := worker.Run(context.Background()); err == nil {
+		t.Fatal("Run() error = nil, want executor log preparation failure")
+	}
+	if states := workerTaskStates(writer.snapshotEvents()); len(states) != 2 || states[0] != tes.State_INITIALIZING || states[1] != tes.State_SYSTEM_ERROR {
+		t.Fatalf("task states = %v, want [INITIALIZING SYSTEM_ERROR]", states)
+	}
+	if order, err := os.ReadFile(orderPath); err != nil && !os.IsNotExist(err) {
+		t.Fatalf("reading executor order: %v", err)
+	} else if strings.Contains(string(order), "launch") {
+		t.Fatalf("executor launched after preparation failed: %q", order)
+	}
+}
+
+func TestClaimedWorkerMarksRunningAtFirstExecutorDispatch(t *testing.T) {
+	dir := t.TempDir()
+	orderPath := filepath.Join(dir, "order")
+	t.Setenv("TASK_ORDER_FILE", orderPath)
+	conf := config.DefaultConfig().Worker
+	conf.WorkDir = dir
+	conf.PollingRate = durationpb.New(time.Hour)
+	conf.Container.DriverCommand = writeWorkerTestDriver(t)
+	conf.Container.PullCommand = "pull {{.Image}}"
+	conf.Container.RunCommand = "run {{.Image}}"
+	task := &tes.Task{Id: "claimed-dispatch-task", State: tes.State_INITIALIZING, Executors: []*tes.Executor{{Image: "test"}}}
+	writer := &orderedEventWriter{orderPath: orderPath}
+	worker := &DefaultWorker{
+		Conf:             conf,
+		TaskReader:       &startupTaskReader{task: task},
+		ExecutionClaimer: grantExecutionClaim{},
+		EventWriter:      writer,
+	}
+	if err := worker.Run(context.Background()); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	wantOrder := []string{"state:RUNNING", "launch", "state:COMPLETE"}
+	if got := workerOrder(t, orderPath); len(got) != len(wantOrder) {
+		t.Fatalf("event and executor order = %v, want %v", got, wantOrder)
+	} else {
+		for i := range wantOrder {
+			if got[i] != wantOrder[i] {
+				t.Fatalf("event and executor order = %v, want %v", got, wantOrder)
+			}
+		}
+	}
+}
+
+func TestWorkerDoesNotMarkRunningWithoutExecutors(t *testing.T) {
+	dir := t.TempDir()
+	conf := config.DefaultConfig().Worker
+	conf.WorkDir = dir
+	conf.PollingRate = durationpb.New(time.Hour)
+	writer := &startupEventWriter{}
+	worker := &DefaultWorker{
+		Conf:        conf,
+		TaskReader:  &FileTaskReader{task: &tes.Task{Id: "empty-task", State: tes.State_UNKNOWN}},
+		EventWriter: writer,
+	}
+	if err := worker.Run(context.Background()); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if states := workerTaskStates(writer.events); len(states) != 2 || states[0] != tes.State_INITIALIZING || states[1] != tes.State_COMPLETE {
+		t.Fatalf("task states = %v, want [INITIALIZING COMPLETE]", states)
+	}
+}
+
+func TestWorkerDoesNotLaunchWhenRunningStateWriteFails(t *testing.T) {
+	dir := t.TempDir()
+	orderPath := filepath.Join(dir, "order")
+	t.Setenv("TASK_ORDER_FILE", orderPath)
+	conf := config.DefaultConfig().Worker
+	conf.WorkDir = dir
+	conf.PollingRate = durationpb.New(time.Hour)
+	conf.Container.DriverCommand = writeWorkerTestDriver(t)
+	conf.Container.PullCommand = "pull {{.Image}}"
+	conf.Container.RunCommand = "run {{.Image}}"
+	stateErr := errors.New("running state write failed")
+	writer := &orderedEventWriter{orderPath: orderPath, rejectRunning: stateErr}
+	worker := &DefaultWorker{
+		Conf:        conf,
+		TaskReader:  &FileTaskReader{task: &tes.Task{Id: "state-write-task", State: tes.State_UNKNOWN, Executors: []*tes.Executor{{Image: "test"}}}},
+		EventWriter: writer,
+	}
+	if err := worker.Run(context.Background()); !errors.Is(err, stateErr) {
+		t.Fatalf("Run() error = %v, want %v", err, stateErr)
+	}
+	if order, err := os.ReadFile(orderPath); err != nil && !os.IsNotExist(err) {
+		t.Fatalf("reading executor order: %v", err)
+	} else if strings.Contains(string(order), "launch") {
+		t.Fatalf("executor launched after RUNNING state write failed: %q", order)
+	}
+}
 
 func TestWorkerRunsOnlyTasksInStartupStates(t *testing.T) {
 	tests := []struct {

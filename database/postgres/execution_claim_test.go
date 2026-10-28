@@ -63,7 +63,7 @@ func TestPostgresClaimExecutionIsDurableAndOneShot(t *testing.T) {
 	if wins != 1 {
 		t.Fatalf("concurrent claims succeeded %d times, want once", wins)
 	}
-	assertPostgresClaimState(t, db, ctx, "concurrent", tes.State_RUNNING, true)
+	assertPostgresClaimState(t, db, ctx, "concurrent", tes.State_INITIALIZING, true)
 	if claimed, err := db.ClaimExecution(ctx, "concurrent"); err != nil || claimed {
 		t.Fatalf("retry claim = %t, %v; want false, nil", claimed, err)
 	}
@@ -78,14 +78,14 @@ func TestPostgresClaimExecutionIsDurableAndOneShot(t *testing.T) {
 		t.Fatalf("claim after terminal state = %t, %v; want false, nil", claimed, err)
 	}
 
-	if _, err := db.client.Exec(ctx, `ALTER TABLE tasks ADD CONSTRAINT test_block_running CHECK (state <> 'RUNNING' OR id <> 'rollback')`); err != nil {
+	if _, err := db.client.Exec(ctx, `ALTER TABLE tasks ADD CONSTRAINT test_block_initializing CHECK (state <> 'INITIALIZING' OR id <> 'rollback')`); err != nil {
 		t.Fatal(err)
 	}
 	if claimed, err := db.ClaimExecution(ctx, "rollback"); err == nil || claimed {
 		t.Fatalf("claim with rejecting constraint = %t, %v; want false, error", claimed, err)
 	}
 	assertPostgresClaimState(t, db, ctx, "rollback", tes.State_QUEUED, false)
-	if _, err := db.client.Exec(ctx, `ALTER TABLE tasks DROP CONSTRAINT test_block_running`); err != nil {
+	if _, err := db.client.Exec(ctx, `ALTER TABLE tasks DROP CONSTRAINT test_block_initializing`); err != nil {
 		t.Fatal(err)
 	}
 	if claimed, err := db.ClaimExecution(ctx, "rollback"); err != nil || !claimed {

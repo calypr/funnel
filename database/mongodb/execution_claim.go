@@ -68,7 +68,7 @@ func (db *MongoDB) ClaimExecution(ctx context.Context, taskID string) (bool, err
 			"execution_claimed": bson.M{"$ne": true},
 		}
 		update := bson.M{
-			"$set": bson.M{"state": tes.State_RUNNING, "execution_claimed": true},
+			"$set": bson.M{"state": tes.State_INITIALIZING, "execution_claimed": true},
 			"$inc": bson.M{"version": 1},
 		}
 		updated, err := db.tasks().UpdateOne(ctx, filter, update)

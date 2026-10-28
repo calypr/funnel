@@ -52,11 +52,29 @@ func runExecutionClaimContracts(t *testing.T, open storeFactory) {
 		if wins != 1 {
 			t.Fatalf("execution winners = %d; want 1", wins)
 		}
-		if state := getTask(t, db, testContext(), task.Id).State; state != tes.Running {
+		if state := getTask(t, db, testContext(), task.Id).State; state != tes.State_INITIALIZING {
 			t.Fatalf("claimed state = %s", state)
 		}
 		if acquired, err := claimer.ClaimExecution(testContext(), task.Id); err != nil || acquired {
 			t.Fatalf("retry after lost response = %v, %v", acquired, err)
+		}
+	})
+	t.Run("initializing claim remains initializing and one shot", func(t *testing.T) {
+		db := open(t)
+		ctx := testContext()
+		task := createTask(t, db, ctx, "already-initializing")
+		if err := db.WriteEvent(ctx, events.NewState(task.Id, tes.State_INITIALIZING)); err != nil {
+			t.Fatal(err)
+		}
+		claimer := db.(events.ExecutionClaimer)
+		if acquired, err := claimer.ClaimExecution(ctx, task.Id); err != nil || !acquired {
+			t.Fatalf("initializing claim = %v, %v", acquired, err)
+		}
+		if got := getTask(t, db, ctx, task.Id).State; got != tes.State_INITIALIZING {
+			t.Fatalf("claimed initializing state = %s", got)
+		}
+		if acquired, err := claimer.ClaimExecution(ctx, task.Id); err != nil || acquired {
+			t.Fatalf("retry initializing claim = %v, %v", acquired, err)
 		}
 	})
 	t.Run("execution claim preserves resource reservation and liveness", func(t *testing.T) {
@@ -73,8 +91,17 @@ func runExecutionClaimContracts(t *testing.T, open storeFactory) {
 		if len(after.TaskIds) != 1 || after.TaskIds[0] != task.Id || after.Available.Cpus != before.Available.Cpus || after.LastPing != before.LastPing {
 			t.Fatalf("claim changed reservation/liveness: %v", after)
 		}
-		if err := db.WriteEvent(ctx, events.NewState(task.Id, tes.Initializing)); err == nil {
-			t.Fatal("late scheduler initialization overwrote execution")
+		if err := db.WriteEvent(ctx, events.NewState(task.Id, tes.State_INITIALIZING)); err != nil {
+			t.Fatalf("late scheduler initialization was not idempotent: %v", err)
+		}
+		if got := getTask(t, db, ctx, task.Id).State; got != tes.State_INITIALIZING {
+			t.Fatalf("late scheduler initialization changed claimed state: %s", got)
+		}
+		if err := db.WriteEvent(ctx, events.NewState(task.Id, tes.State_RUNNING)); err != nil {
+			t.Fatalf("mark executor running: %v", err)
+		}
+		if err := db.WriteEvent(ctx, events.NewState(task.Id, tes.State_INITIALIZING)); err == nil {
+			t.Fatal("late scheduler initialization regressed a running task")
 		}
 		completeContractTask(t, db, task.Id)
 		if node := readContractNode(t, db, "executor-node"); len(node.TaskIds) != 0 || node.Available.Cpus != 2 {

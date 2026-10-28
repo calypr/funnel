@@ -19,7 +19,7 @@ The capacity scenario starts two independent Funnel servers and two node process
 
 The scheduler recovery scenario runs the production scheduler in a helper process with a real database client. A test wrapper calls the backend's real `TryAssign`, signals after the transaction commits, and blocks before the scheduler writes `INITIALIZING`. The parent kills that process, checks the stored claim and reservation, then starts a production server scheduler and node. The recovered task launches once and completes.
 
-The worker recovery scenario runs `cmd/worker.NewWorker` in a helper process. A test wrapper delegates to the real `ClaimExecution`, signals after admission commits, and blocks before executor startup. The parent kills that process, confirms that the task remains `RUNNING` and its node reservation remains active, then starts a second production worker. The second worker observes `RUNNING`, does not launch an executor, and exits after the test cancels the task.
+The worker recovery scenario runs `cmd/worker.NewWorker` in a helper process. A test wrapper delegates to the real `ClaimExecution`, signals after admission commits, and blocks before executor startup. The parent kills that process, confirms that the task remains `INITIALIZING` and its node reservation remains active, then starts a second production worker. The second worker observes `INITIALIZING`, does not launch an executor, and exits after the test cancels the task.
 
 The test binary supplies the helper process entry point. The helpers run production server, scheduler, node, and worker code with independent database clients. The suites exercise normal database initialization needed to start those processes, but they do not test schema upgrades or migration behavior.
 
