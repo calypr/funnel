@@ -85,7 +85,7 @@ test('summarizes resources for active nodes', async ({ browser }) => {
     { id: 'dead', state: 'DEAD', resources: { cpus: 100, ramGb: 100, diskGb: 100 }, available: { cpus: 100, ramGb: 100, diskGb: 100 } },
     { id: 'draining', state: 'DRAIN', resources: { cpus: 100 }, available: { cpus: 100 } },
   ];
-  await page.route('**/v1/nodes', route => route.fulfill({ json: { nodes } }));
+  await page.route('**/v1/nodes**', route => route.fulfill({ json: { nodes } }));
   await page.goto(`${address}/nodes`);
   const summary = page.getByRole('table', { name: 'Resources on active nodes' });
   await expect(summary.getByRole('row', { name: 'CPU 3 cores 6 cores' })).toBeVisible();

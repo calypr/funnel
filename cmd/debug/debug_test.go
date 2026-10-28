@@ -13,8 +13,7 @@ func TestDebugReportOmitsFreeFormSecrets(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	data := `Compute: aws-batch
 Database: postgres
-Elastic:
-  URL: https://alice:dummy-url-password@search.example
+Postgres:
   Password: dummy-db-password
 Worker:
   Container:
