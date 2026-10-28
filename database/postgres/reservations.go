@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"slices"
 
 	"github.com/calypr/funnel/compute/scheduler"
 	"github.com/calypr/funnel/server"
@@ -41,7 +40,6 @@ func (db *Postgres) migrateResourceReservations(ctx context.Context) error {
 	}
 	var allocations []allocation
 	totals := make(map[string]scheduler.ResourceUsage)
-	ids := make(map[string][]string)
 	for rows.Next() {
 		var a allocation
 		var data []byte
@@ -64,7 +62,6 @@ func (db *Postgres) migrateResourceReservations(ctx context.Context) error {
 			rows.Close()
 			return err
 		}
-		ids[a.owner] = append(ids[a.owner], a.id)
 		allocations = append(allocations, a)
 	}
 	err = rows.Err()
@@ -98,9 +95,7 @@ func (db *Postgres) migrateResourceReservations(ctx context.Context) error {
 			rows.Close()
 			return err
 		}
-		node.Version = version + 1
-		node.TaskIds = ids[node.Id]
-		node.Available = totals[node.Id].Available(node.Resources)
+		node.Version = version
 		nodes = append(nodes, &node)
 	}
 	err = rows.Err()
@@ -120,21 +115,21 @@ func (db *Postgres) migrateResourceReservations(ctx context.Context) error {
 }
 
 func saveReservedNode(ctx context.Context, tx pgx.Tx, node *scheduler.Node, used scheduler.ResourceUsage) error {
-	data, err := json.Marshal(node)
-	if err != nil {
-		return err
-	}
 	usage, err := json.Marshal(used)
 	if err != nil {
 		return err
 	}
-	tag, err := tx.Exec(ctx, `UPDATE nodes SET data=$2::jsonb,version=$3,reserved=$4::jsonb WHERE id=$1`, node.Id, data, node.Version, usage)
+	version := node.Version + 1
+	tag, err := tx.Exec(ctx, `UPDATE nodes SET version=$2,reserved=$3::jsonb WHERE id=$1 AND version=$4`, node.Id, version, usage, node.Version)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() != 1 {
-		return fmt.Errorf("reservation node %q disappeared", node.Id)
+		return fmt.Errorf("reservation node %q changed or disappeared", node.Id)
 	}
+	node.Version = version
+	node.Available = used.Available(node.Resources)
+	node.TaskIds = nil
 	return nil
 }
 
@@ -148,19 +143,22 @@ func releaseTaskReservation(ctx context.Context, tx pgx.Tx, taskID, owner string
 	if err := json.Unmarshal(reservation, &held); err != nil {
 		return err
 	}
-	var data, usage []byte
+	var resourcesJSON, usage []byte
 	var version int64
-	err := tx.QueryRow(ctx, `SELECT data,version,reserved FROM nodes WHERE id=$1 FOR UPDATE`, owner).Scan(&data, &version, &usage)
+	err := tx.QueryRow(ctx, `SELECT data->'resources',version,reserved FROM nodes WHERE id=$1 FOR UPDATE`, owner).Scan(&resourcesJSON, &version, &usage)
 	if err == pgx.ErrNoRows {
 		return nil
 	} // Missing-node recovery still retires the task's allocation.
 	if err != nil {
 		return err
 	}
-	var node scheduler.Node
+	node := scheduler.Node{Id: owner, Version: version}
 	var used scheduler.ResourceUsage
-	if err := json.Unmarshal(data, &node); err != nil {
-		return err
+	if len(resourcesJSON) != 0 && string(resourcesJSON) != "null" {
+		node.Resources = &scheduler.Resources{}
+		if err := json.Unmarshal(resourcesJSON, node.Resources); err != nil {
+			return err
+		}
 	}
 	if err := json.Unmarshal(usage, &used); err != nil {
 		return err
@@ -169,9 +167,6 @@ func releaseTaskReservation(ctx context.Context, tx pgx.Tx, taskID, owner string
 	if err != nil {
 		return err
 	}
-	node.TaskIds = slices.DeleteFunc(node.TaskIds, func(id string) bool { return id == taskID })
-	node.Available = used.Available(node.Resources)
-	node.Version = version + 1
 	return saveReservedNode(ctx, tx, &node, used)
 }
 

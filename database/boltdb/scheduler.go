@@ -9,7 +9,6 @@ import (
 	bolt "go.etcd.io/bbolt"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/proto"
 )
 
 // queueTask adds a task to the scheduler queue.
@@ -41,7 +40,7 @@ func (taskBolt *BoltDB) ReadQueue(n int, after *tes.Task) []*tes.Task {
 		}
 		for ; k != nil && len(tasks) < n; k, _ = c.Next() {
 			id := string(k)
-			task, err := getTaskView(tx, id, tes.View_FULL, nil)
+			task, err := readQueuedTaskProjection(tx, id)
 			if err != nil {
 				return err
 			}
@@ -79,11 +78,10 @@ func (taskBolt *BoltDB) GetNode(ctx context.Context, req *scheduler.GetNodeReque
 		}
 
 		node = &scheduler.Node{}
-		if err := proto.Unmarshal(data, node); err != nil {
+		if err := unmarshalNodeWithoutTaskIDs(data, node); err != nil {
 			return err
 		}
-		node.LastPing = loadHeartbeat(tx, node.Id)
-		return nil
+		return hydrateNodeProjection(tx, node, true)
 	})
 
 	if err == errNotFound {
@@ -107,10 +105,15 @@ func (taskBolt *BoltDB) DeleteNode(ctx context.Context, node *scheduler.Node) (*
 				return scheduler.ErrNodeChanged
 			}
 			var current scheduler.Node
-			if err := proto.Unmarshal(data, &current); err != nil {
+			if err := unmarshalNodeWithoutTaskIDs(data, &current); err != nil {
 				return err
 			}
-			finishedCleanup := node.State == scheduler.NodeState_GONE && current.State == scheduler.NodeState_GONE && len(current.TaskIds) == 0
+			if version, err := readNodeVersion(tx, current.Id); err != nil {
+				return err
+			} else if version != 0 {
+				current.Version = version
+			}
+			finishedCleanup := node.State == scheduler.NodeState_GONE && current.State == scheduler.NodeState_GONE && !hasActiveNodeClaims(tx, node.Id)
 			if (current.Version != node.Version && !finishedCleanup) || loadHeartbeat(tx, node.Id) != node.LastPing {
 				return scheduler.ErrNodeChanged
 			}
@@ -124,6 +127,15 @@ func (taskBolt *BoltDB) DeleteNode(ctx context.Context, node *scheduler.Node) (*
 
 // ListNodes is an API endpoint that returns a list of nodes.
 func (taskBolt *BoltDB) ListNodes(ctx context.Context, req *scheduler.ListNodesRequest) (*scheduler.ListNodesResponse, error) {
+	return taskBolt.listNodes(ctx, req, true)
+}
+
+// ListNodeCandidates returns scheduling data without expanding each node's active task IDs.
+func (taskBolt *BoltDB) ListNodeCandidates(ctx context.Context, req *scheduler.ListNodesRequest) (*scheduler.ListNodesResponse, error) {
+	return taskBolt.listNodes(ctx, req, false)
+}
+
+func (taskBolt *BoltDB) listNodes(ctx context.Context, req *scheduler.ListNodesRequest, includeTaskIDs bool) (*scheduler.ListNodesResponse, error) {
 	page, err := scheduler.ParseNodePage(req)
 	if err != nil {
 		return nil, err
@@ -151,11 +163,13 @@ func (taskBolt *BoltDB) ListNodes(ctx context.Context, req *scheduler.ListNodesR
 				return err
 			}
 			node := &scheduler.Node{}
-			err := proto.Unmarshal(v, node)
+			err := unmarshalNodeWithoutTaskIDs(v, node)
 			if err != nil {
 				return err
 			}
-			node.LastPing = loadHeartbeat(tx, node.Id)
+			if err := hydrateNodeProjection(tx, node, includeTaskIDs); err != nil {
+				return err
+			}
 			nodes = append(nodes, node)
 		}
 		return nil

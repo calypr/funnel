@@ -34,7 +34,7 @@ func migrateNodeHeartbeats(tx *bolt.Tx) error {
 	}
 	return tx.Bucket(Nodes).ForEach(func(id, data []byte) error {
 		var node scheduler.Node
-		if err := proto.Unmarshal(data, &node); err != nil {
+		if err := unmarshalNodeWithoutTaskIDs(data, &node); err != nil {
 			return err
 		}
 		return saveHeartbeat(tx, string(id), node.LastPing)
@@ -51,8 +51,13 @@ func (db *BoltDB) SetNodeState(ctx context.Context, observed *scheduler.Node) (*
 		if data == nil {
 			return scheduler.ErrNodeChanged
 		}
-		if err := proto.Unmarshal(data, &node); err != nil {
+		if err := unmarshalNodeWithoutTaskIDs(data, &node); err != nil {
 			return err
+		}
+		if version, err := readNodeVersion(tx, node.Id); err != nil {
+			return err
+		} else if version != 0 {
+			node.Version = version
 		}
 		if node.Version != observed.Version || loadHeartbeat(tx, node.Id) != observed.LastPing {
 			return scheduler.ErrNodeChanged
@@ -67,8 +72,17 @@ func (db *BoltDB) SetNodeState(ctx context.Context, observed *scheduler.Node) (*
 			if err := tx.Bucket(Nodes).Put([]byte(node.Id), data); err != nil {
 				return err
 			}
+			usage, err := readNodeUsage(tx, node.Id)
+			if err != nil {
+				return err
+			}
+			if err := saveNodeUsageVersion(tx, node.Id, usage, node.Version); err != nil {
+				return err
+			}
 		}
-		node.LastPing = observed.LastPing
+		if err := hydrateNodeProjection(tx, &node, true); err != nil {
+			return err
+		}
 		return nil
 	})
 	return &node, err
@@ -91,8 +105,13 @@ func putReportedNode(tx *bolt.Tx, report *scheduler.Node) error {
 		}
 	}
 	if data != nil {
-		if err := proto.Unmarshal(data, &current); err != nil {
+		if err := unmarshalNodeWithoutTaskIDs(data, &current); err != nil {
 			return err
+		}
+		if version, err := readNodeVersion(tx, current.Id); err != nil {
+			return err
+		} else if version != 0 {
+			current.Version = version
 		}
 		if current.State == scheduler.NodeState_GONE && report.State != scheduler.NodeState_GONE {
 			return fmt.Errorf("gone node %q cannot re-register with the same ID", report.Id)
@@ -110,11 +129,15 @@ func putReportedNode(tx *bolt.Tx, report *scheduler.Node) error {
 		}
 		current.Available = used.Available(current.Resources)
 		current.Version++
+		current.TaskIds = nil
 		stored, err := proto.Marshal(&current)
 		if err != nil {
 			return err
 		}
 		if err := tx.Bucket(Nodes).Put([]byte(current.Id), stored); err != nil {
+			return err
+		}
+		if err := saveNodeUsageVersion(tx, current.Id, used, current.Version); err != nil {
 			return err
 		}
 	}
@@ -126,6 +149,9 @@ func putReportedNode(tx *bolt.Tx, report *scheduler.Node) error {
 		return err
 	}
 	// Retain the existing in-process PutNode convention without accepting its assignments.
+	if err := hydrateNodeProjection(tx, &current, true); err != nil {
+		return err
+	}
 	report.Version, report.LastPing = current.Version, stamp
 	report.TaskIds, report.Available = current.TaskIds, current.Available
 	return nil

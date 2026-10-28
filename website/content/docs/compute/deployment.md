@@ -88,6 +88,31 @@ Logger:
   OutputFile: ""
 ```
 
+### Multiple instances sharing a database
+
+With the `manual` compute backend, multiple Funnel server and scheduler instances
+can share one PostgreSQL database or MongoDB database. MongoDB requires a replica
+set or sharded cluster. BoltDB is an embedded database and is not suitable for
+sharing between hosts.
+
+The shared database provides one logical task queue for the connected nodes.
+Schedulers can select the same queued task, but a transaction commits its
+ownership and node capacity reservation together. Competing assignments cannot
+claim the same task or reserve more capacity than the node has. Workers also
+acquire execution permission before preparing files or starting an executor.
+
+Nodes can run at different sites if they can reach the Funnel services and the
+storage their tasks require. A shared database does not automatically restrict
+tasks to a particular site. Configure placement constraints and access to task
+data and credentials for the intended worker pool. All participating servers,
+nodes, and workers must use the upgraded version described below.
+
+Adding scheduler instances does not provide unlimited throughput. Instances can
+read overlapping queued work, and assignments to the same node still coordinate
+through the database. Ownership and execution admission do not guarantee
+exactly-once process execution or external side effects after a crash. See
+[execution admission](#execution-admission) for recovery limits.
+
 ### Assignment storage upgrade
 
 BoltDB, PostgreSQL, and MongoDB use persisted task claims as the authoritative assignment
@@ -113,9 +138,19 @@ refresh liveness. Resource, metadata, drain, and other configuration changes
 still check that version. Scheduler health transitions also check the observed
 heartbeat before marking a node dead or gone.
 
-Each scheduling pass reads one candidate snapshot. Successful assignments and failed reservation attempts refresh the
-affected node in that snapshot. The database validates current eligibility and
-capacity before committing an assignment; the snapshot is not authoritative.
+Each scheduling pass reads one list of candidate nodes containing scheduling
+fields, without expanding every node's task assignments. Successful assignments
+and failed reservation attempts refresh the affected candidate. The database
+validates current eligibility and capacity before committing an assignment.
+Candidates can become stale during a pass; database checks remain authoritative.
+
+The default placement algorithm scans eligible candidates once and chooses the
+lowest average CPU and RAM score. Each resource score is
+`(available + requested) / total`. Equal scores retain candidate order.
+Queue reads fetch task IDs, creation times, states, and requested resources
+rather than full task payloads. PostgreSQL uses a partial queue-order index for
+queued tasks. Multiple schedulers can still observe the same queued work;
+atomic ownership checks arbitrate their reservation attempts.
 
 An allocation records the resource quantities reserved at assignment. Terminal
 state writes release that allocation and update the node's resource usage in
@@ -129,9 +164,17 @@ TES terminal states, including cancellation; this does not establish that an
 unreachable runtime has physically stopped its process. The design does not add
 automatic reassignment or exactly-once process execution.
 
-The startup migration snapshots existing active allocations and reconstructs
-resource totals transactionally. PostgreSQL uses short per-task and per-node
-transactions during normal reservation/release. MongoDB uses snapshot transactions
+Active task IDs are reconstructed from indexed claims for worker and public
+node reads. Reservations and releases update a small resource budget and its
+version without rewriting the descriptive node record or a growing task-ID
+array. PostgreSQL keeps these values in dedicated columns, MongoDB updates the
+budget fields, and BoltDB keeps a separate budget record. The public node API
+continues to return task IDs and current available resources.
+
+Startup migrations snapshot existing active allocations, reconstruct resource
+totals, and clear legacy task-ID arrays after importing their assignments.
+PostgreSQL uses transactions scoped to the task and candidate node during
+normal reservation/release. MongoDB uses snapshot transactions
 with majority writes and retries write conflicts against fresh task and node
 records. BoltDB retains its embedded single-writer transaction model. None of
 these backends requires an external event log.

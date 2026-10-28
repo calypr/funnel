@@ -18,7 +18,10 @@ func (db *MongoDB) ReadQueue(n int, after *tes.Task) []*tes.Task {
 	ctx, cancel := db.context()
 	defer cancel()
 
-	opts := options.Find().SetSort(bson.D{{Key: "creationtime", Value: 1}, {Key: "id", Value: 1}}).SetLimit(int64(n))
+	opts := options.Find().
+		SetProjection(bson.D{{Key: "_id", Value: 0}, {Key: "id", Value: 1}, {Key: "creationtime", Value: 1}, {Key: "state", Value: 1}, {Key: "resources", Value: 1}}).
+		SetSort(bson.D{{Key: "creationtime", Value: 1}, {Key: "id", Value: 1}}).
+		SetLimit(int64(n))
 	query := bson.M{"state": tes.State_QUEUED}
 	if after != nil {
 		query["$or"] = bson.A{bson.M{"creationtime": bson.M{"$gt": after.CreationTime}}, bson.M{"creationtime": after.CreationTime, "id": bson.M{"$gt": after.Id}}}
@@ -52,8 +55,8 @@ func (db *MongoDB) GetNode(ctx context.Context, req *scheduler.GetNodeRequest) (
 	mctx, cancel := db.wrap(ctx)
 	defer cancel()
 
-	var node scheduler.Node
-	err := db.nodes().FindOne(mctx, bson.M{"id": req.Id}, options.FindOne().SetCollation(&options.Collation{Locale: "simple"})).Decode(&node)
+	var record nodeRecord
+	err := db.nodes().FindOne(mctx, bson.M{"id": req.Id}, options.FindOne().SetProjection(bson.M{"taskids": 0, "task_ids": 0, "taskIds": 0}).SetCollation(&options.Collation{Locale: "simple"})).Decode(&record)
 	if err == mongo.ErrNoDocuments {
 		return nil, status.Errorf(codes.NotFound, "%v: nodeID: %s", err, req.Id)
 	}
@@ -61,10 +64,14 @@ func (db *MongoDB) GetNode(ctx context.Context, req *scheduler.GetNodeRequest) (
 	if err != nil {
 		return nil, err
 	}
-	if err := db.overlayHeartbeats(mctx, []*scheduler.Node{&node}); err != nil {
+	nodes, err := db.hydrateNodeRecords(mctx, []*nodeRecord{&record}, true)
+	if err != nil {
 		return nil, err
 	}
-	return &node, nil
+	if err := db.overlayHeartbeats(mctx, nodes); err != nil {
+		return nil, err
+	}
+	return nodes[0], nil
 }
 
 // DeleteNode deletes a node
@@ -74,6 +81,15 @@ func (db *MongoDB) DeleteNode(ctx context.Context, req *scheduler.Node) (*schedu
 
 // ListNodes is an API endpoint that returns a list of nodes.
 func (db *MongoDB) ListNodes(ctx context.Context, req *scheduler.ListNodesRequest) (*scheduler.ListNodesResponse, error) {
+	return db.listNodes(ctx, req, true)
+}
+
+// ListNodeCandidates returns scheduling data without expanding each node's active task IDs.
+func (db *MongoDB) ListNodeCandidates(ctx context.Context, req *scheduler.ListNodesRequest) (*scheduler.ListNodesResponse, error) {
+	return db.listNodes(ctx, req, false)
+}
+
+func (db *MongoDB) listNodes(ctx context.Context, req *scheduler.ListNodesRequest, includeTaskIDs bool) (*scheduler.ListNodesResponse, error) {
 	page, err := scheduler.ParseNodePage(req)
 	if err != nil {
 		return nil, err
@@ -85,18 +101,27 @@ func (db *MongoDB) ListNodes(ctx context.Context, req *scheduler.ListNodesReques
 	if page.AfterID != "" {
 		filter["id"] = bson.M{"$gt": page.AfterID}
 	}
+	projection := bson.M{"taskids": 0, "task_ids": 0, "taskIds": 0}
+	if !includeTaskIDs {
+		projection = bson.M{"id": 1, "state": 1, "resources": 1, "available": 1, "preemptible": 1, "zone": 1, "hostname": 1, "version": 1, "metadata": 1, "reserved": 1}
+	}
 	findOptions := options.Find().
 		SetSort(bson.D{{Key: "id", Value: 1}}).
 		SetLimit(int64(page.Limit + 1)).
+		SetProjection(projection).
 		SetCollation(&options.Collation{Locale: "simple"})
-	var nodes []*scheduler.Node
+	var records []*nodeRecord
 	cursor, err := db.nodes().Find(mctx, filter, findOptions)
 	if err != nil {
 		return nil, err
 	}
 	defer cursor.Close(mctx)
 
-	err = cursor.All(mctx, &nodes)
+	err = cursor.All(mctx, &records)
+	if err != nil {
+		return nil, err
+	}
+	nodes, err := db.hydrateNodeRecords(mctx, records, includeTaskIDs)
 	if err != nil {
 		return nil, err
 	}

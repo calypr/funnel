@@ -11,7 +11,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func putTaskClaim(tx *bolt.Tx, taskID, nodeID string) error {
+func putTaskClaim(tx *bolt.Tx, taskID, nodeID string, usage scheduler.ResourceUsage) error {
 	claims := tx.Bucket(TaskClaims)
 	if owner := claims.Get([]byte(taskID)); owner != nil && string(owner) != nodeID {
 		return fmt.Errorf("task %q is already claimed by node %q", taskID, owner)
@@ -20,14 +20,6 @@ func putTaskClaim(tx *bolt.Tx, taskID, nodeID string) error {
 		return err
 	}
 	node, err := tx.Bucket(NodeClaims).CreateBucketIfNotExists([]byte(nodeID))
-	if err != nil {
-		return err
-	}
-	var task tes.Task
-	if err := proto.Unmarshal(tx.Bucket(TaskBucket).Get([]byte(taskID)), &task); err != nil {
-		return err
-	}
-	usage, err := scheduler.TaskResourceUsage(&task)
 	if err != nil {
 		return err
 	}
@@ -60,7 +52,15 @@ func migrateTaskClaims(tx *bolt.Tx) error {
 			if tx.Bucket(TaskBucket).Get([]byte(id)) == nil || tes.TerminalState(getTaskState(tx, id)) {
 				continue
 			}
-			if err := putTaskClaim(tx, id, node.Id); err != nil {
+			var task tes.Task
+			if err := proto.Unmarshal(tx.Bucket(TaskBucket).Get([]byte(id)), &task); err != nil {
+				return err
+			}
+			usage, err := scheduler.TaskResourceUsage(&task)
+			if err != nil {
+				return err
+			}
+			if err := putTaskClaim(tx, id, node.Id, usage); err != nil {
 				return fmt.Errorf("migrate node assignments: %w", err)
 			}
 		}

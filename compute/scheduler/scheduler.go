@@ -23,8 +23,8 @@ type TaskQueue interface {
 }
 
 // AtomicTaskAssigner claims a queued task and reserves it on a node in one
-// database transaction. The candidate selects a node from a scheduler
-// snapshot; implementations must check that node's current eligibility before
+// database transaction. The candidate comes from the scheduler's current list;
+// implementations must check that node's current eligibility before
 // reserving it. It returns the owner, or an empty string when no assignment is
 // made. A nil candidate only looks up an existing assignment. An error must
 // not leave a new claim or node reservation committed.
@@ -143,15 +143,15 @@ func (s *Scheduler) Schedule(ctx context.Context) error {
 	if s.AtomicAssigner == nil {
 		return fmt.Errorf("scheduler requires atomic task assignment")
 	}
-	nodes, err := ListAllNodes(ctx, s.Nodes)
+	nodes, err := s.readNodeCandidates(ctx)
 	if err != nil {
-		s.Log.Error("Error reading scheduling snapshot", err)
+		s.Log.Error("Error reading scheduling candidates", err)
 		return nil
 	}
 	if err := s.checkNodes(ctx, nodes); err != nil {
 		s.Log.Error("Error checking nodes", err)
 	}
-	snapshot := newNodeSnapshot(nodes)
+	candidates := newNodeCandidates(nodes)
 
 	count := int(s.Conf.ScheduleChunk)
 	if count <= 0 {
@@ -168,14 +168,14 @@ func (s *Scheduler) Schedule(ctx context.Context) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		s.scheduleTask(ctx, task, snapshot)
+		s.scheduleTask(ctx, task, candidates)
 	}
 	return nil
 }
 
 // scheduleTask uses a backend transaction to reserve task and node
 // ownership together. This path never performs a separate node write.
-func (s *Scheduler) scheduleTask(ctx context.Context, task *tes.Task, snapshot *nodeSnapshot) {
+func (s *Scheduler) scheduleTask(ctx context.Context, task *tes.Task, candidates *nodeCandidates) {
 	// The durable claim is authoritative, including when its owner disappeared.
 	ownerID, err := s.AtomicAssigner.TryAssign(ctx, task, nil)
 	if err != nil {
@@ -185,14 +185,14 @@ func (s *Scheduler) scheduleTask(ctx context.Context, task *tes.Task, snapshot *
 	alreadyAssigned := ownerID != ""
 	if !alreadyAssigned {
 
-		offer := DefaultScheduleAlgorithm(task, snapshot.nodes, nil)
+		offer := DefaultScheduleAlgorithm(task, candidates.nodes, nil)
 		if offer == nil {
 			return
 		}
 		ownerID, err = s.AtomicAssigner.TryAssign(ctx, task, offer.Node)
 		if err != nil {
 			s.logAssignTaskFailure(ctx, task.Id, offer.Node.Id, err)
-			s.refreshSnapshot(ctx, snapshot, offer.Node.Id)
+			s.refreshCandidates(ctx, candidates, offer.Node.Id)
 			return
 		}
 		if ownerID == "" {
@@ -202,7 +202,7 @@ func (s *Scheduler) scheduleTask(ctx context.Context, task *tes.Task, snapshot *
 
 	node, err := s.Nodes.GetNode(ctx, &GetNodeRequest{Id: ownerID})
 	if err != nil {
-		snapshot.replace(ownerID, nil)
+		candidates.replace(ownerID, nil)
 		if status.Code(err) == codes.NotFound {
 			s.failClaimedTask(ctx, task.Id, ownerID, "claimed node is missing")
 		} else {
@@ -210,7 +210,7 @@ func (s *Scheduler) scheduleTask(ctx context.Context, task *tes.Task, snapshot *
 		}
 		return
 	}
-	snapshot.replace(ownerID, node)
+	candidates.replace(ownerID, node)
 	if node == nil {
 		s.Log.Error("Claimed task node lookup returned no node", "taskID", task.Id, "nodeID", ownerID)
 		return

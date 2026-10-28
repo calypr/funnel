@@ -101,6 +101,9 @@ func (db *MongoDB) Init() error {
 	if err := db.migrateScheduler(ctx); err != nil {
 		return err
 	}
+	if err := db.migrateNodeTaskIDProjection(ctx); err != nil {
+		return err
+	}
 	return db.migrateExecutionClaims(ctx)
 }
 
