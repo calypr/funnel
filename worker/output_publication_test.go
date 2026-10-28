@@ -289,7 +289,7 @@ func TestWorkerOutputFailureIncludesTaskPathAndOriginalError(t *testing.T) {
 	root := t.TempDir()
 	mapper := NewFileMapper(filepath.Join(root, "work"))
 	output := &tes.Output{Url: "file://" + filepath.Join(root, "destination", "result.txt"), Path: "/outputs/result.txt", Type: tes.File}
-	if err := mapper.AddOutput(output); err != nil {
+	if err := mapper.MapTask(&tes.Task{Outputs: []*tes.Output{output}}, "docker"); err != nil {
 		t.Fatal(err)
 	}
 	store, err := storage.NewLocal(&config.LocalStorage{AllowedDirs: []string{root}})
@@ -333,7 +333,7 @@ func TestWorkerOutputFailurePreservesStorageError(t *testing.T) {
 	root := t.TempDir()
 	mapper := NewFileMapper(filepath.Join(root, "work"))
 	output := &tes.Output{Url: "s3://bucket/result.txt", Path: "/outputs/result.txt", Type: tes.File}
-	if err := mapper.AddOutput(output); err != nil {
+	if err := mapper.MapTask(&tes.Task{Outputs: []*tes.Output{output}}, "docker"); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(mapper.Outputs[0].Path, []byte("result"), 0600); err != nil {

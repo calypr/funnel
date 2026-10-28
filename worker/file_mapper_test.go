@@ -8,6 +8,7 @@ import (
 
 	"github.com/calypr/funnel/tes"
 	"github.com/stretchr/testify/assert"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestMapTask(t *testing.T) {
@@ -58,6 +59,7 @@ func TestMapTask(t *testing.T) {
 		},
 		Volumes: []string{"/volone", "/voltwo"},
 	}
+	originalTask := proto.Clone(task).(*tes.Task)
 
 	err = f.MapTask(task, "docker")
 	if err != nil {
@@ -155,6 +157,9 @@ func TestMapTask(t *testing.T) {
 		t.Log("Expected", task.Outputs[0].Path)
 		t.Log("Actual", f.ContainerPath(f.Outputs[0].Path))
 		t.Fatal("path unmapping failed")
+	}
+	if !proto.Equal(task, originalTask) {
+		t.Fatalf("MapTask mutated the TES request: %v", task)
 	}
 }
 
