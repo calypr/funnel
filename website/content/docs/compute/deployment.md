@@ -202,8 +202,11 @@ cannot rerun that task ID. Kubernetes workers record their pod identity atomical
 with the claim. Funnel submits worker pods with `restartPolicy: Never`, including
 when a custom worker template specifies `OnFailure`. The Job's `backoffLimit` is
 preserved, so failures before a claim is acquired can still start a replacement pod.
+For worker pods with sidecars, Funnel tracks the selected worker container. If
+that container fails before acquiring a claim, Funnel retires the pod so the
+Job can retry even when a sidecar remains running.
 
-If the pod that owns a claim exits or is lost before the task reaches a terminal state,
+If the worker container that owns a claim exits, or its pod is lost before the task reaches a terminal state,
 the Kubernetes reconciler records `SYSTEM_ERROR` and performs the configured
 resource cleanup. It checks the pod UID and controlling Job UID before treating
 pod termination as evidence that the claimed worker exited. A missing owner pod

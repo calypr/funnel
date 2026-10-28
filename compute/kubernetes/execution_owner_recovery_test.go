@@ -21,7 +21,10 @@ import (
 	k8stesting "k8s.io/client-go/testing"
 )
 
-const executionOwnerTestNamespace = "worker-jobs"
+const (
+	executionOwnerTestNamespace   = "worker-jobs"
+	testWorkerContainerAnnotation = "funnel.calypr.org/worker-container"
+)
 
 type executionOwnerRecoveryFixture struct {
 	backend *Backend
@@ -31,6 +34,14 @@ type executionOwnerRecoveryFixture struct {
 }
 
 func newExecutionOwnerRecoveryFixture(t *testing.T, state tes.State, owner *events.ExecutionOwner, jobStatus batchv1.JobStatus, pod *corev1.Pod) *executionOwnerRecoveryFixture {
+	return newExecutionOwnerRecoveryFixtureWithClaim(t, true, state, owner, jobStatus, pod)
+}
+
+func newUnclaimedExecutionOwnerRecoveryFixture(t *testing.T, state tes.State, jobStatus batchv1.JobStatus, pod *corev1.Pod) *executionOwnerRecoveryFixture {
+	return newExecutionOwnerRecoveryFixtureWithClaim(t, false, state, nil, jobStatus, pod)
+}
+
+func newExecutionOwnerRecoveryFixtureWithClaim(t *testing.T, claimed bool, state tes.State, owner *events.ExecutionOwner, jobStatus batchv1.JobStatus, pod *corev1.Pod) *executionOwnerRecoveryFixture {
 	t.Helper()
 	ctx := context.Background()
 	conf := config.DefaultConfig()
@@ -51,11 +62,17 @@ func newExecutionOwnerRecoveryFixture(t *testing.T, state tes.State, owner *even
 	if err := db.WriteEvent(ctx, events.NewTaskCreated(&tes.Task{Id: job.Name})); err != nil {
 		t.Fatal(err)
 	}
-	claimed, err := db.ClaimExecution(ctx, job.Name, owner)
-	if err != nil || !claimed {
-		t.Fatalf("claiming task with recorded worker owner = %t, %v", claimed, err)
+	if claimed {
+		acquired, err := db.ClaimExecution(ctx, job.Name, owner)
+		if err != nil || !acquired {
+			t.Fatalf("claiming task with recorded worker owner = %t, %v", acquired, err)
+		}
 	}
-	if state == tes.State_RUNNING {
+	if state == tes.State_INITIALIZING {
+		if err := db.WriteEvent(ctx, events.NewState(job.Name, tes.State_INITIALIZING)); err != nil {
+			t.Fatal(err)
+		}
+	} else if state == tes.State_RUNNING {
 		if err := db.WriteEvent(ctx, events.NewState(job.Name, tes.State_RUNNING)); err != nil {
 			t.Fatal(err)
 		}
@@ -90,7 +107,13 @@ func executionOwnerWorkerJob(status batchv1.JobStatus) *batchv1.Job {
 			UID:       types.UID("job-uid"),
 			Labels:    map[string]string{"app": "funnel-worker"},
 		},
-		Spec:   batchv1.JobSpec{BackoffLimit: &backoffLimit},
+		Spec: batchv1.JobSpec{
+			BackoffLimit: &backoffLimit,
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{testWorkerContainerAnnotation: "worker"}},
+				Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "worker"}, {Name: "sidecar"}}},
+			},
+		},
 		Status: status,
 	}
 }
@@ -144,6 +167,149 @@ func TestReconcileFailsTaskWhenRecordedWorkerPodExited(t *testing.T) {
 	}
 }
 
+func TestReconcileFailsTaskWhenRecordedWorkerContainerExitedWithSidecar(t *testing.T) {
+	owner := &events.ExecutionOwner{Namespace: executionOwnerTestNamespace, PodName: "owner-pod", PodUid: "owner-pod-uid"}
+	pod := executionOwnerPod(owner, corev1.PodRunning)
+	pod.Status.ContainerStatuses = []corev1.ContainerStatus{
+		{Name: "worker", State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{ExitCode: 1}}},
+		{Name: "sidecar", State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}},
+	}
+	f := newExecutionOwnerRecoveryFixture(t, tes.State_RUNNING, owner, batchv1.JobStatus{Active: 1}, pod)
+
+	f.backend.reconcileJob(context.Background(), f.job, false)
+
+	if got := executionOwnerTask(t, f.db, f.job.Name).State; got != tes.State_SYSTEM_ERROR {
+		t.Fatalf("state after recorded worker container exited = %s, want SYSTEM_ERROR", got)
+	}
+	if _, err := f.client.BatchV1().Jobs(f.job.Namespace).Get(context.Background(), f.job.Name, metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+		t.Fatalf("worker Job after owner failure = %v, want deleted", err)
+	}
+}
+
+func TestReconcileRetiresUnclaimedWorkerPodAfterWorkerContainerExit(t *testing.T) {
+	pod := executionOwnerPod(&events.ExecutionOwner{Namespace: executionOwnerTestNamespace, PodName: "unclaimed-pod", PodUid: "unclaimed-pod-uid"}, corev1.PodRunning)
+	pod.Status.ContainerStatuses = []corev1.ContainerStatus{
+		{Name: "worker", State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{ExitCode: 1}}},
+		{Name: "sidecar", State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}},
+	}
+	f := newUnclaimedExecutionOwnerRecoveryFixture(t, tes.State_INITIALIZING, batchv1.JobStatus{Active: 1}, pod)
+	var deletedOptions metav1.DeleteOptions
+	f.client.PrependReactor("delete", "pods", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		deletedOptions = action.(k8stesting.DeleteAction).GetDeleteOptions()
+		return false, nil, nil
+	})
+
+	f.backend.reconcileJob(context.Background(), f.job, true)
+
+	if _, err := f.client.CoreV1().Pods(pod.Namespace).Get(context.Background(), pod.Name, metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+		t.Fatalf("worker Pod after preclaim retirement = %v, want deleted", err)
+	}
+	if got := executionOwnerTask(t, f.db, f.job.Name).State; got != tes.State_INITIALIZING {
+		t.Fatalf("task state after preclaim retirement = %s, want INITIALIZING", got)
+	}
+	if _, err := f.client.BatchV1().Jobs(f.job.Namespace).Get(context.Background(), f.job.Name, metav1.GetOptions{}); err != nil {
+		t.Fatalf("worker Job after preclaim retirement = %v, want retained", err)
+	}
+	if deletedOptions.Preconditions == nil || deletedOptions.Preconditions.UID == nil || *deletedOptions.Preconditions.UID != pod.UID {
+		t.Fatalf("Pod delete precondition = %+v, want UID %q", deletedOptions.Preconditions, pod.UID)
+	}
+	claimed, err := f.db.ClaimExecution(context.Background(), f.job.Name, &events.ExecutionOwner{Namespace: pod.Namespace, PodName: "replacement-pod", PodUid: "replacement-pod-uid"})
+	if err != nil || !claimed {
+		t.Fatalf("replacement claim after preclaim retirement = %t, %v, want true", claimed, err)
+	}
+}
+
+func TestReconcileDoesNotRetireAmbiguousUnclaimedWorkerPod(t *testing.T) {
+	pod := executionOwnerPod(&events.ExecutionOwner{Namespace: executionOwnerTestNamespace, PodName: "unclaimed-pod", PodUid: "unclaimed-pod-uid"}, corev1.PodRunning)
+	pod.Status.ContainerStatuses = []corev1.ContainerStatus{
+		{Name: "worker", State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{ExitCode: 1}}},
+		{Name: "sidecar", State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}},
+	}
+	f := newUnclaimedExecutionOwnerRecoveryFixture(t, tes.State_INITIALIZING, batchv1.JobStatus{Active: 1}, pod)
+	f.job.Spec.Template.Annotations = nil
+
+	f.backend.reconcileJob(context.Background(), f.job, false)
+
+	if _, err := f.client.CoreV1().Pods(pod.Namespace).Get(context.Background(), pod.Name, metav1.GetOptions{}); err != nil {
+		t.Fatalf("ambiguous worker Pod was retired without a selected container: %v", err)
+	}
+}
+
+func TestReconcileDoesNotRetireFailedDuplicateWhenRecordedOwnerIsHealthy(t *testing.T) {
+	owner := &events.ExecutionOwner{Namespace: executionOwnerTestNamespace, PodName: "owner-pod", PodUid: "owner-pod-uid"}
+	duplicateOwner := &events.ExecutionOwner{Namespace: executionOwnerTestNamespace, PodName: "duplicate-pod", PodUid: "duplicate-pod-uid"}
+	duplicate := executionOwnerPod(duplicateOwner, corev1.PodRunning)
+	duplicate.Status.ContainerStatuses = []corev1.ContainerStatus{
+		{Name: "worker", State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{ExitCode: 1}}},
+		{Name: "sidecar", State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}},
+	}
+	f := newExecutionOwnerRecoveryFixture(t, tes.State_RUNNING, owner, batchv1.JobStatus{Active: 1, Failed: 1}, executionOwnerPod(owner, corev1.PodRunning))
+	if _, err := f.client.CoreV1().Pods(duplicate.Namespace).Create(context.Background(), duplicate, metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	f.backend.reconcileJob(context.Background(), f.job, false)
+
+	if got := executionOwnerTask(t, f.db, f.job.Name).State; got != tes.State_RUNNING {
+		t.Fatalf("state with healthy recorded owner and failed duplicate = %s, want RUNNING", got)
+	}
+	if _, err := f.client.CoreV1().Pods(duplicate.Namespace).Get(context.Background(), duplicate.Name, metav1.GetOptions{}); err != nil {
+		t.Fatalf("failed duplicate Pod was retired while another owner is healthy: %v", err)
+	}
+}
+
+func TestReconcileRetriesUnclaimedPodRetirementAfterTransientDeleteError(t *testing.T) {
+	pod := executionOwnerPod(&events.ExecutionOwner{Namespace: executionOwnerTestNamespace, PodName: "unclaimed-pod", PodUid: "unclaimed-pod-uid"}, corev1.PodRunning)
+	pod.Status.ContainerStatuses = []corev1.ContainerStatus{
+		{Name: "worker", State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{ExitCode: 1}}},
+		{Name: "sidecar", State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}},
+	}
+	f := newUnclaimedExecutionOwnerRecoveryFixture(t, tes.State_INITIALIZING, batchv1.JobStatus{Active: 1}, pod)
+	deleteErr := errors.New("temporary Kubernetes API error")
+	var deletes int
+	f.client.PrependReactor("delete", "pods", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		deletes++
+		if deletes == 1 {
+			return true, nil, deleteErr
+		}
+		return false, nil, nil
+	})
+
+	f.backend.reconcileJob(context.Background(), f.job, false)
+	if got := executionOwnerTask(t, f.db, f.job.Name).State; got != tes.State_INITIALIZING {
+		t.Fatalf("task state after transient Pod delete error = %s, want INITIALIZING", got)
+	}
+	if _, err := f.client.CoreV1().Pods(pod.Namespace).Get(context.Background(), pod.Name, metav1.GetOptions{}); err != nil {
+		t.Fatalf("worker Pod after transient delete error = %v, want retained", err)
+	}
+
+	f.backend.reconcileJob(context.Background(), f.job, false)
+	if deletes != 2 {
+		t.Fatalf("Pod delete attempts = %d, want 2", deletes)
+	}
+	if _, err := f.client.CoreV1().Pods(pod.Namespace).Get(context.Background(), pod.Name, metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+		t.Fatalf("worker Pod after delete retry = %v, want deleted", err)
+	}
+}
+
+func TestReconcileKeepsPermanentNilOwnerClaimWhenRetiringWorkerPod(t *testing.T) {
+	pod := executionOwnerPod(&events.ExecutionOwner{Namespace: executionOwnerTestNamespace, PodName: "claimed-pod", PodUid: "claimed-pod-uid"}, corev1.PodRunning)
+	pod.Status.ContainerStatuses = []corev1.ContainerStatus{
+		{Name: "worker", State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{ExitCode: 1}}},
+		{Name: "sidecar", State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}},
+	}
+	f := newExecutionOwnerRecoveryFixture(t, tes.State_INITIALIZING, nil, batchv1.JobStatus{Active: 1}, pod)
+	f.backend.reconcileJob(context.Background(), f.job, false)
+
+	if _, err := f.client.CoreV1().Pods(pod.Namespace).Get(context.Background(), pod.Name, metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+		t.Fatalf("claimed worker Pod after retirement = %v, want deleted", err)
+	}
+	claimed, err := f.db.ClaimExecution(context.Background(), f.job.Name, &events.ExecutionOwner{Namespace: pod.Namespace, PodName: "replacement-pod", PodUid: "replacement-pod-uid"})
+	if err != nil || claimed {
+		t.Fatalf("replacement claim after retiring nil-owner claim = %t, %v, want false", claimed, err)
+	}
+}
+
 func TestReconcileDefersWhenOwnerIsHealthyOrCannotBeProvenDead(t *testing.T) {
 	baseOwner := &events.ExecutionOwner{Namespace: executionOwnerTestNamespace, PodName: "owner-pod", PodUid: "owner-pod-uid"}
 	tests := []struct {
@@ -153,10 +319,10 @@ func TestReconcileDefersWhenOwnerIsHealthyOrCannotBeProvenDead(t *testing.T) {
 	}{
 		{name: "legacy task without an owner", pod: nil},
 		{name: "healthy owner with failed duplicate", owner: baseOwner, pod: executionOwnerPod(baseOwner, corev1.PodRunning)},
-		{name: "worker container exited while sidecar keeps pod running", owner: baseOwner, pod: func() *corev1.Pod {
+		{name: "worker and sidecar containers are running", owner: baseOwner, pod: func() *corev1.Pod {
 			p := executionOwnerPod(baseOwner, corev1.PodRunning)
 			p.Status.ContainerStatuses = []corev1.ContainerStatus{
-				{Name: "worker", State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{ExitCode: 1}}},
+				{Name: "worker", State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}},
 				{Name: "sidecar", State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}},
 			}
 			return p
