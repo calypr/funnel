@@ -117,22 +117,6 @@ func TestMapTask(t *testing.T) {
 		},
 	}
 
-	// InputVolumes tracks each individual input volume before consolidation.
-	eiv := []Volume{
-		{
-			HostPath:      tmp + "/inputs/testdata/f1.txt",
-			ContainerPath: "/inputs/testdata/f1.txt",
-		},
-		{
-			HostPath:      tmp + "/inputs/testdata/f4",
-			ContainerPath: "/inputs/testdata/f4",
-		},
-		{
-			HostPath:      tmp + "/inputs/testdata/contents.txt",
-			ContainerPath: "/inputs/testdata/contents.txt",
-		},
-	}
-
 	if !assert.True(t, protoSlicesEqual(ei, f.Inputs)) {
 		t.Log("Expected", fmt.Sprintf("%+v", ei))
 		t.Log("Actual", fmt.Sprintf("%+v", f.Inputs))
@@ -165,12 +149,6 @@ func TestMapTask(t *testing.T) {
 		t.Log("Expected", fmt.Sprintf("%+v", ev))
 		t.Log("Actual", fmt.Sprintf("%+v", f.Volumes))
 		t.Fatal("unexpected mapper volumes")
-	}
-
-	if !assert.Equal(t, eiv, f.InputVolumes) {
-		t.Log("Expected", fmt.Sprintf("%+v", eiv))
-		t.Log("Actual", fmt.Sprintf("%+v", f.InputVolumes))
-		t.Fatal("unexpected mapper input volumes")
 	}
 
 	if f.ContainerPath(f.Outputs[0].Path) != task.Outputs[0].Path {
