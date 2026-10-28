@@ -26,6 +26,8 @@ metadata:
   name: funnel-server-config
 data:
   funnel-server.yaml: |
+    Elastic:
+      URL: http://elasticsearch:9200
     Kubernetes:
       ExecutorTemplate: |
         containers:
@@ -55,6 +57,10 @@ for mode in plain gen3; do
     export FUNNEL_CI_PLUGIN_IMAGE_REF=quay.io/ohsu-comp-bio/funnel-gen3-plugin:ci-123456789abc-eacaf197bfbc
   fi
   FUNNEL_CI_BOOTSTRAP_RENDER=false bash "$script_dir/gen3-post-renderer.sh" <"$tmp/input.yaml" >"$tmp/$mode.yaml"
+  if [[ $(yq -r 'select(.kind == "ConfigMap") | .data."funnel-server.yaml" | from_yaml | has("Elastic")' "$tmp/$mode.yaml") != false ]]; then
+    printf 'Removed Elasticsearch configuration prevents Funnel startup\n' >&2
+    exit 1
+  fi
   executor=$(yq -r 'select(.kind == "ConfigMap") | .data."funnel-server.yaml" | from_yaml | .Kubernetes.ExecutorTemplate' "$tmp/$mode.yaml")
   if [[ "$mode" == gen3 ]]; then
     [[ "$executor" == *'eq .Image "quay.io/cdis/gen3-workflow:integration_tests_dicom_image"'* && "$executor" == *'}}Never{{else}}'* ]] || { printf 'Native executors can be overwritten by registry pulls\n' >&2; exit 1; }
