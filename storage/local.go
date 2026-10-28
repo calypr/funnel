@@ -160,7 +160,7 @@ func copyFile(ctx context.Context, source string, dest string) (err error) {
 	}
 
 	// Create and open dest file for writing
-	df, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY, 0775)
+	df, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0775)
 	if err != nil {
 		return fmt.Errorf("failed to create dest file for copying: %v", err)
 	}
