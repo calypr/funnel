@@ -48,6 +48,8 @@ type Executor struct {
 	Namespace string
 	// Funnel Worker + Executor namespace
 	JobsNamespace string
+	// ExecutionOwner identifies the worker pod that owns the task execution claim.
+	ExecutionOwner *events.ExecutionOwner
 	// Kubernetes service account name
 	ServiceAccount string
 	// Kubernetes service account template
@@ -123,7 +125,7 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 	}
 	claimed := false
 	if !localTask {
-		claimed, run.syserr = r.ExecutionClaimer.ClaimExecution(pctx, task.Id)
+		claimed, run.syserr = r.ExecutionClaimer.ClaimExecution(pctx, task.Id, r.Executor.ExecutionOwner)
 		if run.syserr != nil {
 			return fmt.Errorf("claim task execution: %w", run.syserr)
 		}

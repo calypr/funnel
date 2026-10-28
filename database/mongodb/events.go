@@ -55,8 +55,12 @@ func (db *MongoDB) WriteEvent(ctx context.Context, req *events.Event) error {
 		}
 
 	case events.Type_TASK_METADATA:
+		metadata := req.GetMetadata().Value
+		if _, reserved := metadata[events.ExecutionOwnerMetadataKey]; reserved {
+			return fmt.Errorf("task metadata key %q is reserved", events.ExecutionOwnerMetadataKey)
+		}
 		metadataUpdate := bson.M{}
-		for k, v := range req.GetMetadata().Value {
+		for k, v := range metadata {
 			metadataUpdate[fmt.Sprintf("logs.%v.metadata.%s", req.Attempt, k)] = v
 		}
 		update = bson.M{"$set": metadataUpdate}

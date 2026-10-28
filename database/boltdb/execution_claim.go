@@ -3,14 +3,23 @@ package boltdb
 import (
 	"context"
 
+	"github.com/calypr/funnel/events"
 	"github.com/calypr/funnel/tes"
 	bolt "go.etcd.io/bbolt"
 )
 
 // ClaimExecution atomically admits one worker for a queued or initializing task.
-func (db *BoltDB) ClaimExecution(ctx context.Context, taskID string) (bool, error) {
+func (db *BoltDB) ClaimExecution(ctx context.Context, taskID string, owner *events.ExecutionOwner) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
+	}
+	var ownerMetadata map[string]string
+	if owner != nil {
+		var err error
+		ownerMetadata, err = events.ExecutionOwnerMetadata(owner)
+		if err != nil {
+			return false, err
+		}
 	}
 	claimed := false
 	err := db.db.Update(func(tx *bolt.Tx) error {
@@ -33,6 +42,11 @@ func (db *BoltDB) ClaimExecution(ctx context.Context, taskID string) (bool, erro
 		}
 		if err := ctx.Err(); err != nil {
 			return err
+		}
+		if ownerMetadata != nil {
+			if err := updateTaskLogs(tx, taskID, &tes.TaskLog{Metadata: ownerMetadata}); err != nil {
+				return err
+			}
 		}
 		if err := tx.Bucket(TasksQueued).Delete(key); err != nil {
 			return err

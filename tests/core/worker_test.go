@@ -165,7 +165,7 @@ type taskExecutionClaimer struct {
 	task *tes.Task
 }
 
-func (c taskExecutionClaimer) ClaimExecution(_ context.Context, taskID string) (bool, error) {
+func (c taskExecutionClaimer) ClaimExecution(_ context.Context, taskID string, _ *events.ExecutionOwner) (bool, error) {
 	if c.task.Id != taskID {
 		return false, fmt.Errorf("unexpected task id %q", taskID)
 	}

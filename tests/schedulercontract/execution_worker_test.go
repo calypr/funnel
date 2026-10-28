@@ -95,7 +95,7 @@ func testLostExecutionResponse(t *testing.T, open storeFactory) {
 		TaskReader:  &executionSnapshotReader{db: db, id: task.Id},
 		EventWriter: db,
 		ExecutionClaimer: executionClaimCall(func(ctx context.Context, id string) (bool, error) {
-			acquired, err := claimer.ClaimExecution(ctx, id)
+			acquired, err := claimer.ClaimExecution(ctx, id, nil)
 			if err != nil || !acquired {
 				return acquired, err
 			}
@@ -120,14 +120,14 @@ func testLostExecutionResponse(t *testing.T, open storeFactory) {
 	if !proto.Equal(before, after) {
 		t.Fatalf("lost response/retry changed winner logs/state: before=%v after=%v", before, after)
 	}
-	if acquired, err := claimer.ClaimExecution(ctx, task.Id); err != nil || acquired {
+	if acquired, err := claimer.ClaimExecution(ctx, task.Id, nil); err != nil || acquired {
 		t.Fatalf("lost response permitted another execution: %v,%v", acquired, err)
 	}
 }
 
 type executionClaimCall func(context.Context, string) (bool, error)
 
-func (f executionClaimCall) ClaimExecution(ctx context.Context, id string) (bool, error) {
+func (f executionClaimCall) ClaimExecution(ctx context.Context, id string, _ *events.ExecutionOwner) (bool, error) {
 	return f(ctx, id)
 }
 

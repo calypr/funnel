@@ -5,14 +5,17 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"text/template"
 
 	"github.com/calypr/funnel/compute/kubernetes/storageplan"
 	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/events"
 	"github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/tes"
 	v1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -118,6 +121,7 @@ func CreateJob(ctx context.Context, task *tes.Task, conf *config.Config, client 
 			return nil, fmt.Errorf("binding worker storage: %w", err)
 		}
 	}
+	configureWorkerAttempts(job)
 
 	log.Debug("Creating job", "Job", job.Name, "JobsNamespace", conf.Kubernetes.JobsNamespace)
 	created, err := client.BatchV1().Jobs(conf.Kubernetes.JobsNamespace).Create(ctx, job, metav1.CreateOptions{})
@@ -126,6 +130,23 @@ func CreateJob(ctx context.Context, task *tes.Task, conf *config.Config, client 
 	}
 
 	return created, nil
+}
+
+func configureWorkerAttempts(job *v1.Job) {
+	// A claim identifies a pod, so a worker retry must get a new pod UID.
+	job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
+	identity := []corev1.EnvVar{
+		{Name: events.OwnerNamespaceEnv, ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}}},
+		{Name: events.OwnerNameEnv, ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"}}},
+		{Name: events.OwnerUIDEnv, ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.uid"}}},
+	}
+	for i := range job.Spec.Template.Spec.Containers {
+		container := &job.Spec.Template.Spec.Containers[i]
+		for _, variable := range identity {
+			container.Env = slices.DeleteFunc(container.Env, func(existing corev1.EnvVar) bool { return existing.Name == variable.Name })
+			container.Env = append(container.Env, variable)
+		}
+	}
 }
 
 // DeleteJob removes the worker job for a task and all associated executor jobs.

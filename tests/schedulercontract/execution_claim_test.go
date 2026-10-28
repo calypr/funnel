@@ -29,7 +29,7 @@ func runExecutionClaimContracts(t *testing.T, open storeFactory) {
 			go func() {
 				defer wg.Done()
 				<-start
-				acquired, err := claimer.ClaimExecution(testContext(), task.Id)
+				acquired, err := claimer.ClaimExecution(testContext(), task.Id, nil)
 				results <- acquired
 				errs <- err
 			}()
@@ -55,7 +55,7 @@ func runExecutionClaimContracts(t *testing.T, open storeFactory) {
 		if state := getTask(t, db, testContext(), task.Id).State; state != tes.State_INITIALIZING {
 			t.Fatalf("claimed state = %s", state)
 		}
-		if acquired, err := claimer.ClaimExecution(testContext(), task.Id); err != nil || acquired {
+		if acquired, err := claimer.ClaimExecution(testContext(), task.Id, nil); err != nil || acquired {
 			t.Fatalf("retry after lost response = %v, %v", acquired, err)
 		}
 	})
@@ -67,13 +67,13 @@ func runExecutionClaimContracts(t *testing.T, open storeFactory) {
 			t.Fatal(err)
 		}
 		claimer := db.(events.ExecutionClaimer)
-		if acquired, err := claimer.ClaimExecution(ctx, task.Id); err != nil || !acquired {
+		if acquired, err := claimer.ClaimExecution(ctx, task.Id, nil); err != nil || !acquired {
 			t.Fatalf("initializing claim = %v, %v", acquired, err)
 		}
 		if got := getTask(t, db, ctx, task.Id).State; got != tes.State_INITIALIZING {
 			t.Fatalf("claimed initializing state = %s", got)
 		}
-		if acquired, err := claimer.ClaimExecution(ctx, task.Id); err != nil || acquired {
+		if acquired, err := claimer.ClaimExecution(ctx, task.Id, nil); err != nil || acquired {
 			t.Fatalf("retry initializing claim = %v, %v", acquired, err)
 		}
 	})
@@ -83,7 +83,7 @@ func runExecutionClaimContracts(t *testing.T, open storeFactory) {
 		createNode(t, db, ctx, "executor-node", 2)
 		task := reserveContractTask(t, db, "reserved-execution", "executor-node")
 		before := readContractNode(t, db, "executor-node")
-		acquired, err := db.(events.ExecutionClaimer).ClaimExecution(ctx, task.Id)
+		acquired, err := db.(events.ExecutionClaimer).ClaimExecution(ctx, task.Id, nil)
 		if err != nil || !acquired {
 			t.Fatalf("claim = %v, %v", acquired, err)
 		}
@@ -113,7 +113,7 @@ func runExecutionClaimContracts(t *testing.T, open storeFactory) {
 		ctx := testContext()
 		claimer := db.(events.ExecutionClaimer)
 		task := createTask(t, db, ctx, "claimed-id")
-		if acquired, err := claimer.ClaimExecution(ctx, task.Id); err != nil || !acquired {
+		if acquired, err := claimer.ClaimExecution(ctx, task.Id, nil); err != nil || !acquired {
 			t.Fatalf("claim = %v, %v", acquired, err)
 		}
 		if err := db.WriteEvent(ctx, events.NewState(task.Id, tes.SystemError)); err != nil {
@@ -122,13 +122,13 @@ func runExecutionClaimContracts(t *testing.T, open storeFactory) {
 		// Legacy retry transitions may be rejected. If accepted, they must not grant
 		// another launch for an ID whose execution was already authorized.
 		_ = db.WriteEvent(ctx, events.NewState(task.Id, tes.Queued))
-		if acquired, err := claimer.ClaimExecution(ctx, task.Id); acquired {
+		if acquired, err := claimer.ClaimExecution(ctx, task.Id, nil); acquired {
 			t.Fatalf("state edit granted another execution: %v", err)
 		}
 		if err := db.WriteEvent(ctx, events.NewTaskCreated(testTask(task.Id))); err == nil {
 			t.Fatal("recreated an execution-claimed ID")
 		}
-		if acquired, err := claimer.ClaimExecution(ctx, task.Id); acquired {
+		if acquired, err := claimer.ClaimExecution(ctx, task.Id, nil); acquired {
 			t.Fatalf("recreation granted another execution: %v", err)
 		}
 	})
@@ -143,7 +143,7 @@ func runExecutionClaimContracts(t *testing.T, open storeFactory) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if acquired, err := claimer.ClaimExecution(stranger, task.Id); acquired || !errors.Is(err, tes.ErrNotPermitted) {
+		if acquired, err := claimer.ClaimExecution(stranger, task.Id, nil); acquired || !errors.Is(err, tes.ErrNotPermitted) {
 			t.Fatalf("unauthorized claim = %v, %v", acquired, err)
 		}
 		if state := getTask(t, db, ctx, task.Id).State; state != tes.Queued {
@@ -151,10 +151,10 @@ func runExecutionClaimContracts(t *testing.T, open storeFactory) {
 		}
 		canceled, cancel := context.WithCancel(ctx)
 		cancel()
-		if acquired, err := claimer.ClaimExecution(canceled, task.Id); acquired || err == nil {
+		if acquired, err := claimer.ClaimExecution(canceled, task.Id, nil); acquired || err == nil {
 			t.Fatalf("canceled claim = %v, %v", acquired, err)
 		}
-		if acquired, err := claimer.ClaimExecution(ctx, task.Id); err != nil || !acquired {
+		if acquired, err := claimer.ClaimExecution(ctx, task.Id, nil); err != nil || !acquired {
 			t.Fatalf("failed acquisition consumed claim: %v, %v", acquired, err)
 		}
 	})
@@ -166,7 +166,7 @@ func runExecutionClaimContracts(t *testing.T, open storeFactory) {
 			task := createTask(t, db, ctx, fmt.Sprintf("cancel-race-%d", i))
 			start := make(chan struct{})
 			errs := make(chan error, 2)
-			go func() { <-start; _, err := claimer.ClaimExecution(ctx, task.Id); errs <- err }()
+			go func() { <-start; _, err := claimer.ClaimExecution(ctx, task.Id, nil); errs <- err }()
 			go func() { <-start; errs <- db.WriteEvent(ctx, events.NewState(task.Id, tes.Canceled)) }()
 			close(start)
 			for j := 0; j < 2; j++ {
@@ -177,7 +177,7 @@ func runExecutionClaimContracts(t *testing.T, open storeFactory) {
 			if state := getTask(t, db, ctx, task.Id).State; state != tes.Canceled {
 				t.Fatalf("cancellation was overwritten: %s", state)
 			}
-			if acquired, err := claimer.ClaimExecution(ctx, task.Id); err != nil || acquired {
+			if acquired, err := claimer.ClaimExecution(ctx, task.Id, nil); err != nil || acquired {
 				t.Fatalf("claim after cancellation=%v,%v", acquired, err)
 			}
 		}
@@ -192,7 +192,7 @@ func runExecutionClaimContracts(t *testing.T, open storeFactory) {
 				if err := db.WriteEvent(ctx, events.NewState(task.Id, state)); err != nil {
 					t.Fatal(err)
 				}
-				if acquired, err := db.(events.ExecutionClaimer).ClaimExecution(ctx, task.Id); acquired {
+				if acquired, err := db.(events.ExecutionClaimer).ClaimExecution(ctx, task.Id, nil); acquired {
 					t.Fatalf("terminal task acquired execution: %v", err)
 				}
 				if got := getTask(t, db, ctx, task.Id).State; got != state {

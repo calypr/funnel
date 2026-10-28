@@ -638,16 +638,77 @@ func (*WriteEventResponse) Descriptor() ([]byte, []int) {
 	return file_events_events_proto_rawDescGZIP(), []int{5}
 }
 
+type ExecutionOwner struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Namespace     string                 `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	PodName       string                 `protobuf:"bytes,2,opt,name=pod_name,json=podName,proto3" json:"pod_name,omitempty"`
+	PodUid        string                 `protobuf:"bytes,3,opt,name=pod_uid,json=podUid,proto3" json:"pod_uid,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExecutionOwner) Reset() {
+	*x = ExecutionOwner{}
+	mi := &file_events_events_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExecutionOwner) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExecutionOwner) ProtoMessage() {}
+
+func (x *ExecutionOwner) ProtoReflect() protoreflect.Message {
+	mi := &file_events_events_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExecutionOwner.ProtoReflect.Descriptor instead.
+func (*ExecutionOwner) Descriptor() ([]byte, []int) {
+	return file_events_events_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *ExecutionOwner) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
+}
+
+func (x *ExecutionOwner) GetPodName() string {
+	if x != nil {
+		return x.PodName
+	}
+	return ""
+}
+
+func (x *ExecutionOwner) GetPodUid() string {
+	if x != nil {
+		return x.PodUid
+	}
+	return ""
+}
+
 type ClaimExecutionRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	Owner         *ExecutionOwner        `protobuf:"bytes,2,opt,name=owner,proto3" json:"owner,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ClaimExecutionRequest) Reset() {
 	*x = ClaimExecutionRequest{}
-	mi := &file_events_events_proto_msgTypes[6]
+	mi := &file_events_events_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -659,7 +720,7 @@ func (x *ClaimExecutionRequest) String() string {
 func (*ClaimExecutionRequest) ProtoMessage() {}
 
 func (x *ClaimExecutionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_events_events_proto_msgTypes[6]
+	mi := &file_events_events_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -672,7 +733,7 @@ func (x *ClaimExecutionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClaimExecutionRequest.ProtoReflect.Descriptor instead.
 func (*ClaimExecutionRequest) Descriptor() ([]byte, []int) {
-	return file_events_events_proto_rawDescGZIP(), []int{6}
+	return file_events_events_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ClaimExecutionRequest) GetTaskId() string {
@@ -680,6 +741,13 @@ func (x *ClaimExecutionRequest) GetTaskId() string {
 		return x.TaskId
 	}
 	return ""
+}
+
+func (x *ClaimExecutionRequest) GetOwner() *ExecutionOwner {
+	if x != nil {
+		return x.Owner
+	}
+	return nil
 }
 
 type ClaimExecutionResponse struct {
@@ -691,7 +759,7 @@ type ClaimExecutionResponse struct {
 
 func (x *ClaimExecutionResponse) Reset() {
 	*x = ClaimExecutionResponse{}
-	mi := &file_events_events_proto_msgTypes[7]
+	mi := &file_events_events_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -703,7 +771,7 @@ func (x *ClaimExecutionResponse) String() string {
 func (*ClaimExecutionResponse) ProtoMessage() {}
 
 func (x *ClaimExecutionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_events_events_proto_msgTypes[7]
+	mi := &file_events_events_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -716,7 +784,7 @@ func (x *ClaimExecutionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClaimExecutionResponse.ProtoReflect.Descriptor instead.
 func (*ClaimExecutionResponse) Descriptor() ([]byte, []int) {
-	return file_events_events_proto_rawDescGZIP(), []int{7}
+	return file_events_events_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ClaimExecutionResponse) GetClaimed() bool {
@@ -778,9 +846,14 @@ const file_events_events_proto_rawDesc = "" +
 	"\x05index\x18\x11 \x01(\rR\x05index\x12 \n" +
 	"\x04type\x18\x12 \x01(\x0e2\f.events.TypeR\x04typeB\x06\n" +
 	"\x04data\"\x14\n" +
-	"\x12WriteEventResponse\"0\n" +
+	"\x12WriteEventResponse\"b\n" +
+	"\x0eExecutionOwner\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x19\n" +
+	"\bpod_name\x18\x02 \x01(\tR\apodName\x12\x17\n" +
+	"\apod_uid\x18\x03 \x01(\tR\x06podUid\"^\n" +
 	"\x15ClaimExecutionRequest\x12\x17\n" +
-	"\atask_id\x18\x01 \x01(\tR\x06taskId\"2\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12,\n" +
+	"\x05owner\x18\x02 \x01(\v2\x16.events.ExecutionOwnerR\x05owner\"2\n" +
 	"\x16ClaimExecutionResponse\x12\x18\n" +
 	"\aclaimed\x18\x01 \x01(\bR\aclaimed*\x98\x02\n" +
 	"\x04Type\x12\v\n" +
@@ -818,7 +891,7 @@ func file_events_events_proto_rawDescGZIP() []byte {
 }
 
 var file_events_events_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_events_events_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_events_events_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_events_events_proto_goTypes = []any{
 	(Type)(0),                      // 0: events.Type
 	(*Metadata)(nil),               // 1: events.Metadata
@@ -827,36 +900,38 @@ var file_events_events_proto_goTypes = []any{
 	(*Resources)(nil),              // 4: events.Resources
 	(*Event)(nil),                  // 5: events.Event
 	(*WriteEventResponse)(nil),     // 6: events.WriteEventResponse
-	(*ClaimExecutionRequest)(nil),  // 7: events.ClaimExecutionRequest
-	(*ClaimExecutionResponse)(nil), // 8: events.ClaimExecutionResponse
-	nil,                            // 9: events.Metadata.ValueEntry
-	nil,                            // 10: events.SystemLog.FieldsEntry
-	nil,                            // 11: events.Resources.BackendParametersEntry
-	(*tes.OutputFileLog)(nil),      // 12: tes.OutputFileLog
-	(tes.State)(0),                 // 13: tes.State
-	(*tes.Task)(nil),               // 14: tes.Task
+	(*ExecutionOwner)(nil),         // 7: events.ExecutionOwner
+	(*ClaimExecutionRequest)(nil),  // 8: events.ClaimExecutionRequest
+	(*ClaimExecutionResponse)(nil), // 9: events.ClaimExecutionResponse
+	nil,                            // 10: events.Metadata.ValueEntry
+	nil,                            // 11: events.SystemLog.FieldsEntry
+	nil,                            // 12: events.Resources.BackendParametersEntry
+	(*tes.OutputFileLog)(nil),      // 13: tes.OutputFileLog
+	(tes.State)(0),                 // 14: tes.State
+	(*tes.Task)(nil),               // 15: tes.Task
 }
 var file_events_events_proto_depIdxs = []int32{
-	9,  // 0: events.Metadata.value:type_name -> events.Metadata.ValueEntry
-	12, // 1: events.Outputs.value:type_name -> tes.OutputFileLog
-	10, // 2: events.SystemLog.fields:type_name -> events.SystemLog.FieldsEntry
-	11, // 3: events.Resources.backend_parameters:type_name -> events.Resources.BackendParametersEntry
-	13, // 4: events.Event.state:type_name -> tes.State
+	10, // 0: events.Metadata.value:type_name -> events.Metadata.ValueEntry
+	13, // 1: events.Outputs.value:type_name -> tes.OutputFileLog
+	11, // 2: events.SystemLog.fields:type_name -> events.SystemLog.FieldsEntry
+	12, // 3: events.Resources.backend_parameters:type_name -> events.Resources.BackendParametersEntry
+	14, // 4: events.Event.state:type_name -> tes.State
 	2,  // 5: events.Event.outputs:type_name -> events.Outputs
 	1,  // 6: events.Event.metadata:type_name -> events.Metadata
 	3,  // 7: events.Event.system_log:type_name -> events.SystemLog
-	14, // 8: events.Event.task:type_name -> tes.Task
+	15, // 8: events.Event.task:type_name -> tes.Task
 	4,  // 9: events.Event.resources:type_name -> events.Resources
 	0,  // 10: events.Event.type:type_name -> events.Type
-	5,  // 11: events.EventService.WriteEvent:input_type -> events.Event
-	7,  // 12: events.EventService.ClaimExecution:input_type -> events.ClaimExecutionRequest
-	6,  // 13: events.EventService.WriteEvent:output_type -> events.WriteEventResponse
-	8,  // 14: events.EventService.ClaimExecution:output_type -> events.ClaimExecutionResponse
-	13, // [13:15] is the sub-list for method output_type
-	11, // [11:13] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	7,  // 11: events.ClaimExecutionRequest.owner:type_name -> events.ExecutionOwner
+	5,  // 12: events.EventService.WriteEvent:input_type -> events.Event
+	8,  // 13: events.EventService.ClaimExecution:input_type -> events.ClaimExecutionRequest
+	6,  // 14: events.EventService.WriteEvent:output_type -> events.WriteEventResponse
+	9,  // 15: events.EventService.ClaimExecution:output_type -> events.ClaimExecutionResponse
+	14, // [14:16] is the sub-list for method output_type
+	12, // [12:14] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_events_events_proto_init() }
@@ -883,7 +958,7 @@ func file_events_events_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_events_events_proto_rawDesc), len(file_events_events_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   11,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

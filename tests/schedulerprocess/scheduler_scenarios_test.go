@@ -244,7 +244,7 @@ func runWorkerCrashScenario(t *testing.T, settings dbSettings) {
 		t.Fatalf("task state after worker kill = %s, want INITIALIZING", task.GetState())
 	}
 	assertWorkerReservation(t, store, nodeID, taskID)
-	if admitted, err := store.ClaimExecution(systemContext(), taskID); err != nil || admitted {
+	if admitted, err := store.ClaimExecution(systemContext(), taskID, nil); err != nil || admitted {
 		t.Fatalf("second execution admission = %v, %v; want durable claim to reject it", admitted, err)
 	}
 

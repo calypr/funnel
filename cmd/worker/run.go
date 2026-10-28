@@ -85,6 +85,17 @@ func NewWorker(ctx context.Context, conf *config.Config, log *logger.Logger, opt
 
 	if compute := strings.ToLower(strings.TrimSpace(conf.Compute)); compute == "kubernetes" || compute == "k8s" {
 		executor.Backend = "kubernetes"
+		owner := &events.ExecutionOwner{
+			Namespace: os.Getenv(events.OwnerNamespaceEnv),
+			PodName:   os.Getenv(events.OwnerNameEnv),
+			PodUid:    os.Getenv(events.OwnerUIDEnv),
+		}
+		if owner.Namespace != "" || owner.PodName != "" || owner.PodUid != "" {
+			if _, err := events.ExecutionOwnerMetadata(owner); err != nil {
+				return nil, fmt.Errorf("reading Kubernetes worker identity: %w", err)
+			}
+			executor.ExecutionOwner = owner
+		}
 		executor.Template = conf.Kubernetes.ExecutorTemplate
 		executor.Namespace = conf.Kubernetes.Namespace
 		executor.JobsNamespace = conf.Kubernetes.JobsNamespace
@@ -189,11 +200,11 @@ type databaseTaskReader struct {
 	claimer  worker.ExecutionClaimer
 }
 
-func (r *databaseTaskReader) ClaimExecution(ctx context.Context, taskID string) (bool, error) {
+func (r *databaseTaskReader) ClaimExecution(ctx context.Context, taskID string, owner *events.ExecutionOwner) (bool, error) {
 	if r.claimer == nil {
 		return false, fmt.Errorf("database %q does not support execution claims", r.database)
 	}
-	return r.claimer.ClaimExecution(ctx, taskID)
+	return r.claimer.ClaimExecution(ctx, taskID, owner)
 }
 
 // eventWriterBuilder is a helper for building a set of event writers,

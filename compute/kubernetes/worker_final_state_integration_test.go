@@ -55,7 +55,7 @@ func (s *rejectCompletionRPC) WriteEvent(ctx context.Context, event *events.Even
 }
 
 func (s *rejectCompletionRPC) ClaimExecution(ctx context.Context, req *events.ClaimExecutionRequest) (*events.ClaimExecutionResponse, error) {
-	acquired, err := s.claimer.ClaimExecution(ctx, req.GetTaskId())
+	acquired, err := s.claimer.ClaimExecution(ctx, req.GetTaskId(), req.GetOwner())
 	if err != nil {
 		return nil, err
 	}

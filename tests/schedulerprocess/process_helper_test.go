@@ -100,8 +100,8 @@ type executionAdmissionBarrier struct {
 	worker.ExecutionClaimer
 }
 
-func (b *executionAdmissionBarrier) ClaimExecution(ctx context.Context, taskID string) (bool, error) {
-	claimed, err := b.ExecutionClaimer.ClaimExecution(ctx, taskID)
+func (b *executionAdmissionBarrier) ClaimExecution(ctx context.Context, taskID string, owner *events.ExecutionOwner) (bool, error) {
+	claimed, err := b.ExecutionClaimer.ClaimExecution(ctx, taskID, owner)
 	if err == nil && claimed {
 		fmt.Printf("PROCESS_EVENT: EXECUTION_ADMITTED task=%s\n", taskID)
 		select {}
