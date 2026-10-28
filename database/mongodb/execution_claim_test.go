@@ -61,7 +61,7 @@ func TestMongoClaimExecutionIsDurableAndOneShot(t *testing.T) {
 	if wins != 1 {
 		t.Fatalf("concurrent claims succeeded %d times, want once", wins)
 	}
-	assertMongoClaimState(t, db, ctx, "concurrent", tes.State_RUNNING, true)
+	assertMongoClaimState(t, db, ctx, "concurrent", tes.State_INITIALIZING, true)
 	if claimed, err := db.ClaimExecution(ctx, "concurrent"); err != nil || claimed {
 		t.Fatalf("retry claim = %t, %v; want false, nil", claimed, err)
 	}
@@ -78,7 +78,7 @@ func TestMongoClaimExecutionIsDurableAndOneShot(t *testing.T) {
 
 	if err := db.database.RunCommand(ctx, bson.D{
 		{Key: "collMod", Value: "tasks"},
-		{Key: "validator", Value: bson.M{"state": bson.M{"$ne": tes.State_RUNNING}}},
+		{Key: "validator", Value: bson.M{"state": bson.M{"$ne": tes.State_INITIALIZING}}},
 	}).Err(); err != nil {
 		t.Fatal(err)
 	}

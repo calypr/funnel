@@ -106,7 +106,7 @@ func testLostExecutionResponse(t *testing.T, open storeFactory) {
 		t.Fatalf("lost response worker=%v", err)
 	}
 	before := getTask(t, db, ctx, task.Id)
-	if before.State != tes.Running {
+	if before.State != tes.State_INITIALIZING {
 		t.Fatalf("lost response changed committed state: %s", before.State)
 	}
 	retryCtx, cancel := context.WithCancel(ctx)

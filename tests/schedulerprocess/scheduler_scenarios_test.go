@@ -240,8 +240,8 @@ func runWorkerCrashScenario(t *testing.T, settings dbSettings) {
 	line := barrier.waitForLine(t, "PROCESS_EVENT: EXECUTION_ADMITTED", 30*time.Second)
 	t.Logf("worker boundary: %s", line)
 	stopByKill(t, barrier)
-	if task := getTask(t, store, taskID); task.GetState() != tes.State_RUNNING {
-		t.Fatalf("task state after worker kill = %s, want RUNNING", task.GetState())
+	if task := getTask(t, store, taskID); task.GetState() != tes.State_INITIALIZING {
+		t.Fatalf("task state after worker kill = %s, want INITIALIZING", task.GetState())
 	}
 	assertWorkerReservation(t, store, nodeID, taskID)
 	if admitted, err := store.ClaimExecution(systemContext(), taskID); err != nil || admitted {
@@ -253,7 +253,7 @@ func runWorkerCrashScenario(t *testing.T, settings dbSettings) {
 		"FUNNEL_PROCESS_MARKER_DIR":    markers,
 		"FUNNEL_PROCESS_NODE_WORK_DIR": conf.Worker.WorkDir,
 	})
-	observer.waitForLine(t, "PROCESS_EVENT: RUNNING_OBSERVED", 20*time.Second)
+	observer.waitForLine(t, "PROCESS_EVENT: INITIALIZING_OBSERVED", 20*time.Second)
 	assertWorkerReservation(t, store, nodeID, taskID)
 	if err := waitForMarkerQuiet(t, markers, 750*time.Millisecond, observer); err != nil {
 		t.Fatal(err)

@@ -69,7 +69,7 @@ func TestClaimExecutionIsDurableAndOneShot(t *testing.T) {
 	if wins != 1 {
 		t.Fatalf("concurrent claims succeeded %d times, want once", wins)
 	}
-	assertBoltClaimState(t, db, ctx, "concurrent", tes.State_RUNNING, true)
+	assertBoltClaimState(t, db, ctx, "concurrent", tes.State_INITIALIZING, true)
 	if claimed, err := db.ClaimExecution(ctx, "concurrent"); err != nil || claimed {
 		t.Fatalf("retry claim = %t, %v; want false, nil", claimed, err)
 	}
@@ -87,7 +87,7 @@ func TestClaimExecutionIsDurableAndOneShot(t *testing.T) {
 	if claimed, err := db.ClaimExecution(ctx, "initializing"); err != nil || !claimed {
 		t.Fatalf("initializing claim = %t, %v; want true, nil", claimed, err)
 	}
-	assertBoltClaimState(t, db, ctx, "initializing", tes.State_RUNNING, true)
+	assertBoltClaimState(t, db, ctx, "initializing", tes.State_INITIALIZING, true)
 
 	unauthorized := context.Background()
 	_, err = server.NewAuthentication(nil, nil, server.AccessOwner).Interceptor(unauthorized, nil, nil,

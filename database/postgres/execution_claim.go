@@ -66,12 +66,12 @@ func (db *Postgres) ClaimExecution(ctx context.Context, taskID string) (bool, er
 	if alreadyClaimed || (state != tes.State_QUEUED.String() && state != tes.State_INITIALIZING.String()) {
 		return false, nil
 	}
-	stateJSON, err := json.Marshal(int32(tes.State_RUNNING))
+	stateJSON, err := json.Marshal(int32(tes.State_INITIALIZING))
 	if err != nil {
 		return false, err
 	}
 	tag, err := tx.Exec(ctx, `UPDATE tasks SET state=$2,execution_claimed=true,version=$3,data=jsonb_set(data,'{state}',$4::jsonb) WHERE id=$1`,
-		taskID, tes.State_RUNNING.String(), version+1, stateJSON)
+		taskID, tes.State_INITIALIZING.String(), version+1, stateJSON)
 	if err != nil {
 		return false, err
 	}

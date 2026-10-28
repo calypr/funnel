@@ -37,7 +37,7 @@ func (db *BoltDB) ClaimExecution(ctx context.Context, taskID string) (bool, erro
 		if err := tx.Bucket(TasksQueued).Delete(key); err != nil {
 			return err
 		}
-		if err := tx.Bucket(TaskState).Put(key, []byte(tes.State_RUNNING.String())); err != nil {
+		if err := tx.Bucket(TaskState).Put(key, []byte(tes.State_INITIALIZING.String())); err != nil {
 			return err
 		}
 		if err := tx.Bucket(ExecutionClaims).Put(key, []byte{1}); err != nil {

@@ -220,10 +220,6 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 		run.syserr = DownloadInputs(ctx, mapper.Inputs, r.Store, event, int(r.Conf.MaxParallelTransfers))
 	}
 
-	if run.ok() && !claimed {
-		_ = event.State(tes.State_RUNNING)
-	}
-
 	// Create symlinks between the working directory and the Scratch Directory
 	if run.ok() && r.Conf.ScratchPath != "" {
 		err := mapper.CopyInputsToScratch(r.Conf.ScratchPath)
@@ -385,6 +381,7 @@ func (r *DefaultWorker) runExecutors(ctx context.Context, event *events.TaskWrit
 	if resources == nil {
 		resources = &tes.Resources{}
 	}
+	taskStarted := false
 
 	for i, d := range task.GetExecutors() {
 		// If a previous executor failed and its error was not to be ignored,
@@ -455,6 +452,18 @@ func (r *DefaultWorker) runExecutors(ctx context.Context, event *events.TaskWrit
 		}
 
 		if run.ok() {
+			if !taskStarted {
+				// RUNNING means the first executor is being dispatched. Its container
+				// or pod may still be starting.
+				if err := event.State(tes.State_RUNNING); err != nil {
+					run.syserr = fmt.Errorf("recording task state %s: %w", tes.State_RUNNING, err)
+					break
+				}
+				taskStarted = true
+			}
+			if !run.ok() {
+				break
+			}
 			err := s.Run(ctx)
 
 			if err != nil {
