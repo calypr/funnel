@@ -42,6 +42,9 @@ func TestNewWorkerReadsKubernetesPodIdentity(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer w.Close()
+			if got := w.Executor.ComputeBackend; got != strings.ToLower(strings.TrimSpace(tc.compute)) {
+				t.Fatalf("compute backend = %q, want %q", got, tc.compute)
+			}
 			owner := w.Executor.ExecutionOwner
 			if (owner != nil) != tc.wantOwner {
 				t.Fatalf("owner=%v, want present=%v", owner, tc.wantOwner)

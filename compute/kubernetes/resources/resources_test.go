@@ -207,6 +207,29 @@ func TestCreateJob(t *testing.T) {
 	}
 }
 
+func TestCreateJobDoesNotApplyExecutorGPUCountToWorkerJob(t *testing.T) {
+	task := &tes.Task{
+		Id: testTaskID,
+		Resources: &tes.Resources{
+			BackendParameters: map[string]string{"gpu_count": "2"},
+		},
+	}
+	conf := config.DefaultConfig()
+	conf.Kubernetes.JobsNamespace = jobsNamespace
+	conf.Kubernetes.WorkerImage = "funnel:test"
+	conf.Kubernetes.WorkerTemplate = minimalWorkerTemplate
+
+	job, err := CreateJob(ctx, task, conf, fake.NewSimpleClientset(), l, nil)
+	if err != nil {
+		t.Fatalf("CreateJob: %v", err)
+	}
+	for _, container := range job.Spec.Template.Spec.Containers {
+		if _, exists := container.Resources.Limits[corev1.ResourceName("nvidia.com/gpu")]; exists {
+			t.Fatalf("worker container %q received the executor GPU limit", container.Name)
+		}
+	}
+}
+
 func TestDeleteJob(t *testing.T) {
 	fakeClient := fake.NewSimpleClientset()
 

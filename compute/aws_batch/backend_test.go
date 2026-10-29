@@ -13,6 +13,8 @@ import (
 	"github.com/calypr/funnel/events"
 	"github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/tes"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // mockClient implements the client interface for testing.
@@ -152,6 +154,21 @@ func TestSubmitResourceRequirements(t *testing.T) {
 		{"memory only", &tes.Resources{RamGb: 4}, map[string]string{"MEMORY": "3814"}},
 		{"cpu only", &tes.Resources{CpuCores: 2}, map[string]string{"VCPU": "2"}},
 		{"both", &tes.Resources{RamGb: 4, CpuCores: 2}, map[string]string{"MEMORY": "3814", "VCPU": "2"}},
+		{
+			"gpu with cpu and memory",
+			&tes.Resources{
+				CpuCores:                2,
+				RamGb:                   4,
+				BackendParameters:       map[string]string{"gpu_count": "2"},
+				BackendParametersStrict: true,
+			},
+			map[string]string{"MEMORY": "3814", "VCPU": "2", "GPU": "2"},
+		},
+		{
+			"gpu count with leading zeros",
+			&tes.Resources{BackendParameters: map[string]string{"gpu_count": "02"}},
+			map[string]string{"GPU": "2"},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			client := &mockClient{SubmitJobFunc: func(_ context.Context, req *batch.SubmitJobInput) (*batch.SubmitJobOutput, error) {
@@ -163,6 +180,65 @@ func TestSubmitResourceRequirements(t *testing.T) {
 			backend := &Backend{client: client, conf: &config.AWSBatch{}, event: &noopEventWriter{}}
 			if err := backend.Submit(&tes.Task{Id: "task", Resources: tc.resources}); err != nil {
 				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestSubmitRejectsInvalidGPUCountBeforeAWSRequest(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		value string
+	}{
+		{name: "empty"},
+		{name: "zero", value: "0"},
+		{name: "zero with leading zeros", value: "00"},
+		{name: "negative", value: "-1"},
+		{name: "explicit positive sign", value: "+1"},
+		{name: "fraction", value: "1.5"},
+		{name: "word", value: "one"},
+		{name: "integer overflow", value: "18446744073709551616"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var submitted bool
+			client := &mockClient{SubmitJobFunc: func(_ context.Context, _ *batch.SubmitJobInput) (*batch.SubmitJobOutput, error) {
+				submitted = true
+				return &batch.SubmitJobOutput{JobId: aws.String("job")}, nil
+			}}
+			backend := &Backend{client: client, conf: &config.AWSBatch{}, event: &noopEventWriter{}}
+			task := &tes.Task{Id: "task", Resources: &tes.Resources{BackendParameters: map[string]string{"gpu_count": tc.value}}}
+
+			if err := backend.Submit(task); status.Code(err) != codes.InvalidArgument {
+				t.Fatalf("Submit error = %v, want InvalidArgument", err)
+			}
+			if submitted {
+				t.Fatal("SubmitJob was called for invalid gpu_count")
+			}
+		})
+	}
+}
+
+func TestCheckBackendParameterSupport(t *testing.T) {
+	backend := &Backend{}
+	for _, tc := range []struct {
+		name      string
+		params    map[string]string
+		wantError bool
+	}{
+		{name: "gpu accepted", params: map[string]string{"gpu_count": "2"}},
+		{name: "unknown rejected", params: map[string]string{"unknown": "value"}, wantError: true},
+		{name: "invalid gpu rejected", params: map[string]string{"gpu_count": "0"}, wantError: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := backend.CheckBackendParameterSupport(&tes.Task{Resources: &tes.Resources{
+				BackendParameters:       tc.params,
+				BackendParametersStrict: true,
+			}})
+			if (err != nil) != tc.wantError {
+				t.Fatalf("CheckBackendParameterSupport() error = %v, wantError %v", err, tc.wantError)
+			}
+			if tc.wantError && status.Code(err) != codes.InvalidArgument {
+				t.Fatalf("CheckBackendParameterSupport() error = %v, want InvalidArgument", err)
 			}
 		})
 	}
@@ -201,5 +277,24 @@ func TestNewBackendPreservesRetryAttempts(t *testing.T) {
 				t.Fatalf("retry attempts = %d, want %d", got, test.want)
 			}
 		})
+	}
+}
+
+func TestSubmitSelectsGPUQueueAndDefinition(t *testing.T) {
+	submitted := false
+	client := &mockClient{SubmitJobFunc: func(_ context.Context, req *batch.SubmitJobInput) (*batch.SubmitJobOutput, error) {
+		submitted = true
+		if aws.ToString(req.JobQueue) != "a100-queue" || aws.ToString(req.JobDefinition) != "gpu-worker:2" {
+			t.Fatalf("unexpected routing: %+v", req)
+		}
+		if resourceValues(req.ContainerOverrides.ResourceRequirements)["GPU"] != "2" {
+			t.Fatal("missing GPU reservation")
+		}
+		return &batch.SubmitJobOutput{JobId: aws.String("job")}, nil
+	}}
+	backend := &Backend{client: client, conf: &config.AWSBatch{JobQueue: "default", JobDefinition: "default"}, event: &noopEventWriter{}}
+	err := backend.Submit(&tes.Task{Id: "task", Resources: &tes.Resources{BackendParametersStrict: true, BackendParameters: map[string]string{"GPU_COUNT": "2", "JOB_QUEUE": "a100-queue", "job_definition": "gpu-worker:2"}}})
+	if err != nil || !submitted {
+		t.Fatalf("submitted=%v error=%v", submitted, err)
 	}
 }

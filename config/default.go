@@ -88,6 +88,7 @@ func DefaultConfig() *Config {
 			Container: &ContainerConfig{
 				DriverCommand: "docker",
 				RunCommand: "run -i --read-only " +
+					"{{.GPUArgs}} " +
 					"{{if and .EnforceResources .Resources}}{{if gt .Resources.CpuCores 0}}--cpus {{.Resources.CpuCores}}{{end}} {{if .MemoryMB}}--memory {{.MemoryMB}}m --memory-swap {{.MemoryMB}}m{{end}}{{end}} " +
 					// Writable scratch space scoped to this executor container.
 					"{{if .NeedsTmpfs}}--tmpfs /tmp{{end}} " +

@@ -35,7 +35,124 @@ type DockerCommand struct {
 	Tags             map[string]string
 	Resources        *tes.Resources
 	EnforceResources bool
+	ComputeBackend   string
 	Command
+}
+
+const gpuDevicesBackendParameter = "gpu_devices"
+
+type dockerGPURequest struct {
+	count   int
+	devices []string
+}
+
+func (request dockerGPURequest) requested() bool {
+	return request.count > 0 || len(request.devices) > 0
+}
+
+// GPUArgs returns the Docker flags for the task's requested GPUs. AWS Batch
+// must use the exact devices assigned to its worker so the nested container
+// cannot select GPUs allocated to another job.
+func (docker DockerCommand) GPUArgs() (string, error) {
+	request, err := dockerGPURequestFromResources(docker.Resources)
+	if err != nil {
+		return "", err
+	}
+
+	computeBackend := strings.ToLower(strings.TrimSpace(docker.ComputeBackend))
+	awsBatch := isAWSBatchComputeBackend(computeBackend)
+	allocation, hasSlurmAllocation := os.LookupEnv("FUNNEL_GPU_DEVICES")
+	if os.Getenv("AWS_BATCH_JOB_ID") != "" && !awsBatch && (request.requested() || hasSlurmAllocation) {
+		return "", fmt.Errorf("AWS Batch job has non-AWS compute backend %q; refusing to select GPUs without the AWS allocation", docker.ComputeBackend)
+	}
+
+	if awsBatch {
+		if len(request.devices) > 0 {
+			return "", fmt.Errorf("%s is only supported by local Docker compute", gpuDevicesBackendParameter)
+		}
+		if request.count == 0 {
+			allocation := os.Getenv("NVIDIA_VISIBLE_DEVICES")
+			switch strings.ToLower(allocation) {
+			case "", "all", "none", "void":
+				return "", nil
+			}
+			devices, err := tes.ParseGPUDevices(allocation, 0)
+			if err != nil {
+				return "", fmt.Errorf("invalid AWS Batch NVIDIA_VISIBLE_DEVICES allocation: %w", err)
+			}
+			return gpuDeviceArgs(devices), nil
+		}
+		devices, err := tes.ParseGPUDevices(os.Getenv("NVIDIA_VISIBLE_DEVICES"), request.count)
+		if err != nil {
+			return "", fmt.Errorf("AWS Batch GPU request requires NVIDIA_VISIBLE_DEVICES allocation: %w", err)
+		}
+		return gpuDeviceArgs(devices), nil
+	}
+
+	if computeBackend == "slurm" {
+		if len(request.devices) > 0 {
+			return "", fmt.Errorf("gpu_devices is only supported by local Docker compute")
+		}
+		if request.count == 0 && !hasSlurmAllocation {
+			return "", nil
+		}
+		if !hasSlurmAllocation {
+			return "", fmt.Errorf("Slurm GPU request requires FUNNEL_GPU_DEVICES with assigned physical device IDs")
+		}
+		devices, err := tes.ParseGPUDevices(allocation, request.count)
+		if err != nil {
+			return "", fmt.Errorf("invalid FUNNEL_GPU_DEVICES allocation: %w", err)
+		}
+		return gpuDeviceArgs(devices), nil
+	}
+
+	if computeBackend == "local" {
+		if hasSlurmAllocation {
+			return "", fmt.Errorf("FUNNEL_GPU_DEVICES requires the Slurm compute backend")
+		}
+		if len(request.devices) > 0 {
+			return gpuDeviceArgs(request.devices), nil
+		}
+		if request.count > 0 {
+			return fmt.Sprintf("--gpus %d", request.count), nil
+		}
+		return "", nil
+	}
+
+	if request.requested() || hasSlurmAllocation {
+		return "", fmt.Errorf("GPU requests are not supported by Docker compute backend %q", docker.ComputeBackend)
+	}
+	return "", nil
+}
+
+func dockerGPURequestFromResources(resources *tes.Resources) (dockerGPURequest, error) {
+	if resources == nil {
+		return dockerGPURequest{}, nil
+	}
+	count, err := tes.GPUCount(resources)
+	if err != nil {
+		return dockerGPURequest{}, err
+	}
+	request := dockerGPURequest{count: count}
+	devices, err := tes.GPUDevices(resources, request.count)
+	if err != nil {
+		return dockerGPURequest{}, fmt.Errorf("invalid %s: %w", gpuDevicesBackendParameter, err)
+	}
+	request.devices = devices
+	return request, nil
+}
+
+func gpuDeviceArgs(devices []string) string {
+	return fmt.Sprintf(`--gpus '"device=%s"'`, strings.Join(devices, ","))
+}
+
+func isAWSBatchComputeBackend(backend string) bool {
+	switch backend {
+	case "aws-batch", "aws", "amazon":
+		return true
+	default:
+		return false
+	}
 }
 
 // MemoryMB returns the task's requested RAM as an integer megabyte value
@@ -69,8 +186,16 @@ type DockerVersion struct {
 
 // Run runs the Docker command and blocks until done.
 func (docker DockerCommand) Run(ctx context.Context) error {
+	gpuArgs, err := docker.GPUArgs()
+	if err != nil {
+		return err
+	}
+	if gpuArgs != "" && !hasGPUArgsPlaceholder(docker.RunCommand) {
+		return fmt.Errorf("Docker run template must include {{.GPUArgs}} to forward the task's GPU request")
+	}
+
 	// Sync docker API version info.
-	err := docker.SyncAPIVersion()
+	err = docker.SyncAPIVersion()
 	if err != nil {
 		_ = docker.Event.Error("failed to sync docker client API version", err)
 	}
@@ -86,6 +211,27 @@ func (docker DockerCommand) Run(ctx context.Context) error {
 	}
 
 	return err
+}
+
+func hasGPUArgsPlaceholder(commandTemplate string) bool {
+	for {
+		open := strings.Index(commandTemplate, "{{")
+		if open < 0 {
+			return false
+		}
+		commandTemplate = commandTemplate[open+2:]
+		close := strings.Index(commandTemplate, "}}")
+		if close < 0 {
+			return false
+		}
+		action := strings.TrimSpace(commandTemplate[:close])
+		action = strings.TrimPrefix(action, "-")
+		action = strings.TrimSuffix(action, "-")
+		if strings.TrimSpace(action) == ".GPUArgs" {
+			return true
+		}
+		commandTemplate = commandTemplate[close+2:]
+	}
 }
 
 // Stop stops the container.

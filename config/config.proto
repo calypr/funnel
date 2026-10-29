@@ -173,6 +173,7 @@ message HPCBackend {
   google.protobuf.Duration ReconcileRate = 2;
   string Template = 3;
   string TemplateFile = 4;
+  map<string, string> BackendParameters = 5;
 }
 
 // BoltDB describes the configuration for the BoltDB embedded database.

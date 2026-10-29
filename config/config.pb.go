@@ -1314,6 +1314,7 @@ type HPCBackend struct {
 	ReconcileRate     *durationpb.Duration   `protobuf:"bytes,2,opt,name=ReconcileRate,proto3" json:"ReconcileRate,omitempty"`
 	Template          string                 `protobuf:"bytes,3,opt,name=Template,proto3" json:"Template,omitempty"`
 	TemplateFile      string                 `protobuf:"bytes,4,opt,name=TemplateFile,proto3" json:"TemplateFile,omitempty"`
+	BackendParameters map[string]string      `protobuf:"bytes,5,rep,name=BackendParameters,proto3" json:"BackendParameters,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -1374,6 +1375,13 @@ func (x *HPCBackend) GetTemplateFile() string {
 		return x.TemplateFile
 	}
 	return ""
+}
+
+func (x *HPCBackend) GetBackendParameters() map[string]string {
+	if x != nil {
+		return x.BackendParameters
+	}
+	return nil
 }
 
 // BoltDB describes the configuration for the BoltDB embedded database.
@@ -3584,13 +3592,17 @@ const file_config_config_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a7\n" +
 	"\tTagsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xbb\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xda\x02\n" +
 	"\n" +
 	"HPCBackend\x12,\n" +
 	"\x11DisableReconciler\x18\x01 \x01(\bR\x11DisableReconciler\x12?\n" +
 	"\rReconcileRate\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\rReconcileRate\x12\x1a\n" +
 	"\bTemplate\x18\x03 \x01(\tR\bTemplate\x12\"\n" +
-	"\fTemplateFile\x18\x04 \x01(\tR\fTemplateFile\"\x1c\n" +
+	"\fTemplateFile\x18\x04 \x01(\tR\fTemplateFile\x12W\n" +
+	"\x11BackendParameters\x18\x05 \x03(\v2).config.HPCBackend.BackendParametersEntryR\x11BackendParameters\x1aD\n" +
+	"\x16BackendParametersEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x1c\n" +
 	"\x06BoltDB\x12\x12\n" +
 	"\x04Path\x18\x01 \x01(\tR\x04Path\"\x1c\n" +
 	"\x06Badger\x12\x12\n" +
@@ -3776,7 +3788,7 @@ func file_config_config_proto_rawDescGZIP() []byte {
 	return file_config_config_proto_rawDescData
 }
 
-var file_config_config_proto_msgTypes = make([]protoimpl.MessageInfo, 46)
+var file_config_config_proto_msgTypes = make([]protoimpl.MessageInfo, 47)
 var file_config_config_proto_goTypes = []any{
 	(*GridEngine)(nil),          // 0: config.GridEngine
 	(*Config)(nil),              // 1: config.Config
@@ -3823,10 +3835,11 @@ var file_config_config_proto_goTypes = []any{
 	nil,                         // 42: config.Node.MetadataEntry
 	nil,                         // 43: config.ContainerConfig.EnvEntry
 	nil,                         // 44: config.ContainerConfig.TagsEntry
-	nil,                         // 45: config.Kubernetes.NodeSelectorEntry
-	(*logger.LoggerConfig)(nil), // 46: logger.LoggerConfig
-	(*durationpb.Duration)(nil), // 47: google.protobuf.Duration
-	(*structpb.Struct)(nil),     // 48: google.protobuf.Struct
+	nil,                         // 45: config.HPCBackend.BackendParametersEntry
+	nil,                         // 46: config.Kubernetes.NodeSelectorEntry
+	(*logger.LoggerConfig)(nil), // 47: logger.LoggerConfig
+	(*durationpb.Duration)(nil), // 48: google.protobuf.Duration
+	(*structpb.Struct)(nil),     // 49: google.protobuf.Struct
 }
 var file_config_config_proto_depIdxs = []int32{
 	7,  // 0: config.Config.Server:type_name -> config.Server
@@ -3834,7 +3847,7 @@ var file_config_config_proto_depIdxs = []int32{
 	8,  // 2: config.Config.Scheduler:type_name -> config.Scheduler
 	10, // 3: config.Config.Node:type_name -> config.Node
 	11, // 4: config.Config.Worker:type_name -> config.Worker
-	46, // 5: config.Config.Logger:type_name -> logger.LoggerConfig
+	47, // 5: config.Config.Logger:type_name -> logger.LoggerConfig
 	14, // 6: config.Config.BoltDB:type_name -> config.BoltDB
 	15, // 7: config.Config.Badger:type_name -> config.Badger
 	24, // 8: config.Config.DynamoDB:type_name -> config.DynamoDB
@@ -3859,56 +3872,57 @@ var file_config_config_proto_depIdxs = []int32{
 	34, // 27: config.Config.FTPStorage:type_name -> config.FTPStorage
 	2,  // 28: config.Config.Plugins:type_name -> config.Plugins
 	41, // 29: config.Plugins.Params:type_name -> config.Plugins.ParamsEntry
-	47, // 30: config.TimeoutConfig.duration:type_name -> google.protobuf.Duration
+	48, // 30: config.TimeoutConfig.duration:type_name -> google.protobuf.Duration
 	3,  // 31: config.RPCClient.Credential:type_name -> config.BasicCredential
 	5,  // 32: config.RPCClient.Timeout:type_name -> config.TimeoutConfig
 	3,  // 33: config.Server.BasicAuth:type_name -> config.BasicCredential
 	4,  // 34: config.Server.OidcAuth:type_name -> config.OidcAuth
-	47, // 35: config.Scheduler.ScheduleRate:type_name -> google.protobuf.Duration
+	48, // 35: config.Scheduler.ScheduleRate:type_name -> google.protobuf.Duration
 	5,  // 36: config.Scheduler.NodePingTimeout:type_name -> config.TimeoutConfig
 	5,  // 37: config.Scheduler.NodeInitTimeout:type_name -> config.TimeoutConfig
 	5,  // 38: config.Scheduler.NodeDeadTimeout:type_name -> config.TimeoutConfig
 	9,  // 39: config.Node.Resources:type_name -> config.Resources
 	5,  // 40: config.Node.Timeout:type_name -> config.TimeoutConfig
-	47, // 41: config.Node.UpdateRate:type_name -> google.protobuf.Duration
+	48, // 41: config.Node.UpdateRate:type_name -> google.protobuf.Duration
 	42, // 42: config.Node.Metadata:type_name -> config.Node.MetadataEntry
-	47, // 43: config.Worker.PollingRate:type_name -> google.protobuf.Duration
-	47, // 44: config.Worker.LogUpdateRate:type_name -> google.protobuf.Duration
+	48, // 43: config.Worker.PollingRate:type_name -> google.protobuf.Duration
+	48, // 44: config.Worker.LogUpdateRate:type_name -> google.protobuf.Duration
 	12, // 45: config.Worker.Container:type_name -> config.ContainerConfig
 	43, // 46: config.ContainerConfig.Env:type_name -> config.ContainerConfig.EnvEntry
 	44, // 47: config.ContainerConfig.Tags:type_name -> config.ContainerConfig.TagsEntry
-	47, // 48: config.HPCBackend.ReconcileRate:type_name -> google.protobuf.Duration
-	5,  // 49: config.MongoDB.Timeout:type_name -> config.TimeoutConfig
-	5,  // 50: config.Postgres.Timeout:type_name -> config.TimeoutConfig
-	47, // 51: config.AWSBatch.ReconcileRate:type_name -> google.protobuf.Duration
-	20, // 52: config.AWSBatch.AWSConfig:type_name -> config.AWSConfig
-	47, // 53: config.GCPBatch.ReconcileRate:type_name -> google.protobuf.Duration
-	22, // 54: config.GCPBatch.GCPBatch:type_name -> config.GCPBatch
-	20, // 55: config.DynamoDB.AWSConfig:type_name -> config.AWSConfig
-	27, // 56: config.AmazonS3Storage.SSE:type_name -> config.SSE
-	20, // 57: config.AmazonS3Storage.AWSConfig:type_name -> config.AWSConfig
-	30, // 58: config.GenericS3Storage.MountedRead:type_name -> config.S3MountedRead
-	31, // 59: config.GenericS3Storage.MountedWrite:type_name -> config.S3MountedWrite
-	47, // 60: config.S3MountedWrite.Timeout:type_name -> google.protobuf.Duration
-	5,  // 61: config.HTTPStorage.Timeout:type_name -> config.TimeoutConfig
-	5,  // 62: config.FTPStorage.Timeout:type_name -> config.TimeoutConfig
-	47, // 63: config.Kubernetes.ReconcileRate:type_name -> google.protobuf.Duration
-	45, // 64: config.Kubernetes.NodeSelector:type_name -> config.Kubernetes.NodeSelectorEntry
-	40, // 65: config.Kubernetes.Tolerations:type_name -> config.Toleration
-	37, // 66: config.Kubernetes.Resources:type_name -> config.KubernetesResources
-	5,  // 67: config.Kubernetes.Timeout:type_name -> config.TimeoutConfig
-	36, // 68: config.Kubernetes.Storage:type_name -> config.KubernetesStorage
-	48, // 69: config.KubernetesStorage.volumes:type_name -> google.protobuf.Struct
-	48, // 70: config.KubernetesStorage.volumeMounts:type_name -> google.protobuf.Struct
-	48, // 71: config.KubernetesStorage.volumeClaimTemplates:type_name -> google.protobuf.Struct
-	48, // 72: config.KubernetesStorage.persistentVolumeTemplates:type_name -> google.protobuf.Struct
-	38, // 73: config.KubernetesResources.Defaults:type_name -> config.ResourceDefaults
-	39, // 74: config.KubernetesResources.Limits:type_name -> config.ResourceLimits
-	75, // [75:75] is the sub-list for method output_type
-	75, // [75:75] is the sub-list for method input_type
-	75, // [75:75] is the sub-list for extension type_name
-	75, // [75:75] is the sub-list for extension extendee
-	0,  // [0:75] is the sub-list for field type_name
+	48, // 48: config.HPCBackend.ReconcileRate:type_name -> google.protobuf.Duration
+	45, // 49: config.HPCBackend.BackendParameters:type_name -> config.HPCBackend.BackendParametersEntry
+	5,  // 50: config.MongoDB.Timeout:type_name -> config.TimeoutConfig
+	5,  // 51: config.Postgres.Timeout:type_name -> config.TimeoutConfig
+	48, // 52: config.AWSBatch.ReconcileRate:type_name -> google.protobuf.Duration
+	20, // 53: config.AWSBatch.AWSConfig:type_name -> config.AWSConfig
+	48, // 54: config.GCPBatch.ReconcileRate:type_name -> google.protobuf.Duration
+	22, // 55: config.GCPBatch.GCPBatch:type_name -> config.GCPBatch
+	20, // 56: config.DynamoDB.AWSConfig:type_name -> config.AWSConfig
+	27, // 57: config.AmazonS3Storage.SSE:type_name -> config.SSE
+	20, // 58: config.AmazonS3Storage.AWSConfig:type_name -> config.AWSConfig
+	30, // 59: config.GenericS3Storage.MountedRead:type_name -> config.S3MountedRead
+	31, // 60: config.GenericS3Storage.MountedWrite:type_name -> config.S3MountedWrite
+	48, // 61: config.S3MountedWrite.Timeout:type_name -> google.protobuf.Duration
+	5,  // 62: config.HTTPStorage.Timeout:type_name -> config.TimeoutConfig
+	5,  // 63: config.FTPStorage.Timeout:type_name -> config.TimeoutConfig
+	48, // 64: config.Kubernetes.ReconcileRate:type_name -> google.protobuf.Duration
+	46, // 65: config.Kubernetes.NodeSelector:type_name -> config.Kubernetes.NodeSelectorEntry
+	40, // 66: config.Kubernetes.Tolerations:type_name -> config.Toleration
+	37, // 67: config.Kubernetes.Resources:type_name -> config.KubernetesResources
+	5,  // 68: config.Kubernetes.Timeout:type_name -> config.TimeoutConfig
+	36, // 69: config.Kubernetes.Storage:type_name -> config.KubernetesStorage
+	49, // 70: config.KubernetesStorage.volumes:type_name -> google.protobuf.Struct
+	49, // 71: config.KubernetesStorage.volumeMounts:type_name -> google.protobuf.Struct
+	49, // 72: config.KubernetesStorage.volumeClaimTemplates:type_name -> google.protobuf.Struct
+	49, // 73: config.KubernetesStorage.persistentVolumeTemplates:type_name -> google.protobuf.Struct
+	38, // 74: config.KubernetesResources.Defaults:type_name -> config.ResourceDefaults
+	39, // 75: config.KubernetesResources.Limits:type_name -> config.ResourceLimits
+	76, // [76:76] is the sub-list for method output_type
+	76, // [76:76] is the sub-list for method input_type
+	76, // [76:76] is the sub-list for extension type_name
+	76, // [76:76] is the sub-list for extension extendee
+	0,  // [0:76] is the sub-list for field type_name
 }
 
 func init() { file_config_config_proto_init() }
@@ -3933,7 +3947,7 @@ func file_config_config_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_config_config_proto_rawDesc), len(file_config_config_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   46,
+			NumMessages:   47,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

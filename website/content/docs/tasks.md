@@ -344,6 +344,10 @@ limit also disables container swap. A process that exceeds its RAM limit may
 be killed by the kernel. Existing custom `Worker.Container.RunCommand`
 templates must include the resource flags themselves.
 
+### GPU requests
+
+GPU tasks use backend-specific TES `resources.backend_parameters`. See [GPU tasks]({{< ref "compute/gpus.md" >}}) for supported settings, hardware selection, and deployment requirements.
+
 ### Full task spec
 
 Here's a more detailed description of a task.  

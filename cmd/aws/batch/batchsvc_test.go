@@ -44,6 +44,13 @@ func TestCreateJobDefinitionResourceRequirements(t *testing.T) {
 	if _, err := svc.CreateJobDefinition(true); err != nil {
 		t.Fatal(err)
 	}
+	var command []string
+	if err := json.Unmarshal(properties["command"], &command); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(command, " "), "--Compute aws-batch") {
+		t.Fatalf("worker command omits compute identity: %v", command)
+	}
 	if _, ok := properties["memory"]; ok {
 		t.Fatal("deprecated memory field was sent")
 	}

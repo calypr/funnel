@@ -41,6 +41,9 @@ func NewBackend(ctx context.Context, conf *config.Config, reader tes.ReadOnlySer
 		MapStates:     mapStates,
 		ReconcileRate: conf.Slurm.ReconcileRate.AsDuration(),
 	}
+	if err := b.ConfigureBackendParameters(conf.Slurm.BackendParameters); err != nil {
+		return nil, fmt.Errorf("invalid slurm backend parameters: %w", err)
+	}
 
 	if !conf.Slurm.DisableReconciler {
 		go b.Reconcile(ctx)

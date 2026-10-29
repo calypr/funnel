@@ -172,6 +172,18 @@ func (ts *TaskService) CreateTask(ctx context.Context, task *tes.Task) (*tes.Cre
 		}
 	}
 
+	if err := tes.NormalizeBackendParameters(task.GetResources()); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	if backend, ok := ts.Compute.(interface{ BackendParameterKeys() []string }); ok {
+		unsupported, err := tes.FilterBackendParameters(task.GetResources(), backend.BackendParameterKeys())
+		if err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+		if len(unsupported) > 0 && ts.Log != nil {
+			ts.Log.Warn("ignoring unsupported backend parameters", "keys", unsupported)
+		}
+	}
 	if err := ts.Compute.CheckBackendParameterSupport(task); err != nil {
 		return nil, err
 	}
@@ -391,9 +403,7 @@ func (ts *TaskService) GetServiceInfo(ctx context.Context, info *tes.GetServiceI
 			"file:///path/to/local/funnel-storage",
 			"s3://ohsu-compbio-funnel/storage",
 		},
-		TesResourcesBackendParameters: []string{
-			"",
-		},
+		TesResourcesBackendParameters: []string{},
 		Type: &tes.ServiceType{
 			Artifact: "tes",
 			Group:    "org.ga4gh",
@@ -401,6 +411,10 @@ func (ts *TaskService) GetServiceInfo(ctx context.Context, info *tes.GetServiceI
 		},
 		UpdatedAt: time.Now().Format(time.RFC3339),
 		Version:   version.Version,
+	}
+
+	if backend, ok := ts.Compute.(interface{ BackendParameterKeys() []string }); ok {
+		resp.TesResourcesBackendParameters = backend.BackendParameterKeys()
 	}
 
 	/*
