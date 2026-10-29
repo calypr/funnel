@@ -325,11 +325,28 @@ function Task() {
   //const [task, setTask] = React.useState(example_task);
 
   React.useEffect(() => {
-    var url = new URL("/v1/tasks/" + task_id, window.location.origin);
-    get(url).then(
-      (task) => {
-        setTask(task);
-      }).catch((error) => console.log("getTask error:", error));
+    const url = new URL("/v1/tasks/" + task_id, window.location.origin);
+    const controller = new AbortController();
+    let active = true;
+    let timer;
+    const refresh = async () => {
+      try {
+        const updated = await get(url, false, controller.signal);
+        if (!active) return;
+        setTask(updated);
+        if (isDone(updated)) return;
+      } catch (error) {
+        if (!active) return;
+        console.log("getTask error:", error);
+      }
+      timer = setTimeout(refresh, 10000);
+    };
+    refresh();
+    return () => {
+      active = false;
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [task_id]);
 
   const json = (

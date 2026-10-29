@@ -10,7 +10,60 @@ afterEach(() => {
     act(() => root.unmount());
     root = undefined;
   }
+  vi.useRealTimers();
   vi.unstubAllGlobals();
+});
+
+it('shows final stderr without refreshing a running task page', async () => {
+  vi.useFakeTimers();
+  window.history.replaceState({}, '', '/tasks/task-539');
+  const running = {
+    id: 'task-539',
+    state: 'RUNNING',
+    executors: [{ image: 'alpine', command: ['example', '--invalid'] }],
+  };
+  const failed = {
+    ...running,
+    state: 'EXECUTOR_ERROR',
+    logs: [{ logs: [{ exit_code: 1, stderr: 'unknown option: --invalid' }] }],
+  };
+  let currentTask = running;
+  const fetchTask = vi.fn(async () => ({ status: 200, json: async () => currentTask }));
+  vi.stubGlobal('fetch', fetchTask);
+  const container = document.createElement('div');
+  root = createRoot(container);
+
+  await act(async () => root.render(<App />));
+  expect(container.textContent).toContain('RUNNING');
+  expect(container.textContent).not.toContain('unknown option: --invalid');
+
+  currentTask = failed;
+  await act(async () => vi.advanceTimersByTimeAsync(10000));
+
+  expect(container.textContent).toContain('EXECUTOR_ERROR');
+  expect(container.textContent).toContain('unknown option: --invalid');
+  const requestsAtCompletion = fetchTask.mock.calls.length;
+  await act(async () => vi.advanceTimersByTimeAsync(30000));
+  expect(fetchTask).toHaveBeenCalledTimes(requestsAtCompletion);
+});
+
+it('stops refreshing task details after leaving the page', async () => {
+  vi.useFakeTimers();
+  window.history.replaceState({}, '', '/tasks/task-539');
+  const fetchTask = vi.fn(async () => ({
+    status: 200,
+    json: async () => ({ id: 'task-539', state: 'RUNNING' }),
+  }));
+  vi.stubGlobal('fetch', fetchTask);
+  root = createRoot(document.createElement('div'));
+  await act(async () => root.render(<App />));
+  act(() => root.unmount());
+  root = undefined;
+  const requestsAtUnmount = fetchTask.mock.calls.length;
+
+  await act(async () => vi.advanceTimersByTimeAsync(30000));
+
+  expect(fetchTask).toHaveBeenCalledTimes(requestsAtUnmount);
 });
 
 it.each([
