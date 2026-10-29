@@ -38,6 +38,9 @@ type Executor struct {
 	StoragePlan *storageplan.Plan
 	// "docker" or "kubernetes"
 	Backend string
+	// ComputeBackend identifies the configured task compute backend, such as
+	// local or aws-batch. GPU handling differs between these backends.
+	ComputeBackend string
 	// Kubernetes executor template
 	Template string
 	// Kubernetes persistent volume template
@@ -422,6 +425,7 @@ func (r *DefaultWorker) runExecutors(ctx context.Context, event *events.TaskWrit
 				Event:            event.NewExecutorWriter(uint32(i)),
 				DriverCommand:    r.Conf.Container.DriverCommand,
 				RunCommand:       r.Conf.Container.RunCommand,
+				ComputeBackend:   r.Executor.ComputeBackend,
 				PullCommand:      r.Conf.Container.PullCommand,
 				StopCommand:      r.Conf.Container.StopCommand,
 				Resources:        resources,

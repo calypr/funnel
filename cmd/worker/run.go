@@ -80,7 +80,8 @@ func NewWorker(ctx context.Context, conf *config.Config, log *logger.Logger, opt
 	var readMounts []storage.S3ReadMount
 	var writeMounts []storage.S3WriteMount
 	var executor = worker.Executor{
-		Backend: "docker",
+		Backend:        "docker",
+		ComputeBackend: strings.ToLower(strings.TrimSpace(conf.Compute)),
 	}
 
 	if compute := strings.ToLower(strings.TrimSpace(conf.Compute)); compute == "kubernetes" || compute == "k8s" {

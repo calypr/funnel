@@ -13,4 +13,4 @@
 {{printf "#SBATCH --tmp %.0fGB" .DiskGb}}
 {{- end}}
 
-funnel worker run --taskID {{.TaskId}}
+funnel worker run --Compute slurm --taskID {{.TaskId}}

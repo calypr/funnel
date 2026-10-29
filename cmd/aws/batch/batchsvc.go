@@ -386,6 +386,8 @@ func (b *batchsvc) CreateJobDefinition(overwrite bool) (*types.JobDefinition, er
 			Command: []string{
 				"worker",
 				"run",
+				"--Compute",
+				"aws-batch",
 				"--Worker.WorkDir",
 				b.conf.Funnel.Worker.WorkDir,
 				"--Database",

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -17,6 +18,8 @@ import (
 	"github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/tes"
 	util "github.com/calypr/funnel/util/aws"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const defaultBatchRetryMaxAttempts = 4
@@ -79,6 +82,27 @@ func (b *Backend) WriteEvent(ctx context.Context, ev *events.Event) error {
 	return nil
 }
 
+func (b *Backend) BackendParameterKeys() []string {
+	return []string{"gpu_count", "job_definition", "job_queue"}
+}
+
+func (b *Backend) CheckBackendParameterSupport(task *tes.Task) error {
+	if _, err := tes.FilterBackendParameters(task.GetResources(), b.BackendParameterKeys()); err != nil {
+		return status.Error(codes.InvalidArgument, err.Error())
+	}
+	if _, err := tes.GPUCount(task.GetResources()); err != nil {
+		return status.Error(codes.InvalidArgument, err.Error())
+	}
+	for _, key := range []string{"job_queue", "job_definition"} {
+		if value, exists := task.GetResources().GetBackendParameters()[key]; exists {
+			if value == "" || strings.ContainsAny(value, "\r\n\t ") {
+				return status.Errorf(codes.InvalidArgument, "%s must be an AWS resource name or ARN", key)
+			}
+		}
+	}
+	return nil
+}
+
 func (b *Backend) Close() {
 	b.database.Close()
 	b.event.Close()
@@ -90,6 +114,14 @@ func (b *Backend) Submit(task *tes.Task) error {
 }
 
 func (b *Backend) submit(ctx context.Context, task *tes.Task) error {
+	if err := b.CheckBackendParameterSupport(task); err != nil {
+		return err
+	}
+	gpuCount, err := tes.GPUCount(task.Resources)
+	if err != nil {
+		return status.Error(codes.InvalidArgument, err.Error())
+	}
+
 	req := &batch.SubmitJobInput{
 		// JobDefinition: aws.String(b.jobDef),
 		JobDefinition: aws.String(b.conf.JobDefinition),
@@ -120,6 +152,20 @@ func (b *Backend) submit(ctx context.Context, task *tes.Task) error {
 				Value: aws.String(strconv.FormatInt(vcpus, 10)),
 			})
 		}
+	}
+	if gpuCount > 0 {
+		req.ContainerOverrides.ResourceRequirements = append(req.ContainerOverrides.ResourceRequirements, types.ResourceRequirement{
+			Type:  types.ResourceTypeGpu,
+			Value: aws.String(strconv.Itoa(gpuCount)),
+		})
+	}
+
+	parameters := task.GetResources().GetBackendParameters()
+	if value := parameters["job_queue"]; value != "" {
+		req.JobQueue = aws.String(value)
+	}
+	if value := parameters["job_definition"]; value != "" {
+		req.JobDefinition = aws.String(value)
 	}
 
 	resp, err := b.client.SubmitJob(ctx, req)
