@@ -69,7 +69,7 @@ func (db *MongoDB) nodes() *mongo.Collection {
 }
 
 func (db *MongoDB) tasks() *mongo.Collection {
-	return db.collection("tasks")
+	return db.database.Collection("tasks", options.Collection().SetRegistry(taskRegistry))
 }
 
 // Init creates tables in MongoDB.
