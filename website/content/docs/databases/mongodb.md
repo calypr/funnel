@@ -35,6 +35,23 @@ for member networking and authentication. Each advertised member hostname must
 be reachable from Funnel. Keep `directConnection` unset so the client can discover
 the current primary.
 
+Set `Username` and `Password` separately, or include credentials in the URI.
+When using a URI, specify `authSource` if the user belongs to a different
+authentication database. Separate credentials take precedence over credentials
+in the URI. Percent-encode credentials included in a URI.
+
+To trust a custom certificate authority, make the CA file available to the
+Funnel process and set `tls=true` and `tlsCAFile` in the connection URI:
+
+```yaml
+MongoDB:
+  Addrs:
+    - "mongodb://mongo.example:27017/?replicaSet=rs0&authSource=admin&tls=true&tlsCAFile=%2Fetc%2Ffunnel%2Fmongo-ca.pem"
+```
+
+For mutual TLS, the MongoDB driver also accepts `tlsCertificateKeyFile` in the
+URI. Its PEM file must contain the client certificate and private key.
+
 ## Start a single-node replica set locally
 
 This Docker example runs MongoDB without authentication and publishes its port
