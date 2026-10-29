@@ -95,6 +95,12 @@ func customErrorHandler(ctx context.Context, mux *runtime.ServeMux, marshaler ru
 		w.WriteHeader(499)
 	case codes.DeadlineExceeded: // 504
 		w.WriteHeader(http.StatusGatewayTimeout)
+	case codes.ResourceExhausted: // 429
+		w.WriteHeader(http.StatusTooManyRequests)
+	case codes.Unavailable: // 503
+		w.WriteHeader(http.StatusServiceUnavailable)
+	case codes.Unimplemented: // 501
+		w.WriteHeader(http.StatusNotImplemented)
 	default:
 		w.WriteHeader(http.StatusInternalServerError) // 500
 	}

@@ -589,7 +589,7 @@ func TestCancelUnknownTask(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !strings.Contains(err.Error(), "STATUS CODE - 404") && !strings.Contains(err.Error(), "STATUS CODE - 500") {
+	if !strings.Contains(err.Error(), "STATUS CODE - 404") {
 		t.Fatal("expected not found error, got", err)
 	}
 
