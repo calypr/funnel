@@ -2,10 +2,15 @@ package mongodb
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/calypr/funnel/server"
 	"github.com/calypr/funnel/tes"
 	"github.com/calypr/funnel/tests/mongotest"
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
@@ -38,6 +43,19 @@ func TestLegacyNumericOutputSize(t *testing.T) {
 				t.Fatalf("GetTask: %v", err)
 			}
 			checkOutputSizes(t, task)
+		})
+	}
+	mux := runtime.NewServeMux()
+	if err := tes.RegisterTaskServiceHandlerServer(ctx, mux, &server.TaskService{Read: db}); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/v1/tasks/legacy-output", "/tasks/legacy-output", "/v1/tasks", "/v1/tasks/legacy-output?view=FULL", "/v1/tasks?view=BASIC"} {
+		t.Run("HTTP "+path, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+			if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "legacy-output") {
+				t.Fatalf("GET %s: status %d, body %s", path, response.Code, response.Body.String())
+			}
 		})
 	}
 	_, err = db.tasks().InsertOne(ctx, bson.M{
