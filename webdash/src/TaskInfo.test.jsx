@@ -50,3 +50,29 @@ it('preserves line breaks in system log errors', async () => {
   expect(getComputedStyle(cell).whiteSpace).toBe('pre-line');
   act(() => root.unmount());
 });
+
+it.each([
+  ['missing', undefined],
+  ['null', null],
+  ['empty', []],
+  ['no executor logs', [{}]],
+])('renders a SYSTEM_ERROR task with %s logs', async (_name, logs) => {
+  const container = document.createElement('div');
+  const root = createRoot(container);
+  const task = {
+    id: 'failed-before-execution',
+    state: 'SYSTEM_ERROR',
+    executors: [{ command: ['echo', 'hello'], image: 'alpine' }],
+    logs,
+  };
+
+  try {
+    await act(async () => root.render(<TaskInfo task={task} />));
+    expect(container.textContent).toContain('SYSTEM_ERROR');
+    expect(container.textContent).toContain('echo hello');
+    expect(container.textContent).toContain('alpine');
+    expect(container.textContent).not.toContain('Exit Code');
+  } finally {
+    act(() => root.unmount());
+  }
+});

@@ -152,10 +152,7 @@ function TaskInfoRaw(props) {
   const renderExecutors = (task) => {
     if ( task.executors ) {
       var executors = task.executors;
-      var logs = [{}];
-      if ( task.logs && task.logs && task.logs[0].logs ) {
-        logs = task.logs[0].logs;
-      }
+      const logs = task.logs?.[0]?.logs ?? [];
       const cmdString = function(cmd) {
        return cmd.join(" ");
       };
