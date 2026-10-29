@@ -67,6 +67,8 @@ The cluster requires the appropriate GPU device plugin, drivers, and container r
 
 ## AWS Batch
 
+See the [AWS Batch GPU settings]({{< ref "aws-batch.md#gpu-jobs" >}}) for hardware offerings, queue configuration, and worker setup.
+
 ```json
 {
   "resources": {
@@ -89,6 +91,8 @@ The Batch worker command must include `--Compute aws-batch`. Newly generated Fun
 Use a GPU-capable compute environment, worker image, Docker runtime, and task image. GPU scheduling in AWS Batch supports NVIDIA hardware. Custom Docker run templates must include `{{.GPUArgs}}`.
 
 ## GCP Batch
+
+See the [GCP Batch GPU settings]({{< ref "gcp-batch.md#gpu-jobs" >}}) for accelerator offerings, machine types, locations, and quotas.
 
 ```json
 {
