@@ -3,11 +3,13 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/calypr/funnel/server"
 	"github.com/calypr/funnel/tes"
+	"github.com/jackc/pgx/v5"
 )
 
 // trimUnusedExecutorLogs removes trailing executor log entries that correspond
@@ -74,7 +76,10 @@ func (db *Postgres) GetTask(ctx context.Context, req *tes.GetTaskRequest) (*tes.
 	err = db.client.QueryRow(ctx, selectSQL, req.Id).Scan(&core.ID, &core.Owner, &stateStr, &core.DataJSON)
 
 	if err != nil {
-		return nil, tes.ErrNotFound
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, tes.ErrNotFound
+		}
+		return nil, err
 	}
 
 	// Authorization Check

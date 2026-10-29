@@ -60,7 +60,7 @@ func (db *MongoDB) GetTask(ctx context.Context, req *tes.GetTaskRequest) (*tes.T
 
 	var task tes.Task
 	if err := result.Decode(&task); err != nil {
-		return nil, tes.ErrNotFound
+		return nil, fmt.Errorf("mongo decode task: %w", err)
 	}
 	return &task, nil
 }
