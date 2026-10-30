@@ -184,7 +184,8 @@ func TestDynamoDBFullViewRejectsInvalidContentIndex(t *testing.T) {
 				return fmt.Sprintf(`{"Items":[{"index":{"N":%q},"content":{"S":"wrong input"}}]}`, tc.index)
 			})
 
-			if _, err := db.GetTask(t.Context(), &tes.GetTaskRequest{Id: "task-1", View: tes.View_FULL.String()}); err == nil {
+			_, err := db.GetTask(t.Context(), &tes.GetTaskRequest{Id: "task-1", View: tes.View_FULL.String()})
+			if err == nil {
 				t.Fatalf("GetTask accepted invalid DynamoDB content index %q", tc.index)
 			}
 		})

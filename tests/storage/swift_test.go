@@ -36,7 +36,8 @@ func TestSwiftStorage(t *testing.T) {
 		t.Fatal("error creating test bucket:", err)
 	}
 	defer func() {
-		if err := client.deleteBucket(testBucket); err != nil {
+		err := client.deleteBucket(testBucket)
+		if err != nil {
 			t.Errorf("delete test bucket %s: %v", testBucket, err)
 		}
 	}()

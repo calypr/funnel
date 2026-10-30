@@ -34,7 +34,8 @@ func (db *Badger) Init() error {
 }
 
 func (db *Badger) Close() {
-	if err := db.db.Close(); err != nil {
+	err := db.db.Close()
+	if err != nil {
 		log.Printf("closing Badger database: %v", err)
 	}
 }

@@ -205,7 +205,8 @@ func TestLargeLogRate(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
-	if err := w.Run(ctx); err != nil && !errors.Is(err, context.DeadlineExceeded) {
+	err := w.Run(ctx)
+	if err != nil && !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("run worker before timeout: %v", err)
 	}
 
@@ -247,7 +248,8 @@ func TestZeroLogRate(t *testing.T) {
 		EventWriter:      m,
 	}
 
-	if err := w.Run(context.Background()); err != nil {
+	err := w.Run(context.Background())
+	if err != nil {
 		t.Fatalf("run worker: %v", err)
 	}
 
@@ -443,7 +445,8 @@ func TestExecutorErrorStopsTask(t *testing.T) {
 		EventWriter:      m,
 	}
 
-	if err := w.Run(context.Background()); err != nil {
+	err := w.Run(context.Background())
+	if err != nil {
 		t.Log(err)
 	}
 
@@ -569,7 +572,8 @@ func TestExecutorIgnoreErrorContinuesTask(t *testing.T) {
 		EventWriter:      m,
 	}
 
-	if err := w.Run(context.Background()); err != nil {
+	err := w.Run(context.Background())
+	if err != nil {
 		t.Log(err)
 	}
 

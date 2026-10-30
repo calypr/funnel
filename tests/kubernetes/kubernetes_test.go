@@ -40,7 +40,8 @@ func fakeClientWithFunnelPod(ns string) *fake.Clientset {
 			},
 		},
 	}
-	if _, err := client.CoreV1().Pods(ns).Create(context.Background(), pod, metav1.CreateOptions{}); err != nil {
+	_, err := client.CoreV1().Pods(ns).Create(context.Background(), pod, metav1.CreateOptions{})
+	if err != nil {
 		panic(fmt.Errorf("create fixture Funnel pod: %w", err))
 	}
 	return client

@@ -13,7 +13,8 @@ import (
 func TestTaskListReportsHTTPError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
-		if _, err := w.Write([]byte(`{"error":"access denied"}`)); err != nil {
+		_, err := w.Write([]byte(`{"error":"access denied"}`))
+		if err != nil {
 			t.Error(err)
 		}
 	}))
@@ -64,7 +65,8 @@ func TestGet(t *testing.T) {
 	}
 
 	cmd.SetArgs([]string{"get", "--view", "MINIMAL", "1", "2"})
-	if err := cmd.Execute(); err != nil {
+	err := cmd.Execute()
+	if err != nil {
 		t.Fatal(err)
 	}
 }
@@ -81,7 +83,8 @@ func TestGetDefaultView(t *testing.T) {
 	}
 
 	cmd.SetArgs([]string{"get", "1", "2"})
-	if err := cmd.Execute(); err != nil {
+	err := cmd.Execute()
+	if err != nil {
 		t.Fatal(err)
 	}
 }
@@ -97,7 +100,8 @@ func TestList(t *testing.T) {
 	}
 
 	cmd.SetArgs([]string{"list", "--view", "FULL"})
-	if err := cmd.Execute(); err != nil {
+	err := cmd.Execute()
+	if err != nil {
 		t.Fatal(err)
 	}
 }
@@ -138,27 +142,32 @@ func TestServerDefault(t *testing.T) {
 	}
 
 	cmd.SetArgs([]string{"create", "foo.json"})
-	if err := cmd.Execute(); err != nil {
+	err := cmd.Execute()
+	if err != nil {
 		t.Fatal(err)
 	}
 
 	cmd.SetArgs([]string{"list"})
-	if err := cmd.Execute(); err != nil {
+	err = cmd.Execute()
+	if err != nil {
 		t.Fatal(err)
 	}
 
 	cmd.SetArgs([]string{"get", "1"})
-	if err := cmd.Execute(); err != nil {
+	err = cmd.Execute()
+	if err != nil {
 		t.Fatal(err)
 	}
 
 	cmd.SetArgs([]string{"cancel", "1"})
-	if err := cmd.Execute(); err != nil {
+	err = cmd.Execute()
+	if err != nil {
 		t.Fatal(err)
 	}
 
 	cmd.SetArgs([]string{"wait", "1"})
-	if err := cmd.Execute(); err != nil {
+	err = cmd.Execute()
+	if err != nil {
 		t.Fatal(err)
 	}
 }
@@ -202,27 +211,32 @@ func TestServerEnv(t *testing.T) {
 	}
 
 	cmd.SetArgs([]string{"create", "foo.json"})
-	if err := cmd.Execute(); err != nil {
+	err := cmd.Execute()
+	if err != nil {
 		t.Fatal(err)
 	}
 
 	cmd.SetArgs([]string{"list"})
-	if err := cmd.Execute(); err != nil {
+	err = cmd.Execute()
+	if err != nil {
 		t.Fatal(err)
 	}
 
 	cmd.SetArgs([]string{"get", "1"})
-	if err := cmd.Execute(); err != nil {
+	err = cmd.Execute()
+	if err != nil {
 		t.Fatal(err)
 	}
 
 	cmd.SetArgs([]string{"cancel", "1"})
-	if err := cmd.Execute(); err != nil {
+	err = cmd.Execute()
+	if err != nil {
 		t.Fatal(err)
 	}
 
 	cmd.SetArgs([]string{"wait", "1"})
-	if err := cmd.Execute(); err != nil {
+	err = cmd.Execute()
+	if err != nil {
 		t.Fatal(err)
 	}
 }
@@ -266,27 +280,32 @@ func TestServerFlagOverride(t *testing.T) {
 	}
 
 	cmd.SetArgs([]string{"create", "-S", srv, "foo.json"})
-	if err := cmd.Execute(); err != nil {
+	err := cmd.Execute()
+	if err != nil {
 		t.Fatal(err)
 	}
 
 	cmd.SetArgs([]string{"list", "-S", srv})
-	if err := cmd.Execute(); err != nil {
+	err = cmd.Execute()
+	if err != nil {
 		t.Fatal(err)
 	}
 
 	cmd.SetArgs([]string{"get", "-S", srv, "1"})
-	if err := cmd.Execute(); err != nil {
+	err = cmd.Execute()
+	if err != nil {
 		t.Fatal(err)
 	}
 
 	cmd.SetArgs([]string{"cancel", "-S", srv, "1"})
-	if err := cmd.Execute(); err != nil {
+	err = cmd.Execute()
+	if err != nil {
 		t.Fatal(err)
 	}
 
 	cmd.SetArgs([]string{"wait", "-S", srv, "1"})
-	if err := cmd.Execute(); err != nil {
+	err = cmd.Execute()
+	if err != nil {
 		t.Fatal(err)
 	}
 }

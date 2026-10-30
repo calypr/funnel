@@ -22,7 +22,8 @@ func TestFTPStorage(t *testing.T) {
 			"../ftp-test-server/_scratch/ftp-test/bob/test-output-file.txt",
 			"../ftp-test-server/_scratch/ftp-test/bob/testdata",
 		} {
-			if err := os.RemoveAll(path); err != nil {
+			err := os.RemoveAll(path)
+			if err != nil {
 				t.Errorf("remove FTP test artifact %s: %v", path, err)
 			}
 		}
@@ -212,7 +213,8 @@ func TestFTPStorageConfigAuth(t *testing.T) {
 			"../ftp-test-server/_scratch/ftp-test/bob/test-output-file.txt",
 			"../ftp-test-server/_scratch/ftp-test/bob/testdata",
 		} {
-			if err := os.RemoveAll(path); err != nil {
+			err := os.RemoveAll(path)
+			if err != nil {
 				t.Errorf("remove FTP test artifact %s: %v", path, err)
 			}
 		}

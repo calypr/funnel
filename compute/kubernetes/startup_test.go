@@ -61,7 +61,8 @@ func emptyKubernetesList(w http.ResponseWriter, r *http.Request) {
 		kind = "PersistentVolumeList"
 	}
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]interface{}{"apiVersion": version, "kind": kind, "items": []interface{}{}}); err != nil {
+	err := json.NewEncoder(w).Encode(map[string]interface{}{"apiVersion": version, "kind": kind, "items": []interface{}{}})
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }

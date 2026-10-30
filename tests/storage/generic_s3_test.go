@@ -49,7 +49,8 @@ func startMinio(t *testing.T) string {
 	}
 
 	t.Cleanup(func() {
-		if err := testcontainers.TerminateContainer(ctr); err != nil {
+		err := testcontainers.TerminateContainer(ctr)
+		if err != nil {
 			t.Errorf("terminate MinIO test container: %v", err)
 		}
 	})

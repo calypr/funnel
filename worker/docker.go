@@ -436,7 +436,8 @@ func (docker *DockerCommand) SyncAPIVersion() error {
 			return fmt.Errorf("failed to unmarshal docker version: %v", err)
 		}
 		if version.Client != version.Server {
-			if err := os.Setenv("DOCKER_API_VERSION", version.Server); err != nil {
+			err := os.Setenv("DOCKER_API_VERSION", version.Server)
+			if err != nil {
 				return fmt.Errorf("set Docker API version %q: %w", version.Server, err)
 			}
 		}

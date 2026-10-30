@@ -51,12 +51,14 @@ func TestGoneNodeRetainedUntilTaskFailureIsRecorded(t *testing.T) {
 	s := newTestScheduler([]*Node{node}, &queueStub{}, writer)
 	nodes := s.Nodes.(*MockSchedulerServiceServer)
 	nodes.On("DeleteNode", mock.Anything, mock.Anything).Return(nil, nil)
-	if err := s.CheckNodes(); err != nil {
+	err := s.CheckNodes()
+	if err != nil {
 		t.Fatal(err)
 	}
 	nodes.AssertNotCalled(t, "DeleteNode", mock.Anything, mock.Anything)
 	writer.fail = false
-	if err := s.CheckNodes(); err != nil {
+	err = s.CheckNodes()
+	if err != nil {
 		t.Fatal(err)
 	}
 	if writer.state != tes.State_SYSTEM_ERROR {

@@ -31,7 +31,8 @@ func Run(ctx context.Context, conf *config.Config, log *logger.Logger) error {
 		if err != nil {
 			return err
 		}
-		if err := w.Run(ctx); err != nil {
+		err = w.Run(ctx)
+		if err != nil {
 			return fmt.Errorf("worker run failed: %w", err)
 		}
 		return nil

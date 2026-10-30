@@ -176,7 +176,8 @@ func (taskBolt *BoltDB) Init() error {
 }
 
 func (taskBolt *BoltDB) Close() {
-	if err := taskBolt.db.Close(); err != nil {
+	err := taskBolt.db.Close()
+	if err != nil {
 		if taskBolt.log != nil {
 			taskBolt.log.Error("closing BoltDB database", "error", err)
 		} else {

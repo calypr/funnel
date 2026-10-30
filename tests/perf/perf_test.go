@@ -89,7 +89,7 @@ func BenchmarkRunConcurrentWithFakeNodes(b *testing.B) {
 					for {
 						select {
 						case <-ticker.C:
-							if _, err := cli.WriteEvent(context.Background(), &events.Event{
+							_, err := cli.WriteEvent(context.Background(), &events.Event{
 								Id:      id,
 								Attempt: 0,
 								Index:   0,
@@ -98,7 +98,8 @@ func BenchmarkRunConcurrentWithFakeNodes(b *testing.B) {
 									Stdout: content,
 								},
 								Timestamp: time.Now().Format(time.RFC3339Nano),
-							}); err != nil {
+							})
+							if err != nil {
 								b.Errorf("write benchmark executor event: %v", err)
 								return
 							}

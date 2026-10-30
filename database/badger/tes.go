@@ -180,10 +180,11 @@ func getTaskOwner(txn *badger.Txn, ownerKey []byte) (string, error) {
 		return "", fmt.Errorf("loading owner record: %w", err)
 	}
 	var taskOwner string
-	if err := item.Value(func(data []byte) error {
+	err = item.Value(func(data []byte) error {
 		taskOwner = string(data)
 		return nil
-	}); err != nil {
+	})
+	if err != nil {
 		return "", fmt.Errorf("reading owner record: %w", err)
 	}
 	return taskOwner, nil

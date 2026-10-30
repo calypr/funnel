@@ -92,7 +92,8 @@ func TestHTTPTransferTimeouts(t *testing.T) {
 			time.Sleep(250 * time.Millisecond)
 			writeTestResponse(t, w, []byte("second"))
 		case http.MethodPut:
-			if _, err := io.Copy(io.Discard, r.Body); err != nil {
+			_, err := io.Copy(io.Discard, r.Body)
+			if err != nil {
 				t.Errorf("read upload body: %v", err)
 			}
 			time.Sleep(250 * time.Millisecond)
@@ -137,7 +138,8 @@ func TestHTTPTransferTimeouts(t *testing.T) {
 
 func TestHTTPUploadCancellation(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if _, err := io.Copy(io.Discard, r.Body); err != nil {
+		_, err := io.Copy(io.Discard, r.Body)
+		if err != nil {
 			t.Errorf("read upload body: %v", err)
 		}
 		<-r.Context().Done()

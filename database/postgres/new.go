@@ -106,7 +106,8 @@ func ensureDatabaseExists(ctx context.Context, conf *config.Postgres) error {
 			)`
 
 		probeErr := probeConn.QueryRow(ctx, checkSQL, conf.Database, conf.User).Scan(&hasFullAccess)
-		if err := probeConn.Close(ctx); err != nil {
+		err := probeConn.Close(ctx)
+		if err != nil {
 			return fmt.Errorf("close Postgres access probe: %w", err)
 		}
 
@@ -126,7 +127,8 @@ func createResources(ctx context.Context, conf *config.Postgres) (returnErr erro
 		return fmt.Errorf("failed to connect as admin for bootstrap: %w", err)
 	}
 	defer func() {
-		if err := conn.Close(ctx); err != nil {
+		err := conn.Close(ctx)
+		if err != nil {
 			returnErr = errors.Join(returnErr, fmt.Errorf("close Postgres bootstrap connection: %w", err))
 		}
 	}()
@@ -160,7 +162,8 @@ func createResources(ctx context.Context, conf *config.Postgres) (returnErr erro
 		return fmt.Errorf("failed to connect to funnel database: %w", err)
 	}
 	defer func() {
-		if err := funnelConn.Close(ctx); err != nil {
+		err := funnelConn.Close(ctx)
+		if err != nil {
 			returnErr = errors.Join(returnErr, fmt.Errorf("close Postgres schema connection: %w", err))
 		}
 	}()

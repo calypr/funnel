@@ -21,7 +21,8 @@ func TestOpenRegularFileRejectsFIFOWithoutBlocking(t *testing.T) {
 	go func() {
 		file, err := openRegularFile(fifo)
 		if file != nil {
-			if closeErr := file.Close(); closeErr != nil {
+			closeErr := file.Close()
+			if closeErr != nil {
 				err = errors.Join(err, closeErr)
 			}
 		}
@@ -68,7 +69,8 @@ func TestOpenRootRegularFileAllowsInRootSymlinkAndRejectsFIFO(t *testing.T) {
 	go func() {
 		file, err := openRootRegularFile(root, "fifo")
 		if file != nil {
-			if closeErr := file.Close(); closeErr != nil {
+			closeErr := file.Close()
+			if closeErr != nil {
 				err = errors.Join(err, closeErr)
 			}
 		}

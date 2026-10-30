@@ -36,7 +36,8 @@ func TestLocalGet(t *testing.T) {
 	// File test
 	ip := path.Join(tmp, "input.txt")
 	cp := path.Join(tmp, "container.txt")
-	if err := os.WriteFile(ip, []byte("foo"), os.ModePerm); err != nil {
+	err = os.WriteFile(ip, []byte("foo"), os.ModePerm)
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -167,7 +168,8 @@ func TestLocalGetPath(t *testing.T) {
 
 	ip := path.Join(tmp, "input.txt")
 	cp := path.Join(tmp, "container.txt")
-	if err := os.WriteFile(ip, []byte("foo"), os.ModePerm); err != nil {
+	err = os.WriteFile(ip, []byte("foo"), os.ModePerm)
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -197,7 +199,8 @@ func TestLocalPut(t *testing.T) {
 	// File test
 	cp := path.Join(tmp, "container.txt")
 	op := path.Join(tmp, "output.txt")
-	if err := os.WriteFile(cp, []byte("foo"), os.ModePerm); err != nil {
+	err = os.WriteFile(cp, []byte("foo"), os.ModePerm)
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -226,7 +229,8 @@ func TestLocalPutPath(t *testing.T) {
 
 	cp := path.Join(tmp, "container.txt")
 	op := path.Join(tmp, "output.txt")
-	if err := os.WriteFile(cp, []byte("foo"), os.ModePerm); err != nil {
+	err = os.WriteFile(cp, []byte("foo"), os.ModePerm)
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -253,7 +257,8 @@ func TestProcessFile(t *testing.T) {
 
 	cp := path.Join(tmp, "input.txt")
 	op := path.Join(tmp, "output.txt")
-	if err := os.WriteFile(cp, []byte("foo"), os.ModePerm); err != nil {
+	err = os.WriteFile(cp, []byte("foo"), os.ModePerm)
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -289,10 +294,12 @@ func TestSameFile(t *testing.T) {
 	cp := path.Join(tmp, "output.txt")
 	cp2 := path.Join(tmp, "output2.txt")
 	op := path.Join(tmpOut, "output.txt")
-	if err := os.WriteFile(cp, []byte("foo"), os.ModePerm); err != nil {
+	err = os.WriteFile(cp, []byte("foo"), os.ModePerm)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(cp2, []byte("bar"), os.ModePerm); err != nil {
+	err = os.WriteFile(cp2, []byte("bar"), os.ModePerm)
+	if err != nil {
 		t.Fatal(err)
 	}
 

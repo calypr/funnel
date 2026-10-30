@@ -68,7 +68,8 @@ func TestNodeInitFail(t *testing.T) {
 	}
 
 	time.Sleep(conf.Scheduler.NodeInitTimeout.GetDuration().AsDuration())
-	if err := srv.Scheduler.CheckNodes(); err != nil {
+	err = srv.Scheduler.CheckNodes()
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -102,12 +103,14 @@ func TestNodeDeadTimeout(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := srv.Scheduler.CheckNodes(); err != nil {
+	err = srv.Scheduler.CheckNodes()
+	if err != nil {
 		t.Fatal(err)
 	}
 
 	time.Sleep(conf.Scheduler.NodeDeadTimeout.GetDuration().AsDuration())
-	if err := srv.Scheduler.CheckNodes(); err != nil {
+	err = srv.Scheduler.CheckNodes()
+	if err != nil {
 		t.Fatal(err)
 	}
 

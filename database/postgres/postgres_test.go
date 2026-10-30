@@ -115,7 +115,8 @@ func getTestPostgres(t *testing.T) (*Postgres, testcontainers.Container) {
 
 func terminateTestContainer(t *testing.T, container testcontainers.Container) {
 	t.Helper()
-	if err := testcontainers.TerminateContainer(container); err != nil {
+	err := testcontainers.TerminateContainer(container)
+	if err != nil {
 		t.Errorf("terminate Postgres test container: %v", err)
 	}
 }

@@ -20,8 +20,11 @@ func Reader(ctx context.Context, r io.Reader) io.Reader {
 			SetReadDeadline(time.Time) error
 		}
 		if d, ok := r.(deadliner); ok {
-			if err := d.SetReadDeadline(deadline); err != nil && !errors.Is(err, os.ErrNoDeadline) {
-				return reader{ctx: ctx, r: r, setupErr: err}
+			err := d.SetReadDeadline(deadline)
+			if err != nil {
+				if !errors.Is(err, os.ErrNoDeadline) {
+					return reader{ctx: ctx, r: r, setupErr: err}
+				}
 			}
 		}
 	}
@@ -60,8 +63,11 @@ func Writer(ctx context.Context, w io.Writer) io.Writer {
 			SetWriteDeadline(time.Time) error
 		}
 		if d, ok := w.(deadliner); ok {
-			if err := d.SetWriteDeadline(deadline); err != nil && !errors.Is(err, os.ErrNoDeadline) {
-				return writer{ctx: ctx, w: w, setupErr: err}
+			err := d.SetWriteDeadline(deadline)
+			if err != nil {
+				if !errors.Is(err, os.ErrNoDeadline) {
+					return writer{ctx: ctx, w: w, setupErr: err}
+				}
 			}
 		}
 	}

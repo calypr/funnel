@@ -167,7 +167,8 @@ func (b *Backend) WriteEvent(ctx context.Context, ev *events.Event) error {
 
 func (b *Backend) Close() {
 	if b.loggingClient != nil {
-		if err := b.loggingClient.Close(); err != nil {
+		err := b.loggingClient.Close()
+		if err != nil {
 			if b.log != nil {
 				b.log.Error("closing Google Cloud Logging client", "error", err)
 			} else {

@@ -40,7 +40,8 @@ func TestRetrier(t *testing.T) {
 		t.Error("unexpected backoff delays", delays)
 	}
 
-	if err := r.Retry(bg, func() error { return nil }); err != nil {
+	err = r.Retry(bg, func() error { return nil })
+	if err != nil {
 		t.Fatal(err)
 	}
 	// a successful retry resets the interval

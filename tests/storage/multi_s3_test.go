@@ -40,7 +40,8 @@ func TestMultiS3Storage(t *testing.T) {
 		t.Fatal("error creating test bucket:", err)
 	}
 	defer func() {
-		if err := gclient1.deleteBucket(testBucket); err != nil {
+		err := gclient1.deleteBucket(testBucket)
+		if err != nil {
 			t.Errorf("delete test bucket from first backend: %v", err)
 		}
 	}()
@@ -55,7 +56,8 @@ func TestMultiS3Storage(t *testing.T) {
 		t.Fatal("error creating test bucket:", err)
 	}
 	defer func() {
-		if err := gclient2.deleteBucket(testBucket); err != nil {
+		err := gclient2.deleteBucket(testBucket)
+		if err != nil {
 			t.Errorf("delete test bucket from second backend: %v", err)
 		}
 	}()

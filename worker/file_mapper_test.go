@@ -297,15 +297,18 @@ func TestCopyOutputsToWorkDirReturnsDirectoryCopyErrors(t *testing.T) {
 	scratch := filepath.Join(root, "scratch")
 	workOutput := filepath.Join(root, "work", "result")
 	scratchOutput := filepath.Join(scratch, workOutput)
-	if err := os.MkdirAll(scratchOutput, 0755); err != nil {
+	err := os.MkdirAll(scratchOutput, 0755)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(filepath.Join(root, "missing"), filepath.Join(scratchOutput, "broken-link")); err != nil {
+	err = os.Symlink(filepath.Join(root, "missing"), filepath.Join(scratchOutput, "broken-link"))
+	if err != nil {
 		t.Fatal(err)
 	}
 
 	mapper := &FileMapper{Outputs: []*tes.Output{{Path: workOutput}}}
-	if err := mapper.CopyOutputsToWorkDir(scratch); err == nil {
+	err = mapper.CopyOutputsToWorkDir(scratch)
+	if err == nil {
 		t.Fatal("CopyOutputsToWorkDir() returned nil after a source file could not be copied")
 	}
 }

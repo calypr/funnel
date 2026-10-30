@@ -41,7 +41,8 @@ func TestServeReturnsHTTPBindErrorAndReleasesRPCListener(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RPC listener was not released after HTTP bind failure: %v", err)
 	}
-	if err := rpcListener.Close(); err != nil {
+	err = rpcListener.Close()
+	if err != nil {
 		t.Fatal(err)
 	}
 }
@@ -62,7 +63,8 @@ func TestServeCancellationWaitsForBothListenersToStop(t *testing.T) {
 	for {
 		response, err := http.Get(url)
 		if err == nil {
-			if err := response.Body.Close(); err != nil {
+			err := response.Body.Close()
+			if err != nil {
 				t.Fatal(err)
 			}
 			break
@@ -89,7 +91,8 @@ func TestServeCancellationWaitsForBothListenersToStop(t *testing.T) {
 		if err != nil {
 			t.Fatalf("listener at %s was not released: %v", address, err)
 		}
-		if err := listener.Close(); err != nil {
+		err = listener.Close()
+		if err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -44,7 +44,8 @@ func Cancel(server string, ids []string, writer io.Writer) error {
 	}
 
 	for _, x := range res {
-		if _, err := fmt.Fprintln(writer, x); err != nil {
+		_, err := fmt.Fprintln(writer, x)
+		if err != nil {
 			return fmt.Errorf("writing cancellation output: %w", err)
 		}
 	}

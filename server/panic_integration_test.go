@@ -37,7 +37,8 @@ func TestGRPCServerSurvivesHandlerPanic(t *testing.T) {
 	stopped := make(chan struct{})
 	go func() {
 		defer close(stopped)
-		if err := server.Serve(listener); err != nil {
+		err := server.Serve(listener)
+		if err != nil {
 			t.Errorf("serve test RPC: %v", err)
 		}
 	}()

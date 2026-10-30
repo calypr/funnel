@@ -86,7 +86,8 @@ func (p *PubSubWriter) Close() {
 	p.closeOnce.Do(func() {
 		close(p.shutdown)
 		p.publisher.Stop()
-		if err := p.client.Close(); err != nil {
+		err := p.client.Close()
+		if err != nil {
 			log.Printf("close Pub/Sub event writer: %v", err)
 		}
 	})
@@ -105,7 +106,8 @@ func ReadPubSub(ctx context.Context, conf *config.PubSub, subname string, w Writ
 		return err
 	}
 	defer func() {
-		if err := client.Close(); err != nil {
+		err := client.Close()
+		if err != nil {
 			retErr = errors.Join(retErr, fmt.Errorf("close Pub/Sub event reader: %w", err))
 		}
 	}()

@@ -476,10 +476,11 @@ func TestRunUsesNamedExecutorForLogsAndExitClassification(t *testing.T) {
 		case r.Method == http.MethodPost && r.URL.Path == "/apis/batch/v1/namespaces/jobs/jobs":
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
-			if err := json.NewEncoder(w).Encode(&batchv1.Job{
+			err := json.NewEncoder(w).Encode(&batchv1.Job{
 				TypeMeta:   metav1.TypeMeta{APIVersion: "batch/v1", Kind: "Job"},
 				ObjectMeta: metav1.ObjectMeta{Name: "task-123-0", Namespace: "jobs"},
-			}); err != nil {
+			})
+			if err != nil {
 				t.Errorf("encode Kubernetes job response: %v", err)
 			}
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/namespaces/jobs/pods" && r.URL.Query().Get("watch") == "true":
@@ -499,10 +500,11 @@ func TestRunUsesNamedExecutorForLogsAndExitClassification(t *testing.T) {
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
-			if err := json.NewEncoder(w).Encode(struct {
+			err = json.NewEncoder(w).Encode(struct {
 				Type   watch.EventType `json:"type"`
 				Object json.RawMessage `json:"object"`
-			}{Type: watch.Modified, Object: pod}); err != nil {
+			}{Type: watch.Modified, Object: pod})
+			if err != nil {
 				t.Errorf("encode Kubernetes watch response: %v", err)
 			}
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/log"):
@@ -514,7 +516,8 @@ func TestRunUsesNamedExecutorForLogsAndExitClassification(t *testing.T) {
 			logContainer = r.URL.Query().Get("container")
 			mu.Unlock()
 			w.Header().Set("Content-Type", "text/plain")
-			if _, err := io.WriteString(w, "executor output"); err != nil {
+			_, err := io.WriteString(w, "executor output")
+			if err != nil {
 				t.Errorf("write executor log response: %v", err)
 			}
 		default:

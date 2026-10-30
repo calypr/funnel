@@ -72,7 +72,8 @@ func TestTaskFileOption(t *testing.T) {
 	}
 
 	c.SetArgs([]string{"run", "--taskFile", "test.task.json"})
-	if err := c.Execute(); err != nil {
+	err := c.Execute()
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -84,7 +85,8 @@ func TestTaskFileOption(t *testing.T) {
 	}
 
 	c.SetArgs([]string{"run", "-f", "test.task.json"})
-	if err := c.Execute(); err != nil {
+	err = c.Execute()
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -96,7 +98,8 @@ func TestTaskFileOption(t *testing.T) {
 	}
 
 	c.SetArgs([]string{"run", "--taskBase64", "abcd"})
-	if err := c.Execute(); err != nil {
+	err = c.Execute()
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -108,7 +111,8 @@ func TestTaskFileOption(t *testing.T) {
 	}
 
 	c.SetArgs([]string{"run", "-b", "abcd"})
-	if err := c.Execute(); err != nil {
+	err = c.Execute()
+	if err != nil {
 		t.Fatal(err)
 	}
 }

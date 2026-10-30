@@ -49,7 +49,8 @@ func TestCreateReportsMissingTaskFile(t *testing.T) {
 func TestCreateReportsLocationAfterPreviousTask(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if _, err := io.WriteString(w, `{"id":"first"}`); err != nil {
+		_, err := io.WriteString(w, `{"id":"first"}`)
+		if err != nil {
 			t.Error(err)
 		}
 	}))

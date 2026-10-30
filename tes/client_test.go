@@ -43,7 +43,8 @@ func TestGetTask(t *testing.T) {
 			t.Errorf("marshal response: %v", err)
 			return
 		}
-		if _, err := w.Write(o); err != nil {
+		_, err = w.Write(o)
+		if err != nil {
 			t.Errorf("write response: %v", err)
 		}
 	})
@@ -79,7 +80,8 @@ func TestGetTaskTrailingSlash(t *testing.T) {
 			t.Errorf("marshal response: %v", err)
 			return
 		}
-		if _, err := w.Write(o); err != nil {
+		_, err = w.Write(o)
+		if err != nil {
 			t.Errorf("write response: %v", err)
 		}
 	})
