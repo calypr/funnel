@@ -36,7 +36,9 @@ func TestLocalGet(t *testing.T) {
 	// File test
 	ip := path.Join(tmp, "input.txt")
 	cp := path.Join(tmp, "container.txt")
-	os.WriteFile(ip, []byte("foo"), os.ModePerm)
+	if err := os.WriteFile(ip, []byte("foo"), os.ModePerm); err != nil {
+		t.Fatal(err)
+	}
 
 	_, gerr := l.Get(ctx, "file://"+ip, cp)
 	if gerr != nil {
@@ -64,8 +66,14 @@ func TestLocalListDirectory(t *testing.T) {
 		allowedDirs: []string{d},
 	}
 
-	stat1, _ := os.Stat("../tests/storage/testdata/test_dir/subdir/test_dir_file1")
-	stat2, _ := os.Stat("../tests/storage/testdata/test_dir/test_dir_file2")
+	stat1, err := os.Stat("../tests/storage/testdata/test_dir/subdir/test_dir_file1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stat2, err := os.Stat("../tests/storage/testdata/test_dir/test_dir_file2")
+	if err != nil {
+		t.Fatal(err)
+	}
 	lm1 := stat1.ModTime()
 	lm2 := stat2.ModTime()
 
@@ -138,7 +146,10 @@ func TestLocalListDirectory(t *testing.T) {
 
 func TestLocalJoin(t *testing.T) {
 	l := &Local{}
-	j1, _ := l.Join("file:///foo/bar", "baz")
+	j1, err := l.Join("file:///foo/bar", "baz")
+	if err != nil {
+		t.Fatal(err)
+	}
 	e1 := "file:///foo/bar/baz"
 	if j1 != e1 {
 		t.Errorf("failed local join: %s != %s", j1, e1)
@@ -156,7 +167,9 @@ func TestLocalGetPath(t *testing.T) {
 
 	ip := path.Join(tmp, "input.txt")
 	cp := path.Join(tmp, "container.txt")
-	os.WriteFile(ip, []byte("foo"), os.ModePerm)
+	if err := os.WriteFile(ip, []byte("foo"), os.ModePerm); err != nil {
+		t.Fatal(err)
+	}
 
 	_, gerr := l.Get(ctx, ip, cp)
 	if gerr != nil {
@@ -184,7 +197,9 @@ func TestLocalPut(t *testing.T) {
 	// File test
 	cp := path.Join(tmp, "container.txt")
 	op := path.Join(tmp, "output.txt")
-	os.WriteFile(cp, []byte("foo"), os.ModePerm)
+	if err := os.WriteFile(cp, []byte("foo"), os.ModePerm); err != nil {
+		t.Fatal(err)
+	}
 
 	_, gerr := l.Put(ctx, "file://"+op, cp)
 	if gerr != nil {
@@ -211,7 +226,9 @@ func TestLocalPutPath(t *testing.T) {
 
 	cp := path.Join(tmp, "container.txt")
 	op := path.Join(tmp, "output.txt")
-	os.WriteFile(cp, []byte("foo"), os.ModePerm)
+	if err := os.WriteFile(cp, []byte("foo"), os.ModePerm); err != nil {
+		t.Fatal(err)
+	}
 
 	_, gerr := l.Put(ctx, op, cp)
 	if gerr != nil {
@@ -236,7 +253,9 @@ func TestProcessFile(t *testing.T) {
 
 	cp := path.Join(tmp, "input.txt")
 	op := path.Join(tmp, "output.txt")
-	os.WriteFile(cp, []byte("foo"), os.ModePerm)
+	if err := os.WriteFile(cp, []byte("foo"), os.ModePerm); err != nil {
+		t.Fatal(err)
+	}
 
 	err = processFile(ctx, cp, op)
 	if err != nil {
@@ -270,8 +289,12 @@ func TestSameFile(t *testing.T) {
 	cp := path.Join(tmp, "output.txt")
 	cp2 := path.Join(tmp, "output2.txt")
 	op := path.Join(tmpOut, "output.txt")
-	os.WriteFile(cp, []byte("foo"), os.ModePerm)
-	os.WriteFile(cp2, []byte("bar"), os.ModePerm)
+	if err := os.WriteFile(cp, []byte("foo"), os.ModePerm); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cp2, []byte("bar"), os.ModePerm); err != nil {
+		t.Fatal(err)
+	}
 
 	err = linkFile(ctx, cp, op)
 	if err != nil {

@@ -134,7 +134,7 @@ func (db *MongoDB) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*t
 		return nil, err
 	}
 
-	defer cursor.Close(mctx)
+	defer cursor.Close(mctx) //nolint:errcheck // Cursor cleanup cannot change results; decode and iteration errors are returned below.
 
 	mctx, cancel = db.wrap(ctx)
 	defer cancel()

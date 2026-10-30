@@ -18,7 +18,7 @@ type TaskCursor struct {
 const taskCursorPrefix = "task-v1:"
 
 func EncodeTaskCursor(created, id string) string {
-	data, _ := json.Marshal(TaskCursor{Created: created, ID: id})
+	data, _ := json.Marshal(TaskCursor{Created: created, ID: id}) //nolint:errcheck // This value contains only strings, which encoding/json always supports.
 	return taskCursorPrefix + base64.RawURLEncoding.EncodeToString(data)
 }
 

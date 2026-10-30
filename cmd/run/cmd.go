@@ -2,6 +2,7 @@ package run
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 
@@ -23,7 +24,9 @@ var Cmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		err := Run(args)
 		if err != nil {
-			_ = cmd.Usage()
+			if usageErr := cmd.Usage(); usageErr != nil {
+				return errors.Join(err, fmt.Errorf("writing usage: %w", usageErr))
+			}
 			return err
 		}
 		return err
@@ -129,18 +132,26 @@ func scatter(base flagVals) ([]flagVals, error) {
 			// Per-scatter flags
 			sp, err := shellwords.Split(scanner.Text())
 			if err != nil {
-				fh.Close()
+				//nolint:errcheck // the scatter file is read-only; close is best-effort cleanup.
+				_ = fh.Close()
 				return nil, fmt.Errorf("parsing scatter file %s: %w", sc, err)
 			}
 			tv := base
 			if err := parseTaskArgs(&tv, sp); err != nil {
-				fh.Close()
+				//nolint:errcheck // the scatter file is read-only; close is best-effort cleanup.
+				_ = fh.Close()
 				return nil, fmt.Errorf("parsing scatter file %s: %w", sc, err)
 			}
 			// Parse scatter file flags into new flagVals
 			out = append(out, tv)
 		}
-		fh.Close()
+		if err := scanner.Err(); err != nil {
+			//nolint:errcheck // the scatter file is read-only; close is best-effort cleanup.
+			_ = fh.Close()
+			return nil, fmt.Errorf("reading scatter file %s: %w", sc, err)
+		}
+		//nolint:errcheck // the scatter file is read-only; close is best-effort cleanup.
+		_ = fh.Close()
 	}
 	return out, nil
 }

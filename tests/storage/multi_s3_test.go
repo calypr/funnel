@@ -14,7 +14,7 @@ import (
 
 func TestMultiS3Storage(t *testing.T) {
 	tests.SetLogOutput(log, t)
-	defer os.RemoveAll("./test_tmp")
+	defer os.RemoveAll("./test_tmp") //nolint:errcheck // per-test scratch files are disposable; cleanup failure cannot change the assertions.
 
 	if len(conf.GenericS3) == 2 {
 		if !conf.GenericS3[0].Valid() && !conf.GenericS3[1].Valid() {
@@ -40,7 +40,9 @@ func TestMultiS3Storage(t *testing.T) {
 		t.Fatal("error creating test bucket:", err)
 	}
 	defer func() {
-		gclient1.deleteBucket(testBucket)
+		if err := gclient1.deleteBucket(testBucket); err != nil {
+			t.Errorf("delete test bucket from first backend: %v", err)
+		}
 	}()
 
 	gconf2 := conf.GenericS3[1]
@@ -53,7 +55,9 @@ func TestMultiS3Storage(t *testing.T) {
 		t.Fatal("error creating test bucket:", err)
 	}
 	defer func() {
-		gclient2.deleteBucket(testBucket)
+		if err := gclient2.deleteBucket(testBucket); err != nil {
+			t.Errorf("delete test bucket from second backend: %v", err)
+		}
 	}()
 
 	// Stage input files

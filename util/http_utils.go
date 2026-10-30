@@ -14,7 +14,7 @@ func CheckHTTPResponse(resp *http.Response, err error) ([]byte, error) {
 		return nil, err
 	}
 
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck // Closing a consumed read-only response cannot change the returned bytes.
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err

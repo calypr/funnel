@@ -24,7 +24,7 @@ func (s *stepWorker) Run(ctx context.Context) error {
 	}
 	var wg sync.WaitGroup
 	defer wg.Wait()
-	_ = s.Event.StartTime(time.Now())
+	_ = s.Event.StartTime(time.Now()) //nolint:errcheck // Timing metadata must not change executor execution.
 
 	// subctx is rooted at the caller's context so the command goroutine is
 	// cleaned up both when the task is canceled and if this Run exits while
@@ -75,6 +75,9 @@ func (s *stepWorker) Run(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			stopErr := s.Command.Stop()
+			if stopErr != nil {
+				_ = s.Event.Error("failed to stop executor after cancellation", stopErr) //nolint:errcheck // Cancellation remains the task result when reporting stop failure.
+			}
 			var result error
 			if cancelCommand != nil && stopErr == nil {
 				select {
@@ -90,26 +93,28 @@ func (s *stepWorker) Run(ctx context.Context) error {
 				result = <-done
 			}
 			if code, err := getExitCode(result); err == nil && code >= 0 {
-				_ = s.Event.ExitCode(code)
+				_ = s.Event.ExitCode(code) //nolint:errcheck // Exit-code logging must not replace cancellation.
 			}
-			_ = s.Event.EndTime(time.Now())
+			_ = s.Event.EndTime(time.Now()) //nolint:errcheck // Timing metadata must not change the cancellation result.
 			return ctx.Err()
 
 		case result := <-done:
 			if ctx.Err() != nil {
-				_ = s.Command.Stop()
-				if code, err := getExitCode(result); err == nil && code >= 0 {
-					_ = s.Event.ExitCode(code)
+				if err := s.Command.Stop(); err != nil {
+					_ = s.Event.Error("failed to stop executor after cancellation", err) //nolint:errcheck // Cancellation remains the task result when reporting stop failure.
 				}
-				_ = s.Event.EndTime(time.Now())
+				if code, err := getExitCode(result); err == nil && code >= 0 {
+					_ = s.Event.ExitCode(code) //nolint:errcheck // Exit-code logging must not replace cancellation.
+				}
+				_ = s.Event.EndTime(time.Now()) //nolint:errcheck // Timing metadata must not change the cancellation result.
 				return ctx.Err()
 			}
-			_ = s.Event.EndTime(time.Now())
+			_ = s.Event.EndTime(time.Now()) //nolint:errcheck // Timing metadata must not change executor execution.
 			exitcode, err := getExitCode(result)
 			if err != nil {
-				_ = s.Event.Error(err.Error())
+				_ = s.Event.Error(err.Error()) //nolint:errcheck // The command error is returned below; logging must not replace it.
 			} else {
-				_ = s.Event.ExitCode(exitcode)
+				_ = s.Event.ExitCode(exitcode) //nolint:errcheck // Exit-code logging must not change executor execution.
 			}
 			return result
 		}

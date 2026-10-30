@@ -27,6 +27,18 @@ type publicationEvents struct {
 	items []*events.Event
 }
 
+type outputLogFailureWriter struct {
+	events.Writer
+	err error
+}
+
+func (w *outputLogFailureWriter) WriteEvent(ctx context.Context, ev *events.Event) error {
+	if ev.Type == events.Type_TASK_OUTPUTS {
+		return w.err
+	}
+	return w.Writer.WriteEvent(ctx, ev)
+}
+
 func (w *publicationEvents) WriteEvent(_ context.Context, ev *events.Event) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -80,7 +92,9 @@ func TestUploadOutputsKeepsAcknowledgedFilesOnPartialFailure(t *testing.T) {
 		}
 		if strings.HasSuffix(r.URL.Path, "failed.txt") {
 			w.WriteHeader(http.StatusForbidden)
-			io.WriteString(w, `<Error><Code>AccessDenied</Code><Message>upload denied</Message></Error>`)
+			if _, err := io.WriteString(w, `<Error><Code>AccessDenied</Code><Message>upload denied</Message></Error>`); err != nil {
+				t.Errorf("write S3 error response: %v", err)
+			}
 			return
 		}
 		w.Header().Set("ETag", `"new-write"`)
@@ -113,7 +127,9 @@ func TestUploadOutputsRetriesProduceOneSuccessLog(t *testing.T) {
 		}
 		if attempts.Add(1) == 1 {
 			w.WriteHeader(http.StatusForbidden)
-			io.WriteString(w, `<Error><Code>AccessDenied</Code><Message>temporary denial</Message></Error>`)
+			if _, err := io.WriteString(w, `<Error><Code>AccessDenied</Code><Message>temporary denial</Message></Error>`); err != nil {
+				t.Errorf("write S3 error response: %v", err)
+			}
 			return
 		}
 		w.Header().Set("ETag", `"retry-receipt"`)
@@ -210,7 +226,9 @@ func TestDefaultWorkerWaitsForOutputAcknowledgementBeforeCompletion(t *testing.T
 				}
 				if rejected {
 					w.WriteHeader(http.StatusForbidden)
-					io.WriteString(w, `<Error><Code>AccessDenied</Code></Error>`)
+					if _, err := io.WriteString(w, `<Error><Code>AccessDenied</Code></Error>`); err != nil {
+						t.Errorf("write S3 error response: %v", err)
+					}
 					return
 				}
 				w.Header().Set("ETag", `"confirmed-write"`)
@@ -318,6 +336,61 @@ func TestWorkerOutputFailureIncludesTaskPathAndOriginalError(t *testing.T) {
 		return
 	}
 	t.Fatal("missing upload failure event")
+}
+
+func TestProcessOutputsHandlesOutputLogWriteFailures(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		execErr error
+	}{
+		{name: "successful executor"},
+		{name: "failed executor", execErr: errors.New("executor failed")},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			mapper := NewFileMapper(filepath.Join(root, "work"))
+			task := &tes.Task{Outputs: []*tes.Output{{
+				Url:  "file://" + filepath.Join(root, "destination", "result.txt"),
+				Path: "/outputs/result.txt",
+				Type: tes.File.Enum(),
+			}}}
+			if err := mapper.MapTask(task, "docker"); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(mapper.Outputs[0].Path, []byte("result"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			store, err := storage.NewLocal(&config.LocalStorage{AllowedDirs: []string{root}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			writeErr := errors.New("output log store unavailable")
+			baseWriter := &publicationEvents{}
+			run := &helper{execerr: test.execErr}
+			worker := &DefaultWorker{Conf: &config.Worker{WorkDir: root, MaxParallelTransfers: 1}, Store: store}
+			worker.processOutputs(context.Background(), events.NewTaskWriter("task", 0, &outputLogFailureWriter{Writer: baseWriter, err: writeErr}), mapper, run)
+
+			if test.execErr == nil {
+				if !errors.Is(run.syserr, writeErr) {
+					t.Fatalf("system error = %v, want output log failure", run.syserr)
+				}
+				if run.execerr != nil {
+					t.Fatalf("executor error = %v, want nil", run.execerr)
+				}
+				return
+			}
+
+			if run.syserr != nil {
+				t.Fatalf("secondary output log failure changed system error: %v", run.syserr)
+			}
+			if run.execerr != test.execErr {
+				t.Fatalf("executor error = %v, want original executor failure", run.execerr)
+			}
+			if baseWriter.count("Failed to record output files after executor error") != 1 {
+				t.Fatalf("output log failure was not reported: %v", baseWriter.snapshot())
+			}
+		})
+	}
 }
 
 type failingOutputStore struct {

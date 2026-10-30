@@ -135,7 +135,7 @@ func (db *Postgres) DeleteNode(ctx context.Context, req *scheduler.Node) (*sched
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = tx.Rollback(context.Background()) }()
+	defer func() { _ = tx.Rollback(context.Background()) }() //nolint:errcheck // Rolls back early exits and is a no-op after a successful commit.
 	var stamp int64
 	err = tx.QueryRow(ctx, `SELECT last_ping FROM node_heartbeats WHERE id=$1 FOR UPDATE`, req.Id).Scan(&stamp)
 	if err != nil && err != pgx.ErrNoRows {

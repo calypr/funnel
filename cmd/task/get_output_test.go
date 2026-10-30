@@ -11,7 +11,9 @@ import (
 
 func TestGetIncludesDefaultValues(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = fmt.Fprint(w, `{"id":"task-1","logs":[{"logs":[{"exitCode":0}]}],"outputs":[{"path":"/output","type":"FILE"}]}`)
+		if _, err := fmt.Fprint(w, `{"id":"task-1","logs":[{"logs":[{"exitCode":0}]}],"outputs":[{"path":"/output","type":"FILE"}]}`); err != nil {
+			t.Error(err)
+		}
 	}))
 	defer server.Close()
 

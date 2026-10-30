@@ -20,12 +20,14 @@ func TestFlattenInputsPreservesEndpointQualifiedS3Directory(t *testing.T) {
 		prefix := r.URL.Query().Get("prefix")
 		requestedPrefixes <- prefix
 		w.Header().Set("Content-Type", "application/xml")
-		w.Write([]byte(`<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">` +
+		if _, err := w.Write([]byte(`<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">` +
 			`<Name>bucket</Name><Prefix>` + prefix + `</Prefix><IsTruncated>false</IsTruncated>` +
 			`<Contents><Key>dir/nested/a b#%.txt</Key><LastModified>2006-01-02T15:04:05.000Z</LastModified><ETag>"nested"</ETag><Size>4</Size><StorageClass>STANDARD</StorageClass></Contents>` +
 			`<Contents><Key>dir/literal%20key.txt</Key><LastModified>2006-01-02T15:04:05.000Z</LastModified><ETag>"literal"</ETag><Size>4</Size><StorageClass>STANDARD</StorageClass></Contents>` +
 			`<Contents><Key>directory.txt</Key><LastModified>2006-01-02T15:04:05.000Z</LastModified><ETag>"sibling"</ETag><Size>7</Size><StorageClass>STANDARD</StorageClass></Contents>` +
-			`</ListBucketResult>`))
+			`</ListBucketResult>`)); err != nil {
+			t.Errorf("write S3 list response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -73,10 +75,12 @@ func TestFlattenInputsPreservesAmazonEndpointQualifiedS3Directory(t *testing.T) 
 				t.Errorf("unexpected list URL %s", r.URL)
 			}
 			w.Header().Set("Content-Type", "application/xml")
-			_, _ = w.Write([]byte(`<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">` +
+			if _, err := w.Write([]byte(`<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">` +
 				`<Name>bucket</Name><Prefix>dir/</Prefix><IsTruncated>false</IsTruncated>` +
 				`<Contents><Key>dir/file.txt</Key><LastModified>2006-01-02T15:04:05.000Z</LastModified><ETag>"file"</ETag><Size>4</Size><StorageClass>STANDARD</StorageClass></Contents>` +
-				`</ListBucketResult>`))
+				`</ListBucketResult>`)); err != nil {
+				t.Errorf("write S3 list response: %v", err)
+			}
 		default:
 			t.Errorf("unexpected request %s", r.Method)
 		}

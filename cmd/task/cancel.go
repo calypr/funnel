@@ -31,7 +31,10 @@ func Cancel(server string, ids []string, writer io.Writer) error {
 			output := map[string]interface{}{
 				"message": result.Message,
 			}
-			jsonBytes, _ := json.Marshal(output)
+			jsonBytes, err := json.Marshal(output)
+			if err != nil {
+				return fmt.Errorf("marshaling cancellation message: %w", err)
+			}
 			res = append(res, string(jsonBytes))
 		} else {
 			// Normal empty response
@@ -41,7 +44,9 @@ func Cancel(server string, ids []string, writer io.Writer) error {
 	}
 
 	for _, x := range res {
-		fmt.Fprintln(writer, x)
+		if _, err := fmt.Fprintln(writer, x); err != nil {
+			return fmt.Errorf("writing cancellation output: %w", err)
+		}
 	}
 	return nil
 }

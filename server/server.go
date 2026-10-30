@@ -86,7 +86,7 @@ func customErrorHandler(ctx context.Context, mux *runtime.ServeMux, marshaler ru
 	st, ok := status.FromError(err)
 	if !ok {
 		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(fallback))
+		_, _ = w.Write([]byte(fallback)) //nolint:errcheck // The fallback response cannot be replaced after a client write failure.
 		return
 	}
 
@@ -119,10 +119,10 @@ func customErrorHandler(ctx context.Context, mux *runtime.ServeMux, marshaler ru
 	jErr := JSONError{Error: st.Message()}
 	jErrBytes, mErr := marshaler.Marshal(jErr)
 	if mErr != nil {
-		_, _ = w.Write([]byte(fallback))
+		_, _ = w.Write([]byte(fallback)) //nolint:errcheck // The fallback response cannot be replaced after a client write failure.
 		return
 	}
-	_, _ = w.Write(jErrBytes)
+	_, _ = w.Write(jErrBytes) //nolint:errcheck // The error response cannot be replaced after a client write failure.
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
@@ -140,7 +140,7 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(health)
+	_ = json.NewEncoder(w).Encode(health) //nolint:errcheck // Health fields are JSON-compatible; a disconnected client cannot receive another response.
 }
 
 type JSONError struct {
@@ -160,7 +160,7 @@ func (s *Server) Serve(pctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer lis.Close()
+	defer lis.Close() //nolint:errcheck // Listener cleanup is best effort after the server has stopped.
 
 	auth := NewAuthentication(s.BasicAuth, s.OidcAuth, s.TaskAccess)
 
@@ -317,7 +317,7 @@ func (s *Server) Serve(pctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer httpLis.Close()
+	defer httpLis.Close() //nolint:errcheck // Listener cleanup is best effort after HTTP shutdown.
 
 	serveErrs := make(chan error, 2)
 	go func() {
@@ -423,8 +423,8 @@ func messageHandler(next http.Handler) http.Handler {
 			}
 			w.WriteHeader(rec.Code)
 			response := map[string]string{"message": msg}
-			_ = json.NewEncoder(w).Encode(response)
-			return // Important: return here to prevent writing the original response
+			_ = json.NewEncoder(w).Encode(response) //nolint:errcheck // Decoded JSON is serializable; a disconnected client cannot receive another response.
+			return                                  // Important: return here to prevent writing the original response
 		}
 
 		// No message - copy the original response as-is
@@ -432,6 +432,6 @@ func messageHandler(next http.Handler) http.Handler {
 			w.Header()[k] = v
 		}
 		w.WriteHeader(rec.Code)
-		_, _ = w.Write(rec.Body.Bytes())
+		_, _ = w.Write(rec.Body.Bytes()) //nolint:errcheck // The proxied response is already committed; a client write failure cannot be recovered here.
 	})
 }

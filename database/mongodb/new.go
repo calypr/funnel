@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/url"
 	"strings"
 
@@ -141,7 +142,9 @@ func (db *MongoDB) Close() {
 	if db.active {
 		ctx, cancel := db.context()
 		defer cancel()
-		_ = db.client.Disconnect(ctx)
+		if err := db.client.Disconnect(ctx); err != nil {
+			log.Printf("disconnecting MongoDB client: %v", err)
+		}
 	}
 	db.active = false
 }

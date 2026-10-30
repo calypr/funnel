@@ -110,7 +110,7 @@ func (s3 *GenericS3) putMounted(ctx context.Context, raw, sourcePath string) (*O
 	if err != nil {
 		return nil, fmt.Errorf("open mounted output root: %w", err)
 	}
-	defer root.Close()
+	defer root.Close() //nolint:errcheck // Closing the directory handle cannot affect the completed publication.
 	if !info.IsDir() {
 		return s3.publishMountedFile(ctx, root, relative, raw, sourcePath)
 	}
@@ -156,7 +156,7 @@ func (s3 *GenericS3) publishMountedFile(ctx context.Context, root *os.Root, dest
 	if err != nil {
 		return nil, fmt.Errorf("open mounted output source %q: %w", sourcePath, err)
 	}
-	defer source.Close()
+	defer source.Close() //nolint:errcheck // The upload source is read-only, so close cannot change uploaded data.
 	info, err := source.Stat()
 	if err != nil {
 		return nil, err

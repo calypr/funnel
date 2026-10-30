@@ -6,7 +6,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 )
@@ -14,7 +13,9 @@ import (
 func TestTaskListReportsHTTPError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
-		_, _ = w.Write([]byte(`{"error":"access denied"}`))
+		if _, err := w.Write([]byte(`{"error":"access denied"}`)); err != nil {
+			t.Error(err)
+		}
 	}))
 	defer server.Close()
 	cmd := NewCommand()
@@ -63,7 +64,9 @@ func TestGet(t *testing.T) {
 	}
 
 	cmd.SetArgs([]string{"get", "--view", "MINIMAL", "1", "2"})
-	cmd.Execute()
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // "get" command should have default view of FULL
@@ -78,7 +81,9 @@ func TestGetDefaultView(t *testing.T) {
 	}
 
 	cmd.SetArgs([]string{"get", "1", "2"})
-	cmd.Execute()
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestList(t *testing.T) {
@@ -92,7 +97,9 @@ func TestList(t *testing.T) {
 	}
 
 	cmd.SetArgs([]string{"list", "--view", "FULL"})
-	cmd.Execute()
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // Test that the server URL defaults to localhost:8000
@@ -131,25 +138,35 @@ func TestServerDefault(t *testing.T) {
 	}
 
 	cmd.SetArgs([]string{"create", "foo.json"})
-	cmd.Execute()
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
 
 	cmd.SetArgs([]string{"list"})
-	cmd.Execute()
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
 
 	cmd.SetArgs([]string{"get", "1"})
-	cmd.Execute()
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
 
 	cmd.SetArgs([]string{"cancel", "1"})
-	cmd.Execute()
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
 
 	cmd.SetArgs([]string{"wait", "1"})
-	cmd.Execute()
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // Test that the server URL may be set via a FUNNEL_SERVER environment
 // variable.
 func TestServerEnv(t *testing.T) {
-	os.Setenv("FUNNEL_SERVER", "foobar")
+	t.Setenv("FUNNEL_SERVER", "foobar")
 
 	cmd, h := newCommandHooks()
 
@@ -185,24 +202,34 @@ func TestServerEnv(t *testing.T) {
 	}
 
 	cmd.SetArgs([]string{"create", "foo.json"})
-	cmd.Execute()
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
 
 	cmd.SetArgs([]string{"list"})
-	cmd.Execute()
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
 
 	cmd.SetArgs([]string{"get", "1"})
-	cmd.Execute()
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
 
 	cmd.SetArgs([]string{"cancel", "1"})
-	cmd.Execute()
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
 
 	cmd.SetArgs([]string{"wait", "1"})
-	cmd.Execute()
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // Test that the server flag overrides the FUNNEL_SERVER env var
 func TestServerFlagOverride(t *testing.T) {
-	os.Setenv("FUNNEL_SERVER", "foobar")
+	t.Setenv("FUNNEL_SERVER", "foobar")
 	srv := "flagval"
 
 	cmd, h := newCommandHooks()
@@ -239,17 +266,27 @@ func TestServerFlagOverride(t *testing.T) {
 	}
 
 	cmd.SetArgs([]string{"create", "-S", srv, "foo.json"})
-	cmd.Execute()
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
 
 	cmd.SetArgs([]string{"list", "-S", srv})
-	cmd.Execute()
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
 
 	cmd.SetArgs([]string{"get", "-S", srv, "1"})
-	cmd.Execute()
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
 
 	cmd.SetArgs([]string{"cancel", "-S", srv, "1"})
-	cmd.Execute()
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
 
 	cmd.SetArgs([]string{"wait", "-S", srv, "1"})
-	cmd.Execute()
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
 }

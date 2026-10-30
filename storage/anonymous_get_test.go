@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -48,7 +47,7 @@ func TestAmazonS3AnonymousGet(t *testing.T) {
 		w.Header().Set("Last-Modified", "Mon, 02 Jan 2006 15:04:05 GMT")
 		w.Header().Set("ETag", `"fixture"`)
 		if r.Method == http.MethodGet {
-			_, _ = io.WriteString(w, "release")
+			writeTestResponse(t, w, []byte("release"))
 		}
 	}))
 	defer server.Close()

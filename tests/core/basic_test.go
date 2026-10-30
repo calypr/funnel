@@ -49,8 +49,14 @@ func TestGetUnknownTask(t *testing.T) {
 		context.Background(),
 		&tes.GetTaskRequest{Id: "nonexistent-task-id", View: tes.View_MINIMAL.String()},
 	)
-	s, _ := status.FromError(err)
-	if err == nil || s.Code() != codes.NotFound {
+	if err == nil {
+		t.Fatal("expected gRPC not found error, got nil")
+	}
+	s, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("expected a gRPC status error, got %v", err)
+	}
+	if s.Code() != codes.NotFound {
 		t.Error("expected not found error", err)
 	}
 }
@@ -544,7 +550,9 @@ func TestSingleCharLog(t *testing.T) {
 	if stdout != "a\n" {
 		t.Fatal("Missing logs")
 	}
-	fun.Cancel(id)
+	if err := fun.Cancel(id); err != nil {
+		t.Fatalf("cancel task: %v", err)
+	}
 }
 
 // Test that a completed task cannot change state.
@@ -554,7 +562,9 @@ func TestCompleteStateImmutable(t *testing.T) {
     --sh 'echo hello'
   `)
 	fun.Wait(id)
-	_ = fun.Cancel(id)
+	if err := fun.Cancel(id); err != nil {
+		t.Fatalf("cancel completed task: %v", err)
+	}
 	task := fun.Get(id)
 	if task.State != tes.State_COMPLETE {
 		t.Fatal("Unexpected state")
@@ -570,7 +580,9 @@ func TestCancel(t *testing.T) {
     --sh 'echo never'
   `)
 	fun.WaitForExec(id, 1)
-	fun.Cancel(id)
+	if err := fun.Cancel(id); err != nil {
+		t.Fatalf("cancel task: %v", err)
+	}
 	fun.WaitForDockerDestroy(id + "-0")
 	task := fun.Get(id)
 	if task.State != tes.State_CANCELED {
@@ -601,7 +613,10 @@ func TestCancelUnknownTask(t *testing.T) {
 		t.Fatal("expected error, got nil")
 	}
 
-	s, _ := status.FromError(err)
+	s, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("expected a gRPC status error, got %v", err)
+	}
 	if s.Code() != codes.NotFound {
 		t.Fatal("expected not found error, got", s)
 	}
@@ -619,7 +634,9 @@ func TestExecutorLogLength(t *testing.T) {
   `)
 	fun.WaitForExec(id, 2)
 	task := fun.Get(id)
-	fun.Cancel(id)
+	if err := fun.Cancel(id); err != nil {
+		t.Fatalf("cancel task: %v", err)
+	}
 	if len(task.Logs[0].Logs) != 2 {
 		t.Fatal("Unexpected executor log count")
 	}
@@ -640,7 +657,9 @@ func TestMarkCompleteBug(t *testing.T) {
 	if task.State != tes.State_RUNNING {
 		t.Fatal("Unexpected task state")
 	}
-	fun.Cancel(id)
+	if err := fun.Cancel(id); err != nil {
+		t.Fatalf("cancel task: %v", err)
+	}
 }
 
 func TestTaskStartEndTimeLogs(t *testing.T) {
@@ -662,7 +681,7 @@ func TestOutputFileLog(t *testing.T) {
 	tests.SetLogOutput(log, t)
 	dir := fun.Tempdir()
 
-	id, _ := fun.RunTask(&tes.Task{
+	id, err := fun.RunTask(&tes.Task{
 		Executors: []*tes.Executor{
 			{
 				Image: "alpine",
@@ -683,6 +702,9 @@ func TestOutputFileLog(t *testing.T) {
 			},
 		},
 	})
+	if err != nil {
+		t.Fatalf("run task: %v", err)
+	}
 
 	task := fun.Wait(id)
 
@@ -734,33 +756,45 @@ func TestPagination(t *testing.T) {
 	}
 	time.Sleep(time.Second * 10)
 
-	r1, _ := f.RPC.ListTasks(ctx, &tes.ListTasksRequest{})
+	r1, err := f.RPC.ListTasks(ctx, &tes.ListTasksRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Default page size is 256
 	if len(r1.Tasks) != 256 {
 		t.Error("wrong default page size")
 	}
 
-	r2, _ := f.RPC.ListTasks(ctx, &tes.ListTasksRequest{
+	r2, err := f.RPC.ListTasks(ctx, &tes.ListTasksRequest{
 		PageSize: 1,
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Minimum page size is 1
 	if len(r2.Tasks) != 1 {
 		t.Error("wrong minimum page size")
 	}
 
-	r3, _ := f.RPC.ListTasks(ctx, &tes.ListTasksRequest{
+	r3, err := f.RPC.ListTasks(ctx, &tes.ListTasksRequest{
 		PageSize: 5000,
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if len(r3.Tasks) != 2048 {
 		t.Error("wrong max page size")
 	}
 
-	r4, _ := f.RPC.ListTasks(ctx, &tes.ListTasksRequest{
+	r4, err := f.RPC.ListTasks(ctx, &tes.ListTasksRequest{
 		PageSize: 500,
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if len(r4.Tasks) != 500 {
 		t.Error("wrong requested page size")
@@ -774,10 +808,13 @@ func TestPagination(t *testing.T) {
 	var tasks []*tes.Task
 	tasks = append(tasks, r4.Tasks...)
 	for r4.NextPageToken != "" {
-		r4, _ = f.RPC.ListTasks(ctx, &tes.ListTasksRequest{
+		r4, err = f.RPC.ListTasks(ctx, &tes.ListTasksRequest{
 			PageSize:  500,
 			PageToken: r4.NextPageToken,
 		})
+		if err != nil {
+			t.Fatal(err)
+		}
 		tasks = append(tasks, r4.Tasks...)
 	}
 
@@ -1111,7 +1148,7 @@ func TestListTaskMultipleFilters(t *testing.T) {
 		t.Fatal("unexpected task IDs", r.Tasks)
 	}
 
-	r, _ = f.HTTP.ListTasks(ctx, &tes.ListTasksRequest{
+	r, err = f.HTTP.ListTasks(ctx, &tes.ListTasksRequest{
 		View:     tes.View_BASIC.String(),
 		State:    tes.Canceled,
 		TagKey:   []string{"hello"},
@@ -1124,7 +1161,7 @@ func TestListTaskMultipleFilters(t *testing.T) {
 		t.Fatal("expected 0 tasks", r.Tasks)
 	}
 
-	r, _ = f.HTTP.ListTasks(ctx, &tes.ListTasksRequest{
+	r, err = f.HTTP.ListTasks(ctx, &tes.ListTasksRequest{
 		View:     tes.View_BASIC.String(),
 		State:    tes.Canceled,
 		TagKey:   []string{"fizz"},

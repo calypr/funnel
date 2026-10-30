@@ -312,7 +312,11 @@ func submitTask(t *testing.T, port, id, markers string, hold bool) (string, erro
 	if err != nil {
 		return "", fmt.Errorf("dial scheduler server: %w", err)
 	}
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			t.Errorf("close scheduler connection: %v", err)
+		}
+	}()
 	response, err := tes.NewTaskServiceClient(conn).CreateTask(ctx, markerTask(id, markers, hold))
 	if err != nil {
 		return "", err

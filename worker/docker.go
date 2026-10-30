@@ -197,17 +197,17 @@ func (docker DockerCommand) Run(ctx context.Context) error {
 	// Sync docker API version info.
 	err = docker.SyncAPIVersion()
 	if err != nil {
-		_ = docker.Event.Error("failed to sync docker client API version", err)
+		_ = docker.Event.Error("failed to sync docker client API version", err) //nolint:errcheck // Diagnostic logging must not replace the Docker execution result.
 	}
 
 	err = docker.executeCommand(ctx, docker.PullCommand, false)
 	if err != nil {
-		_ = docker.Event.Error("failed to pull docker image using command", err, docker.PullCommand)
+		_ = docker.Event.Error("failed to pull docker image using command", err, docker.PullCommand) //nolint:errcheck // Diagnostic logging must not replace the Docker execution result.
 	}
 
 	err = docker.executeCommand(ctx, docker.RunCommand, true)
 	if err != nil {
-		_ = docker.Event.Error("failed to run docker container", err)
+		_ = docker.Event.Error("failed to run docker container", err) //nolint:errcheck // The run error is returned below; logging must not replace it.
 	}
 
 	return err
@@ -236,12 +236,12 @@ func hasGPUArgsPlaceholder(commandTemplate string) bool {
 
 // Stop stops the container.
 func (docker DockerCommand) Stop() error {
-	_ = docker.Event.Info("Stopping container", "container", docker.Name)
+	_ = docker.Event.Info("Stopping container", "container", docker.Name) //nolint:errcheck // Stop logging must not replace the stop command result.
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	err := docker.executeCommand(ctx, docker.StopCommand, false)
 	if err != nil {
-		_ = docker.Event.Error("failed to stop docker container", err)
+		_ = docker.Event.Error("failed to stop docker container", err) //nolint:errcheck // The stop error is returned below; logging must not replace it.
 		return err
 	}
 	return nil
@@ -313,7 +313,7 @@ func (docker DockerCommand) executeCommand(ctx context.Context, commandTemplate 
 	}
 
 	if usingCommand {
-		_ = docker.Event.Info("Running command", "cmd", cmd.String())
+		_ = docker.Event.Info("Running command", "cmd", cmd.String()) //nolint:errcheck // Informational logging must not change command execution.
 	}
 	return cmd.Run()
 }
@@ -390,6 +390,7 @@ func (docker *DockerCommand) InspectContainer(ctx context.Context) DockerCommand
 				meta := []DockerCommand{}
 				err = json.Unmarshal(out, &meta)
 				if err == nil && len(meta) == 1 {
+					//nolint:errcheck // Metadata logging must not change container discovery.
 					_ = docker.Event.Info("container metadata",
 						"containerID", meta[0].Id,
 						"containerName", meta[0].Name,
@@ -435,7 +436,9 @@ func (docker *DockerCommand) SyncAPIVersion() error {
 			return fmt.Errorf("failed to unmarshal docker version: %v", err)
 		}
 		if version.Client != version.Server {
-			os.Setenv("DOCKER_API_VERSION", version.Server)
+			if err := os.Setenv("DOCKER_API_VERSION", version.Server); err != nil {
+				return fmt.Errorf("set Docker API version %q: %w", version.Server, err)
+			}
 		}
 	}
 	return nil

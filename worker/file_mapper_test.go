@@ -292,15 +292,29 @@ func TestMapTaskUsesPathBoundariesForMountOverlap(t *testing.T) {
 	}
 }
 
+func TestCopyOutputsToWorkDirReturnsDirectoryCopyErrors(t *testing.T) {
+	root := t.TempDir()
+	scratch := filepath.Join(root, "scratch")
+	workOutput := filepath.Join(root, "work", "result")
+	scratchOutput := filepath.Join(scratch, workOutput)
+	if err := os.MkdirAll(scratchOutput, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(root, "missing"), filepath.Join(scratchOutput, "broken-link")); err != nil {
+		t.Fatal(err)
+	}
+
+	mapper := &FileMapper{Outputs: []*tes.Output{{Path: workOutput}}}
+	if err := mapper.CopyOutputsToWorkDir(scratch); err == nil {
+		t.Fatal("CopyOutputsToWorkDir() returned nil after a source file could not be copied")
+	}
+}
+
 // TestMapTaskInputOutputSameDirNoDuplicateVolume reproduces the bug where a
 // task with both an input and an output that resolve to the same container
 // directory produced a duplicate volume mount (invalid in Kubernetes).
 func TestMapTaskInputOutputSameDirNoDuplicateVolume(t *testing.T) {
-	tmp, err := os.MkdirTemp("", "funnel-test-mapper-dedup")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(tmp)
+	tmp := t.TempDir()
 
 	f := FileMapper{WorkDir: tmp}
 
@@ -346,11 +360,7 @@ func TestMapTaskInputOutputSameDirNoDuplicateVolume(t *testing.T) {
 // TestMapTaskInputOutputOverlapNoDuplicateVolume tests the variant where the
 // output directory is a parent of the input directory.
 func TestMapTaskInputOutputOverlapNoDuplicateVolume(t *testing.T) {
-	tmp, err := os.MkdirTemp("", "funnel-test-mapper-overlap")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(tmp)
+	tmp := t.TempDir()
 
 	f := FileMapper{WorkDir: tmp}
 
@@ -391,11 +401,7 @@ func TestMapTaskInputOutputOverlapNoDuplicateVolume(t *testing.T) {
 // TestMapTaskMultipleInputsAndOutputs mirrors the concrete failure case from
 // the bug report: one input and one output with a /tmp volume also present.
 func TestMapTaskMultipleInputsAndOutputs(t *testing.T) {
-	tmp, err := os.MkdirTemp("", "funnel-test-mapper-multi")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(tmp)
+	tmp := t.TempDir()
 
 	f := FileMapper{WorkDir: tmp}
 

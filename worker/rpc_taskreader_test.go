@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"net"
 	"sync"
 	"testing"
@@ -45,11 +46,24 @@ func newRPCClaimReader(t *testing.T, service events.EventServiceServer) *RPCTask
 	listener := bufconn.Listen(1024 * 1024)
 	server := grpc.NewServer()
 	events.RegisterEventServiceServer(server, service)
+	serveErr := make(chan error, 1)
 	go func() {
-		_ = server.Serve(listener)
+		serveErr <- server.Serve(listener)
 	}()
+	var conn *grpc.ClientConn
+	t.Cleanup(func() {
+		if conn != nil {
+			if err := conn.Close(); err != nil {
+				t.Errorf("close gRPC test connection: %v", err)
+			}
+		}
+		server.Stop()
+		if err := <-serveErr; err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+			t.Errorf("stop gRPC test server: %v", err)
+		}
+	})
 
-	conn, err := grpc.NewClient(
+	clientConn, err := grpc.NewClient(
 		"passthrough:///bufconn",
 		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) { return listener.Dial() }),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -60,15 +74,9 @@ func newRPCClaimReader(t *testing.T, service events.EventServiceServer) *RPCTask
 		)),
 	)
 	if err != nil {
-		server.Stop()
-		listener.Close()
 		t.Fatalf("create gRPC connection: %v", err)
 	}
-	t.Cleanup(func() {
-		_ = conn.Close()
-		server.Stop()
-		_ = listener.Close()
-	})
+	conn = clientConn
 
 	return &RPCTaskReader{
 		eventClient: events.NewEventServiceClient(conn),

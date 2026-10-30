@@ -46,7 +46,9 @@ func TestMountpointDirectoryRejectsClosedDescriptor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dir.Close()
+	if err := dir.Close(); err != nil {
+		t.Fatal(err)
+	}
 	if got, err := isMountpointDirectory(dir); got || err == nil {
 		t.Fatalf("closed directory identified as Mountpoint: %v, %v", got, err)
 	}
@@ -58,7 +60,7 @@ func TestMountpointPublicationRejectsSymlink(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer parent.Close()
+	closeTestResource(t, parent)
 	outside := filepath.Join(t.TempDir(), "outside")
 	if err := os.WriteFile(outside, []byte("original"), 0600); err != nil {
 		t.Fatal(err)

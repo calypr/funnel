@@ -71,10 +71,14 @@ func TestWaitForDockerDestroy(t *testing.T) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(status)
 				if status == http.StatusOK {
-					_ = json.NewEncoder(w).Encode(map[string]string{"Id": "container-id"})
+					if err := json.NewEncoder(w).Encode(map[string]string{"Id": "container-id"}); err != nil {
+						t.Errorf("write container inspect response: %v", err)
+					}
 					return
 				}
-				_ = json.NewEncoder(w).Encode(map[string]string{"message": "container inspect failed"})
+				if err := json.NewEncoder(w).Encode(map[string]string{"message": "container inspect failed"}); err != nil {
+					t.Errorf("write container inspect error response: %v", err)
+				}
 			}))
 			defer server.Close()
 
@@ -85,7 +89,11 @@ func TestWaitForDockerDestroy(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer cli.Close()
+			defer func() {
+				if err := cli.Close(); err != nil {
+					t.Errorf("close Docker test client: %v", err)
+				}
+			}()
 
 			f := &Funnel{Docker: cli, rate: time.Millisecond}
 			panicked := false
@@ -167,7 +175,9 @@ func TestFunnelCleanupStopsInProcessServer(t *testing.T) {
 		if err != nil {
 			t.Fatalf("listener at %s remained open after cleanup: %v", address, err)
 		}
-		listener.Close()
+		if err := listener.Close(); err != nil {
+			t.Errorf("close listener at %s: %v", address, err)
+		}
 	}
 }
 
@@ -176,7 +186,11 @@ func TestStartServerReturnsHTTPBindErrorImmediately(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer httpListener.Close()
+	defer func() {
+		if err := httpListener.Close(); err != nil {
+			t.Errorf("close HTTP reservation listener: %v", err)
+		}
+	}()
 	f := newServerTestFunnel(t, freeTCPPort(t, "127.0.0.1"), strconv.Itoa(httpListener.Addr().(*net.TCPAddr).Port))
 	t.Cleanup(f.Cleanup)
 
@@ -204,7 +218,9 @@ func TestStartServerReturnsHTTPBindErrorImmediately(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RPC listener remained open after startup failure: %v", err)
 	}
-	rpcListener.Close()
+	if err := rpcListener.Close(); err != nil {
+		t.Errorf("close RPC listener after startup failure: %v", err)
+	}
 }
 
 func newServerTestFunnel(t *testing.T, rpcPort, httpPort string) *Funnel {

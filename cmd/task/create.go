@@ -23,10 +23,11 @@ func Create(server string, files []string, reader io.Reader, writer io.Writer) e
 
 	for _, taskFile := range files {
 		f, err := os.Open(taskFile)
-		defer f.Close()
 		if err != nil {
-			return err
+			return fmt.Errorf("opening task file %s: %w", taskFile, err)
 		}
+		//nolint:errcheck // task files are read-only; close is best-effort cleanup.
+		defer f.Close()
 		reader = io.MultiReader(reader, f)
 	}
 
@@ -55,13 +56,15 @@ func Create(server string, files []string, reader io.Reader, writer io.Writer) e
 		positions.discardBefore(dec.InputOffset())
 		err = protojson.Unmarshal(jsonData, &task)
 		if err != nil {
-			return fmt.Errorf("can't unmarshal task: %s", err)
+			return fmt.Errorf("can't unmarshal task: %w", err)
 		}
 		r, err := cli.CreateTask(context.Background(), &task)
 		if err != nil {
 			return err
 		}
-		fmt.Fprintln(writer, r.Id)
+		if _, err := fmt.Fprintln(writer, r.Id); err != nil {
+			return fmt.Errorf("writing created task ID: %w", err)
+		}
 	}
 
 	return nil

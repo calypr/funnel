@@ -19,7 +19,7 @@ import (
 
 func TestGoogleStorage(t *testing.T) {
 	tests.SetLogOutput(log, t)
-	defer os.RemoveAll("./test_tmp")
+	defer os.RemoveAll("./test_tmp") //nolint:errcheck // per-test scratch files are disposable; cleanup failure cannot change the assertions.
 
 	if !conf.GoogleStorage.Valid() {
 		t.Skipf("Skipping google storage e2e tests...")
@@ -49,7 +49,9 @@ func TestGoogleStorage(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
-		client.deleteBucket(testBucket)
+		if err := client.deleteBucket(testBucket); err != nil {
+			t.Errorf("delete test bucket %s: %v", testBucket, err)
+		}
 	}()
 
 	protocol := "gs://"

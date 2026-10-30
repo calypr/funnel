@@ -86,7 +86,7 @@ func getTestPostgres(t *testing.T) (*Postgres, testcontainers.Container) {
 
 	host, err := postgresContainer.Host(ctx)
 	if err != nil {
-		testcontainers.TerminateContainer(postgresContainer)
+		terminateTestContainer(t, postgresContainer)
 		t.Fatalf("failed to get container host: %v", err)
 	}
 
@@ -100,17 +100,24 @@ func getTestPostgres(t *testing.T) (*Postgres, testcontainers.Container) {
 	db, err := NewPostgres(conf)
 	if err != nil {
 		// Clean up the container
-		testcontainers.TerminateContainer(postgresContainer)
+		terminateTestContainer(t, postgresContainer)
 		t.Fatalf("Failed to create Postgres instance: %v", err)
 	}
 
 	if err := db.Init(); err != nil {
 		db.Close()
-		testcontainers.TerminateContainer(postgresContainer)
+		terminateTestContainer(t, postgresContainer)
 		t.Fatalf("Failed to initialize database schema: %v", err)
 	}
 
 	return db, postgresContainer
+}
+
+func terminateTestContainer(t *testing.T, container testcontainers.Container) {
+	t.Helper()
+	if err := testcontainers.TerminateContainer(container); err != nil {
+		t.Errorf("terminate Postgres test container: %v", err)
+	}
 }
 
 // TestPostgresOperations tests the core CRUD functionality for tasks.
@@ -295,7 +302,10 @@ func assertPostgresTaskView(t *testing.T, task *tes.Task, view string) {
 
 func TestReadQueueContinuesAfterRemovedTask(t *testing.T) {
 	db, container := getTestPostgres(t)
-	t.Cleanup(func() { db.Close(); _ = testcontainers.TerminateContainer(container) })
+	t.Cleanup(func() {
+		db.Close()
+		terminateTestContainer(t, container)
+	})
 	ctx := getUserContext()
 	for _, id := range []string{"queue-a", "queue-b", "queue-c"} {
 		if err := db.WriteEvent(ctx, events.NewTaskCreated(newTestTask(id, id, testUser))); err != nil {

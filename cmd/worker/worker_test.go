@@ -20,7 +20,10 @@ func TestPersistentPreRun(t *testing.T) {
 	host := "test"
 	rpcport := "9999"
 
-	cwd, _ := os.Getwd()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
 	workDir := path.Join(cwd, "funnel-work-dir")
 
 	fileConf := config.DefaultConfig()
@@ -49,7 +52,7 @@ func TestPersistentPreRun(t *testing.T) {
 		"--Server.RPCPort", "9999", "--RPCClient.Timeout", "10ms",
 		"--taskID", "test1234",
 	})
-	err := c.Execute()
+	err = c.Execute()
 	if err != nil {
 		// since there is no server the rpc event writer will fail to connect
 		// within its context deadline. We can ignore this error
@@ -69,7 +72,9 @@ func TestTaskFileOption(t *testing.T) {
 	}
 
 	c.SetArgs([]string{"run", "--taskFile", "test.task.json"})
-	c.Execute()
+	if err := c.Execute(); err != nil {
+		t.Fatal(err)
+	}
 
 	h.Run = func(ctx context.Context, conf *config.Config, log *logger.Logger, opts *Options) error {
 		if opts.TaskFile != "test.task.json" {
@@ -79,7 +84,9 @@ func TestTaskFileOption(t *testing.T) {
 	}
 
 	c.SetArgs([]string{"run", "-f", "test.task.json"})
-	c.Execute()
+	if err := c.Execute(); err != nil {
+		t.Fatal(err)
+	}
 
 	h.Run = func(ctx context.Context, conf *config.Config, log *logger.Logger, opts *Options) error {
 		if opts.TaskBase64 != "abcd" {
@@ -89,7 +96,9 @@ func TestTaskFileOption(t *testing.T) {
 	}
 
 	c.SetArgs([]string{"run", "--taskBase64", "abcd"})
-	c.Execute()
+	if err := c.Execute(); err != nil {
+		t.Fatal(err)
+	}
 
 	h.Run = func(ctx context.Context, conf *config.Config, log *logger.Logger, opts *Options) error {
 		if opts.TaskBase64 != "abcd" {
@@ -99,7 +108,9 @@ func TestTaskFileOption(t *testing.T) {
 	}
 
 	c.SetArgs([]string{"run", "-b", "abcd"})
-	c.Execute()
+	if err := c.Execute(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestNewTaskReaderRejectsUnknownDatabase(t *testing.T) {

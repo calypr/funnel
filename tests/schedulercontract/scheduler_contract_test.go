@@ -489,7 +489,9 @@ func runPostgresContract(t *testing.T) {
 			t.Fatalf("connect to PostgreSQL admin database: %v", err)
 		}
 		if _, err := admin.Exec(databaseCtx, "CREATE DATABASE "+database); err != nil {
-			admin.Close(databaseCtx)
+			if closeErr := admin.Close(databaseCtx); closeErr != nil {
+				t.Errorf("close PostgreSQL admin connection after database creation failure: %v", closeErr)
+			}
 			t.Fatalf("create PostgreSQL test database: %v", err)
 		}
 		if err := admin.Close(databaseCtx); err != nil {

@@ -372,7 +372,7 @@ func (kcmd KubernetesCommand) Run(ctx context.Context) error {
 	err = streamPodLogs(ctx, clientset, kcmd.JobsNamespace, pod.Name, executorContainerName, kcmd.Stdout, kcmd.Stderr)
 	if err != nil {
 		if status := findContainerStatus(pod, executorContainerName); status != nil && status.State.Terminated != nil && kcmd.Event != nil {
-			_ = kcmd.Event.ExitCode(int(status.State.Terminated.ExitCode))
+			_ = kcmd.Event.ExitCode(int(status.State.Terminated.ExitCode)) //nolint:errcheck // Preserve the executor exit code as best-effort diagnostic data when log streaming fails.
 		}
 		return &K8sSystemErr{
 			Reason:  "LogStreamingFailed",
@@ -443,7 +443,7 @@ func streamPodLogs(ctx context.Context, clientset kubernetes.Interface, namespac
 	if err != nil {
 		return fmt.Errorf("streaming logs from pod %s: %v", podName, err)
 	}
-	defer podLogs.Close()
+	defer podLogs.Close() //nolint:errcheck // Closing the read-only log stream is cleanup; io.Copy reports stream read failures.
 
 	// K8s merges stdout and stderr in the stream unless specialized handling is used.
 	// We write everything to stdout for now, as separating them reliably requires handling the Docker log format
@@ -728,7 +728,7 @@ func (r *DefaultWorker) newKubernetesCommand(ctx context.Context, event *events.
 
 	resourceLimits := config.GetResourceLimits(r.Executor.Resources)
 
-	// Best-effort: the resources event is informational.
+	//nolint:errcheck // Resource metadata is informational and must not change task execution.
 	_ = r.EventWriter.WriteEvent(ctx, events.NewResources(task.Id, task.Resources))
 
 	kcmd := &KubernetesCommand{

@@ -37,7 +37,11 @@ func TestFileWriterRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			t.Errorf("close event file: %v", err)
+		}
+	}()
 	scanner := bufio.NewScanner(file)
 	count := 0
 	for scanner.Scan() {
@@ -80,7 +84,11 @@ func TestFileWriterConcurrentWrites(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			t.Errorf("close event file: %v", err)
+		}
+	}()
 	scanner := bufio.NewScanner(file)
 	count := 0
 	for scanner.Scan() {
@@ -160,7 +168,11 @@ func openTestNDJSONWriter(t *testing.T, path string) (*NDJSONWriter, error) {
 	if err != nil {
 		return nil, err
 	}
-	t.Cleanup(func() { _ = file.Close() })
+	t.Cleanup(func() {
+		if err := file.Close(); err != nil {
+			t.Errorf("close event file: %v", err)
+		}
+	})
 	return NewNDJSONWriter(file), nil
 }
 

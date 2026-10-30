@@ -69,7 +69,7 @@ func Dial(pctx context.Context, conf *config.RPCClient, opts ...grpc.DialOption)
 
 	go func() {
 		<-pctx.Done()
-		conn.Close()
+		conn.Close() //nolint:errcheck // Best-effort connection cleanup after parent context cancellation.
 	}()
 	return conn, nil
 }

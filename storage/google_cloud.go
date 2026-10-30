@@ -72,7 +72,7 @@ func (gs *GoogleCloud) Stat(ctx context.Context, url string) (*Object, error) {
 		return nil, fmt.Errorf("googleStorage: calling stat on object %s: %v", url, err)
 	}
 
-	modtime, _ := time.Parse(time.RFC3339, obj.Updated)
+	modtime, _ := time.Parse(time.RFC3339, obj.Updated) //nolint:errcheck // Invalid optional metadata leaves LastModified at zero, matching prior behavior.
 	return &Object{
 		URL:          url,
 		Name:         obj.Name,
@@ -99,7 +99,7 @@ func (gs *GoogleCloud) List(ctx context.Context, url string) ([]*Object, error) 
 					continue
 				}
 
-				modtime, _ := time.Parse(time.RFC3339, obj.Updated)
+				modtime, _ := time.Parse(time.RFC3339, obj.Updated) //nolint:errcheck // Invalid optional metadata leaves LastModified at zero, matching prior behavior.
 
 				objects = append(objects, &Object{
 					URL:          gsProtocol + obj.Bucket + "/" + obj.Name,
@@ -165,7 +165,7 @@ func (gs *GoogleCloud) Put(ctx context.Context, url, path string) (*Object, erro
 	if err != nil {
 		return nil, fmt.Errorf("googleStorage: opening file: %v", err)
 	}
-	defer reader.Close()
+	defer reader.Close() //nolint:errcheck // The upload source is read-only, so close cannot change uploaded data.
 
 	obj := &storage.Object{
 		Name: u.path,

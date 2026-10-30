@@ -32,16 +32,22 @@ func TestListAllStreamsPages(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Query().Get("page_token") {
 		case "":
-			_, _ = fmt.Fprint(w, `{"tasks":[{"id":"task-1","state":"RUNNING"}],"nextPageToken":"page-2"}`)
+			if _, err := fmt.Fprint(w, `{"tasks":[{"id":"task-1","state":"RUNNING"}],"nextPageToken":"page-2"}`); err != nil {
+				t.Error(err)
+			}
 		case "page-2":
 			select {
 			case <-output.written:
 			case <-time.After(2 * time.Second):
 				t.Error("first task was not written before requesting page two")
 			}
-			_, _ = fmt.Fprint(w, `{"tasks":[],"nextPageToken":"page-3"}`)
+			if _, err := fmt.Fprint(w, `{"tasks":[],"nextPageToken":"page-3"}`); err != nil {
+				t.Error(err)
+			}
 		case "page-3":
-			_, _ = fmt.Fprint(w, `{"tasks":[{"id":"task-2","state":"COMPLETE"}]}`)
+			if _, err := fmt.Fprint(w, `{"tasks":[{"id":"task-2","state":"COMPLETE"}]}`); err != nil {
+				t.Error(err)
+			}
 		default:
 			t.Errorf("unexpected page token %q", r.URL.Query().Get("page_token"))
 		}
@@ -66,10 +72,14 @@ func TestListAllStreamsPages(t *testing.T) {
 func TestListPreservesSinglePageAndEmptyOutput(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("page_token") == "empty" {
-			_, _ = fmt.Fprint(w, `{}`)
+			if _, err := fmt.Fprint(w, `{}`); err != nil {
+				t.Error(err)
+			}
 			return
 		}
-		_, _ = fmt.Fprint(w, `{"tasks":[{"id":"task-1"}],"nextPageToken":"next"}`)
+		if _, err := fmt.Fprint(w, `{"tasks":[{"id":"task-1"}],"nextPageToken":"next"}`); err != nil {
+			t.Error(err)
+		}
 	}))
 	defer server.Close()
 	var output bytes.Buffer
@@ -94,7 +104,11 @@ type failingWriter struct{}
 func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("output failed") }
 
 func TestListReportsOutputErrors(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = fmt.Fprint(w, `{"tasks":[{"id":"task-1"}]}`) }))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, err := fmt.Fprint(w, `{"tasks":[{"id":"task-1"}]}`); err != nil {
+			t.Error(err)
+		}
+	}))
 	defer server.Close()
 	for _, all := range []bool{false, true} {
 		if err := List(server.URL, "basic", "", "", nil, "", 1, all, failingWriter{}); err == nil || !strings.Contains(err.Error(), "output failed") {
@@ -109,7 +123,9 @@ func TestListAllReportsLaterPageFailure(t *testing.T) {
 			http.Error(w, "page failed", http.StatusServiceUnavailable)
 			return
 		}
-		_, _ = fmt.Fprint(w, `{"tasks":[{"id":"task-1"}],"nextPageToken":"next"}`)
+		if _, err := fmt.Fprint(w, `{"tasks":[{"id":"task-1"}],"nextPageToken":"next"}`); err != nil {
+			t.Error(err)
+		}
 	}))
 	defer server.Close()
 	var output bytes.Buffer
@@ -132,7 +148,9 @@ func TestListEmptyTagValue(t *testing.T) {
 		if !ok || len(values) != 1 || values[0] != "" {
 			t.Errorf("query = %v, want empty tag_value", q)
 		}
-		_, _ = fmt.Fprint(w, `{}`)
+		if _, err := fmt.Fprint(w, `{}`); err != nil {
+			t.Error(err)
+		}
 	}))
 	defer server.Close()
 	if err := List(server.URL, "basic", "", "", []string{"foo="}, "", 10, false, &bytes.Buffer{}); err != nil {

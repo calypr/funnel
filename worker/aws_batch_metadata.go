@@ -23,12 +23,12 @@ func writeBatchInstanceType(ctx context.Context, event *events.TaskWriter) {
 	if err != nil {
 		return
 	}
-	defer result.Content.Close()
+	defer result.Content.Close() //nolint:errcheck // Instance metadata is optional and the read-only response body is already consumed below.
 	value, err := io.ReadAll(io.LimitReader(result.Content, 256))
 	if err != nil {
 		return
 	}
 	if instanceType := strings.TrimSpace(string(value)); instanceType != "" {
-		_ = event.Metadata(map[string]string{"instance_type": instanceType})
+		_ = event.Metadata(map[string]string{"instance_type": instanceType}) //nolint:errcheck // Optional instance metadata must not change task execution.
 	}
 }

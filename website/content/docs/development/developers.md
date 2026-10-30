@@ -45,6 +45,25 @@ A Funnel development environment includes:
 
 Most development tasks are run through `make` commands, including build, release, testing, website docs, lint, tidy, webdash dev, and more.  See the [Makefile](https://github.com/ohsu-comp-bio/funnel/blob/master/Makefile) for an up-to-date list of commands.
 
+### Error handling
+
+The Go static-analysis CI job runs `errcheck` for production code and tests,
+including errors assigned to `_`. Handle errors that can affect results or
+propagate them to the caller. Test setup and assertions must also check errors.
+
+An intentional exception must be local and name the linter, with a concrete
+reason. For example, a read-only file close after a completed read may use:
+
+```go
+_ = input.Close() //nolint:errcheck // Closing this read-only input cannot invalidate the bytes already read.
+```
+
+CI rejects unexplained or nonspecific suppressions. Do not add package-wide
+exclusions, generic ignore-error helpers, or log-and-continue code merely to
+silence the check. A failed write, upload, parse, or state update normally needs
+handling. Expected rollback after commit and best-effort cleanup require an
+explicit decision at the call site.
+
 ### Go Tests
 
 Run all tests: `make test`   

@@ -37,9 +37,13 @@ func TestWorkerBatchInstanceTypeMetadata(t *testing.T) {
 				switch {
 				case r.Method == http.MethodPut && r.URL.Path == "/latest/api/token":
 					w.Header().Set("X-aws-ec2-metadata-token-ttl-seconds", "300")
-					_, _ = io.WriteString(w, "test-token")
+					if _, err := io.WriteString(w, "test-token"); err != nil {
+						t.Errorf("write token response: %v", err)
+					}
 				case r.Method == http.MethodGet && r.URL.Path == "/latest/meta-data/instance-type" && r.Header.Get("X-aws-ec2-metadata-token") == "test-token":
-					_, _ = io.WriteString(w, "m7i.large\n")
+					if _, err := io.WriteString(w, "m7i.large\n"); err != nil {
+						t.Errorf("write instance type response: %v", err)
+					}
 				default:
 					t.Errorf("unexpected metadata request %s %s", r.Method, r.URL.Path)
 					http.Error(w, "unexpected", http.StatusBadRequest)
