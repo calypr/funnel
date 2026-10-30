@@ -122,6 +122,23 @@ directory. A directory output mounts the directory itself. Choose a dedicated
 task directory, such as `/task` or `/outputs`, that does not contain files the
 container image needs or overlap mounts in your executor template.
 
+### Existing image contents
+
+Directory mounts hide any files already present at the destination in the
+container image. For example, an input directory mounted at `/etc` hides the
+image's existing `/etc` contents for that executor. The image's files are not
+deleted, but they are inaccessible beneath the mount. Input files are not merged
+with the image's directory contents. This follows ordinary filesystem mount
+behavior; see [Docker's bind-mount documentation](https://docs.docker.com/engine/storage/bind-mounts/#bind-mounting-over-existing-data).
+
+Funnel does not support automatic merging of input directories with image
+directories. Merging would require policies for conflicting files, permissions,
+and symbolic links. Use a dedicated input path such as `/task/inputs`, and point
+the command at that path. When replacing one configuration file, declare that
+specific file as the input rather than mounting its entire parent directory.
+
+### Root mounts
+
 Mounting over the container root `/` is unsupported. This includes a volume at
 `/`, a directory output at `/`, and ordinary file outputs such as `/result.json`
 whose parent is `/`. Root-level input files can also require a root mount when
