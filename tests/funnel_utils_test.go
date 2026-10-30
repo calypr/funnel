@@ -124,6 +124,9 @@ func TestPollForServerStartReturnsRunErrorImmediately(t *testing.T) {
 func TestPollForServerStartClosesHTTPResponseBody(t *testing.T) {
 	bodyClosed := make(chan struct{})
 	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/healthz" {
+			t.Errorf("startup probe requested %q, want /healthz", r.URL.Path)
+		}
 		w.WriteHeader(http.StatusOK)
 		w.(http.Flusher).Flush()
 		select {
