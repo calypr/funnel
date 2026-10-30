@@ -19,6 +19,7 @@ import (
 	"github.com/calypr/funnel/tes"
 	v1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
@@ -43,6 +44,9 @@ type KubernetesCommand struct {
 	Tolerations     []map[string]interface{}
 	Resources       *tes.Resources
 	ResourceLimits  *tes.Resources
+	GPUCount        int64
+	GPUResource     string
+	GPUNodeSelector map[string]string
 	ServiceAccount  string
 	ImagePullPolicy corev1.PullPolicy
 	NeedsPVC        bool
@@ -230,6 +234,70 @@ func (kcmd KubernetesCommand) Run(ctx context.Context) error {
 	if kcmd.StoragePlan != nil && kcmd.StoragePlan.ExecutorContainer != "" {
 		executorContainerName = kcmd.StoragePlan.ExecutorContainer
 	}
+	if err := k8sbackend.ValidateGPUNodeSelector(kcmd.GPUNodeSelector, kcmd.NodeSelector, job.Spec.Template.Spec.NodeSelector); err != nil {
+		return &K8sSystemErr{
+			Reason:  "JobCreationFailed",
+			Message: "GPU node selector conflicts with an existing executor node selector",
+			Err:     err,
+		}
+	}
+	if len(kcmd.GPUNodeSelector) > 0 {
+		if job.Spec.Template.Spec.NodeSelector == nil {
+			job.Spec.Template.Spec.NodeSelector = make(map[string]string, len(kcmd.GPUNodeSelector))
+		}
+		for key, value := range kcmd.GPUNodeSelector {
+			job.Spec.Template.Spec.NodeSelector[key] = value
+		}
+	}
+	if kcmd.GPUCount < 0 {
+		return &K8sSystemErr{
+			Reason:  "JobCreationFailed",
+			Message: "Invalid executor GPU count",
+			Err:     fmt.Errorf("GPU count cannot be negative"),
+		}
+	}
+	if kcmd.GPUCount > 0 {
+		var executor *corev1.Container
+		for i := range containers {
+			if containers[i].Name == executorContainerName {
+				executor = &containers[i]
+				break
+			}
+		}
+		if executor == nil {
+			return &K8sSystemErr{
+				Reason:  "JobCreationFailed",
+				Message: fmt.Sprintf("Executor container %q was not found", executorContainerName),
+				Err:     fmt.Errorf("executor container %q not found", executorContainerName),
+			}
+		}
+		gpuResourceName := kcmd.GPUResource
+		if gpuResourceName == "" {
+			gpuResourceName = k8sbackend.DefaultGPUResource
+		}
+		gpuResource := corev1.ResourceName(gpuResourceName)
+		gpuQuantity := *resource.NewQuantity(kcmd.GPUCount, resource.DecimalSI)
+		for _, allocation := range []struct {
+			name string
+			list corev1.ResourceList
+		}{{name: "limit", list: executor.Resources.Limits}, {name: "request", list: executor.Resources.Requests}} {
+			if existing, ok := allocation.list[gpuResource]; ok && existing.Cmp(gpuQuantity) != 0 {
+				return &K8sSystemErr{
+					Reason:  "JobCreationFailed",
+					Message: fmt.Sprintf("Executor %s for GPU resource %q conflicts with gpu_count", allocation.name, gpuResource),
+					Err:     fmt.Errorf("executor %s for %q is %s, requested %s", allocation.name, gpuResource, existing.String(), gpuQuantity.String()),
+				}
+			}
+		}
+		if executor.Resources.Limits == nil {
+			executor.Resources.Limits = corev1.ResourceList{}
+		}
+		executor.Resources.Limits[gpuResource] = gpuQuantity
+		if executor.Resources.Requests == nil {
+			executor.Resources.Requests = corev1.ResourceList{}
+		}
+		executor.Resources.Requests[gpuResource] = gpuQuantity
+	}
 
 	logger.Debug("Creating Kubernetes clientset")
 	clientset := kcmd.Clientset
@@ -303,6 +371,9 @@ func (kcmd KubernetesCommand) Run(ctx context.Context) error {
 	logger.Debug("Streaming pod logs", "podName", pod.Name)
 	err = streamPodLogs(ctx, clientset, kcmd.JobsNamespace, pod.Name, executorContainerName, kcmd.Stdout, kcmd.Stderr)
 	if err != nil {
+		if status := findContainerStatus(pod, executorContainerName); status != nil && status.State.Terminated != nil && kcmd.Event != nil {
+			_ = kcmd.Event.ExitCode(int(status.State.Terminated.ExitCode)) //nolint:errcheck // Preserve the executor exit code as best-effort diagnostic data when log streaming fails.
+		}
 		return &K8sSystemErr{
 			Reason:  "LogStreamingFailed",
 			Message: fmt.Sprintf("Failed to stream logs from pod %s", pod.Name),
@@ -372,7 +443,7 @@ func streamPodLogs(ctx context.Context, clientset kubernetes.Interface, namespac
 	if err != nil {
 		return fmt.Errorf("streaming logs from pod %s: %v", podName, err)
 	}
-	defer podLogs.Close()
+	defer podLogs.Close() //nolint:errcheck // Closing the read-only log stream is cleanup; io.Copy reports stream read failures.
 
 	// K8s merges stdout and stderr in the stream unless specialized handling is used.
 	// We write everything to stdout for now, as separating them reliably requires handling the Docker log format
@@ -395,7 +466,9 @@ func (kcmd KubernetesCommand) Stop() error {
 	backgroundDeletion := metav1.DeletePropagationBackground
 	// Stop runs during worker cancellation, so the delete must not derive from
 	// an already-canceled context.
-	err = clientset.BatchV1().Jobs(kcmd.JobsNamespace).Delete(context.Background(), jobName, metav1.DeleteOptions{
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	err = clientset.BatchV1().Jobs(kcmd.JobsNamespace).Delete(ctx, jobName, metav1.DeleteOptions{
 		PropagationPolicy: &backgroundDeletion,
 	})
 
@@ -640,6 +713,10 @@ func (r *DefaultWorker) newKubernetesCommand(ctx context.Context, event *events.
 			return nil, fmt.Errorf("invalid _IMAGE_PULL_POLICY %q: expected Always, IfNotPresent, or Never", value)
 		}
 	}
+	gpuOptions, parseErr := k8sbackend.ParseGPUOptions(resources.GetBackendParameters())
+	if parseErr != nil {
+		return nil, fmt.Errorf("invalid GPU backend parameters: %w", parseErr)
+	}
 
 	resources, err := config.ValidateResources(resources, r.Executor.Resources)
 	if err != nil {
@@ -651,7 +728,7 @@ func (r *DefaultWorker) newKubernetesCommand(ctx context.Context, event *events.
 
 	resourceLimits := config.GetResourceLimits(r.Executor.Resources)
 
-	// Best-effort: the resources event is informational.
+	//nolint:errcheck // Resource metadata is informational and must not change task execution.
 	_ = r.EventWriter.WriteEvent(ctx, events.NewResources(task.Id, task.Resources))
 
 	kcmd := &KubernetesCommand{
@@ -666,6 +743,9 @@ func (r *DefaultWorker) newKubernetesCommand(ctx context.Context, event *events.
 		JobsNamespace:   r.Executor.JobsNamespace,
 		Resources:       resources,
 		ResourceLimits:  resourceLimits,
+		GPUCount:        gpuOptions.Count,
+		GPUResource:     gpuOptions.ResourceName,
+		GPUNodeSelector: gpuOptions.NodeSelector,
 		Command:         command,
 		NeedsPVC:        len(task.GetInputs()) > 0 || len(task.GetOutputs()) > 0 || len(task.GetVolumes()) > 0,
 		NodeSelector:    r.Executor.NodeSelector,

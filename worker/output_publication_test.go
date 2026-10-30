@@ -27,6 +27,18 @@ type publicationEvents struct {
 	items []*events.Event
 }
 
+type outputLogFailureWriter struct {
+	events.Writer
+	err error
+}
+
+func (w *outputLogFailureWriter) WriteEvent(ctx context.Context, ev *events.Event) error {
+	if ev.Type == events.Type_TASK_OUTPUTS {
+		return w.err
+	}
+	return w.Writer.WriteEvent(ctx, ev)
+}
+
 func (w *publicationEvents) WriteEvent(_ context.Context, ev *events.Event) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -66,7 +78,7 @@ func workerOutputFile(t *testing.T, name, content string) *tes.Output {
 	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
 		t.Fatal(err)
 	}
-	return &tes.Output{Url: "s3://outputs/" + name, Path: path, Type: tes.File}
+	return &tes.Output{Url: "s3://outputs/" + name, Path: path, Type: tes.File.Enum()}
 }
 
 func TestUploadOutputsKeepsAcknowledgedFilesOnPartialFailure(t *testing.T) {
@@ -80,7 +92,10 @@ func TestUploadOutputsKeepsAcknowledgedFilesOnPartialFailure(t *testing.T) {
 		}
 		if strings.HasSuffix(r.URL.Path, "failed.txt") {
 			w.WriteHeader(http.StatusForbidden)
-			io.WriteString(w, `<Error><Code>AccessDenied</Code><Message>upload denied</Message></Error>`)
+			_, err := io.WriteString(w, `<Error><Code>AccessDenied</Code><Message>upload denied</Message></Error>`)
+			if err != nil {
+				t.Errorf("write S3 error response: %v", err)
+			}
 			return
 		}
 		w.Header().Set("ETag", `"new-write"`)
@@ -113,7 +128,10 @@ func TestUploadOutputsRetriesProduceOneSuccessLog(t *testing.T) {
 		}
 		if attempts.Add(1) == 1 {
 			w.WriteHeader(http.StatusForbidden)
-			io.WriteString(w, `<Error><Code>AccessDenied</Code><Message>temporary denial</Message></Error>`)
+			_, err := io.WriteString(w, `<Error><Code>AccessDenied</Code><Message>temporary denial</Message></Error>`)
+			if err != nil {
+				t.Errorf("write S3 error response: %v", err)
+			}
 			return
 		}
 		w.Header().Set("ETag", `"retry-receipt"`)
@@ -210,7 +228,10 @@ func TestDefaultWorkerWaitsForOutputAcknowledgementBeforeCompletion(t *testing.T
 				}
 				if rejected {
 					w.WriteHeader(http.StatusForbidden)
-					io.WriteString(w, `<Error><Code>AccessDenied</Code></Error>`)
+					_, err := io.WriteString(w, `<Error><Code>AccessDenied</Code></Error>`)
+					if err != nil {
+						t.Errorf("write S3 error response: %v", err)
+					}
 					return
 				}
 				w.Header().Set("ETag", `"confirmed-write"`)
@@ -221,11 +242,14 @@ func TestDefaultWorkerWaitsForOutputAcknowledgementBeforeCompletion(t *testing.T
 			if err := os.MkdirAll(workdir, 0700); err != nil {
 				t.Fatal(err)
 			}
-			local := filepath.Join(workdir, "result.txt")
+			local := filepath.Join(workdir, "outputs", "result.txt")
+			if err := os.MkdirAll(filepath.Dir(local), 0700); err != nil {
+				t.Fatal(err)
+			}
 			if err := os.WriteFile(local, []byte("worker output"), 0600); err != nil {
 				t.Fatal(err)
 			}
-			task := &tes.Task{Id: "task", State: tes.Queued, Outputs: []*tes.Output{{Url: "s3://outputs/result.txt", Path: "/result.txt", Type: tes.File}}}
+			task := &tes.Task{Id: "task", State: tes.Queued, Outputs: []*tes.Output{{Url: "s3://outputs/result.txt", Path: "/outputs/result.txt", Type: tes.File.Enum()}}}
 			writer := &publicationEvents{}
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
@@ -260,7 +284,7 @@ func TestDefaultWorkerWaitsForOutputAcknowledgementBeforeCompletion(t *testing.T
 				if ev.GetOutputs() != nil {
 					outputIndex = index
 					values := ev.GetOutputs().Value
-					if len(values) != 1 || values[0].Path != "/result.txt" || values[0].SizeBytes != "13" {
+					if len(values) != 1 || values[0].Path != "/outputs/result.txt" || values[0].SizeBytes != "13" {
 						t.Fatalf("worker output log: %+v", values)
 					}
 				}
@@ -280,4 +304,284 @@ func TestDefaultWorkerWaitsForOutputAcknowledgementBeforeCompletion(t *testing.T
 			}
 		})
 	}
+}
+
+func TestWorkerOutputFailureIncludesTaskPathAndOriginalError(t *testing.T) {
+	root := t.TempDir()
+	mapper := NewFileMapper(filepath.Join(root, "work"))
+	output := &tes.Output{Url: "file://" + filepath.Join(root, "destination", "result.txt"), Path: "/outputs/result.txt", Type: tes.File.Enum()}
+	if err := mapper.MapTask(&tes.Task{Outputs: []*tes.Output{output}}, "docker"); err != nil {
+		t.Fatal(err)
+	}
+	store, err := storage.NewLocal(&config.LocalStorage{AllowedDirs: []string{root}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer := &publicationEvents{}
+	run := &helper{}
+	w := &DefaultWorker{Conf: &config.Worker{WorkDir: root, MaxParallelTransfers: 1}, Store: store}
+	w.processOutputs(context.Background(), events.NewTaskWriter("task", 0, writer), mapper, run)
+	if !errors.Is(run.syserr, os.ErrNotExist) {
+		t.Fatalf("expected original missing-file error, got %v", run.syserr)
+	}
+	for _, event := range writer.snapshot() {
+		log := event.GetSystemLog()
+		if log.GetMsg() != "upload failed" {
+			continue
+		}
+		fields := log.GetFields()
+		if fields["path"] != output.Path {
+			t.Errorf("output path = %q, want %q", fields["path"], output.Path)
+		}
+		if !strings.Contains(fields["error"], mapper.Outputs[0].Path) {
+			t.Errorf("original error missing host path: %q", fields["error"])
+		}
+		return
+	}
+	t.Fatal("missing upload failure event")
+}
+
+func TestProcessOutputsHandlesOutputLogWriteFailures(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		execErr error
+	}{
+		{name: "successful executor"},
+		{name: "failed executor", execErr: errors.New("executor failed")},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			mapper := NewFileMapper(filepath.Join(root, "work"))
+			task := &tes.Task{Outputs: []*tes.Output{{
+				Url:  "file://" + filepath.Join(root, "destination", "result.txt"),
+				Path: "/outputs/result.txt",
+				Type: tes.File.Enum(),
+			}}}
+			err := mapper.MapTask(task, "docker")
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = os.WriteFile(mapper.Outputs[0].Path, []byte("result"), 0600)
+			if err != nil {
+				t.Fatal(err)
+			}
+			store, err := storage.NewLocal(&config.LocalStorage{AllowedDirs: []string{root}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			writeErr := errors.New("output log store unavailable")
+			baseWriter := &publicationEvents{}
+			run := &helper{execerr: test.execErr}
+			worker := &DefaultWorker{Conf: &config.Worker{WorkDir: root, MaxParallelTransfers: 1}, Store: store}
+			worker.processOutputs(context.Background(), events.NewTaskWriter("task", 0, &outputLogFailureWriter{Writer: baseWriter, err: writeErr}), mapper, run)
+
+			if test.execErr == nil {
+				if !errors.Is(run.syserr, writeErr) {
+					t.Fatalf("system error = %v, want output log failure", run.syserr)
+				}
+				if run.execerr != nil {
+					t.Fatalf("executor error = %v, want nil", run.execerr)
+				}
+				return
+			}
+
+			if run.syserr != nil {
+				t.Fatalf("secondary output log failure changed system error: %v", run.syserr)
+			}
+			if run.execerr != test.execErr {
+				t.Fatalf("executor error = %v, want original executor failure", run.execerr)
+			}
+			if baseWriter.count("Failed to record output files after executor error") != 1 {
+				t.Fatalf("output log failure was not reported: %v", baseWriter.snapshot())
+			}
+		})
+	}
+}
+
+type failingOutputStore struct {
+	storage.Fake
+	err error
+}
+
+func (s failingOutputStore) Put(context.Context, string, string) (*storage.Object, error) {
+	return nil, s.err
+}
+
+func TestWorkerOutputFailurePreservesStorageError(t *testing.T) {
+	root := t.TempDir()
+	mapper := NewFileMapper(filepath.Join(root, "work"))
+	output := &tes.Output{Url: "s3://bucket/result.txt", Path: "/outputs/result.txt", Type: tes.File.Enum()}
+	if err := mapper.MapTask(&tes.Task{Outputs: []*tes.Output{output}}, "docker"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(mapper.Outputs[0].Path, []byte("result"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	denied := errors.New("storage access denied")
+	writer := &publicationEvents{}
+	run := &helper{}
+	w := &DefaultWorker{Conf: &config.Worker{WorkDir: root, MaxParallelTransfers: 1}, Store: failingOutputStore{err: denied}}
+	w.processOutputs(context.Background(), events.NewTaskWriter("task", 0, writer), mapper, run)
+	if !errors.Is(run.syserr, denied) {
+		t.Fatalf("expected original storage error, got %v", run.syserr)
+	}
+	for _, event := range writer.snapshot() {
+		log := event.GetSystemLog()
+		if log.GetMsg() == "upload failed" {
+			if fields := log.GetFields(); fields["path"] != output.Path || fields["error"] != denied.Error() {
+				t.Errorf("unexpected failure details: %v", fields)
+			}
+			return
+		}
+	}
+	t.Fatal("missing upload failure event")
+}
+
+func TestProcessOutputsWarnsAndPublishesOtherOutputsForUnmatchedGlob(t *testing.T) {
+	executorErr := errors.New("executor failed")
+	for _, tc := range []struct {
+		name    string
+		execErr error
+	}{
+		{name: "executor succeeds"},
+		{name: "executor fails", execErr: executorErr},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			workDir := filepath.Join(t.TempDir(), "task")
+			globDir := filepath.Join(workDir, "outputs", "glob")
+			if err := os.MkdirAll(globDir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			files := map[string]string{
+				filepath.Join(globDir, "matched.txt"):          "matched output",
+				filepath.Join(workDir, "outputs", "exact.txt"): "exact output",
+			}
+			for path, content := range files {
+				if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			pattern := filepath.Join(workDir, "outputs", "missing-*.txt")
+			mapper := NewFileMapper(workDir)
+			mapper.Outputs = []*tes.Output{
+				{Url: "s3://outputs/missing", Path: pattern, PathPrefix: "/outputs", Type: tes.File.Enum()},
+				{Url: "s3://outputs", Path: filepath.Join(globDir, "*.txt"), PathPrefix: "/outputs", Type: tes.File.Enum()},
+				{Url: "s3://outputs/exact.txt", Path: filepath.Join(workDir, "outputs", "exact.txt"), Type: tes.File.Enum()},
+			}
+			store := &capturingUploadStorage{uploaded: make(map[string]string)}
+			writer := &publicationEvents{}
+			run := &helper{execerr: tc.execErr}
+			worker := &DefaultWorker{Conf: &config.Worker{MaxParallelTransfers: 1}, Store: store}
+			worker.processOutputs(context.Background(), events.NewTaskWriter("task", 0, writer), mapper, run)
+
+			if run.syserr != nil {
+				t.Fatalf("unmatched glob set system error: %v", run.syserr)
+			}
+			if run.execerr != tc.execErr {
+				t.Fatalf("executor error = %v, want %v", run.execerr, tc.execErr)
+			}
+			if len(store.uploaded) != 2 || store.uploaded["s3://outputs/glob/matched.txt"] != "matched output" || store.uploaded["s3://outputs/exact.txt"] != "exact output" {
+				t.Fatalf("uploaded outputs = %v", store.uploaded)
+			}
+			if len(store.attempted) != 2 {
+				t.Fatalf("upload attempts = %v, want only the matched glob and exact output", store.attempted)
+			}
+
+			warningCount := 0
+			for _, ev := range writer.snapshot() {
+				log := ev.GetSystemLog()
+				if log.GetMsg() != "output pattern matched no files" {
+					continue
+				}
+				warningCount++
+				if log.GetLevel() != "warning" {
+					t.Errorf("unmatched pattern log level = %q, want warning", log.GetLevel())
+				}
+				if got, want := log.GetFields()["path"], mapper.ContainerPath(pattern); got != want {
+					t.Errorf("warning path = %q, want container path %q", got, want)
+				}
+			}
+			if warningCount != 1 {
+				t.Fatalf("unmatched output warnings = %d, want 1; events = %v", warningCount, writer.snapshot())
+			}
+		})
+	}
+}
+
+func TestProcessOutputsDoesNotWarnBeforeHardResolutionError(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		badPattern string
+		store      func() storage.Storage
+	}{
+		{
+			name:       "malformed glob",
+			badPattern: "bad-[*.txt",
+			store:      func() storage.Storage { return &capturingUploadStorage{uploaded: make(map[string]string)} },
+		},
+		{
+			name:       "storage join error",
+			badPattern: "*.txt",
+			store:      func() storage.Storage { return &storage.Mux{} },
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			workDir := t.TempDir()
+			if tc.name == "storage join error" {
+				if err := os.WriteFile(filepath.Join(workDir, "output.txt"), []byte("output"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			mapper := NewFileMapper(workDir)
+			mapper.Outputs = []*tes.Output{
+				{Url: "s3://outputs/missing", Path: filepath.Join(workDir, "missing-*.txt")},
+				{Url: "gs://outputs/error", Path: filepath.Join(workDir, tc.badPattern)},
+			}
+			originalOutputs := append([]*tes.Output(nil), mapper.Outputs...)
+			writer := &publicationEvents{}
+			worker := &DefaultWorker{Conf: &config.Worker{MaxParallelTransfers: 1}, Store: tc.store()}
+			run := &helper{}
+			worker.processOutputs(context.Background(), events.NewTaskWriter("task", 0, writer), mapper, run)
+
+			if run.syserr == nil {
+				t.Fatal("hard output resolution error was not reported")
+			}
+			for i := range originalOutputs {
+				if mapper.Outputs[i] != originalOutputs[i] {
+					t.Fatalf("output %d changed after hard resolution error", i)
+				}
+			}
+			for _, ev := range writer.snapshot() {
+				if ev.GetSystemLog().GetMsg() == "output pattern matched no files" {
+					t.Fatalf("emitted unmatched warning before hard error: %v", ev.GetSystemLog())
+				}
+			}
+		})
+	}
+}
+
+func TestProcessOutputsWarnsWhenGlobParentIsFile(t *testing.T) {
+	workDir := t.TempDir()
+	parent := filepath.Join(workDir, "result")
+	err := os.WriteFile(parent, []byte("hello"), 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mapper := NewFileMapper(workDir)
+	mapper.Outputs = []*tes.Output{{Url: "s3://outputs/", Path: filepath.Join(parent, "*"), PathPrefix: "/", Type: tes.File.Enum()}}
+	store := &capturingUploadStorage{uploaded: make(map[string]string)}
+	writer := &publicationEvents{}
+	run := &helper{}
+	w := &DefaultWorker{Conf: &config.Worker{MaxParallelTransfers: 1}, Store: store}
+	w.processOutputs(context.Background(), events.NewTaskWriter("task", 0, writer), mapper, run)
+	if run.syserr != nil {
+		t.Fatalf("unmatched glob caused system error: %v", run.syserr)
+	}
+	for _, event := range writer.snapshot() {
+		if event.GetSystemLog().GetMsg() == "output pattern matched no files" {
+			return
+		}
+	}
+	t.Fatal("missing unmatched output warning")
 }

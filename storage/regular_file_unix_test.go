@@ -3,6 +3,7 @@
 package storage
 
 import (
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -20,7 +21,10 @@ func TestOpenRegularFileRejectsFIFOWithoutBlocking(t *testing.T) {
 	go func() {
 		file, err := openRegularFile(fifo)
 		if file != nil {
-			_ = file.Close()
+			closeErr := file.Close()
+			if closeErr != nil {
+				err = errors.Join(err, closeErr)
+			}
 		}
 		opened <- err
 	}()
@@ -49,7 +53,7 @@ func TestOpenRootRegularFileAllowsInRootSymlinkAndRejectsFIFO(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer root.Close()
+	closeTestResource(t, root)
 	file, err := openRootRegularFile(root, "link")
 	if err != nil {
 		t.Fatal(err)
@@ -65,7 +69,10 @@ func TestOpenRootRegularFileAllowsInRootSymlinkAndRejectsFIFO(t *testing.T) {
 	go func() {
 		file, err := openRootRegularFile(root, "fifo")
 		if file != nil {
-			_ = file.Close()
+			closeErr := file.Close()
+			if closeErr != nil {
+				err = errors.Join(err, closeErr)
+			}
 		}
 		opened <- err
 	}()

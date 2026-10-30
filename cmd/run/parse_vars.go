@@ -62,7 +62,10 @@ func valsToTask(vals flagVals) (task *tes.Task, err error) {
 	// Create executors
 	for i, exec := range vals.execs {
 		// Split command string based on shell syntax.
-		cmd, _ := shellwords.Split(exec.cmd)
+		cmd, err := shellwords.Split(exec.cmd)
+		if err != nil {
+			return nil, fmt.Errorf("parsing executor %d command: %w", i, err)
+		}
 
 		// Only set the stdio paths if their respective flags were used.
 		var stdin, stdout, stderr string
@@ -170,7 +173,7 @@ func valsToTask(vals flagVals) (task *tes.Task, err error) {
 			Name: k,
 			Url:  url,
 			Path: path,
-			Type: tes.FileType_DIRECTORY,
+			Type: tes.FileType_DIRECTORY.Enum(),
 		})
 	}
 

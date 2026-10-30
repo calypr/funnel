@@ -24,11 +24,11 @@ func TestNewDockerClientUsesServerAPIVersion(t *testing.T) {
 			tooNewRequests.Add(1)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			_, _ = io.WriteString(w, `{"message":"client version 1.56 is too new. Maximum supported API version is 1.39"}`)
+			_, _ = io.WriteString(w, `{"message":"client version 1.56 is too new. Maximum supported API version is 1.39"}`) //nolint:errcheck // Fixture response is unused once the test client disconnects.
 		case "/v1.39/version":
 			compatibleRequests.Add(1)
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = io.WriteString(w, `{"Version":"18.09.9","ApiVersion":"1.39"}`)
+			_, _ = io.WriteString(w, `{"Version":"18.09.9","ApiVersion":"1.39"}`) //nolint:errcheck // Fixture response is unused once the test client disconnects.
 		default:
 			t.Errorf("unexpected Docker API request %s", r.URL.Path)
 			http.NotFound(w, r)
@@ -41,7 +41,7 @@ func TestNewDockerClientUsesServerAPIVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer client.Close()
+	defer client.Close() //nolint:errcheck // Best-effort test transport cleanup; no task output depends on closure.
 	if got := client.ClientVersion(); got != "1.39" {
 		t.Fatalf("client API version = %q, want 1.39", got)
 	}

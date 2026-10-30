@@ -14,7 +14,10 @@ func EmptyReader() io.Reader {
 // StdinPipe will return stdin if it's available, otherwise it will return
 // EmptyReader()
 func StdinPipe() io.Reader {
-	stat, _ := os.Stdin.Stat()
+	stat, err := os.Stdin.Stat()
+	if err != nil {
+		return EmptyReader()
+	}
 	if (stat.Mode() & os.ModeCharDevice) == 0 {
 		return os.Stdin
 	}

@@ -18,7 +18,11 @@ import (
 
 // Run runs a node with the given config, blocking until the node exits.
 func Run(ctx context.Context, conf *config.Config, log *logger.Logger) error {
-	conf.Node.ID = scheduler.GenNodeID()
+	nodeID, err := scheduler.GenNodeID()
+	if err != nil {
+		return err
+	}
+	conf.Node.ID = nodeID
 
 	factory := func(ctx context.Context, taskID string) error {
 		w, err := workerCmd.NewWorker(ctx, conf, log, &workerCmd.Options{
@@ -27,7 +31,8 @@ func Run(ctx context.Context, conf *config.Config, log *logger.Logger) error {
 		if err != nil {
 			return err
 		}
-		if err := w.Run(ctx); err != nil {
+		err = w.Run(ctx)
+		if err != nil {
 			return fmt.Errorf("worker run failed: %w", err)
 		}
 		return nil

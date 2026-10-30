@@ -36,7 +36,12 @@ func startPubSubTestServer(t *testing.T, opts ...pstest.ServerReactorOption) *ps
 	t.Helper()
 	server := pstest.NewServer(opts...)
 	t.Setenv("PUBSUB_EMULATOR_HOST", server.Addr)
-	t.Cleanup(func() { _ = server.Close() })
+	t.Cleanup(func() {
+		err := server.Close()
+		if err != nil {
+			t.Errorf("close Pub/Sub test server: %v", err)
+		}
+	})
 	return server
 }
 
@@ -48,7 +53,12 @@ func waitForPubSubSubscription(t *testing.T, project, subname, topicName string)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer client.Close()
+	defer func() {
+		err := client.Close()
+		if err != nil {
+			t.Errorf("close Pub/Sub test client: %v", err)
+		}
+	}()
 
 	name := "projects/" + project + "/subscriptions/" + subname
 	for {

@@ -364,7 +364,7 @@ func (s3b *GenericS3) download(ctx context.Context, bucket, objectPath, filePath
 	if err != nil {
 		return fmt.Errorf("failed getting object from S3: %w", err)
 	}
-	defer res.Body.Close()
+	defer res.Body.Close() //nolint:errcheck // The body is fully read before cleanup; read failures come from io.Copy.
 
 	logger.Debug("genericS3: staging local file", "filePath", filePath)
 	err = writeDownloadedFile(ctx, filePath, func(outFile *os.File) error {
@@ -470,7 +470,7 @@ func (s3b *GenericS3) upload(ctx context.Context, bucket, key, filePath string) 
 	if err != nil {
 		return 0, "", err
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck // The upload source is read-only, so close cannot change uploaded data.
 
 	info, err := f.Stat()
 	if err != nil {

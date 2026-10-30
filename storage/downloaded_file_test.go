@@ -75,7 +75,7 @@ func TestWriteRootDownloadedFileRejectsNonBasename(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer parent.Close()
+	closeTestResource(t, parent)
 	for _, name := range []string{"", ".", "..", "../outside", "nested/file", "file/"} {
 		t.Run(name, func(t *testing.T) {
 			err := writeRootDownloadedFile(context.Background(), parent, name, func(*os.File) error {
@@ -100,7 +100,7 @@ func TestWriteRootDownloadedFilePinsParent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer parent.Close()
+	closeTestResource(t, parent)
 	err = writeRootDownloadedFile(context.Background(), parent, "target", func(stage *os.File) error {
 		if err := os.Rename(original, moved); err != nil {
 			return err

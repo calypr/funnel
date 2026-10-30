@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	cmdutil "github.com/calypr/funnel/cmd/util"
 	"github.com/calypr/funnel/compute/kubernetes/storageplan"
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/database/datastore"
@@ -80,11 +81,23 @@ func NewWorker(ctx context.Context, conf *config.Config, log *logger.Logger, opt
 	var readMounts []storage.S3ReadMount
 	var writeMounts []storage.S3WriteMount
 	var executor = worker.Executor{
-		Backend: "docker",
+		Backend:        "docker",
+		ComputeBackend: strings.ToLower(strings.TrimSpace(conf.Compute)),
 	}
 
-	if conf.Compute == "kubernetes" {
+	if compute := strings.ToLower(strings.TrimSpace(conf.Compute)); compute == "kubernetes" || compute == "k8s" {
 		executor.Backend = "kubernetes"
+		owner := &events.ExecutionOwner{
+			Namespace: os.Getenv(events.OwnerNamespaceEnv),
+			PodName:   os.Getenv(events.OwnerNameEnv),
+			PodUid:    os.Getenv(events.OwnerUIDEnv),
+		}
+		if owner.Namespace != "" || owner.PodName != "" || owner.PodUid != "" {
+			if _, err := events.ExecutionOwnerMetadata(owner); err != nil {
+				return nil, fmt.Errorf("reading Kubernetes worker identity: %w", err)
+			}
+			executor.ExecutionOwner = owner
+		}
 		executor.Template = conf.Kubernetes.ExecutorTemplate
 		executor.Namespace = conf.Kubernetes.Namespace
 		executor.JobsNamespace = conf.Kubernetes.JobsNamespace
@@ -189,11 +202,11 @@ type databaseTaskReader struct {
 	claimer  worker.ExecutionClaimer
 }
 
-func (r *databaseTaskReader) ClaimExecution(ctx context.Context, taskID string) (bool, error) {
+func (r *databaseTaskReader) ClaimExecution(ctx context.Context, taskID string, owner *events.ExecutionOwner) (bool, error) {
 	if r.claimer == nil {
 		return false, fmt.Errorf("database %q does not support execution claims", r.database)
 	}
-	return r.claimer.ClaimExecution(ctx, taskID)
+	return r.claimer.ClaimExecution(ctx, taskID, owner)
 }
 
 // eventWriterBuilder is a helper for building a set of event writers,
@@ -231,6 +244,8 @@ func (e *eventWriterBuilder) Add(ctx context.Context, name string, conf *config.
 	var writer events.Writer
 
 	switch strings.ToLower(name) {
+	case "file":
+		writer, err = cmdutil.NewEventFileWriter(conf.EventFile, log)
 	case "log":
 		writer = &events.Logger{Log: log}
 	case "boltdb", "badger", "grpc", "rpc":
@@ -259,11 +274,21 @@ func (e *eventWriterBuilder) Add(ctx context.Context, name string, conf *config.
 }
 
 func validateConfig(conf *config.Config, opts *Options) error {
+	if conf.Worker == nil || conf.Worker.PollingRate == nil {
+		return fmt.Errorf("Worker.PollingRate must be a positive duration")
+	}
+	err := conf.Worker.PollingRate.CheckValid()
+	if err != nil {
+		return fmt.Errorf("Worker.PollingRate: %w", err)
+	}
+	if conf.Worker.PollingRate.AsDuration() <= 0 {
+		return fmt.Errorf("Worker.PollingRate must be a positive duration")
+	}
 	// If the task reader is a file or string,
 	// only a subset of event writers are supported.
 	if opts.TaskFile != "" || opts.TaskBase64 != "" {
 		for _, e := range conf.EventWriters {
-			if strings.ToLower(e) != "log" && strings.ToLower(e) != "kafka" && strings.ToLower(e) != "pubsub" {
+			if strings.ToLower(e) != "log" && strings.ToLower(e) != "kafka" && strings.ToLower(e) != "pubsub" && strings.ToLower(e) != "file" {
 				return fmt.Errorf("event writer %q is not supported with a task file/string reader", e)
 			}
 		}

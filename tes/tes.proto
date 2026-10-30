@@ -172,7 +172,7 @@ message Output {
 	string name = 2;
 	string path = 3;
 	string path_prefix = 4;
-	FileType type = 5;
+	optional FileType type = 5;
 	string url = 6;
 }
 

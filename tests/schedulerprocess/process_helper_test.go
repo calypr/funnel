@@ -100,8 +100,8 @@ type executionAdmissionBarrier struct {
 	worker.ExecutionClaimer
 }
 
-func (b *executionAdmissionBarrier) ClaimExecution(ctx context.Context, taskID string) (bool, error) {
-	claimed, err := b.ExecutionClaimer.ClaimExecution(ctx, taskID)
+func (b *executionAdmissionBarrier) ClaimExecution(ctx context.Context, taskID string, owner *events.ExecutionOwner) (bool, error) {
+	claimed, err := b.ExecutionClaimer.ClaimExecution(ctx, taskID, owner)
 	if err == nil && claimed {
 		fmt.Printf("PROCESS_EVENT: EXECUTION_ADMITTED task=%s\n", taskID)
 		select {}
@@ -117,22 +117,22 @@ func runWorkerObserver(t *testing.T, conf *config.Config, log *logger.Logger) {
 		t.Fatalf("construct Funnel observer worker: %v", err)
 	}
 	defer w.Close()
-	w.TaskReader = &runningTaskObserver{TaskReader: w.TaskReader}
+	w.TaskReader = &initializingTaskObserver{TaskReader: w.TaskReader}
 	if err := w.Run(context.Background()); err != nil {
 		t.Fatalf("run Funnel observer worker: %v", err)
 	}
 }
 
-type runningTaskObserver struct {
+type initializingTaskObserver struct {
 	worker.TaskReader
 	seen bool
 }
 
-func (r *runningTaskObserver) Task(ctx context.Context) (*tes.Task, error) {
+func (r *initializingTaskObserver) Task(ctx context.Context) (*tes.Task, error) {
 	task, err := r.TaskReader.Task(ctx)
-	if err == nil && task.GetState() == tes.State_RUNNING && !r.seen {
+	if err == nil && task.GetState() == tes.State_INITIALIZING && !r.seen {
 		r.seen = true
-		fmt.Printf("PROCESS_EVENT: RUNNING_OBSERVED task=%s\n", task.GetId())
+		fmt.Printf("PROCESS_EVENT: INITIALIZING_OBSERVED task=%s\n", task.GetId())
 	}
 	return task, err
 }

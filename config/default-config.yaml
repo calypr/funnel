@@ -132,6 +132,7 @@ Node:
 
 Worker:
   # Files created during processing will be written in this directory.
+  # Tilde (~) is not expanded; use an explicit path or a relative path.
   WorkDir: ./funnel-work-dir
 
   # For low-level tuning.
@@ -156,9 +157,13 @@ Worker:
 
   Container:
     DriverCommand: docker
+    # Apply task CPU and RAM requests as Docker limits. RAM limits disallow swap.
+    EnforceResources: false
 
     RunCommand: |
       run -i --read-only
+      {{.GPUArgs}}
+      {{if and .EnforceResources .Resources}}{{if gt .Resources.CpuCores 0}}--cpus {{.Resources.CpuCores}}{{end}} {{if .MemoryMB}}--memory {{.MemoryMB}}m --memory-swap {{.MemoryMB}}m{{end}}{{end}}
       {{if .NeedsTmpfs}}--tmpfs /tmp{{end}}
       {{if .RemoveContainer}}--rm{{end}}
       {{.GetEnvArgs}}
@@ -441,9 +446,11 @@ LocalStorage:
 # HTTPStorage downloads inputs with GET and uploads outputs with PUT, for URLs
 # that need no credentials, such as public or presigned URLs.
 HTTPStorage:
-  # Timeout for http(s) requests, including the transfer itself.
+  # Wait up to one minute for response headers after sending the request.
+  # For uploads, this wait starts after the file has been sent.
+  # Optional total request deadline, including the entire file transfer.
   Timeout:
-    duration: 30s
+    disabled: true
 
 AmazonS3:
   Disabled: false
@@ -456,6 +463,8 @@ AmazonS3:
     Secret: ""
   # Server Side Encryption (SSE) settings
   SSE:
+    # Request S3-managed AES256 encryption explicitly (SSE-S3).
+    S3Managed: false
     # Customer Provided Key
     # ref: https://docs.aws.amazon.com/AmazonS3/latest/userguide/ServerSideEncryptionCustomerKeys.html
     CustomerKeyFile: ""

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -352,9 +353,11 @@ func (b *batchsvc) CreateJobDefinition(overwrite bool) (*types.JobDefinition, er
 
 	jobDef := &batch.RegisterJobDefinitionInput{
 		ContainerProperties: &types.ContainerProperties{
-			Image:      aws.String(b.conf.JobDef.Image),
-			Memory:     aws.Int32(int32(b.conf.JobDef.MemoryMiB)),
-			Vcpus:      aws.Int32(int32(b.conf.JobDef.VCPUs)),
+			Image: aws.String(b.conf.JobDef.Image),
+			ResourceRequirements: []types.ResourceRequirement{
+				{Type: types.ResourceTypeMemory, Value: aws.String(strconv.FormatInt(b.conf.JobDef.MemoryMiB, 10))},
+				{Type: types.ResourceTypeVcpu, Value: aws.String(strconv.FormatInt(b.conf.JobDef.VCPUs, 10))},
+			},
 			Privileged: aws.Bool(true),
 			MountPoints: []types.MountPoint{
 				{
@@ -383,6 +386,8 @@ func (b *batchsvc) CreateJobDefinition(overwrite bool) (*types.JobDefinition, er
 			Command: []string{
 				"worker",
 				"run",
+				"--Compute",
+				"aws-batch",
 				"--Worker.WorkDir",
 				b.conf.Funnel.Worker.WorkDir,
 				"--Database",

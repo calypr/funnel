@@ -8,16 +8,19 @@ linters:
     - govet
     - misspell
     - errcheck
+    - nolintlint
+  settings:
+    errcheck:
+      check-blank: true
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+      allow-unused: false
   exclusions:
     paths:
       - vendor
-      - webdash
-      - cmd/webdash
+      - webdash/build
       - funnel-work-dir
-    presets:
-      # Ignored-by-design error returns: fmt.Print* to usage writers,
-      # deferred Close on best-effort cleanup, os.RemoveAll on temp dirs.
-      - std-error-handling
     rules:
       - path: ".*bundle\\.go"
         linters: [govet, misspell]
@@ -25,8 +28,6 @@ linters:
         linters: [govet, misspell]
       - path: ".*\\.pb\\.gw\\.go"
         linters: [govet, misspell]
-      - path: "_test\\.go"
-        linters: [errcheck]
 
 formatters:
   enable:
@@ -35,8 +36,7 @@ formatters:
   exclusions:
     paths:
       - vendor
-      - webdash
-      - cmd/webdash
+      - webdash/build
       - funnel-work-dir
       - ".*bundle\\.go"
       - ".*\\.pb\\.go"

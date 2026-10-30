@@ -121,7 +121,7 @@ func (s *mountedS3Reader) Stat(ctx context.Context, raw string) (*Object, error)
 	if err != nil {
 		return nil, fmt.Errorf("open mounted input root: %w", err)
 	}
-	defer root.Close() // Read-only directory handle; closing cannot affect copied data.
+	defer root.Close() //nolint:errcheck // Closing the read-only root cannot affect the copied object.
 	info, err := root.Stat(rel)
 	if err != nil {
 		return nil, fmt.Errorf("stat mounted input: %w", err)
@@ -144,7 +144,7 @@ func (s *mountedS3Reader) List(ctx context.Context, raw string) ([]*Object, erro
 	if err != nil {
 		return nil, fmt.Errorf("open mounted input root: %w", err)
 	}
-	defer root.Close() // Read-only directory handle.
+	defer root.Close() //nolint:errcheck // Closing the read-only root cannot affect the listed objects.
 	info, err := root.Stat(rel)
 	if err != nil {
 		return nil, err
@@ -192,12 +192,12 @@ func (s *mountedS3Reader) Get(ctx context.Context, raw, destination string) (*Ob
 	if err != nil {
 		return nil, fmt.Errorf("open mounted input root: %w", err)
 	}
-	defer root.Close() // Read-only directory handle.
+	defer root.Close() //nolint:errcheck // Closing the read-only root cannot affect the copied object.
 	source, err := openRootRegularFile(root, rel)
 	if err != nil {
 		return nil, fmt.Errorf("open mounted input: %w", err)
 	}
-	defer source.Close()
+	defer source.Close() //nolint:errcheck // The mounted input is read-only; copy errors are reported by io.Copy.
 	info, err := source.Stat()
 	if err != nil {
 		return nil, err
@@ -216,7 +216,7 @@ func (s *mountedS3Reader) Get(ctx context.Context, raw, destination string) (*Ob
 	if err != nil {
 		return nil, fmt.Errorf("open mounted input destination directory: %w", err)
 	}
-	defer destinationRoot.Close()
+	defer destinationRoot.Close() //nolint:errcheck // Closing the directory handle cannot affect the published copy.
 	err = writeRootDownloadedFile(ctx, destinationRoot, filepath.Base(destination), func(target *os.File) error {
 		size, err := io.Copy(target, inputReader{ctx: ctx, source: source})
 		if err != nil {

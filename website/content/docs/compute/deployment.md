@@ -183,10 +183,12 @@ these backends requires an external event log.
 
 Workers using BoltDB, PostgreSQL, or MongoDB acquire a durable execution claim
 before preparing files or starting any executor. The database checks the task
-state and records the claim with `RUNNING` in one transaction. Only the worker
-that receives a successful acquisition proceeds. A second worker observes the
-task until it reaches a terminal state, without preparing files, running an
-executor, or writing task events. This prevents a duplicate batch worker from
+state and records the claim with `INITIALIZING` in one transaction. After task
+preparation, the worker sets `RUNNING` just before it dispatches the first executor.
+This transition reports dispatch, not confirmation that a container has started.
+Only the worker that receives a successful acquisition proceeds. A second worker
+observes the task until it reaches a terminal state, without preparing files,
+running an executor, or writing task events. This prevents a duplicate batch worker from
 signaling successful completion while the original execution is still active.
 An observer exiting successfully means observation finished; the TES task state
 still reports whether execution completed, failed, or was canceled.
@@ -196,8 +198,29 @@ distributed claim.
 
 Claims have no expiration and do not transfer automatically. If a worker crashes
 after acquiring its claim, or loses the successful response, another worker
-cannot rerun that task ID. The task and duplicate observers can remain active until a user cancels the
-task or the existing backend failure-recovery path records a failure. Inspect the original runtime
+cannot rerun that task ID. Kubernetes workers record their pod identity atomically
+with the claim. Funnel submits worker pods with `restartPolicy: Never`, including
+when a custom worker template specifies `OnFailure`. The Job's `backoffLimit` is
+preserved, so failures before a claim is acquired can still start a replacement pod.
+For worker pods with sidecars, Funnel tracks the selected worker container. If
+that container fails before acquiring a claim, Funnel retires the pod so the
+Job can retry even when a sidecar remains running.
+
+If the worker container that owns a claim exits, or its pod is lost before the task reaches a terminal state,
+the Kubernetes reconciler records `SYSTEM_ERROR` and performs the configured
+resource cleanup. It checks the pod UID and controlling Job UID before treating
+pod termination as evidence that the claimed worker exited. A missing owner pod
+or a different UID at its recorded name means that the owner was lost. It does not replay
+the task or let a replacement worker take over its claim. A duplicate worker
+continues observing the task while the original worker is alive.
+
+Claims created before this upgrade, manually launched workers without the pod
+identity environment, and other compute backends do not have this pod ownership
+information. Those tasks and duplicate observers can remain active until a user
+cancels the task or existing backend failure recovery records a failure. An
+unavailable Kubernetes API defers owner reconciliation. Failing a task after its
+pod is deleted does not prove that a process on an unreachable node has stopped.
+Inspect the original runtime
 before submitting replacement work with a new task ID. Changing the old task's
 state or retrying its claim does not grant another execution.
 

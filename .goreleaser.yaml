@@ -11,11 +11,11 @@ builds:
     env:
       - CGO_ENABLED=0
     ldflags: >
-      -X github.com/ohsu-comp-bio/funnel/version.BuildDate={{.Date}}
-      -X github.com/ohsu-comp-bio/funnel/version.GitCommit={{.ShortCommit}}
-      -X github.com/ohsu-comp-bio/funnel/version.GitBranch={{.Env.BRANCH}}
-      -X github.com/ohsu-comp-bio/funnel/version.GitUpstream={{.GitURL}}
-      -X github.com/ohsu-comp-bio/funnel/version.Version={{.Version}}
+      -X github.com/calypr/funnel/version.BuildDate={{.Date}}
+      -X github.com/calypr/funnel/version.GitCommit={{.ShortCommit}}
+      -X github.com/calypr/funnel/version.GitBranch={{.Env.BRANCH}}
+      -X github.com/calypr/funnel/version.GitUpstream={{.GitURL}}
+      -X github.com/calypr/funnel/version.Version={{.Version}}
 
 dist: build/release
 

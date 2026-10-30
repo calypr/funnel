@@ -9,6 +9,7 @@ import (
 	"github.com/calypr/funnel/server"
 	"github.com/calypr/funnel/tes"
 	"github.com/calypr/funnel/tests"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
@@ -209,6 +210,9 @@ func checkPermissionDenied(t *testing.T, err error) {
 	s := status.Convert(err)
 	if s == nil {
 		t.Fatal("expected grpc status error but received:", err)
+	}
+	if s.Code() != codes.PermissionDenied {
+		t.Fatalf("expected PermissionDenied, got %s: %v", s.Code(), err)
 	}
 
 	expectedPrefix := tes.ErrNotPermitted.Error()

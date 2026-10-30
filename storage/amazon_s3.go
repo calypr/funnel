@@ -67,6 +67,9 @@ func NewAmazonS3(conf *config.AmazonS3Storage) (*AmazonS3, error) {
 	if conf.SSE != nil && conf.SSE.CustomerKeyFile != "" && conf.SSE.KMSKey != "" {
 		return nil, fmt.Errorf("invalid SSE config: can't provide both Customer and KMS keys")
 	}
+	if conf.SSE != nil && conf.SSE.S3Managed && (conf.SSE.CustomerKeyFile != "" || conf.SSE.KMSKey != "") {
+		return nil, fmt.Errorf("invalid SSE config: S3Managed cannot be combined with CustomerKeyFile or KMSKey")
+	}
 
 	if conf.SSE != nil && conf.SSE.CustomerKeyFile != "" {
 		key, err := os.ReadFile(conf.SSE.CustomerKeyFile)
@@ -83,6 +86,9 @@ func NewAmazonS3(conf *config.AmazonS3Storage) (*AmazonS3, error) {
 	if conf.SSE != nil && conf.SSE.KMSKey != "" {
 		serverSideEncryption = types.ServerSideEncryptionAwsKms
 		kmsKeyID = aws.String(conf.SSE.KMSKey)
+	}
+	if conf.SSE != nil && conf.SSE.S3Managed {
+		serverSideEncryption = types.ServerSideEncryptionAes256
 	}
 
 	return &AmazonS3{
@@ -264,7 +270,7 @@ func (s3b *AmazonS3) Put(ctx context.Context, url, path string) (*Object, error)
 			return nil, fmt.Errorf("amazonS3: opening file %v: %v", path, err)
 		}
 	}
-	defer hf.Close()
+	defer hf.Close() //nolint:errcheck // The source is read-only, so close cannot change the uploaded object.
 
 	uploadInput := &s3.PutObjectInput{
 		Bucket:               aws.String(u.bucket),

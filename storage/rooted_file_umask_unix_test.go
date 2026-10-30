@@ -23,7 +23,7 @@ func TestWriteRootFileAtomicallyHonorsUmask(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer root.Close()
+		closeTestResource(t, root)
 		if err := writeRootFileAtomically(context.Background(), root, "created", func(file *os.File) error {
 			_, err := io.WriteString(file, "new")
 			return err

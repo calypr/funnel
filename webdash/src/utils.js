@@ -32,16 +32,18 @@ function formatElapsedTime(miliseconds) {
 
 function elapsedTime(task) {
   if (task.logs && task.logs.length) {
-    if (task.logs[0].startTime) {
+    const startTime = task.logs[0].startTime ?? task.logs[0].start_time;
+    const endTime = task.logs[0].endTime ?? task.logs[0].end_time;
+    if (startTime) {
       var now = new Date();
       if (isDone(task)) {
-        if (task.logs[0].endTime) {
-          now = Date.parse(task.logs[0].endTime);
+        if (endTime) {
+          now = Date.parse(endTime);
         } else {
           return "--";
         }
       }
-      var started = Date.parse(task.logs[0].startTime);
+      var started = Date.parse(startTime);
       var elapsed = now - started;
       return formatElapsedTime(elapsed);
     }
@@ -127,7 +129,7 @@ function fetchWithPost(fetchOpts, doPost) {
 function get(url, postJson, signal) {
   if (!url instanceof URL) {
     throw new Error("Expected URL object; got: " + typeof url);
-  } else if (url.pathname.includes("/v1/tasks")) {
+  } else if (url.pathname.includes("/v1/tasks") && !url.searchParams.has("view")) {
     url.searchParams.set("view", "FULL");
   }
 

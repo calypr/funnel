@@ -14,6 +14,8 @@ import (
 	"github.com/calypr/funnel/events"
 	"github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/tes"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -102,6 +104,110 @@ func applyKubernetesTemplates(conf *config.Config) {
 	conf.Kubernetes.ServiceAccountTemplate = serviceAccountTemplate
 	conf.Kubernetes.RoleTemplate = roleTemplate
 	conf.Kubernetes.RoleBindingTemplate = roleBindingTemplate
+}
+
+func TestCheckBackendParameterSupportValidatesGPUCount(t *testing.T) {
+	backend := Backend{backendParameters: supportedBackendParameters}
+	tests := []struct {
+		name       string
+		parameters map[string]string
+		strict     bool
+		wantError  bool
+	}{
+		{name: "strict gpu parameter", parameters: map[string]string{"gpu_count": "2"}, strict: true},
+		{name: "strict gpu parameter with leading zeroes", parameters: map[string]string{"gpu_count": "002"}, strict: true},
+		{name: "non-strict gpu parameter", parameters: map[string]string{"gpu_count": "2"}},
+		{name: "empty gpu parameter", parameters: map[string]string{"gpu_count": ""}, wantError: true},
+		{name: "zero gpu parameter", parameters: map[string]string{"gpu_count": "0"}, wantError: true},
+		{name: "negative gpu parameter", parameters: map[string]string{"gpu_count": "-1"}, wantError: true},
+		{name: "signed gpu parameter", parameters: map[string]string{"gpu_count": "+1"}, wantError: true},
+		{name: "fractional gpu parameter", parameters: map[string]string{"gpu_count": "1.5"}, wantError: true},
+		{name: "whitespace gpu parameter", parameters: map[string]string{"gpu_count": " 2"}, wantError: true},
+		{name: "overflow gpu parameter", parameters: map[string]string{"gpu_count": "9223372036854775808"}, wantError: true},
+		{name: "unknown strict parameter", parameters: map[string]string{"other": "value"}, strict: true, wantError: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			task := &tes.Task{Resources: &tes.Resources{
+				BackendParameters:       tt.parameters,
+				BackendParametersStrict: tt.strict,
+			}}
+			err := backend.CheckBackendParameterSupport(task)
+			if (err != nil) != tt.wantError {
+				t.Fatalf("CheckBackendParameterSupport() error = %v, want error %v", err, tt.wantError)
+			}
+			if tt.wantError && status.Code(err) != codes.InvalidArgument {
+				t.Fatalf("CheckBackendParameterSupport() code = %s, want %s", status.Code(err), codes.InvalidArgument)
+			}
+		})
+	}
+}
+
+func TestCheckBackendParameterSupportValidatesGPUOptions(t *testing.T) {
+	backend := Backend{backendParameters: supportedBackendParameters}
+	tests := []struct {
+		name       string
+		parameters map[string]string
+		strict     bool
+		wantError  bool
+	}{
+		{
+			name: "all gpu options in strict mode",
+			parameters: map[string]string{
+				"gpu_count":         "1",
+				"gpu_resource":      "vendor.example/accelerator",
+				"gpu_node_selector": `accelerator=model-a`,
+			},
+			strict: true,
+		},
+		{name: "invalid resource name", parameters: map[string]string{"gpu_resource": "vendor.example/too/many"}, wantError: true},
+		{name: "empty resource name", parameters: map[string]string{"gpu_resource": ""}, wantError: true},
+		{name: "resource name requires a prefix", parameters: map[string]string{"gpu_resource": "gpu"}, wantError: true},
+		{name: "resource name rejects reserved prefix", parameters: map[string]string{"gpu_resource": "kubernetes.io/gpu"}, wantError: true},
+		{name: "missing selector value", parameters: map[string]string{"gpu_node_selector": `accelerator`}, wantError: true},
+		{name: "selector must use equality", parameters: map[string]string{"gpu_node_selector": "null"}, wantError: true},
+		{name: "invalid selector key", parameters: map[string]string{"gpu_node_selector": `bad/key/extra=model-a`}, wantError: true},
+		{name: "invalid selector value", parameters: map[string]string{"gpu_node_selector": `accelerator=bad value`}, wantError: true},
+		{name: "strict mode rejects unknown parameter", parameters: map[string]string{"custom": "value"}, strict: true, wantError: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			task := &tes.Task{Resources: &tes.Resources{
+				BackendParameters:       tt.parameters,
+				BackendParametersStrict: tt.strict,
+			}}
+			err := backend.CheckBackendParameterSupport(task)
+			if (err != nil) != tt.wantError {
+				t.Fatalf("CheckBackendParameterSupport() error = %v, want error %v", err, tt.wantError)
+			}
+			if tt.wantError && status.Code(err) != codes.InvalidArgument {
+				t.Fatalf("CheckBackendParameterSupport() code = %s, want %s", status.Code(err), codes.InvalidArgument)
+			}
+		})
+	}
+
+	conf := config.DefaultConfig()
+	conf.Kubernetes.NodeSelector = map[string]string{"accelerator": "admin-model"}
+	backend.conf = conf
+	conflictingTask := &tes.Task{Resources: &tes.Resources{BackendParameters: map[string]string{
+		"gpu_node_selector": `accelerator=task-model`,
+	}}}
+	if err := backend.CheckBackendParameterSupport(conflictingTask); err == nil {
+		t.Fatal("CheckBackendParameterSupport accepted a GPU node selector that conflicts with the admin selector")
+	}
+}
+
+func TestBackendParameterKeysIncludesSupportedAndCustomKeys(t *testing.T) {
+	backend := Backend{backendParameters: map[string]string{"custom_backend_option": ""}}
+	got := make(map[string]bool)
+	for _, key := range backend.BackendParameterKeys() {
+		got[key] = true
+	}
+	for _, key := range []string{"gpu_count", "gpu_resource", "gpu_node_selector", "backoff_limit", "custom_backend_option"} {
+		if !got[key] {
+			t.Errorf("BackendParameterKeys() omitted %q", key)
+		}
+	}
 }
 
 func TestTaskSubmission(t *testing.T) {

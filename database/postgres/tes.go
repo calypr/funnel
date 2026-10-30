@@ -2,12 +2,18 @@ package postgres
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
+	"time"
+
+	"encoding/json"
 
 	"github.com/calypr/funnel/server"
 	"github.com/calypr/funnel/tes"
+	"github.com/jackc/pgx/v5"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // trimUnusedExecutorLogs removes trailing executor log entries that correspond
@@ -36,11 +42,26 @@ type TaskCore struct {
 	DataJSON []byte `db:"data"`
 }
 
-var fullView = "data"                                         // Select the entire JSONB column
-var minimalView = "id, owner, state, data -> 'creation_time'" // Can't easily construct the full minimalist view
+func taskView(view string) (func(*tes.Task) *tes.Task, error) {
+	switch view {
+	case "", tes.View_MINIMAL.String():
+		return (*tes.Task).GetMinimalView, nil
+	case tes.View_BASIC.String():
+		return (*tes.Task).GetBasicView, nil
+	case tes.View_FULL.String():
+		return func(task *tes.Task) *tes.Task { return task }, nil
+	default:
+		return nil, fmt.Errorf("unknown task view %q: must be one of MINIMAL, BASIC, FULL", view)
+	}
+}
 
 // GetTask gets a task.
 func (db *Postgres) GetTask(ctx context.Context, req *tes.GetTaskRequest) (*tes.Task, error) {
+	project, err := taskView(req.View)
+	if err != nil {
+		return nil, err
+	}
+
 	ctx, cancel := db.context()
 	defer cancel()
 
@@ -56,10 +77,13 @@ func (db *Postgres) GetTask(ctx context.Context, req *tes.GetTaskRequest) (*tes.
 	var core TaskCore
 	var stateStr string
 
-	err := db.client.QueryRow(ctx, selectSQL, req.Id).Scan(&core.ID, &core.Owner, &stateStr, &core.DataJSON)
+	err = db.client.QueryRow(ctx, selectSQL, req.Id).Scan(&core.ID, &core.Owner, &stateStr, &core.DataJSON)
 
 	if err != nil {
-		return nil, tes.ErrNotFound
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, tes.ErrNotFound
+		}
+		return nil, err
 	}
 
 	// Authorization Check
@@ -78,22 +102,17 @@ func (db *Postgres) GetTask(ctx context.Context, req *tes.GetTaskRequest) (*tes.
 
 	trimUnusedExecutorLogs(&task)
 
-	switch req.View {
-	case tes.View_BASIC.String():
-		// task.Logs = tes.FilterLogs(task.Logs, tes.FilterBasic)
-		// task.Inputs = tes.FilterInputs(task.Inputs, tes.FilterBasic)
-	case tes.View_MINIMAL.String():
-		task.Logs = nil
-		task.Inputs = nil
-		task.Outputs = nil
-	}
-
-	return &task, nil
+	return project(&task), nil
 }
 
 // ListTasks returns a list of tasks.
 func (db *Postgres) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*tes.ListTasksResponse, error) {
-	ctx, cancel := db.context()
+	project, err := taskView(req.View)
+	if err != nil {
+		return nil, err
+	}
+
+	dbctx, cancel := db.context()
 	defer cancel()
 
 	pageSize := tes.GetPageSize(req.GetPageSize())
@@ -139,11 +158,28 @@ func (db *Postgres) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*
 		paramCount++
 	}
 
-	// Page Token
 	if req.PageToken != "" {
-		whereClauses = append(whereClauses, fmt.Sprintf("id < $%d", paramCount))
-		args = append(args, req.PageToken)
-		paramCount++
+		position, legacy, err := tes.DecodeTaskCursor(req.PageToken)
+		if err != nil {
+			return nil, err
+		}
+		var created time.Time
+		if legacy {
+			if err := db.client.QueryRow(dbctx, "SELECT creation_time FROM tasks WHERE id=$1", position.ID).Scan(&created); err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					return nil, status.Error(codes.InvalidArgument, "legacy task page token no longer exists; restart listing")
+				}
+				return nil, err
+			}
+		} else {
+			created, err = time.Parse(time.RFC3339Nano, position.Created)
+			if err != nil {
+				return nil, status.Error(codes.InvalidArgument, "invalid task page token timestamp")
+			}
+		}
+		whereClauses = append(whereClauses, fmt.Sprintf("(creation_time,id) < ($%d,$%d)", paramCount, paramCount+1))
+		args = append(args, created, position.ID)
+		paramCount += 2
 	}
 
 	whereClause := ""
@@ -155,18 +191,21 @@ func (db *Postgres) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*
 	limitClause := fmt.Sprintf("LIMIT $%d", paramCount)
 	args = append(args, pageSize)
 
-	selectSQL := fmt.Sprintf("SELECT data FROM tasks %s %s %s", whereClause, orderByClause, limitClause)
+	selectSQL := fmt.Sprintf("SELECT data,creation_time FROM tasks %s %s %s", whereClause, orderByClause, limitClause)
 
-	rows, err := db.client.Query(ctx, selectSQL, args...)
+	rows, err := db.client.Query(dbctx, selectSQL, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var tasks []*tes.Task
+	page := tes.NewTaskPage(ctx)
+	taskCount := 0
+	hasMore := false
 	for rows.Next() {
 		var taskJSON []byte
-		if err := rows.Scan(&taskJSON); err != nil {
+		var created time.Time
+		if err := rows.Scan(&taskJSON, &created); err != nil {
 			fmt.Println("Error scanning task row for ListTasks:", err)
 			continue
 		}
@@ -179,30 +218,25 @@ func (db *Postgres) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*
 
 		trimUnusedExecutorLogs(&task)
 
-		switch req.View {
-		case tes.View_BASIC.String():
-			// task.Logs = tes.FilterLogs(task.Logs, tes.FilterBasic)
-			// task.Inputs = tes.FilterInputs(task.Inputs, tes.FilterBasic)
-		case tes.View_MINIMAL.String():
-			task.Logs = nil
-			task.Inputs = nil
-			task.Outputs = nil
+		projected := project(&task)
+		accepted, err := page.Add(projected, tes.EncodeTaskCursor(created.UTC().Format(time.RFC3339Nano), projected.Id))
+		if err != nil {
+			return nil, err
 		}
-
-		tasks = append(tasks, &task)
+		if !accepted {
+			hasMore = true
+			break
+		}
+		taskCount++
+		if taskCount == pageSize {
+			hasMore = true
+			break
+		}
 	}
 
 	if rows.Err() != nil {
 		return nil, rows.Err()
 	}
 
-	out := tes.ListTasksResponse{
-		Tasks: tasks,
-	}
-	// Determine NextPageToken
-	if len(tasks) == pageSize {
-		out.NextPageToken = tasks[len(tasks)-1].Id
-	}
-
-	return &out, nil
+	return page.Finish(hasMore), nil
 }

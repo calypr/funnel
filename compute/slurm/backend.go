@@ -28,6 +28,15 @@ func NewBackend(ctx context.Context, conf *config.Config, reader tes.ReadOnlySer
 		conf.Slurm.Template = string(content)
 	}
 
+	err := compute.ValidateSubmissionTemplate("Slurm.Template", conf.Slurm.Template)
+	if err != nil {
+		return nil, err
+	}
+	err = compute.ValidateReconcileRate("Slurm.ReconcileRate", conf.Slurm.DisableReconciler, conf.Slurm.ReconcileRate)
+	if err != nil {
+		return nil, err
+	}
+
 	b := &compute.HPCBackend{
 		Name:          "slurm",
 		SubmitCmd:     "sbatch",
@@ -40,6 +49,9 @@ func NewBackend(ctx context.Context, conf *config.Config, reader tes.ReadOnlySer
 		ExtractID:     extractID,
 		MapStates:     mapStates,
 		ReconcileRate: conf.Slurm.ReconcileRate.AsDuration(),
+	}
+	if err := b.ConfigureBackendParameters(conf.Slurm.BackendParameters); err != nil {
+		return nil, fmt.Errorf("invalid slurm backend parameters: %w", err)
 	}
 
 	if !conf.Slurm.DisableReconciler {

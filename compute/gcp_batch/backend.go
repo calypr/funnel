@@ -6,7 +6,9 @@ package gcp_batch
 import (
 	"context"
 	"fmt"
+	"log"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,6 +16,7 @@ import (
 	"cloud.google.com/go/batch/apiv1/batchpb"
 	"cloud.google.com/go/logging"
 	logadmin "cloud.google.com/go/logging/apiv2"
+	"github.com/calypr/funnel/compute"
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/events"
 	"github.com/calypr/funnel/logger"
@@ -21,7 +24,85 @@ import (
 	"github.com/calypr/funnel/tes"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
+
+const (
+	gpuTypeParameter           = "gpu_type"
+	gpuCountParameter          = "gpu_count"
+	gpuMachineTypeParameter    = "machine_type"
+	gpuInstallDriversParameter = "install_gpu_drivers"
+)
+
+var backendParameterKeys = []string{
+	gpuTypeParameter,
+	gpuCountParameter,
+	gpuMachineTypeParameter,
+	gpuInstallDriversParameter,
+}
+
+type gpuOptions struct {
+	typeName       string
+	count          int64
+	machineType    string
+	installDrivers bool
+}
+
+func (b *Backend) BackendParameterKeys() []string {
+	return append([]string(nil), backendParameterKeys...)
+}
+
+func (b *Backend) CheckBackendParameterSupport(task *tes.Task) error {
+	_, err := parseGPUOptions(task)
+	return err
+}
+
+func parseGPUOptions(task *tes.Task) (*gpuOptions, error) {
+	if _, err := tes.FilterBackendParameters(task.GetResources(), backendParameterKeys); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	normalized := task.GetResources().GetBackendParameters()
+
+	typeName, hasType := normalized[gpuTypeParameter]
+	_, hasCount := normalized[gpuCountParameter]
+	if hasType != hasCount {
+		return nil, status.Errorf(codes.InvalidArgument, "%s and %s must be set together", gpuTypeParameter, gpuCountParameter)
+	}
+
+	machineType, hasMachineType := normalized[gpuMachineTypeParameter]
+	driversValue, hasDrivers := normalized[gpuInstallDriversParameter]
+	if !hasType {
+		if hasMachineType || hasDrivers {
+			return nil, status.Errorf(codes.InvalidArgument, "%s and %s require %s and %s", gpuMachineTypeParameter, gpuInstallDriversParameter, gpuTypeParameter, gpuCountParameter)
+		}
+		return nil, nil
+	}
+	if typeName == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "%s must not be empty", gpuTypeParameter)
+	}
+	count, err := tes.GPUCount(task.GetResources())
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "%s must be a positive integer", gpuCountParameter)
+	}
+	if hasMachineType && machineType == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "%s must not be empty", gpuMachineTypeParameter)
+	}
+	installDrivers := true
+	if hasDrivers {
+		installDrivers, err = strconv.ParseBool(driversValue)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "%s must be a boolean", gpuInstallDriversParameter)
+		}
+	}
+
+	return &gpuOptions{
+		typeName:       typeName,
+		count:          int64(count),
+		machineType:    machineType,
+		installDrivers: installDrivers,
+	}, nil
+}
 
 type Backend struct {
 	client             client
@@ -35,6 +116,20 @@ type Backend struct {
 }
 
 func NewBackend(ctx context.Context, conf *config.GCPBatch, reader tes.ReadOnlyServer, writer events.Writer, log *logger.Logger) (*Backend, error) {
+	if conf == nil {
+		return nil, fmt.Errorf("GCPBatch configuration is required")
+	}
+	if strings.TrimSpace(conf.Project) == "" {
+		return nil, fmt.Errorf("GCPBatch.Project must not be empty")
+	}
+	if strings.TrimSpace(conf.Location) == "" {
+		return nil, fmt.Errorf("GCPBatch.Location must not be empty")
+	}
+	err := compute.ValidateReconcileRate("GCPBatch.ReconcileRate", conf.DisableReconciler, conf.ReconcileRate)
+	if err != nil {
+		return nil, err
+	}
+
 	client, err := batch.NewClient(ctx)
 	if err != nil {
 		return nil, err
@@ -87,7 +182,14 @@ func (b *Backend) WriteEvent(ctx context.Context, ev *events.Event) error {
 
 func (b *Backend) Close() {
 	if b.loggingClient != nil {
-		b.loggingClient.Close()
+		err := b.loggingClient.Close()
+		if err != nil {
+			if b.log != nil {
+				b.log.Error("closing Google Cloud Logging client", "error", err)
+			} else {
+				log.Printf("closing Google Cloud Logging client: %v", err)
+			}
+		}
 	}
 	b.database.Close()
 	b.event.Close()
@@ -176,6 +278,10 @@ func detectPathCollisions(inputs []*tes.Input, outputs []*tes.Output) error {
 
 func (b *Backend) Submit(task *tes.Task) error {
 	ctx := context.Background()
+	gpu, err := parseGPUOptions(task)
+	if err != nil {
+		return err
+	}
 
 	// 1. Identify all unique buckets used by the task
 	buckets := make(map[string]bool)
@@ -285,6 +391,12 @@ func (b *Backend) Submit(task *tes.Task) error {
 		if executor.Workdir != "" {
 			container.Options = fmt.Sprintf("--workdir %s", executor.Workdir)
 		}
+		if gpu != nil {
+			if container.Options != "" {
+				container.Options += " "
+			}
+			container.Options += "--gpus all"
+		}
 
 		runnable := &batchpb.Runnable{
 			Executable: &batchpb.Runnable_Container_{
@@ -319,13 +431,31 @@ func (b *Backend) Submit(task *tes.Task) error {
 	}
 
 	// JobRequest
+	var allocationPolicy *batchpb.AllocationPolicy
+	if gpu != nil {
+		allocationPolicy = &batchpb.AllocationPolicy{
+			Instances: []*batchpb.AllocationPolicy_InstancePolicyOrTemplate{{
+				PolicyTemplate: &batchpb.AllocationPolicy_InstancePolicyOrTemplate_Policy{
+					Policy: &batchpb.AllocationPolicy_InstancePolicy{
+						MachineType: gpu.machineType,
+						Accelerators: []*batchpb.AllocationPolicy_Accelerator{{
+							Type:  gpu.typeName,
+							Count: gpu.count,
+						}},
+					},
+				},
+				InstallGpuDrivers: gpu.installDrivers,
+			}},
+		}
+	}
 	req := &batchpb.CreateJobRequest{
 		Parent: fmt.Sprintf("projects/%s/locations/%s", b.conf.Project, b.conf.Location),
 		JobId:  task.Id,
 		Job: &batchpb.Job{
-			Name:       task.Id,
-			Uid:        task.Id,
-			TaskGroups: []*batchpb.TaskGroup{taskGroup},
+			Name:             task.Id,
+			Uid:              task.Id,
+			TaskGroups:       []*batchpb.TaskGroup{taskGroup},
+			AllocationPolicy: allocationPolicy,
 			LogsPolicy: &batchpb.LogsPolicy{
 				Destination: batchpb.LogsPolicy_CLOUD_LOGGING,
 			},

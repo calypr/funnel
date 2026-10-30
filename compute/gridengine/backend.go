@@ -23,6 +23,11 @@ func NewBackend(conf *config.Config, reader tes.ReadOnlyServer, writer events.Wr
 		conf.GridEngine.Template = string(content)
 	}
 
+	err := compute.ValidateSubmissionTemplate("GridEngine.Template", conf.GridEngine.Template)
+	if err != nil {
+		return nil, err
+	}
+
 	return &compute.HPCBackend{
 		Name:      "gridengine",
 		SubmitCmd: "qsub",

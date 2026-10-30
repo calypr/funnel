@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/calypr/funnel/events"
 	"github.com/calypr/funnel/server"
 	"github.com/calypr/funnel/tes"
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -43,7 +44,15 @@ func (db *MongoDB) migrateExecutionClaims(ctx context.Context) error {
 }
 
 // ClaimExecution atomically admits one worker for a queued or initializing task.
-func (db *MongoDB) ClaimExecution(ctx context.Context, taskID string) (bool, error) {
+func (db *MongoDB) ClaimExecution(ctx context.Context, taskID string, owner *events.ExecutionOwner) (bool, error) {
+	var ownerMetadata map[string]string
+	if owner != nil {
+		var err error
+		ownerMetadata, err = events.ExecutionOwnerMetadata(owner)
+		if err != nil {
+			return false, err
+		}
+	}
 	result, err := db.transaction(ctx, func(ctx context.Context) (any, error) {
 		var stored taskRecord
 		err := db.tasks().FindOne(ctx, bson.M{"id": taskID}, options.FindOne().SetProjection(bson.M{
@@ -67,8 +76,12 @@ func (db *MongoDB) ClaimExecution(ctx context.Context, taskID string) (bool, err
 			"state":             stored.Task.GetState(),
 			"execution_claimed": bson.M{"$ne": true},
 		}
+		set := bson.M{"state": tes.State_INITIALIZING, "execution_claimed": true}
+		if ownerMetadata != nil {
+			set["logs.0.metadata."+events.ExecutionOwnerMetadataKey] = ownerMetadata[events.ExecutionOwnerMetadataKey]
+		}
 		update := bson.M{
-			"$set": bson.M{"state": tes.State_RUNNING, "execution_claimed": true},
+			"$set": set,
 			"$inc": bson.M{"version": 1},
 		}
 		updated, err := db.tasks().UpdateOne(ctx, filter, update)

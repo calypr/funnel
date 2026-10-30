@@ -2,13 +2,16 @@ package scheduler
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"runtime/debug"
 	"time"
 
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/util"
 	"github.com/calypr/funnel/util/fsutil"
+	"github.com/calypr/funnel/version"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -104,11 +107,14 @@ func (n *NodeProcess) Run(ctx context.Context) error {
 			n.state = NodeState_GONE
 			n.sync(stopCtx)
 			// close grpc client connection
-			n.client.Close()
+			closeErr := n.client.Close()
 
-			// The workers get 10 seconds to finish up.
-			if werr := n.workers.Wait(time.Second * 10); werr != nil {
+			// Give workers enough time to finish container cleanup.
+			if werr := n.workers.Wait(time.Second * 30); werr != nil {
 				n.log.Error("workers did not finish before shutdown deadline", "error", werr)
+			}
+			if closeErr != nil {
+				return fmt.Errorf("close scheduler client: %w", closeErr)
 			}
 			return nil
 
@@ -241,7 +247,7 @@ func (n *NodeProcess) runTask(ctx context.Context, id string) {
 
 	defer func() {
 		if r := recover(); r != nil {
-			log.Error("caught panic task worker", r)
+			log.Error("caught panic task worker", "panic", r, "taskID", id, "version", version.Version, "commit", version.GitCommit, "stack", string(debug.Stack()))
 		}
 	}()
 

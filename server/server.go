@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"runtime/debug"
 	"strings"
 
 	"time"
@@ -23,6 +25,7 @@ import (
 	"github.com/calypr/funnel/events"
 	"github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/version"
 	"github.com/calypr/funnel/webdash"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 
@@ -43,6 +46,7 @@ type Server struct {
 	Events           events.EventServiceServer
 	Nodes            scheduler.SchedulerServiceServer
 	DisableHTTPCache bool
+	MaxResponseBytes int
 	Log              *logger.Logger
 	Plugins          *config.Plugins
 }
@@ -51,12 +55,18 @@ type Server struct {
 func newDebugInterceptor(log *logger.Logger) grpc.UnaryServerInterceptor {
 	// Return a function that is the interceptor.
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo,
-		handler grpc.UnaryHandler) (interface{}, error) {
+		handler grpc.UnaryHandler) (resp interface{}, err error) {
+		defer func() {
+			if value := recover(); value != nil {
+				log.Error("caught RPC panic", "panic", value, "method", info.FullMethod, "version", version.Version, "commit", version.GitCommit, "stack", string(debug.Stack()))
+				resp, err = nil, status.Error(codes.Internal, "internal server error")
+			}
+		}()
 		log.Debug(
 			"received: "+info.FullMethod,
 			"request", req,
 		)
-		resp, err := handler(ctx, req)
+		resp, err = handler(ctx, req)
 		log.Debug(
 			"responding: "+info.FullMethod,
 			"resp", resp,
@@ -76,7 +86,7 @@ func customErrorHandler(ctx context.Context, mux *runtime.ServeMux, marshaler ru
 	st, ok := status.FromError(err)
 	if !ok {
 		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(fallback))
+		_, _ = w.Write([]byte(fallback)) //nolint:errcheck // The fallback response cannot be replaced after a client write failure.
 		return
 	}
 
@@ -95,6 +105,12 @@ func customErrorHandler(ctx context.Context, mux *runtime.ServeMux, marshaler ru
 		w.WriteHeader(499)
 	case codes.DeadlineExceeded: // 504
 		w.WriteHeader(http.StatusGatewayTimeout)
+	case codes.ResourceExhausted: // 429
+		w.WriteHeader(http.StatusTooManyRequests)
+	case codes.Unavailable: // 503
+		w.WriteHeader(http.StatusServiceUnavailable)
+	case codes.Unimplemented: // 501
+		w.WriteHeader(http.StatusNotImplemented)
 	default:
 		w.WriteHeader(http.StatusInternalServerError) // 500
 	}
@@ -103,10 +119,10 @@ func customErrorHandler(ctx context.Context, mux *runtime.ServeMux, marshaler ru
 	jErr := JSONError{Error: st.Message()}
 	jErrBytes, mErr := marshaler.Marshal(jErr)
 	if mErr != nil {
-		_, _ = w.Write([]byte(fallback))
+		_, _ = w.Write([]byte(fallback)) //nolint:errcheck // The fallback response cannot be replaced after a client write failure.
 		return
 	}
-	_, _ = w.Write(jErrBytes)
+	_, _ = w.Write(jErrBytes) //nolint:errcheck // The error response cannot be replaced after a client write failure.
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
@@ -124,7 +140,7 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(health)
+	_ = json.NewEncoder(w).Encode(health) //nolint:errcheck // Health fields are JSON-compatible; a disconnected client cannot receive another response.
 }
 
 type JSONError struct {
@@ -144,11 +160,19 @@ func (s *Server) Serve(pctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer lis.Close()
+	defer lis.Close() //nolint:errcheck // Listener cleanup is best effort after the server has stopped.
 
 	auth := NewAuthentication(s.BasicAuth, s.OidcAuth, s.TaskAccess)
 
+	maxResponseBytes := s.MaxResponseBytes
+	if maxResponseBytes == 0 {
+		maxResponseBytes = tes.DefaultResponseBytes
+	}
+	if maxResponseBytes < 0 {
+		return fmt.Errorf("Server.MaxResponseBytes must be positive")
+	}
 	grpcServer := grpc.NewServer(
+		grpc.MaxSendMsgSize(maxResponseBytes),
 		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
 			MinTime:             10 * time.Second, // min interval between client pings
 			PermitWithoutStream: true,             // allow pings when no active RPCs
@@ -178,6 +202,7 @@ func (s *Server) Serve(pctx context.Context) error {
 
 	dialOpts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(maxResponseBytes)),
 		// Keep the internal gateway→gRPC connection alive so idle periods
 		// don't cause the server to send GOAWAY and drop the next request.
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
@@ -195,6 +220,7 @@ func (s *Server) Serve(pctx context.Context) error {
 	marsh := NewMarshaler()
 	grpcMux := runtime.NewServeMux(
 		runtime.WithMarshalerOption(runtime.MIMEWildcard, marsh),
+		runtime.WithForwardResponseRewriter(rewriteTaskViewResponse),
 		runtime.WithErrorHandler(customErrorHandler),
 	)
 
@@ -252,7 +278,7 @@ func (s *Server) Serve(pctx context.Context) error {
 			}
 
 			// Apply message middleware to grpcMux
-			messageHandler(grpcMux).ServeHTTP(resp, req)
+			messageHandler(withTaskView(grpcMux)).ServeHTTP(resp, req)
 		}
 	})
 
@@ -291,7 +317,7 @@ func (s *Server) Serve(pctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer httpLis.Close()
+	defer httpLis.Close() //nolint:errcheck // Listener cleanup is best effort after HTTP shutdown.
 
 	serveErrs := make(chan error, 2)
 	go func() {
@@ -397,8 +423,8 @@ func messageHandler(next http.Handler) http.Handler {
 			}
 			w.WriteHeader(rec.Code)
 			response := map[string]string{"message": msg}
-			_ = json.NewEncoder(w).Encode(response)
-			return // Important: return here to prevent writing the original response
+			_ = json.NewEncoder(w).Encode(response) //nolint:errcheck // Decoded JSON is serializable; a disconnected client cannot receive another response.
+			return                                  // Important: return here to prevent writing the original response
 		}
 
 		// No message - copy the original response as-is
@@ -406,6 +432,6 @@ func messageHandler(next http.Handler) http.Handler {
 			w.Header()[k] = v
 		}
 		w.WriteHeader(rec.Code)
-		_, _ = w.Write(rec.Body.Bytes())
+		_, _ = w.Write(rec.Body.Bytes()) //nolint:errcheck // The proxied response is already committed; a client write failure cannot be recovered here.
 	})
 }

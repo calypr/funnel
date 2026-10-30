@@ -22,7 +22,7 @@ func writeFileAtomically(ctx context.Context, path string, write func(*os.File) 
 	if err != nil {
 		return fmt.Errorf("open destination directory: %w", err)
 	}
-	defer root.Close()
+	defer root.Close() //nolint:errcheck // Closing the directory handle cannot affect the completed write.
 	return writeRootFileAtomically(ctx, root, filepath.Base(path), write)
 }
 
@@ -53,7 +53,7 @@ func writeRootFileAtomicallyConfigured(ctx context.Context, root *os.Root, desti
 		if err != nil {
 			return fmt.Errorf("open destination parent: %w", err)
 		}
-		defer parent.Close()
+		defer parent.Close() //nolint:errcheck // Closing the directory handle cannot affect the completed rename.
 	}
 
 	stageName, stage, createMode, err := createStagedSibling(parent)

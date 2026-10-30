@@ -26,7 +26,7 @@ func (db *MongoDB) activeTaskIDs(ctx context.Context, nodeIDs []string) (map[str
 	if err != nil {
 		return nil, err
 	}
-	defer cursor.Close(ctx)
+	defer cursor.Close(ctx) //nolint:errcheck // Cursor cleanup cannot change results; decode and iteration errors are returned below.
 	for cursor.Next(ctx) {
 		var claim activeTaskOwner
 		if err := cursor.Decode(&claim); err != nil {

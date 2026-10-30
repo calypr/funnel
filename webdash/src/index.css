@@ -1,18 +1,54 @@
-body {
-  margin: 0;
-  padding: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
-    "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
-    monospace;
-}
-
-.MuiTableRow-root {
-  border-bottom: 1px dashed lightgray;
-}
+:root { color: #242424; background: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-synthesis: none; -webkit-font-smoothing: antialiased; }
+body { margin: 0; min-width: 320px; }
+code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+.brand-name { font-weight: 700; letter-spacing: -.03em; }
+.brand-description { margin-left: 14px; color: #777777; font-size: 10px; font-weight: 700; letter-spacing: .12em; vertical-align: middle; }
+.dashboard-nav-item.MuiListItemButton-root { gap: 12px; margin: 3px 12px; padding: 9px 12px; border-radius: 8px; color: #5d5d5d; }
+.dashboard-nav-item.active.MuiListItemButton-root { background: #e8e8e8; color: #202020; }
+.dashboard-nav-item.active .MuiListItemText-primary { font-weight: 650; }
+.dashboard-nav-item .MuiListItemText-primary { font-size: 14px; }
+.sidebar-section-label { padding: 10px 16px 8px; color: #818181; font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.sidebar-filters { padding: 10px 16px 20px; }
+.sidebar-filters .sidebar-section-label { padding: 4px 0 16px; }
+.filter-label { display: block; color: #555555; font-size: 12px; font-weight: 600; }
+.sidebar-filters .MuiSelect-root { margin-top: 7px; background: white; border-radius: 8px; font-size: 13px; }
+.sidebar-filters .MuiOutlinedInput-notchedOutline { border-color: #dddddd; }
+.tag-filter-heading { display: flex; align-items: center; justify-content: space-between; margin: 22px 0 5px; }
+.tag-filter-heading .MuiButton-root { min-width: 0; color: #333333; font-size: 12px; font-weight: 600; text-transform: none; }
+.tag-filter-heading .MuiButton-startIcon { margin-right: 3px; }
+.tag-filter-row { display: flex; align-items: flex-start; gap: 2px; margin-top: 8px; }
+.tag-filter-row > .MuiIconButton-root { margin-top: 7px; color: #888888; }
+.tag-filter-fields { min-width: 0; flex: 1; }
+.tag-inputs { display: grid; gap: 6px; }
+.tag-filter-fields .MuiTextField-root { margin: 0; }
+.tag-filter-fields .MuiInputBase-root { background: white; border-radius: 7px; font-size: 13px; }
+.dashboard-page { max-width: 1600px; margin: 0 auto; }
+.page-heading { margin: 8px 0 24px; }
+.page-heading .MuiTypography-h4 { color: #1d1d1d; font-size: 29px; font-weight: 700; letter-spacing: -.035em; }
+.page-description.MuiTypography-root { margin-top: 6px; color: #707070; font-size: 14px; }
+.dashboard-card.MuiPaper-root { border: 1px solid #e2e2e2; border-radius: 12px; box-shadow: 0 2px 8px rgba(0, 0, 0, .035); }
+.dashboard-card .MuiTable-root { min-width: 800px; }
+.dashboard-card .MuiTableCell-head { background: #fafafa; color: #777777; font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+.dashboard-card .MuiTableCell-root { border-bottom-color: #ededed; padding: 16px 18px; }
+.dashboard-card .MuiTableRow-hover:hover { background: #fafafa; }
+.dashboard-card .MuiTableBody-root .MuiTableCell-root:nth-child(4) { white-space: nowrap; }
+.task-link { display: inline-block; max-width: 100%; overflow: hidden; color: #333333; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; font-weight: 600; text-decoration: none; text-overflow: ellipsis; vertical-align: middle; white-space: nowrap; }
+.task-link:hover { text-decoration: underline; }
+.task-link:focus-visible { outline: 2px solid #444; outline-offset: 2px; }
+.status-badge { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; border-radius: 999px; background: #eeeeee; color: #555555; font-size: 10px; font-weight: 700; letter-spacing: .035em; white-space: nowrap; }
+.status-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.status-running, .status-initializing { background: #e8e8e8; color: #333333; }
+.status-complete { background: #e2f2eb; color: #17735a; }
+.status-executor_error, .status-system_error { background: #fcebe8; color: #b3463a; }
+.status-queued { background: #eeeeee; color: #555555; }
+.status-canceled { background: #fff1d8; color: #916118; }
+@media (max-width: 600px) { .brand-description { display: none; } .page-heading .MuiTypography-h4 { font-size: 25px; } .dashboard-card .MuiTableCell-root { padding: 12px; } }
+.resource-card { overflow-x: auto; }
+.resource-card .card-heading.MuiTypography-root { padding: 20px 18px 16px; font-size: 16px; font-weight: 650; }
+.resource-card .MuiTable-root, .node-list-card .MuiTable-root { min-width: 500px; }
+.details-page .MuiPaper-root { border: 1px solid #e2e2e2; border-radius: 12px; box-shadow: 0 2px 8px rgba(0, 0, 0, .035); }
+.details-page .MuiTabs-root { border-bottom: 1px solid #ededed; padding: 0 12px; }
+.details-page .MuiTab-root { font-size: 12px; font-weight: 700; }
+.details-page .info-table .MuiTableCell-root { border-bottom: 1px solid #ededed; padding: 16px 18px; font-size: 14px; overflow-wrap: anywhere; }
+.details-page .info-table .MuiTableCell-root:first-child { width: 28%; color: #707070; font-weight: 600; }
+.details-page .info-table .MuiTableRow-root:last-child .MuiTableCell-root { border-bottom: 0; }

@@ -21,8 +21,8 @@ The following resources will be created for every tag pushed to GitHub:
 [quay]: https://quay.io/repository/ohsu-comp-bio/funnel
 [quay-example]: https://quay.io/repository/ohsu-comp-bio/funnel?tab=tags&tag=v0.11.6
 
-[releases]: https://github.com/ohsu-comp-bio/funnel/releases
-[release-example]: https://github.com/ohsu-comp-bio/funnel/releases/tag/v0.11.6
+[releases]: https://github.com/calypr/funnel/releases
+[release-example]: https://github.com/calypr/funnel/releases/tag/v0.11.6
 
 [homebrew]: https://github.com/ohsu-comp-bio/homebrew-formula/tree/master
 [homebrew-example]: https://github.com/ohsu-comp-bio/homebrew-formula/blob/master/Formula/funnel.rb

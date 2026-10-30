@@ -7,6 +7,8 @@
 
 # testing
 /coverage
+/test-results
+/playwright-report
 
 # misc
 .DS_Store

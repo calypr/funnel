@@ -25,10 +25,13 @@ func TestRetrier(t *testing.T) {
 	}
 
 	i := 0
-	r.Retry(bg, func() error {
+	err := r.Retry(bg, func() error {
 		i++
 		return fmt.Errorf("always error")
 	})
+	if err == nil {
+		t.Fatal("expected retry exhaustion error")
+	}
 	if i != 3 {
 		t.Error("unexpected number of retries", i)
 	}
@@ -37,9 +40,10 @@ func TestRetrier(t *testing.T) {
 		t.Error("unexpected backoff delays", delays)
 	}
 
-	r.Retry(bg, func() error {
-		return nil
-	})
+	err = r.Retry(bg, func() error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
 	// a successful retry resets the interval
 	if len(delays) != 2 {
 		t.Error("expected no notification on success", delays)

@@ -24,6 +24,10 @@ func (*fakeTaskClient) GetTask(context.Context, *tes.GetTaskRequest) (*tes.Task,
 	return &tes.Task{}, nil
 }
 
+func (*fakeTaskClient) CancelTask(context.Context, *tes.CancelTaskRequest) (*tes.CancelTaskResponse, error) {
+	return &tes.CancelTaskResponse{}, nil
+}
+
 func TestListQueuePreservesNavigationAndCoalescesRefresh(t *testing.T) {
 	requestTokens := make(chan string, 4)
 	releaseFirst := make(chan struct{})

@@ -82,7 +82,7 @@ func TestParse(t *testing.T) {
 					Name: "o9",
 					Url:  "file://" + cwd + "/testdata/o9",
 					Path: "/outputs" + cwd + "/testdata/o9",
-					Type: tes.FileType_DIRECTORY,
+					Type: tes.FileType_DIRECTORY.Enum(),
 				},
 			},
 			Resources: &tes.Resources{
@@ -172,10 +172,37 @@ func TestParse(t *testing.T) {
 	}
 
 	if !assert.True(t, protoSlicesEqual(expected, result)) {
-		s, _ := tes.MarshalToString(expected[0])
+		s, err := tes.MarshalToString(expected[0])
+		if err != nil {
+			t.Fatal(err)
+		}
 		t.Log("Expected", s)
-		q, _ := tes.MarshalToString(result[0])
+		q, err := tes.MarshalToString(result[0])
+		if err != nil {
+			t.Fatal(err)
+		}
 		t.Log("Actual", q)
 		t.Fatal("unexpected results")
+	}
+}
+
+func TestParseEmptyTagValue(t *testing.T) {
+	task, err := ParseString("echo --container busybox --tag foo=")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(task) != 1 {
+		t.Fatalf("got %d tasks", len(task))
+	}
+	value, ok := task[0].Tags["foo"]
+	if !ok || value != "" {
+		t.Fatalf("tags = %#v, want foo with empty value", task[0].Tags)
+	}
+}
+
+func TestParseRejectsMalformedExecCommand(t *testing.T) {
+	_, err := Parse([]string{"--exec", "echo 'unterminated"})
+	if err == nil {
+		t.Fatal("Parse accepted an unterminated executor command")
 	}
 }

@@ -29,6 +29,11 @@ jobs:
           cache: npm
           cache-dependency-path: webdash/package-lock.json
 
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
       - name: Install frontend dependencies
         working-directory: webdash
         run: npm ci
@@ -43,3 +48,16 @@ jobs:
 
       - name: Check committed dashboard assets
         run: bash .github/scripts/check-webdash-bundle.sh
+
+      - name: Install browser for integration test
+        working-directory: webdash
+        run: npx playwright install --with-deps chromium
+
+      - name: Build Funnel for browser integration test
+        run: go build -v -o "$RUNNER_TEMP/funnel-browser-test" .
+
+      - name: Test dashboard browser workflows with Funnel
+        working-directory: webdash
+        env:
+          FUNNEL_TEST_BINARY: ${{ runner.temp }}/funnel-browser-test
+        run: npm run test:integration

@@ -96,7 +96,6 @@ func ensureDatabaseExists(ctx context.Context, conf *config.Postgres) error {
 	connStr := getConnStr(conf)
 	probeConn, err := pgx.Connect(ctx, connStr)
 	if err == nil {
-		defer probeConn.Close(ctx)
 		var hasFullAccess bool
 		checkSQL := `
 			SELECT EXISTS (
@@ -106,10 +105,14 @@ func ensureDatabaseExists(ctx context.Context, conf *config.Postgres) error {
 				AND has_schema_privilege($2, 'public', 'CREATE')
 			)`
 
-		err = probeConn.QueryRow(ctx, checkSQL, conf.Database, conf.User).Scan(&hasFullAccess)
+		probeErr := probeConn.QueryRow(ctx, checkSQL, conf.Database, conf.User).Scan(&hasFullAccess)
+		err := probeConn.Close(ctx)
+		if err != nil {
+			return fmt.Errorf("close Postgres access probe: %w", err)
+		}
 
 		// Role + DB already exist, no need to try connecting as admin
-		if err == nil && hasFullAccess {
+		if probeErr == nil && hasFullAccess {
 			return nil
 		}
 	}
@@ -117,13 +120,18 @@ func ensureDatabaseExists(ctx context.Context, conf *config.Postgres) error {
 	return createResources(ctx, conf)
 }
 
-func createResources(ctx context.Context, conf *config.Postgres) error {
+func createResources(ctx context.Context, conf *config.Postgres) (returnErr error) {
 	connStr := buildConnStr(conf.Host, conf.AdminUser, conf.AdminPassword, "postgres")
 	conn, err := pgx.Connect(ctx, connStr)
 	if err != nil {
 		return fmt.Errorf("failed to connect as admin for bootstrap: %w", err)
 	}
-	defer conn.Close(ctx)
+	defer func() {
+		err := conn.Close(ctx)
+		if err != nil {
+			returnErr = errors.Join(returnErr, fmt.Errorf("close Postgres bootstrap connection: %w", err))
+		}
+	}()
 
 	// Role
 	createUser := fmt.Sprintf(
@@ -153,7 +161,12 @@ func createResources(ctx context.Context, conf *config.Postgres) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to funnel database: %w", err)
 	}
-	defer funnelConn.Close(ctx)
+	defer func() {
+		err := funnelConn.Close(ctx)
+		if err != nil {
+			returnErr = errors.Join(returnErr, fmt.Errorf("close Postgres schema connection: %w", err))
+		}
+	}()
 
 	grantSchema := fmt.Sprintf("GRANT ALL ON SCHEMA public TO %s", conf.User)
 	if _, err := funnelConn.Exec(ctx, grantSchema); err != nil {

@@ -4,6 +4,7 @@ package local
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"dario.cat/mergo"
 	workerCmd "github.com/calypr/funnel/cmd/worker"
@@ -19,7 +20,6 @@ import (
 
 // NewBackend returns a new local Backend instance.
 func NewBackend(ctx context.Context, conf *config.Config, log *logger.Logger) (*Backend, error) {
-	// Using nil for the backendParameters here until those are specified
 	return &Backend{conf, log, nil, nil}, nil
 }
 
@@ -31,19 +31,26 @@ type Backend struct {
 	events.Computer
 }
 
+func (b Backend) BackendParameterKeys() []string {
+	keys := []string{"gpu_count", "gpu_devices"}
+	for key := range b.backendParameters {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
 func (b Backend) CheckBackendParameterSupport(task *tes.Task) error {
-	if !task.Resources.GetBackendParametersStrict() {
-		return nil
+	if _, err := tes.FilterBackendParameters(task.GetResources(), b.BackendParameterKeys()); err != nil {
+		return status.Error(codes.InvalidArgument, err.Error())
 	}
-
-	taskBackendParameters := task.Resources.GetBackendParameters()
-	for k := range taskBackendParameters {
-		_, ok := b.backendParameters[k]
-		if !ok {
-			return status.Errorf(codes.InvalidArgument, "backend parameters not supported: %s", k)
-		}
+	count, err := tes.GPUCount(task.GetResources())
+	if err != nil {
+		return status.Error(codes.InvalidArgument, err.Error())
 	}
-
+	if _, err := tes.GPUDevices(task.GetResources(), count); err != nil {
+		return status.Error(codes.InvalidArgument, err.Error())
+	}
 	return nil
 }
 
@@ -106,8 +113,10 @@ func (b *Backend) Submit(task *tes.Task) error {
 	}
 
 	go func() {
-		// The worker reports its own errors via the event stream.
-		_ = w.Run(ctx)
+		err := w.Run(ctx)
+		if err != nil {
+			b.log.Error("local worker failed", "taskID", task.Id, "error", err)
+		}
 		w.Close()
 	}()
 

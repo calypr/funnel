@@ -19,7 +19,7 @@ func writeDownloadedFile(ctx context.Context, path string, write func(*os.File) 
 	if err != nil {
 		return fmt.Errorf("open destination directory: %w", err)
 	}
-	defer parent.Close()
+	defer parent.Close() //nolint:errcheck // The directory handle only scopes the completed destination write.
 	return writeRootDownloadedFile(ctx, parent, filepath.Base(path), write)
 }
 

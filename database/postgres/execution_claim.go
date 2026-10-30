@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/calypr/funnel/events"
 	"github.com/calypr/funnel/server"
 	"github.com/calypr/funnel/tes"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func (db *Postgres) migrateExecutionClaims(ctx context.Context) error {
@@ -15,7 +17,7 @@ func (db *Postgres) migrateExecutionClaims(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = tx.Rollback(context.Background()) }()
+	defer func() { _ = tx.Rollback(context.Background()) }() //nolint:errcheck // Rolls back early exits and is a no-op after a successful commit.
 	if _, err := tx.Exec(ctx, `LOCK TABLE scheduler_migrations IN EXCLUSIVE MODE`); err != nil {
 		return err
 	}
@@ -39,7 +41,18 @@ func (db *Postgres) migrateExecutionClaims(ctx context.Context) error {
 }
 
 // ClaimExecution atomically admits one worker for a queued or initializing task.
-func (db *Postgres) ClaimExecution(ctx context.Context, taskID string) (bool, error) {
+func (db *Postgres) ClaimExecution(ctx context.Context, taskID string, owner *events.ExecutionOwner) (bool, error) {
+	var ownerMetadataJSON []byte
+	if owner != nil {
+		ownerMetadata, err := events.ExecutionOwnerMetadata(owner)
+		if err != nil {
+			return false, err
+		}
+		ownerMetadataJSON, err = json.Marshal(ownerMetadata)
+		if err != nil {
+			return false, err
+		}
+	}
 	ctx, cancel := context.WithTimeout(ctx, db.conf.GetTimeout().GetDuration().AsDuration())
 	defer cancel()
 
@@ -47,31 +60,53 @@ func (db *Postgres) ClaimExecution(ctx context.Context, taskID string) (bool, er
 	if err != nil {
 		return false, err
 	}
-	defer func() { _ = tx.Rollback(context.Background()) }()
+	defer func() { _ = tx.Rollback(context.Background()) }() //nolint:errcheck // Rolls back early exits and is a no-op after a successful commit.
 
-	var state, owner string
+	var state, username string
 	var version int64
 	var alreadyClaimed bool
 	err = tx.QueryRow(ctx, `SELECT state,COALESCE(owner,''),version,execution_claimed FROM tasks WHERE id=$1 FOR UPDATE`, taskID).
-		Scan(&state, &owner, &version, &alreadyClaimed)
+		Scan(&state, &username, &version, &alreadyClaimed)
 	if err == pgx.ErrNoRows {
 		return false, tes.ErrNotFound
 	}
 	if err != nil {
 		return false, err
 	}
-	if !server.GetUser(ctx).IsAccessible(owner) {
+	if !server.GetUser(ctx).IsAccessible(username) {
 		return false, tes.ErrNotPermitted
 	}
 	if alreadyClaimed || (state != tes.State_QUEUED.String() && state != tes.State_INITIALIZING.String()) {
 		return false, nil
 	}
-	stateJSON, err := json.Marshal(int32(tes.State_RUNNING))
+	stateJSON, err := json.Marshal(int32(tes.State_INITIALIZING))
 	if err != nil {
 		return false, err
 	}
-	tag, err := tx.Exec(ctx, `UPDATE tasks SET state=$2,execution_claimed=true,version=$3,data=jsonb_set(data,'{state}',$4::jsonb) WHERE id=$1`,
-		taskID, tes.State_RUNNING.String(), version+1, stateJSON)
+	var tag pgconn.CommandTag
+	if ownerMetadataJSON == nil {
+		tag, err = tx.Exec(ctx, `UPDATE tasks SET state=$2,execution_claimed=true,version=$3,data=jsonb_set(data,'{state}',$4::jsonb) WHERE id=$1`,
+			taskID, tes.State_INITIALIZING.String(), version+1, stateJSON)
+	} else {
+		tag, err = tx.Exec(ctx, `UPDATE tasks
+			SET state=$2,execution_claimed=true,version=$3,
+			    data=jsonb_set(
+			        jsonb_set(
+			            jsonb_set(
+			                jsonb_set(data,'{state}',$4::jsonb),
+			                '{logs}',
+			                CASE WHEN jsonb_typeof(data->'logs')='array' THEN data->'logs' ELSE '[{}]'::jsonb END,
+			                true),
+			            '{logs,0}',
+			            CASE WHEN jsonb_typeof(data #> '{logs,0}')='object' THEN data #> '{logs,0}' ELSE '{}'::jsonb END,
+			            true),
+			        '{logs,0,metadata}',
+			        CASE WHEN jsonb_typeof(data #> '{logs,0,metadata}')='object'
+			             THEN data #> '{logs,0,metadata}' ELSE '{}'::jsonb END || $5::jsonb,
+			        true)
+			WHERE id=$1`,
+			taskID, tes.State_INITIALIZING.String(), version+1, stateJSON, ownerMetadataJSON)
+	}
 	if err != nil {
 		return false, err
 	}

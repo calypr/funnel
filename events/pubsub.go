@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"sync"
 
 	"cloud.google.com/go/pubsub/v2"
@@ -45,8 +46,7 @@ func NewPubSubWriter(ctx context.Context, conf *config.PubSub) (*PubSubWriter, e
 		_, err = client.TopicAdminClient.CreateTopic(ctx, &pubsubpb.Topic{Name: topicName})
 	}
 	if err != nil {
-		_ = client.Close()
-		return nil, err
+		return nil, errors.Join(err, client.Close())
 	}
 
 	w := &PubSubWriter{
@@ -86,14 +86,17 @@ func (p *PubSubWriter) Close() {
 	p.closeOnce.Do(func() {
 		close(p.shutdown)
 		p.publisher.Stop()
-		_ = p.client.Close()
+		err := p.client.Close()
+		if err != nil {
+			log.Printf("close Pub/Sub event writer: %v", err)
+		}
 	})
 }
 
 // ReadPubSub reads events from the topic configured by "conf".
 // The subscription "subname" will be created if it doesn't exist.
 // This blocks until the context is canceled.
-func ReadPubSub(ctx context.Context, conf *config.PubSub, subname string, w Writer) error {
+func ReadPubSub(ctx context.Context, conf *config.PubSub, subname string, w Writer) (retErr error) {
 	opts := []option.ClientOption{}
 	if conf.CredentialsFile != "" {
 		opts = append(opts, option.WithCredentialsFile(conf.CredentialsFile))
@@ -102,7 +105,12 @@ func ReadPubSub(ctx context.Context, conf *config.PubSub, subname string, w Writ
 	if err != nil {
 		return err
 	}
-	defer client.Close()
+	defer func() {
+		err := client.Close()
+		if err != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("close Pub/Sub event reader: %w", err))
+		}
+	}()
 
 	subscriptionName := fmt.Sprintf("projects/%s/subscriptions/%s", conf.Project, subname)
 	_, err = client.SubscriptionAdminClient.GetSubscription(ctx, &pubsubpb.GetSubscriptionRequest{

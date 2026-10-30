@@ -90,6 +90,7 @@ func runContract(t *testing.T, open storeFactory) {
 	runReservationContracts(t, open)
 	runNodeCandidateContracts(t, open)
 	runExecutionClaimContracts(t, open)
+	runExecutionOwnerContracts(t, open)
 	t.Run("node pages use stable IDs and traverse the full fleet", func(t *testing.T) {
 		db := open(t)
 		testNodePagination(t, db)
@@ -488,7 +489,10 @@ func runPostgresContract(t *testing.T) {
 			t.Fatalf("connect to PostgreSQL admin database: %v", err)
 		}
 		if _, err := admin.Exec(databaseCtx, "CREATE DATABASE "+database); err != nil {
-			admin.Close(databaseCtx)
+			closeErr := admin.Close(databaseCtx)
+			if closeErr != nil {
+				t.Errorf("close PostgreSQL admin connection after database creation failure: %v", closeErr)
+			}
 			t.Fatalf("create PostgreSQL test database: %v", err)
 		}
 		if err := admin.Close(databaseCtx); err != nil {

@@ -52,11 +52,16 @@ func TestExponentialBackoff(t *testing.T) {
 
 func TestDialRetriesUnavailableButNotPermissionDenied(t *testing.T) {
 	listener := bufconn.Listen(1024 * 1024)
-	defer listener.Close()
+	defer listener.Close() //nolint:errcheck // Test server shutdown also closes this listener.
 	grpcServer := grpc.NewServer()
 	service := &retryTestService{}
 	grpcServer.RegisterService(&retryTestServiceDesc, service)
-	go grpcServer.Serve(listener)
+	go func() {
+		err := grpcServer.Serve(listener)
+		if err != nil {
+			t.Errorf("serve test RPC: %v", err)
+		}
+	}()
 	defer grpcServer.Stop()
 
 	conf := config.DefaultConfig().RPCClient
@@ -71,7 +76,7 @@ func TestDialRetriesUnavailableButNotPermissionDenied(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Dial() error = %v", err)
 	}
-	defer conn.Close()
+	defer conn.Close() //nolint:errcheck // Best-effort cleanup of a test connection after assertions.
 
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 	defer cancel()

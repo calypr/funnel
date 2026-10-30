@@ -20,6 +20,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	googleproto "google.golang.org/protobuf/proto"
 
 	"google.golang.org/grpc"
 )
@@ -65,10 +66,28 @@ func (ts *TaskService) Close() {
 }
 
 func (ts *TaskService) forbiddenPathPrefixes() []string {
-	if ts.Config == nil || ts.Config.Compute != "kubernetes" || ts.Config.Kubernetes == nil {
+	if ts.Config == nil || (strings.ToLower(strings.TrimSpace(ts.Config.Compute)) != "kubernetes" && strings.ToLower(strings.TrimSpace(ts.Config.Compute)) != "k8s") || ts.Config.Kubernetes == nil {
 		return nil
 	}
 	return ts.Config.Kubernetes.GetForbiddenPathPrefixes()
+}
+
+func (ts *TaskService) mountExecutorBackend(ctx context.Context) string {
+	if ts.Config == nil {
+		return ""
+	}
+	compute := ts.Config.Compute
+	if pluginResponse, ok := ctx.Value("pluginResponse").(*proto.JobResponse); ok && pluginResponse.Config != nil && pluginResponse.Config.Compute != "" {
+		compute = pluginResponse.Config.Compute
+	}
+	switch strings.ToLower(strings.TrimSpace(compute)) {
+	case "local", "manual", "aws-batch", "aws", "amazon", "gridengine", "htcondor", "pbs", "slurm":
+		return "docker"
+	case "kubernetes", "k8s":
+		return "kubernetes"
+	default:
+		return ""
+	}
 }
 
 type contextKey string
@@ -147,7 +166,24 @@ func (ts *TaskService) CreateTask(ctx context.Context, task *tes.Task) (*tes.Cre
 	if err := tes.InitTaskWithForbiddenPathPrefixes(task, true, ts.forbiddenPathPrefixes()); err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "%v", err.Error())
 	}
+	if executorBackend := ts.mountExecutorBackend(ctx); executorBackend != "" {
+		if err := tes.ValidateMountPaths(task, executorBackend); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "%v", err)
+		}
+	}
 
+	if err := tes.NormalizeBackendParameters(task.GetResources()); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	if backend, ok := ts.Compute.(interface{ BackendParameterKeys() []string }); ok {
+		unsupported, err := tes.FilterBackendParameters(task.GetResources(), backend.BackendParameterKeys())
+		if err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+		if len(unsupported) > 0 && ts.Log != nil {
+			ts.Log.Warn("ignoring unsupported backend parameters", "keys", unsupported)
+		}
+	}
 	if err := ts.Compute.CheckBackendParameterSupport(task); err != nil {
 		return nil, err
 	}
@@ -208,6 +244,17 @@ func (ts *TaskService) CreateTask(ctx context.Context, task *tes.Task) (*tes.Cre
 	return &tes.CreateTaskResponse{Id: task.Id}, nil
 }
 
+func normalizeTaskView(view string) (string, error) {
+	if view == "" {
+		return tes.View_MINIMAL.String(), nil
+	}
+	normalized := strings.ToUpper(view)
+	if _, ok := tes.View_value[normalized]; !ok {
+		return "", status.Errorf(codes.InvalidArgument, "invalid view %q: must be one of MINIMAL, BASIC, FULL", view)
+	}
+	return normalized, nil
+}
+
 // GetTask calls GetTask on the underlying tes.ReadOnlyServer. If the underlying server
 // returns tes.ErrNotFound, TaskService will handle returning the appropriate gRPC error.
 func (ts *TaskService) GetTask(ctx context.Context, req *tes.GetTaskRequest) (*tes.Task, error) {
@@ -230,15 +277,41 @@ func (ts *TaskService) GetTask(ctx context.Context, req *tes.GetTaskRequest) (*t
 		}
 	*/
 
+	view, err := normalizeTaskView(req.View)
+	if err != nil {
+		return nil, err
+	}
+	if view != req.View {
+		req = googleproto.Clone(req).(*tes.GetTaskRequest)
+		req.View = view
+	}
 	task, err := ts.Read.GetTask(ctx, req)
 	if err == tes.ErrNotFound {
 		err = status.Errorf(codes.NotFound, "%v: taskID: %s", err.Error(), req.Id)
+	} else if err == tes.ErrNotPermitted {
+		err = status.Errorf(codes.PermissionDenied, "%v: taskID: %s", err.Error(), req.Id)
+	}
+	if err == nil && googleproto.Size(task) > ts.responseBytes() {
+		return nil, status.Errorf(codes.ResourceExhausted, "task %q exceeds Server.MaxResponseBytes; request MINIMAL view or increase the configured response limit and the gRPC client's receive limit", req.Id)
 	}
 	return task, err
 }
 
 // ListTasks calls ListTasks on the underlying tes.ReadOnlyServer.
 func (ts *TaskService) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*tes.ListTasksResponse, error) {
+	view, err := normalizeTaskView(req.View)
+	if err != nil {
+		return nil, err
+	}
+	if view != req.View {
+		req = googleproto.Clone(req).(*tes.ListTasksRequest)
+		req.View = view
+	}
+	limit := ts.responseBytes()
+	if limit <= 0 {
+		return nil, status.Error(codes.Internal, "Server.MaxResponseBytes is too small")
+	}
+	ctx = tes.WithTaskPageBytes(ctx, limit)
 	return ts.Read.ListTasks(ctx, req)
 }
 
@@ -269,6 +342,8 @@ func (ts *TaskService) CancelTask(ctx context.Context, req *tes.CancelTaskReques
 	})
 	if err == tes.ErrNotFound {
 		return result, status.Errorf(codes.NotFound, "%v: taskID: %s", err.Error(), req.Id)
+	} else if err == tes.ErrNotPermitted {
+		return result, status.Errorf(codes.PermissionDenied, "%v: taskID: %s", err.Error(), req.Id)
 	} else if err != nil {
 		return result, err
 	}
@@ -319,33 +394,33 @@ func (ts *TaskService) CancelTask(ctx context.Context, req *tes.CancelTaskReques
 // GetServiceInfo returns service metadata.
 func (ts *TaskService) GetServiceInfo(ctx context.Context, info *tes.GetServiceInfoRequest) (*tes.ServiceInfo, error) {
 	resp := &tes.ServiceInfo{
-		CreatedAt: "2016-03-21T16:27:49-07:00",
-		// TODO: Change this to "mailto:ellrott@ohsu.edu" when support for "mailto:" URL's are
-		// added to tes-compliance-suite
-		ContactUrl:       "https://ohsu-comp-bio.github.io/funnel/",
+		CreatedAt:        "2016-03-21T16:27:49-07:00",
+		ContactUrl:       "https://github.com/calypr/",
 		Description:      "Funnel is a toolkit for distributed task execution via a simple, standard API.",
-		DocumentationUrl: "https://ohsu-comp-bio.github.io/funnel/",
+		DocumentationUrl: "https://github.com/calypr/funnel",
 		Environment:      "development",
 		Id:               "org.ga4gh.funnel",
 		Name:             ts.Name,
 		Organization: map[string]string{
-			"name": "OHSU Computational Biology",
-			"url":  "https://github.com/ohsu-comp-bio",
+			"name": "CALYPR Data Platform",
+			"url":  "https://github.com/calypr/",
 		},
 		Storage: []string{
 			"file:///path/to/local/funnel-storage",
 			"s3://ohsu-compbio-funnel/storage",
 		},
-		TesResourcesBackendParameters: []string{
-			"",
-		},
+		TesResourcesBackendParameters: []string{},
 		Type: &tes.ServiceType{
 			Artifact: "tes",
 			Group:    "org.ga4gh",
-			Version:  version.Version,
+			Version:  "1.1.0",
 		},
 		UpdatedAt: time.Now().Format(time.RFC3339),
 		Version:   version.Version,
+	}
+
+	if backend, ok := ts.Compute.(interface{ BackendParameterKeys() []string }); ok {
+		resp.TesResourcesBackendParameters = backend.BackendParameterKeys()
 	}
 
 	/*
@@ -368,4 +443,11 @@ func (ts *TaskService) GetServiceInfo(ctx context.Context, info *tes.GetServiceI
 	*/
 
 	return resp, nil
+}
+
+func (ts *TaskService) responseBytes() int {
+	if ts.Config == nil {
+		return tes.DefaultResponseBytes
+	}
+	return ts.Config.Server.ResponseBytes()
 }

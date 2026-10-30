@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -21,12 +22,11 @@ import (
 // outputs, uploads, stdin/out/err, etc. FileMapper helps the worker engine
 // manage all these paths.
 type FileMapper struct {
-	Volumes      []Volume
-	InputVolumes []Volume // tracks volumes added via AddInput; used by consolidateVolumes
-	Inputs       []*tes.Input
-	Outputs      []*tes.Output
-	WorkDir      string
-	ScratchDir   string
+	WorkDir    string
+	ScratchDir string
+	Inputs     []*tes.Input
+	Outputs    []*tes.Output
+	Volumes    []Volume
 }
 
 // Volume represents a volume mounted into a docker container.
@@ -44,18 +44,29 @@ type Volume struct {
 // NewFileMapper returns a new FileMapper, which maps files into the given
 // base directory.
 func NewFileMapper(dir string) *FileMapper {
-	dir, _ = filepath.Abs(dir)
+	// A failed resolution leaves dir relative so MapTask can reject it before filesystem access.
+	absDir, err := filepath.Abs(dir)
+	if err == nil {
+		dir = absDir
+	}
 	return &FileMapper{
-		Volumes:      []Volume{},
-		InputVolumes: []Volume{},
-		Inputs:       []*tes.Input{},
-		Outputs:      []*tes.Output{},
-		WorkDir:      dir,
+		Volumes: []Volume{},
+		Inputs:  []*tes.Input{},
+		Outputs: []*tes.Output{},
+		WorkDir: dir,
 	}
 }
 
 // MapTask adds all the volumes, inputs, and outputs in the given Task to the FileMapper.
-func (mapper *FileMapper) MapTask(task *tes.Task) error {
+func (mapper *FileMapper) MapTask(task *tes.Task, executorBackend string) error {
+	if err := tes.ValidateMountPaths(task, executorBackend); err != nil {
+		return err
+	}
+	executorBackend = strings.ToLower(strings.TrimSpace(executorBackend))
+	if executorBackend == "k8s" {
+		executorBackend = "kubernetes"
+	}
+
 	// Validate working directory
 	if !filepath.IsAbs(mapper.WorkDir) {
 		return fmt.Errorf("Mapper.WorkDir is not an absolute path")
@@ -75,9 +86,21 @@ func (mapper *FileMapper) MapTask(task *tes.Task) error {
 		}
 	}
 
-	// Add all the inputs to the mapper
+	// Keep source inputs locally so consolidation can classify only mounts
+	// added by this task without retaining task planning state on the mapper.
+	var inputSources []*tes.Input
 	for _, input := range task.Inputs {
-		err = mapper.AddInput(input)
+		added, err := mapper.addInput(input)
+		if err != nil {
+			return err
+		}
+		if added {
+			inputSources = append(inputSources, input)
+		}
+	}
+	var rootStreamPaths map[string]bool
+	if strings.EqualFold(executorBackend, "docker") {
+		rootStreamPaths, err = mapper.prepareRootStreamFiles(task)
 		if err != nil {
 			return err
 		}
@@ -85,17 +108,17 @@ func (mapper *FileMapper) MapTask(task *tes.Task) error {
 
 	// Add all the outputs to the mapper
 	for _, output := range task.Outputs {
-		err = mapper.AddOutput(output)
+		err = mapper.addOutput(output, rootStreamPaths)
 		if err != nil {
 			return err
 		}
 	}
 
-	// Consolidate read-only input volumes into the fewest possible ancestor
+	// Consolidate input volumes into the fewest possible ancestor
 	// directory mounts. This eliminates file-level bind mounts (which cause
 	// EBUSY when a task script calls mv/unlink on a mounted file path) and
 	// shrinks the nerdctl/mounts container label.
-	mapper.consolidateVolumes()
+	mapper.consolidateVolumes(inputSources)
 
 	return nil
 }
@@ -112,7 +135,7 @@ func (mapper *FileMapper) CopyInputsToScratch(scratchDir string) error {
 
 		info, err := os.Stat(input.Path)
 		if err != nil {
-			fmt.Println(err)
+			return fmt.Errorf("stat input %s: %w", input.Path, err)
 		}
 		if info.IsDir() {
 			// Ensure the scratch target directory exists
@@ -131,7 +154,6 @@ func (mapper *FileMapper) CopyInputsToScratch(scratchDir string) error {
 			if err != nil {
 				return fmt.Errorf("failed to copy input file to scratch directory: %w", err)
 			}
-			_, _ = os.ReadFile(scratchTarget)
 		}
 	}
 
@@ -151,7 +173,7 @@ func (mapper *FileMapper) CopyOutputsToWorkDir(scratchDir string) error {
 			return nil
 		})
 	if err != nil {
-		fmt.Println(err)
+		return fmt.Errorf("walking scratch directory %s: %w", scratchAbsDir, err)
 	}
 
 	// Copy the input file or directory to the scratch target
@@ -178,7 +200,10 @@ func (mapper *FileMapper) CopyOutputsToWorkDir(scratchDir string) error {
 				if err = os.MkdirAll(output.Path, 0755); err != nil {
 					return fmt.Errorf("failed to create output path: %w", err)
 				}
-				_ = copyDir(src, output.Path)
+				err := copyDir(src, output.Path)
+				if err != nil {
+					return fmt.Errorf("failed to copy output directory %s to %s: %w", src, output.Path, err)
+				}
 				// If output is a file
 			} else {
 				// Ensure the scratch target directory exists
@@ -225,21 +250,31 @@ func copyDir(src string, dst string) error {
 	return nil
 }
 
-func copyFile(src string, dst string) error {
+func copyFile(src string, dst string) (copyErr error) {
 	sourceFile, err := os.Open(src)
 	if err != nil {
 		return err
 	}
-	defer sourceFile.Close()
+	defer func() {
+		err := sourceFile.Close()
+		if err != nil {
+			copyErr = errors.Join(copyErr, fmt.Errorf("close source file %s: %w", src, err))
+		}
+	}()
 
 	destFile, err := os.Create(dst)
 	if err != nil {
 		return err
 	}
-	defer destFile.Close()
+	defer func() {
+		err := destFile.Close()
+		if err != nil {
+			copyErr = errors.Join(copyErr, fmt.Errorf("close destination file %s: %w", dst, err))
+		}
+	}()
 
-	_, err = io.Copy(destFile, sourceFile)
-	return err
+	_, copyErr = io.Copy(destFile, sourceFile)
+	return copyErr
 }
 
 // AddVolume adds a mapped volume to the mapper. A corresponding Volume record
@@ -250,16 +285,26 @@ func copyFile(src string, dst string) error {
 // covered by an existing mount (duplicate or subpath of an existing RW volume).
 // Returns (false, err) when the paths are invalid.
 func (mapper *FileMapper) AddVolume(hostPath string, mountPoint string, readonly bool) (bool, error) {
+	mountPoint = path.Clean(mountPoint)
+	if mountPoint == "/" {
+		return false, fmt.Errorf("container mount at / is not allowed")
+	}
 	vol := Volume{
-		HostPath:      hostPath,
+		HostPath:      filepath.Clean(hostPath),
 		ContainerPath: mountPoint,
 		Readonly:      readonly,
 	}
+	return mapper.addVolume(&mapper.Volumes, vol), nil
+}
 
-	for i, v := range mapper.Volumes {
+// addVolume inserts vol using the mapper's mount deduplication rules.
+func (mapper *FileMapper) addVolume(volumes *[]Volume, vol Volume) bool {
+	vol.HostPath = filepath.Clean(vol.HostPath)
+	vol.ContainerPath = path.Clean(vol.ContainerPath)
+	for i, v := range *volumes {
 		// Volume is already present — nothing to do.
 		if vol == v {
-			return false, nil
+			return false
 		}
 
 		// If the proposed RW volume is a subpath of an existing RW volume,
@@ -268,16 +313,16 @@ func (mapper *FileMapper) AddVolume(hostPath string, mountPoint string, readonly
 		// replace the narrower mount with the wider one.
 		if !vol.Readonly && !v.Readonly {
 			if mapper.IsSubpath(vol.ContainerPath, v.ContainerPath) {
-				return false, nil
+				return false
 			} else if mapper.IsSubpath(v.ContainerPath, vol.ContainerPath) {
-				mapper.Volumes[i] = vol
-				return true, nil
+				(*volumes)[i] = vol
+				return true
 			}
 		}
 	}
 
-	mapper.Volumes = append(mapper.Volumes, vol)
-	return true, nil
+	*volumes = append(*volumes, vol)
+	return true
 }
 
 // HostPath returns a mapped path.
@@ -357,6 +402,10 @@ func (mapper *FileMapper) CreateHostFile(src string) (*os.File, error) {
 //
 // If the path can't be mapped, an error is returned.
 func (mapper *FileMapper) AddTmpVolume(mountPoint string) error {
+	mountPoint = path.Clean(mountPoint)
+	if mountPoint == "/" {
+		return fmt.Errorf("container mount at / is not allowed")
+	}
 	hostPath, err := mapper.HostPath(mountPoint)
 	if err != nil {
 		return err
@@ -374,77 +423,71 @@ func (mapper *FileMapper) AddTmpVolume(mountPoint string) error {
 	return nil
 }
 
-// AddInput adds an input to the mapped files for the given tes.Input.
-// The volume is registered as read-write; consolidateVolumes() will later
-// replace individual file mounts with a single ancestor directory mount to
-// avoid EBUSY errors when task scripts call mv/unlink on a mounted path.
-// Successfully added volumes are tracked in mapper.InputVolumes so that
-// consolidateVolumes() can identify them without relying on the Readonly flag.
-// A copy of the tes.Input will be added to mapper.Inputs, with the
-// "Path" field updated to the mapped host path.
-//
-// If the path can't be mapped an error is returned.
-func (mapper *FileMapper) AddInput(input *tes.Input) error {
+func (mapper *FileMapper) addInput(input *tes.Input) (bool, error) {
 	hostPath, err := mapper.HostPath(input.Path)
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	err = fsutil.EnsurePath(hostPath)
+	if input.Type == tes.FileType_DIRECTORY {
+		err = fsutil.EnsureDir(hostPath)
+	} else {
+		err = fsutil.EnsurePath(hostPath)
+	}
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	// Add input volume as read-write; track it so consolidateVolumes() can
-	// identify input volumes without using the Readonly flag as a classifier.
-	added, err := mapper.AddVolume(hostPath, input.Path, false)
+	// MapTask retains this source input only when the volume was added, so
+	// existing task volumes and outputs are not reclassified as input mounts.
+	containerPath := path.Clean(input.Path)
+	added, err := mapper.AddVolume(hostPath, containerPath, false)
 	if err != nil {
-		return err
-	}
-	if added {
-		mapper.InputVolumes = append(mapper.InputVolumes, Volume{
-			HostPath:      hostPath,
-			ContainerPath: input.Path,
-		})
+		return false, err
 	}
 
 	// If 'content' field is set create the file
 	if input.Content != "" {
 		err := os.WriteFile(hostPath, []byte(input.Content), 0775)
 		if err != nil {
-			return fmt.Errorf("Error writing content of task input to file %v", err)
+			return false, fmt.Errorf("Error writing content of task input to file %v", err)
 		}
-		return nil
+		return added, nil
 	}
 
 	// Create a tes.Input for the input with a path mapped to the host
 	hostIn := proto.Clone(input).(*tes.Input)
 	hostIn.Path = hostPath
 	mapper.Inputs = append(mapper.Inputs, hostIn)
-	return nil
+	return added, nil
 }
 
-// AddOutput adds an output to the mapped files for the given tes.Output.
-// A copy of the tes.Output will be added to mapper.Outputs, with the
-// "Path" field updated to the mapped host path.
-//
-// If the path can't be mapped, an error is returned.
-func (mapper *FileMapper) AddOutput(output *tes.Output) error {
+func (mapper *FileMapper) addOutput(output *tes.Output, rootStreamPaths map[string]bool) error {
 	hostPath, err := mapper.HostPath(output.Path)
 	if err != nil {
 		return err
 	}
 
 	hostDir := hostPath
-	mountDir := output.Path
-	if output.Type == tes.FileType_FILE {
+	containerPath := path.Clean(output.Path)
+	mountDir := containerPath
+	if output.GetType() == tes.FileType_FILE {
 		hostDir = path.Dir(hostPath)
-		mountDir = path.Dir(output.Path)
+		mountDir = path.Dir(containerPath)
+		if mountDir == "/" && rootStreamPaths[containerPath] {
+			hostDir = hostPath
+			mountDir = containerPath
+		}
+	}
+	if mountDir == "/" {
+		return fmt.Errorf("output path %q requires a container mount at /, which is not allowed", output.Path)
 	}
 
-	err = fsutil.EnsureDir(hostDir)
-	if err != nil {
-		return err
+	if !(output.GetType() == tes.FileType_FILE && rootStreamPaths[containerPath]) {
+		err = fsutil.EnsureDir(hostDir)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Add output volumes
@@ -460,9 +503,52 @@ func (mapper *FileMapper) AddOutput(output *tes.Output) error {
 	return nil
 }
 
+func (mapper *FileMapper) prepareRootStreamFiles(task *tes.Task) (map[string]bool, error) {
+	rootStreamPaths := map[string]bool{}
+	for _, executor := range task.Executors {
+		for _, stream := range []string{executor.Stdout, executor.Stderr} {
+			if stream == "" {
+				continue
+			}
+			containerPath := path.Clean(stream)
+			if path.Dir(containerPath) != "/" {
+				continue
+			}
+			hostPath, err := mapper.HostPath(containerPath)
+			if err != nil {
+				return nil, err
+			}
+			filePath := hostPath
+			if mapper.ScratchDir != "" {
+				filePath, err = mapper.HostScratchPath(containerPath)
+				if err != nil {
+					return nil, err
+				}
+			}
+			if err := fsutil.EnsureDir(path.Dir(filePath)); err != nil {
+				return nil, err
+			}
+			f, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY, 0666)
+			if err != nil {
+				return nil, fmt.Errorf("preparing executor stream file %q: %w", containerPath, err)
+			}
+			if err := f.Close(); err != nil {
+				return nil, err
+			}
+			if _, err := mapper.AddVolume(hostPath, containerPath, false); err != nil {
+				return nil, err
+			}
+			rootStreamPaths[containerPath] = true
+		}
+	}
+	return rootStreamPaths, nil
+}
+
 // IsSubpath returns true if the given path "p" is a subpath of "base".
 func (mapper *FileMapper) IsSubpath(p string, base string) bool {
-	return strings.HasPrefix(p, base)
+	p = path.Clean(p)
+	base = path.Clean(base)
+	return p == base || base == "/" || strings.HasPrefix(p, base+"/")
 }
 
 // ContainerPath returns an unmapped path.
@@ -476,29 +562,8 @@ func (mapper *FileMapper) ContainerPath(src string) string {
 	return p
 }
 
-// mergeVolume inserts vol into vols using the same RW-deduplication rules as
-// AddVolume: skip if already covered by an existing mount, replace a narrower
-// existing mount with the wider one, otherwise append.
-func mergeVolume(vols []Volume, vol Volume, mapper *FileMapper) []Volume {
-	for i, v := range vols {
-		if vol == v {
-			return vols
-		}
-		if !vol.Readonly && !v.Readonly {
-			if mapper.IsSubpath(vol.ContainerPath, v.ContainerPath) {
-				return vols
-			}
-			if mapper.IsSubpath(v.ContainerPath, vol.ContainerPath) {
-				vols[i] = vol
-				return vols
-			}
-		}
-	}
-	return append(vols, vol)
-}
-
-// consolidateVolumes optimizes container mounts by replacing individual input
-// file mounts with a single read-write ancestor directory mount.
+// consolidateVolumes replaces related input mounts with a single read-write
+// ancestor directory mount.
 //
 // Mounting individual input files causes EBUSY errors when task scripts call
 // mv or unlink (the kernel refuses to unlink a bind-mount point). Mounting
@@ -506,26 +571,26 @@ func mergeVolume(vols []Volume, vol Volume, mapper *FileMapper) []Volume {
 // inputs. It also reduces mount count and shrinks the nerdctl/mounts label
 // when many input files share a common directory prefix.
 //
-// Input volumes are identified via mapper.InputVolumes (populated by AddInput),
-// not by the Readonly flag, so that Readonly retains its literal meaning
-// ("mount this path read-only in the container").
+// Input volumes are identified from task inputs whose mounts were added, not
+// by Readonly.
+// Directory inputs contribute their own path as the ancestor candidate.
 //
 // Algorithm:
 //  1. Build the set of non-input volumes (tmp dirs, output dirs) to keep.
 //  2. Find the deepest common directory ancestor of all input container paths.
 //  3. Replace the entire input set with one read-write mount at that ancestor.
-//  4. Fall back to per-volume parent-dir promotion when inputs span disjoint
-//     subtrees and the ancestor collapses to root.
-func (mapper *FileMapper) consolidateVolumes() {
-	if len(mapper.InputVolumes) == 0 {
+//  4. Fall back to per-volume directory mounts when inputs span disjoint
+//     subtrees and their common ancestor collapses to root.
+func (mapper *FileMapper) consolidateVolumes(inputs []*tes.Input) {
+	if len(inputs) == 0 {
 		return
 	}
 
 	// Build a set of input container paths so we can separate input volumes
 	// from tmp/output volumes in mapper.Volumes.
 	inputSet := map[string]bool{}
-	for _, v := range mapper.InputVolumes {
-		inputSet[v.ContainerPath] = true
+	for _, input := range inputs {
+		inputSet[path.Clean(input.Path)] = true
 	}
 
 	var nonInputVols []Volume
@@ -535,12 +600,22 @@ func (mapper *FileMapper) consolidateVolumes() {
 		}
 	}
 
-	// Find the deepest common directory ancestor of all input container paths.
-	contPaths := make([]string, len(mapper.InputVolumes))
-	for i, v := range mapper.InputVolumes {
-		contPaths[i] = v.ContainerPath
+	// Find the deepest common directory ancestor of all input mount paths.
+	inputDirectories := make([]string, len(inputs))
+	for i, input := range inputs {
+		containerPath := path.Clean(input.Path)
+		inputDirectories[i] = filepath.Dir(containerPath)
+		if input.Type == tes.FileType_DIRECTORY {
+			inputDirectories[i] = containerPath
+		}
 	}
-	ancestor := volumeCommonDirAncestor(contPaths)
+	ancestor := inputDirectories[0]
+	for _, inputDir := range inputDirectories[1:] {
+		ancestor = volumeCommonPathPrefix(ancestor, inputDir)
+		if ancestor == "/" || ancestor == "." {
+			break
+		}
+	}
 
 	if ancestor != "" && ancestor != "/" && ancestor != "." {
 		// All inputs share a common ancestor — one mount covers them all.
@@ -551,45 +626,33 @@ func (mapper *FileMapper) consolidateVolumes() {
 			ContainerPath: ancestor,
 			Readonly:      false,
 		}
-		nonInputVols = mergeVolume(nonInputVols, inputAncestorVol, mapper)
+		mapper.addVolume(&nonInputVols, inputAncestorVol)
 	} else {
-		// Inputs span disjoint subtrees; fall back to promoting each to its
-		// immediate parent directory to at least eliminate file-level mounts.
+		// Inputs span disjoint subtrees; map file inputs to their parent
+		// directory and keep directory inputs at their declared path.
 		seen := map[string]bool{}
-		for _, v := range mapper.InputVolumes {
-			contParent := filepath.Dir(v.ContainerPath)
-			hostParent := filepath.Dir(v.HostPath)
+		for _, input := range inputs {
+			containerPath := path.Clean(input.Path)
+			hostPath := path.Join(mapper.WorkDir, containerPath)
+			contParent := filepath.Dir(containerPath)
+			hostParent := filepath.Dir(hostPath)
+			if input.Type == tes.FileType_DIRECTORY {
+				contParent = containerPath
+				hostParent = hostPath
+			}
 			key := hostParent + ":" + contParent
 			if seen[key] {
 				continue
 			}
 			seen[key] = true
-			nonInputVols = mergeVolume(nonInputVols, Volume{
+			mapper.addVolume(&nonInputVols, Volume{
 				HostPath:      hostParent,
 				ContainerPath: contParent,
 				Readonly:      false,
-			}, mapper)
+			})
 		}
 	}
 	mapper.Volumes = nonInputVols
-}
-
-// volumeCommonDirAncestor returns the deepest directory that is a common
-// ancestor of the parent directories of all given paths.
-// For a single path it returns filepath.Dir of that path (promoting a lone
-// file to its containing directory).
-func volumeCommonDirAncestor(paths []string) string {
-	if len(paths) == 0 {
-		return ""
-	}
-	ancestor := filepath.Dir(paths[0])
-	for _, p := range paths[1:] {
-		ancestor = volumeCommonPathPrefix(ancestor, filepath.Dir(p))
-		if ancestor == "/" || ancestor == "." {
-			break
-		}
-	}
-	return ancestor
 }
 
 // volumeCommonPathPrefix returns the longest common directory-component prefix

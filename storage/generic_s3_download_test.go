@@ -12,14 +12,14 @@ func TestGenericS3DownloadReplacesDestinationAliases(t *testing.T) {
 	store := publicationS3(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Has("list-type") {
 			w.Header().Set("Content-Type", "application/xml")
-			w.Write([]byte(`<ListBucketResult><Name>bucket</Name><IsTruncated>false</IsTruncated></ListBucketResult>`))
+			writeTestResponse(t, w, []byte(`<ListBucketResult><Name>bucket</Name><IsTruncated>false</IsTruncated></ListBucketResult>`))
 			return
 		}
 		w.Header().Set("ETag", `"remote"`)
 		w.Header().Set("Last-Modified", "Mon, 02 Jan 2006 15:04:05 GMT")
 		w.Header().Set("Content-Length", "6")
 		if r.Method == http.MethodGet {
-			w.Write([]byte("remote"))
+			writeTestResponse(t, w, []byte("remote"))
 		}
 	})
 
@@ -81,14 +81,14 @@ func TestGenericS3DownloadRejectsTrailingSeparator(t *testing.T) {
 	store := publicationS3(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Has("list-type") {
 			w.Header().Set("Content-Type", "application/xml")
-			w.Write([]byte(`<ListBucketResult><Name>bucket</Name><IsTruncated>false</IsTruncated></ListBucketResult>`))
+			writeTestResponse(t, w, []byte(`<ListBucketResult><Name>bucket</Name><IsTruncated>false</IsTruncated></ListBucketResult>`))
 			return
 		}
 		w.Header().Set("ETag", `"remote"`)
 		w.Header().Set("Last-Modified", "Mon, 02 Jan 2006 15:04:05 GMT")
 		w.Header().Set("Content-Length", "6")
 		if r.Method == http.MethodGet {
-			w.Write([]byte("remote"))
+			writeTestResponse(t, w, []byte("remote"))
 		}
 	})
 	target := filepath.Join(t.TempDir(), "target")

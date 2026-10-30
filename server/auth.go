@@ -195,7 +195,7 @@ func (a *Authentication) EchoTokenHandler(w http.ResponseWriter, req *http.Reque
 
 func (a *Authentication) handleBasicAuth(w http.ResponseWriter, req *http.Request) {
 	// Check if provided value in the header is valid:
-	if a.basic[req.Header.Get("Authorization")] == "" {
+	if a.basic[req.Header.Get("Authorization")] != "" {
 		http.Redirect(w, req, "/", http.StatusSeeOther)
 	} else {
 		w.Header().Set("WWW-Authenticate", "Basic realm=Funnel")

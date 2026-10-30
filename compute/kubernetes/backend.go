@@ -5,12 +5,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"dario.cat/mergo"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
+	"github.com/calypr/funnel/compute"
 	"github.com/calypr/funnel/compute/kubernetes/resources"
 	"github.com/calypr/funnel/compute/kubernetes/storageplan"
 	"github.com/calypr/funnel/config"
@@ -36,6 +38,17 @@ type Backend struct {
 	events.Computer
 }
 
+const gpuCountBackendParameter = "gpu_count"
+const gpuResourceBackendParameter = "gpu_resource"
+const gpuNodeSelectorBackendParameter = "gpu_node_selector"
+
+var supportedBackendParameters = map[string]string{
+	gpuCountBackendParameter:        "",
+	gpuResourceBackendParameter:     "",
+	gpuNodeSelectorBackendParameter: "",
+	"backoff_limit":                 "",
+}
+
 // NewBackend returns a new K8s Backend instance.
 func NewBackend(ctx context.Context, conf *config.Config, reader tes.ReadOnlyServer, writer events.Writer, log *logger.Logger) (*Backend, error) {
 	if conf.Kubernetes.WorkerTemplate == "" {
@@ -44,6 +57,10 @@ func NewBackend(ctx context.Context, conf *config.Config, reader tes.ReadOnlySer
 	// Funnel Server Namespace
 	if conf.Kubernetes.Namespace == "" {
 		return nil, fmt.Errorf("invalid configuration; must provide a kubernetes namespace")
+	}
+	err := compute.ValidateReconcileRate("Kubernetes.ReconcileRate", conf.Kubernetes.DisableReconciler, conf.Kubernetes.ReconcileRate)
+	if err != nil {
+		return nil, err
 	}
 
 	// Funnel Worker + Executor Namespace
@@ -57,11 +74,12 @@ func NewBackend(ctx context.Context, conf *config.Config, reader tes.ReadOnlySer
 	}
 
 	b := &Backend{
-		client:   clientset,
-		event:    writer,
-		database: reader,
-		log:      log,
-		conf:     conf,
+		client:            clientset,
+		event:             writer,
+		database:          reader,
+		log:               log,
+		backendParameters: supportedBackendParameters,
+		conf:              conf,
 	}
 
 	b.startReconciler(ctx)
@@ -89,19 +107,38 @@ func (b *Backend) startReconciler(ctx context.Context) {
 }
 
 func (b Backend) CheckBackendParameterSupport(task *tes.Task) error {
-	if !task.Resources.GetBackendParametersStrict() {
-		return nil
+	if _, err := tes.FilterBackendParameters(task.GetResources(), b.BackendParameterKeys()); err != nil {
+		return status.Error(codes.InvalidArgument, err.Error())
 	}
-
-	taskBackendParameters := task.Resources.GetBackendParameters()
-	for k := range taskBackendParameters {
-		_, ok := b.backendParameters[k]
-		if !ok {
-			return status.Errorf(codes.InvalidArgument, "backend parameters not supported: %s", k)
+	options, err := ParseGPUOptions(task.GetResources().GetBackendParameters())
+	if err != nil {
+		return status.Errorf(codes.InvalidArgument, "invalid GPU backend parameters: %v", err)
+	}
+	if b.conf != nil && b.conf.Kubernetes != nil {
+		if err := ValidateGPUNodeSelector(options.NodeSelector, b.conf.Kubernetes.NodeSelector); err != nil {
+			return status.Errorf(codes.InvalidArgument, "invalid backend parameter %s: %v", gpuNodeSelectorBackendParameter, err)
 		}
 	}
 
 	return nil
+}
+
+// BackendParameterKeys reports the backend parameters accepted by this
+// implementation and any additional keys registered on the backend instance.
+func (b Backend) BackendParameterKeys() []string {
+	keys := make(map[string]struct{}, len(supportedBackendParameters)+len(b.backendParameters))
+	for key := range supportedBackendParameters {
+		keys[key] = struct{}{}
+	}
+	for key := range b.backendParameters {
+		keys[key] = struct{}{}
+	}
+	result := make([]string, 0, len(keys))
+	for key := range keys {
+		result = append(result, key)
+	}
+	sort.Strings(result)
+	return result
 }
 
 // WriteEvent writes an event to the compute backend.

@@ -47,7 +47,7 @@ func (db *Postgres) TryAssign(ctx context.Context, task *tes.Task, candidate *sc
 	if err != nil {
 		return "", fmt.Errorf("begin task assignment transaction: %w", err)
 	}
-	defer func() { _ = tx.Rollback(context.Background()) }()
+	defer func() { _ = tx.Rollback(context.Background()) }() //nolint:errcheck // Rolls back early exits and is a no-op after a successful commit.
 
 	var taskState, claimedOwner string
 	var taskResourcesJSON []byte

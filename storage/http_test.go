@@ -83,6 +83,121 @@ func TestHTTP(t *testing.T) {
 	}
 }
 
+func TestHTTPTransferTimeouts(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			writeTestResponse(t, w, []byte("first"))
+			w.(http.Flusher).Flush()
+			time.Sleep(250 * time.Millisecond)
+			writeTestResponse(t, w, []byte("second"))
+		case http.MethodPut:
+			_, err := io.Copy(io.Discard, r.Body)
+			if err != nil {
+				t.Errorf("read upload body: %v", err)
+			}
+			time.Sleep(250 * time.Millisecond)
+			w.WriteHeader(http.StatusCreated)
+		}
+	}))
+	defer server.Close()
+	for _, tc := range []struct {
+		name      string
+		timeout   *config.TimeoutConfig
+		wantError bool
+	}{
+		{"default", config.DefaultConfig().HTTPStorage.Timeout, false},
+		{"explicit total deadline", &config.TimeoutConfig{TimeoutOption: &config.TimeoutConfig_Duration{Duration: durationpb.New(75 * time.Millisecond)}}, true},
+	} {
+		for _, method := range []string{"GET", "PUT"} {
+			t.Run(tc.name+"/"+method, func(t *testing.T) {
+				store, err := NewHTTP(&config.HTTPStorage{Timeout: tc.timeout})
+				if err != nil {
+					t.Fatal(err)
+				}
+				var transferErr error
+				if method == "GET" {
+					file := filepath.Join(t.TempDir(), "input")
+					_, transferErr = store.Get(context.Background(), server.URL, file)
+					if transferErr == nil {
+						data, err := os.ReadFile(file)
+						if err != nil || string(data) != "firstsecond" {
+							t.Fatalf("download = %q, error = %v", data, err)
+						}
+					}
+				} else {
+					_, transferErr = store.Put(context.Background(), server.URL, writeTestFile(t, "upload"))
+				}
+				if (transferErr != nil) != tc.wantError {
+					t.Fatalf("transfer error = %v, want error = %v", transferErr, tc.wantError)
+				}
+			})
+		}
+	}
+}
+
+func TestHTTPUploadCancellation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, err := io.Copy(io.Discard, r.Body)
+		if err != nil {
+			t.Errorf("read upload body: %v", err)
+		}
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+	store, err := NewHTTP(config.DefaultConfig().HTTPStorage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	_, err = store.Put(ctx, server.URL, writeTestFile(t, "upload"))
+	if err == nil || !strings.Contains(err.Error(), "context deadline exceeded") {
+		t.Fatalf("expected cancellation, got %v", err)
+	}
+}
+
+func TestHTTPDelayedResponseHeaders(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(200 * time.Millisecond)
+		writeTestResponse(t, w, []byte("complete"))
+	}))
+	defer server.Close()
+	store, err := NewHTTP(config.DefaultConfig().HTTPStorage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(t.TempDir(), "input")
+	if _, err := store.Get(context.Background(), server.URL, file); err != nil {
+		t.Fatalf("delayed headers: %v", err)
+	}
+	data, err := os.ReadFile(file)
+	if err != nil || string(data) != "complete" {
+		t.Fatalf("download = %q, error = %v", data, err)
+	}
+}
+
+func TestHTTPResponseHeaderTimeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(200 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	store, err := NewHTTP(config.DefaultConfig().HTTPStorage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport := store.client.Transport.(*http.Transport)
+	if transport.ResponseHeaderTimeout != time.Minute {
+		t.Fatalf("header timeout = %s, want 1 minute", transport.ResponseHeaderTimeout)
+	}
+	transport.ResponseHeaderTimeout = 50 * time.Millisecond
+	_, err = store.Get(context.Background(), server.URL, filepath.Join(t.TempDir(), "input"))
+	if err == nil || !strings.Contains(err.Error(), "timeout") {
+		t.Fatalf("expected response header timeout, got %v", err)
+	}
+}
+
 func newTestHTTP(t *testing.T) *HTTP {
 	t.Helper()
 	store, err := NewHTTP(&config.HTTPStorage{
@@ -127,7 +242,11 @@ func TestHTTPPutUploadsWithContentLength(t *testing.T) {
 		if r.ContentLength != int64(len(content)) {
 			t.Errorf("content length = %d, want %d", r.ContentLength, len(content))
 		}
-		body, _ := io.ReadAll(r.Body)
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read upload body: %v", err)
+			return
+		}
 		if string(body) != content {
 			t.Errorf("body = %q, want %q", body, content)
 		}
@@ -176,7 +295,7 @@ func TestHTTPPutUploadsEmptyFile(t *testing.T) {
 func TestHTTPPutReportsRejection(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
-		io.WriteString(w, "<Error><Code>SignatureDoesNotMatch</Code></Error>")
+		writeTestResponse(t, w, []byte("<Error><Code>SignatureDoesNotMatch</Code></Error>"))
 	}))
 	defer server.Close()
 
@@ -208,7 +327,11 @@ func TestHTTPPutFollowsRedirectWithBody(t *testing.T) {
 		if len(r.TransferEncoding) != 0 || r.ContentLength != int64(len(content)) {
 			t.Errorf("transfer encoding = %v, content length = %d, want none and %d", r.TransferEncoding, r.ContentLength, len(content))
 		}
-		body, _ := io.ReadAll(r.Body)
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read upload body: %v", err)
+			return
+		}
 		if string(body) != content {
 			t.Errorf("body = %q, want %q", body, content)
 		}
@@ -264,7 +387,7 @@ func TestHTTPPutStopsAtRedirectToGet(t *testing.T) {
 func TestHTTPGetFollowsRedirect(t *testing.T) {
 	content := "redirected download\n"
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		io.WriteString(w, content)
+		writeTestResponse(t, w, []byte(content))
 	}))
 	defer target.Close()
 
@@ -277,7 +400,10 @@ func TestHTTPGetFollowsRedirect(t *testing.T) {
 	if _, err := newTestHTTP(t).Get(context.Background(), gateway.URL+"/download/token/input.txt", dest); err != nil {
 		t.Fatal("Unexpected error for Get call:", err)
 	}
-	got, _ := os.ReadFile(dest)
+	got, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if string(got) != content {
 		t.Errorf("downloaded %q, want %q", got, content)
 	}

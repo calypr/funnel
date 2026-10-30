@@ -15,10 +15,19 @@ import (
 
 func TestFTPStorage(t *testing.T) {
 	tests.SetLogOutput(log, t)
-	defer os.RemoveAll("./test_tmp")
-	defer os.RemoveAll("../ftp-test-server/_scratch/ftp-test/bob/test-output-directory")
-	defer os.RemoveAll("../ftp-test-server/_scratch/ftp-test/bob/test-output-file.txt")
-	defer os.RemoveAll("../ftp-test-server/_scratch/ftp-test/bob/testdata")
+	defer func() {
+		for _, path := range []string{
+			"./test_tmp",
+			"../ftp-test-server/_scratch/ftp-test/bob/test-output-directory",
+			"../ftp-test-server/_scratch/ftp-test/bob/test-output-file.txt",
+			"../ftp-test-server/_scratch/ftp-test/bob/testdata",
+		} {
+			err := os.RemoveAll(path)
+			if err != nil {
+				t.Errorf("remove FTP test artifact %s: %v", path, err)
+			}
+		}
+	}()
 
 	if !conf.FTPStorage.Valid() {
 		t.Skipf("Skipping FTP storage e2e tests...")
@@ -47,7 +56,7 @@ func TestFTPStorage(t *testing.T) {
 	dPath := "testdata/test_dir"
 	inDirURL := protocol + testBucket + "/" + dPath
 	_, err = worker.UploadOutputs(ctx, []*tes.Output{
-		{Url: inDirURL, Path: dPath, Type: tes.Directory},
+		{Url: inDirURL, Path: dPath, Type: tes.Directory.Enum()},
 	}, store, ev, parallelXfer)
 	if err != nil {
 		t.Fatal("error uploading test directory:", err)
@@ -74,12 +83,12 @@ func TestFTPStorage(t *testing.T) {
 			{
 				Path: "/opt/workdir/test-output-file.txt",
 				Url:  outFileURL,
-				Type: tes.FileType_FILE,
+				Type: tes.FileType_FILE.Enum(),
 			},
 			{
 				Path: "/opt/workdir/test-output-directory",
 				Url:  outDirURL,
-				Type: tes.FileType_DIRECTORY,
+				Type: tes.FileType_DIRECTORY.Enum(),
 			},
 		},
 		Executors: []*tes.Executor{
@@ -161,7 +170,7 @@ func TestFTPStorage(t *testing.T) {
 			{
 				Path: "/opt/workdir/this/path/does/not/exist/test-output-directory",
 				Url:  outDirURL,
-				Type: tes.FileType_DIRECTORY,
+				Type: tes.FileType_DIRECTORY.Enum(),
 			},
 		},
 		Executors: []*tes.Executor{
@@ -197,10 +206,19 @@ func TestFTPStorage(t *testing.T) {
 // Test FTP storage with auth configured via Funnel config.
 func TestFTPStorageConfigAuth(t *testing.T) {
 	tests.SetLogOutput(log, t)
-	defer os.RemoveAll("./test_tmp")
-	defer os.RemoveAll("../ftp-test-server/_scratch/ftp-test/bob/test-output-directory")
-	defer os.RemoveAll("../ftp-test-server/_scratch/ftp-test/bob/test-output-file.txt")
-	defer os.RemoveAll("../ftp-test-server/_scratch/ftp-test/bob/testdata")
+	defer func() {
+		for _, path := range []string{
+			"./test_tmp",
+			"../ftp-test-server/_scratch/ftp-test/bob/test-output-directory",
+			"../ftp-test-server/_scratch/ftp-test/bob/test-output-file.txt",
+			"../ftp-test-server/_scratch/ftp-test/bob/testdata",
+		} {
+			err := os.RemoveAll(path)
+			if err != nil {
+				t.Errorf("remove FTP test artifact %s: %v", path, err)
+			}
+		}
+	}()
 
 	conf := tests.DefaultConfig()
 
@@ -237,7 +255,7 @@ func TestFTPStorageConfigAuth(t *testing.T) {
 	dPath := "testdata/test_dir"
 	inDirURL := protocol + testBucket + "/" + dPath
 	_, err = worker.UploadOutputs(ctx, []*tes.Output{
-		{Url: inDirURL, Path: dPath, Type: tes.Directory},
+		{Url: inDirURL, Path: dPath, Type: tes.Directory.Enum()},
 	}, store, ev, parallelXfer)
 	if err != nil {
 		t.Fatal("error uploading test directory:", err)
@@ -264,12 +282,12 @@ func TestFTPStorageConfigAuth(t *testing.T) {
 			{
 				Path: "/opt/workdir/test-output-file.txt",
 				Url:  outFileURL,
-				Type: tes.FileType_FILE,
+				Type: tes.FileType_FILE.Enum(),
 			},
 			{
 				Path: "/opt/workdir/test-output-directory",
 				Url:  outDirURL,
-				Type: tes.FileType_DIRECTORY,
+				Type: tes.FileType_DIRECTORY.Enum(),
 			},
 		},
 		Executors: []*tes.Executor{
@@ -351,7 +369,7 @@ func TestFTPStorageConfigAuth(t *testing.T) {
 			{
 				Path: "/opt/workdir/this/path/does/not/exist/test-output-directory",
 				Url:  outDirURL,
-				Type: tes.FileType_DIRECTORY,
+				Type: tes.FileType_DIRECTORY.Enum(),
 			},
 		},
 		Executors: []*tes.Executor{

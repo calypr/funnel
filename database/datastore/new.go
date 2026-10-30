@@ -2,6 +2,7 @@ package datastore
 
 import (
 	"context"
+	"log"
 
 	"cloud.google.com/go/datastore"
 	"github.com/calypr/funnel/config"
@@ -35,5 +36,8 @@ func (db *Datastore) Init() error {
 }
 
 func (db *Datastore) Close() {
-	db.client.Close()
+	err := db.client.Close()
+	if err != nil {
+		log.Printf("closing Datastore client: %v", err)
+	}
 }

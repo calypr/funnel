@@ -38,6 +38,9 @@ type Executor struct {
 	StoragePlan *storageplan.Plan
 	// "docker" or "kubernetes"
 	Backend string
+	// ComputeBackend identifies the configured task compute backend, such as
+	// local or aws-batch. GPU handling differs between these backends.
+	ComputeBackend string
 	// Kubernetes executor template
 	Template string
 	// Kubernetes persistent volume template
@@ -48,6 +51,8 @@ type Executor struct {
 	Namespace string
 	// Funnel Worker + Executor namespace
 	JobsNamespace string
+	// ExecutionOwner identifies the worker pod that owns the task execution claim.
+	ExecutionOwner *events.ExecutionOwner
 	// Kubernetes service account name
 	ServiceAccount string
 	// Kubernetes service account template
@@ -88,6 +93,7 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 	//      but, it's also difficult to report the failure usefully.
 	if run.syserr != nil {
 		// Best-effort: if the task ID is unknown there's no other reporting channel.
+		//nolint:errcheck // There is no task ID or alternate channel to report this failure through.
 		_ = r.EventWriter.WriteEvent(pctx, events.NewSystemLog("unknown", 0, 0, "error",
 			"failed to get task. ID unknown", map[string]string{
 				"error": run.syserr.Error(),
@@ -123,7 +129,7 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 	}
 	claimed := false
 	if !localTask {
-		claimed, run.syserr = r.ExecutionClaimer.ClaimExecution(pctx, task.Id)
+		claimed, run.syserr = r.ExecutionClaimer.ClaimExecution(pctx, task.Id, r.Executor.ExecutionOwner)
 		if run.syserr != nil {
 			return fmt.Errorf("claim task execution: %w", run.syserr)
 		}
@@ -138,20 +144,25 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 	if r.Conf.ScratchPath != "" {
 		scratchAbsDir, err := filepath.Abs(r.Conf.ScratchPath)
 		if err != nil {
-			return err
+			run.syserr = fmt.Errorf("resolve scratch path: %w", err)
+		} else {
+			mapper.ScratchDir = filepath.Join(scratchAbsDir, filepath.Join(r.Conf.WorkDir, task.GetId()))
 		}
-		mapper.ScratchDir = filepath.Join(scratchAbsDir, filepath.Join(r.Conf.WorkDir, task.GetId()))
 	}
 
-	_ = event.Info("Version", version.LogFields()...)
+	_ = event.Info("Version", version.LogFields()...) //nolint:errcheck // Informational logging must not change task execution.
 	if !claimed {
-		_ = event.State(tes.State_INITIALIZING)
+		err := event.State(tes.State_INITIALIZING)
+		if err != nil {
+			run.syserr = fmt.Errorf("recording task state %s: %w", tes.State_INITIALIZING, err)
+		}
 	}
-	_ = event.StartTime(time.Now())
+	_ = event.StartTime(time.Now()) //nolint:errcheck // Timing metadata must not change task execution.
 
 	if name, err := os.Hostname(); err == nil {
-		_ = event.Metadata(map[string]string{"hostname": name})
+		_ = event.Metadata(map[string]string{"hostname": name}) //nolint:errcheck // Host metadata is best-effort and must not change task execution.
 	}
+	writeBatchInstanceType(pctx, event)
 
 	// TODO: Increment taskgroup waitgroup, defer done on waitgroup
 	// Decrement taskgroup waitgroup on exit to make sure that the final logging step is called
@@ -160,22 +171,22 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 	// Run the final logging/state steps in a deferred function
 	// to ensure they always run, even if there's a missed error.
 	defer func() {
-		_ = event.EndTime(time.Now())
+		_ = event.EndTime(time.Now()) //nolint:errcheck // Timing metadata must not change the recorded task result.
 		var finalState tes.State
 		switch {
 		case errors.Is(context.Cause(run.ctx), errTaskCanceled):
 			// The task was canceled.
-			_ = event.Info("Canceled")
+			_ = event.Info("Canceled") //nolint:errcheck // Informational logging must not change task execution.
 			finalState = tes.State_CANCELED
 			runerr = errTaskCanceled
 		case run.syserr != nil:
 			// Something else failed
-			_ = event.Error("System error", "error", run.syserr)
+			_ = event.Error("System error", "error", run.syserr) //nolint:errcheck // The task error is already retained in run.syserr.
 			finalState = tes.State_SYSTEM_ERROR
 			runerr = run.syserr
 		case run.execerr != nil:
 			// One of the executors failed
-			_ = event.Error("Exec error", "error", run.execerr)
+			_ = event.Error("Exec error", "error", run.execerr) //nolint:errcheck // The executor error is already retained in run.execerr.
 			finalState = tes.State_EXECUTOR_ERROR
 			runerr = run.execerr
 		default:
@@ -187,14 +198,14 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 
 		// cleanup workdir
 		if !r.Conf.LeaveWorkDir {
-			_ = mapper.Cleanup()
+			_ = mapper.Cleanup() //nolint:errcheck // Work directory removal is best-effort cleanup after the task result is recorded.
 		}
 	}()
 
 	// Recover from panics
 	defer handlePanic(func(e error) {
-		fmt.Printf("%#v", e)
-		run.syserr = e
+		run.syserr = fmt.Errorf("task %s: %w", task.GetId(), e)
+		fmt.Fprintln(os.Stderr, run.syserr)
 	})
 
 	ctx, stopPolling := r.pollForCancel(pctx)
@@ -203,7 +214,11 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 
 	// Prepare file mapper, which maps task file URLs to host filesystem paths
 	if run.ok() {
-		run.syserr = mapper.MapTask(task)
+		executorBackend := r.Executor.Backend
+		if executorBackend == "" {
+			executorBackend = "docker"
+		}
+		run.syserr = mapper.MapTask(task, executorBackend)
 	}
 
 	if run.ok() {
@@ -215,25 +230,23 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 		run.syserr = DownloadInputs(ctx, mapper.Inputs, r.Store, event, int(r.Conf.MaxParallelTransfers))
 	}
 
-	if run.ok() && !claimed {
-		_ = event.State(tes.State_RUNNING)
-	}
-
 	// Create symlinks between the working directory and the Scratch Directory
 	if run.ok() && r.Conf.ScratchPath != "" {
 		err := mapper.CopyInputsToScratch(r.Conf.ScratchPath)
 		if err != nil {
-			return err
-		}
-		// Get the absolute path of the scratch directory
-		scratchAbsDir, err := filepath.Abs(r.Conf.ScratchPath)
-		if err != nil {
-			return err
-		}
-		// For every volume in mapper, add the Scratch Path prefix to the host path
-		for idx, v := range mapper.Volumes {
-			v.HostPath = filepath.Join(scratchAbsDir, v.HostPath)
-			mapper.Volumes[idx] = v
+			run.syserr = fmt.Errorf("copy inputs to scratch: %w", err)
+		} else {
+			// Get the absolute path of the scratch directory.
+			scratchAbsDir, err := filepath.Abs(r.Conf.ScratchPath)
+			if err != nil {
+				run.syserr = fmt.Errorf("resolve scratch path: %w", err)
+			} else {
+				// For every volume in mapper, add the Scratch Path prefix to the host path.
+				for idx, v := range mapper.Volumes {
+					v.HostPath = filepath.Join(scratchAbsDir, v.HostPath)
+					mapper.Volumes[idx] = v
+				}
+			}
 		}
 
 	}
@@ -290,7 +303,7 @@ func (r *DefaultWorker) openStepLogs(mapper *FileMapper, s *stepWorker, d *tes.E
 		stdin, err = mapper.CreateHostFile(d.Stdin)
 		s.Command.SetStdin(stdin)
 		if err != nil {
-			_ = s.Event.Error("Couldn't prepare log files", err)
+			_ = s.Event.Error("Couldn't prepare log files", err) //nolint:errcheck // Logging must not replace the file creation error returned below.
 			return err
 		}
 	}
@@ -300,7 +313,7 @@ func (r *DefaultWorker) openStepLogs(mapper *FileMapper, s *stepWorker, d *tes.E
 		stdout, err = mapper.CreateHostFile(d.Stdout)
 		s.Command.SetStdout(stdout)
 		if err != nil {
-			_ = s.Event.Error("Couldn't prepare log files", err)
+			_ = s.Event.Error("Couldn't prepare log files", err) //nolint:errcheck // Logging must not replace the file creation error returned below.
 			return err
 		}
 	}
@@ -310,7 +323,7 @@ func (r *DefaultWorker) openStepLogs(mapper *FileMapper, s *stepWorker, d *tes.E
 		stderr, err = mapper.CreateHostFile(d.Stderr)
 		s.Command.SetStderr(stderr)
 		if err != nil {
-			_ = s.Event.Error("Couldn't prepare log files", err)
+			_ = s.Event.Error("Couldn't prepare log files", err) //nolint:errcheck // Logging must not replace the file creation error returned below.
 			return err
 		}
 	}
@@ -358,7 +371,10 @@ func (r *DefaultWorker) pollForCancel(pctx context.Context) (context.Context, fu
 			case <-taskctx.Done():
 				return
 			case <-ticker.C:
-				state, _ := r.TaskReader.State(taskctx)
+				state, err := r.TaskReader.State(taskctx)
+				if err != nil {
+					continue
+				}
 				if tes.TerminalState(state) {
 					cancel(errTaskCanceled)
 					return
@@ -380,6 +396,7 @@ func (r *DefaultWorker) runExecutors(ctx context.Context, event *events.TaskWrit
 	if resources == nil {
 		resources = &tes.Resources{}
 	}
+	taskStarted := false
 
 	for i, d := range task.GetExecutors() {
 		// If a previous executor failed and its error was not to be ignored,
@@ -414,14 +431,16 @@ func (r *DefaultWorker) runExecutors(ctx context.Context, event *events.TaskWrit
 				Workdir: d.Workdir,
 				Name:    fmt.Sprintf("%s-%d", task.Id, i),
 				// TODO make RemoveContainer configurable
-				RemoveContainer: true,
-				Event:           event.NewExecutorWriter(uint32(i)),
-				DriverCommand:   r.Conf.Container.DriverCommand,
-				RunCommand:      r.Conf.Container.RunCommand,
-				PullCommand:     r.Conf.Container.PullCommand,
-				StopCommand:     r.Conf.Container.StopCommand,
-				Resources:       resources,
-				Command:         command,
+				RemoveContainer:  true,
+				Event:            event.NewExecutorWriter(uint32(i)),
+				DriverCommand:    r.Conf.Container.DriverCommand,
+				RunCommand:       r.Conf.Container.RunCommand,
+				ComputeBackend:   r.Executor.ComputeBackend,
+				PullCommand:      r.Conf.Container.PullCommand,
+				StopCommand:      r.Conf.Container.StopCommand,
+				Resources:        resources,
+				EnforceResources: r.Conf.Container.EnforceResources,
+				Command:          command,
 			}
 
 			// TODO: Hide this behind explicit flag/option in configuration
@@ -449,6 +468,18 @@ func (r *DefaultWorker) runExecutors(ctx context.Context, event *events.TaskWrit
 		}
 
 		if run.ok() {
+			if !taskStarted {
+				// RUNNING means the first executor is being dispatched. Its container
+				// or pod may still be starting.
+				if err := event.State(tes.State_RUNNING); err != nil {
+					run.syserr = fmt.Errorf("recording task state %s: %w", tes.State_RUNNING, err)
+					break
+				}
+				taskStarted = true
+			}
+			if !run.ok() {
+				break
+			}
 			err := s.Run(ctx)
 
 			if err != nil {
@@ -493,35 +524,58 @@ func (r *DefaultWorker) runExecutors(ctx context.Context, event *events.TaskWrit
 // how a user diagnoses the failure — but is skipped on system errors where the
 // worker itself is in a bad state.
 func (r *DefaultWorker) processOutputs(ctx context.Context, event *events.TaskWriter, mapper *FileMapper, run *helper) {
+	outputsAvailable := true
 	if run.syserr == nil {
 		for _, output := range mapper.Outputs {
-			fixLinks(mapper, output.Path)
-		}
-	}
-
-	if run.syserr == nil {
-		if err := resolveWildcards(mapper, r.Store); err != nil {
-			if run.execerr != nil {
-				_ = event.Error("Failed to resolve wildcard outputs after executor error", "error", err)
-			} else {
-				run.syserr = err
+			err := fixLinks(mapper, output.Path)
+			if err != nil {
+				outputsAvailable = false
+				if run.execerr != nil {
+					_ = event.Error("Failed to repair output symlink after executor error", "path", output.Path, "error", err) //nolint:errcheck // Preserve the executor result when reporting a secondary output error.
+				} else {
+					run.syserr = err
+				}
+				break
 			}
 		}
 	}
 
-	if run.syserr == nil && r.Conf.ScratchPath != "" {
-		_ = mapper.CopyOutputsToWorkDir(r.Conf.ScratchPath)
+	if run.syserr == nil && outputsAvailable {
+		unmatched, err := resolveWildcards(mapper, r.Store)
+		if err != nil {
+			if run.execerr != nil {
+				_ = event.Error("Failed to resolve wildcard outputs after executor error", "error", err) //nolint:errcheck // Preserve the executor result when reporting a secondary output error.
+			} else {
+				run.syserr = err
+			}
+		} else {
+			for _, pattern := range unmatched {
+				_ = event.Warn("output pattern matched no files", "path", pattern) //nolint:errcheck // A warning event must not change task execution.
+			}
+		}
+	}
+
+	if run.syserr == nil && outputsAvailable && r.Conf.ScratchPath != "" {
+		err := mapper.CopyOutputsToWorkDir(r.Conf.ScratchPath)
+		if err != nil {
+			outputsAvailable = false
+			if run.execerr != nil {
+				_ = event.Error("Failed to copy outputs after executor error", "error", err) //nolint:errcheck // Preserve the executor result when reporting a secondary output error.
+			} else {
+				run.syserr = fmt.Errorf("copy outputs from scratch: %w", err)
+			}
+		}
 	}
 
 	var outputLog []*tes.OutputFileLog
-	if run.syserr == nil {
+	if run.syserr == nil && outputsAvailable {
 		var uploadErr error
-		outputLog, uploadErr = UploadOutputs(ctx, mapper.Outputs, r.Store, event, int(r.Conf.MaxParallelTransfers))
+		outputLog, uploadErr = uploadOutputs(ctx, mapper.Outputs, r.Store, event, int(r.Conf.MaxParallelTransfers), mapper)
 		if uploadErr != nil {
 			if run.execerr != nil {
 				// The executor already failed; treat upload errors as warnings so the
 				// task is reported as EXECUTOR_ERROR rather than SYSTEM_ERROR.
-				_ = event.Error("Failed to upload outputs after executor error", "error", uploadErr)
+				_ = event.Error("Failed to upload outputs after executor error", "error", uploadErr) //nolint:errcheck // Preserve the executor result when reporting a secondary output error.
 			} else {
 				run.syserr = uploadErr
 			}
@@ -534,6 +588,13 @@ func (r *DefaultWorker) processOutputs(ctx context.Context, event *events.TaskWr
 	}
 
 	if len(outputLog) > 0 {
-		_ = event.Outputs(outputLog)
+		err := event.Outputs(outputLog)
+		if err != nil {
+			if run.execerr != nil {
+				_ = event.Error("Failed to record output files after executor error", "error", err) //nolint:errcheck // Preserve executor error precedence while reporting a secondary output error.
+			} else {
+				run.syserr = fmt.Errorf("recording output files: %w", err)
+			}
+		}
 	}
 }

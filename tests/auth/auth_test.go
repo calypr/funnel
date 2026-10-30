@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"os"
 	"strings"
 	"testing"
 
@@ -86,10 +85,8 @@ func TestBasicAuthFail(t *testing.T) {
 }
 
 func TestBasicAuthed(t *testing.T) {
-	os.Setenv("FUNNEL_SERVER_USER", "funnel")
-	os.Setenv("FUNNEL_SERVER_PASSWORD", "abc123")
-	defer os.Unsetenv("FUNNEL_SERVER_USER")
-	defer os.Unsetenv("FUNNEL_SERVER_PASSWORD")
+	t.Setenv("FUNNEL_SERVER_USER", "funnel")
+	t.Setenv("FUNNEL_SERVER_PASSWORD", "abc123")
 
 	conf := tests.DefaultConfig()
 	conf.Server.BasicAuth = []*config.BasicCredential{{User: "funnel", Password: "abc123"}}

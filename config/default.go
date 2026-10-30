@@ -12,7 +12,10 @@ import (
 
 // DefaultConfig returns configuration with simple defaults.
 func DefaultConfig() *Config {
-	cwd, _ := os.Getwd()
+	cwd, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
 	workDir := path.Join(cwd, "funnel-work-dir")
 
 	allowedDirs := []string{cwd}
@@ -88,6 +91,8 @@ func DefaultConfig() *Config {
 			Container: &ContainerConfig{
 				DriverCommand: "docker",
 				RunCommand: "run -i --read-only " +
+					"{{.GPUArgs}} " +
+					"{{if and .EnforceResources .Resources}}{{if gt .Resources.CpuCores 0}}--cpus {{.Resources.CpuCores}}{{end}} {{if .MemoryMB}}--memory {{.MemoryMB}}m --memory-swap {{.MemoryMB}}m{{end}}{{end}} " +
 					// Writable scratch space scoped to this executor container.
 					"{{if .NeedsTmpfs}}--tmpfs /tmp{{end}} " +
 					// Remove container after it exits
@@ -159,9 +164,7 @@ func DefaultConfig() *Config {
 		},
 		HTTPStorage: &HTTPStorage{
 			Timeout: &TimeoutConfig{
-				TimeoutOption: &TimeoutConfig_Duration{
-					Duration: durationpb.New(time.Second * 60),
-				},
+				TimeoutOption: &TimeoutConfig_Disabled{Disabled: true},
 			},
 		},
 		FTPStorage: &FTPStorage{

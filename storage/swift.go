@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -142,7 +143,7 @@ func (sw *Swift) List(ctx context.Context, url string) ([]*Object, error) {
 }
 
 // Get copies an object from storage to the host path.
-func (sw *Swift) Get(ctx context.Context, url, path string) (*Object, error) {
+func (sw *Swift) Get(ctx context.Context, url, path string) (obj *Object, retErr error) {
 	u, err := sw.parse(url)
 	if err != nil {
 		return nil, err
@@ -151,7 +152,7 @@ func (sw *Swift) Get(ctx context.Context, url, path string) (*Object, error) {
 	var checkHash = true
 	var headers swift.Headers
 
-	obj, err := sw.Stat(ctx, url)
+	obj, err = sw.Stat(ctx, url)
 	if err != nil {
 		return nil, err
 	}
@@ -160,7 +161,12 @@ func (sw *Swift) Get(ctx context.Context, url, path string) (*Object, error) {
 	if err != nil {
 		return nil, &swiftError{"initiating download", url, err}
 	}
-	defer f.Close()
+	defer func() {
+		err := f.Close()
+		if err != nil {
+			retErr = errors.Join(retErr, &swiftError{"closing download", url, err})
+		}
+	}()
 
 	dest, err := os.Create(path)
 	if err != nil {
@@ -192,7 +198,7 @@ func (sw *Swift) Put(ctx context.Context, url, path string) (*Object, error) {
 	if err != nil {
 		return nil, &swiftError{"opening host file", url, err}
 	}
-	defer reader.Close()
+	defer reader.Close() //nolint:errcheck // The upload source is read-only, so close cannot change uploaded data.
 
 	var writer io.WriteCloser
 	var checkHash = true
@@ -245,6 +251,11 @@ func (sw *Swift) UnsupportedOperations(url string) UnsupportedOperations {
 	if err != nil {
 		return AllUnsupported(err)
 	}
+	if !sw.conn.Authenticated() {
+		if err := sw.conn.Authenticate(context.Background()); err != nil {
+			return AllUnsupported(&swiftError{"authentication failed", url, err})
+		}
+	}
 	_, _, err = sw.conn.Container(context.Background(), u.bucket)
 	if err != nil {
 		return AllUnsupported(&swiftError{"looking for bucket", url, err})
@@ -282,3 +293,5 @@ type swiftError struct {
 func (s *swiftError) Error() string {
 	return fmt.Sprintf("swift: %s for URL %q: %v", s.msg, s.url, s.err)
 }
+
+func (s *swiftError) Unwrap() error { return s.err }

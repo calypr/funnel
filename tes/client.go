@@ -61,8 +61,10 @@ type Client struct {
 func (c *Client) GetTask(ctx context.Context, req *GetTaskRequest) (*Task, error) {
 	// Send request
 	u := c.address + "/v1/tasks/" + req.Id + "?view=" + req.View
-	hreq, _ := http.NewRequest("GET", u, nil)
-	hreq = hreq.WithContext(ctx)
+	hreq, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, fmt.Errorf("tes: creating GET request: %w", err)
+	}
 	hreq.SetBasicAuth(c.User, c.Password)
 	body, err := util.CheckHTTPResponse(c.client.Do(hreq))
 	if err != nil {
@@ -97,8 +99,10 @@ func (c *Client) ListTasks(ctx context.Context, req *ListTasksRequest) (*ListTas
 
 	// Send request
 	u := c.address + "/v1/tasks?" + v.Encode()
-	hreq, _ := http.NewRequest("GET", u, nil)
-	hreq = hreq.WithContext(ctx)
+	hreq, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, fmt.Errorf("tes: creating GET request: %w", err)
+	}
 	hreq.SetBasicAuth(c.User, c.Password)
 	body, err := util.CheckHTTPResponse(c.client.Do(hreq))
 	if err != nil {
@@ -127,8 +131,10 @@ func (c *Client) CreateTask(ctx context.Context, task *Task) (*CreateTaskRespons
 
 	// Send request
 	u := c.address + "/v1/tasks"
-	hreq, _ := http.NewRequest("POST", u, bytes.NewReader(b))
-	hreq = hreq.WithContext(ctx)
+	hreq, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(b))
+	if err != nil {
+		return nil, fmt.Errorf("tes: creating POST request: %w", err)
+	}
 	hreq.Header.Add("Content-Type", "application/json")
 	hreq.SetBasicAuth(c.User, c.Password)
 	body, err := util.CheckHTTPResponse(c.client.Do(hreq))
@@ -163,8 +169,10 @@ type CancelTaskResult struct {
 // CancelTaskWithMessage POSTs to /v1/tasks/{id}:cancel and returns any informational message
 func (c *Client) CancelTaskWithMessage(ctx context.Context, req *CancelTaskRequest) (*CancelTaskResult, error) {
 	u := c.address + "/v1/tasks/" + req.Id + ":cancel"
-	hreq, _ := http.NewRequest("POST", u, nil)
-	hreq = hreq.WithContext(ctx)
+	hreq, err := http.NewRequestWithContext(ctx, http.MethodPost, u, nil)
+	if err != nil {
+		return nil, fmt.Errorf("tes: creating POST request: %w", err)
+	}
 	hreq.Header.Add("Content-Type", "application/json")
 	hreq.SetBasicAuth(c.User, c.Password)
 
@@ -173,7 +181,7 @@ func (c *Client) CancelTaskWithMessage(ctx context.Context, req *CancelTaskReque
 	if err != nil {
 		return nil, err
 	}
-	defer httpResp.Body.Close()
+	defer httpResp.Body.Close() //nolint:errcheck // The response body is read-only cleanup after response handling.
 
 	body, err := util.CheckHTTPResponse(httpResp, err)
 	if err != nil {
@@ -211,8 +219,10 @@ func (c *Client) CancelTaskWithMessage(ctx context.Context, req *CancelTaskReque
 // GetServiceInfo returns result of GET /v1/service-info
 func (c *Client) GetServiceInfo(ctx context.Context, req *GetServiceInfoRequest) (*ServiceInfo, error) {
 	u := c.address + "/v1/service-info"
-	hreq, _ := http.NewRequest("GET", u, nil)
-	hreq = hreq.WithContext(ctx)
+	hreq, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, fmt.Errorf("tes: creating GET request: %w", err)
+	}
 	hreq.SetBasicAuth(c.User, c.Password)
 	body, err := util.CheckHTTPResponse(c.client.Do(hreq))
 	if err != nil {

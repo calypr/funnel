@@ -1,8 +1,10 @@
 package util
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"dario.cat/mergo"
 	"github.com/calypr/funnel/config"
@@ -47,6 +49,9 @@ func MergeConfigFileWithFlags(file string, flagConf *config.Config) (*config.Con
 	if err != nil {
 		return conf, err
 	}
+	if strings.HasPrefix(conf.GetWorker().GetWorkDir(), "~") {
+		return conf, fmt.Errorf("Worker.WorkDir %q starts with ~, which is not expanded; use an explicit path", conf.Worker.WorkDir)
+	}
 
 	if conf.Server.RPCAddress() != defaults.Server.RPCAddress() {
 		if conf.Server.RPCAddress() != conf.RPCClient.ServerAddress {
@@ -68,7 +73,8 @@ func TempConfigFile(c *config.Config, name string) (path string, cleanup func())
 	}
 
 	cleanup = func() {
-		os.RemoveAll(tmpdir)
+		//nolint:errcheck // removing the temporary config directory is best-effort test cleanup.
+		_ = os.RemoveAll(tmpdir)
 	}
 
 	p := filepath.Join(tmpdir, name)

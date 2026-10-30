@@ -23,7 +23,10 @@ func NewKafkaWriter(ctx context.Context, conf *config.Kafka) (*KafkaWriter, erro
 	}
 	go func() {
 		<-ctx.Done()
-		producer.Close()
+		err := producer.Close()
+		if err != nil {
+			log.Printf("kafka writer close after context cancellation: %v", err)
+		}
 	}()
 	return &KafkaWriter{conf, producer}, nil
 }
@@ -52,7 +55,10 @@ func (k *KafkaWriter) WriteEvent(ctx context.Context, ev *Event) error {
 }
 
 func (k *KafkaWriter) Close() {
-	k.producer.Close()
+	err := k.producer.Close()
+	if err != nil {
+		log.Printf("close kafka writer: %v", err)
+	}
 }
 
 // KafkaReader reads events to a Kafka topic and writes them
@@ -85,14 +91,23 @@ func NewKafkaReader(ctx context.Context, conf *config.Kafka, w Writer) (*KafkaRe
 				log.Printf("kafka: dropping malformed event message at offset %d: %v", msg.Offset, err)
 				continue
 			}
-			_ = w.WriteEvent(context.Background(), ev)
+			err = w.WriteEvent(context.Background(), ev)
+			if err != nil {
+				log.Printf("kafka: dropping event at offset %d after write failure: %v", msg.Offset, err)
+			}
 		}
 	}()
 
 	go func() {
 		<-ctx.Done()
-		con.Close()
-		p.Close()
+		err := con.Close()
+		if err != nil {
+			log.Printf("close kafka consumer: %v", err)
+		}
+		err = p.Close()
+		if err != nil {
+			log.Printf("close kafka partition consumer: %v", err)
+		}
 	}()
 	return &KafkaReader{conf, con, p}, nil
 }

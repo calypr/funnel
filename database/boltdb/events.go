@@ -102,7 +102,11 @@ func (taskBolt *BoltDB) WriteEvent(ctx context.Context, req *events.Event) error
 		})
 
 	case events.Type_TASK_METADATA:
-		tl.Metadata = req.GetMetadata().Value
+		metadata := req.GetMetadata().Value
+		if _, reserved := metadata[events.ExecutionOwnerMetadataKey]; reserved {
+			return fmt.Errorf("task metadata key %q is reserved", events.ExecutionOwnerMetadataKey)
+		}
+		tl.Metadata = metadata
 		err = taskBolt.db.Update(func(tx *bolt.Tx) error {
 			return updateTaskLogs(tx, req.Id, tl)
 		})

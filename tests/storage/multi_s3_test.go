@@ -14,7 +14,7 @@ import (
 
 func TestMultiS3Storage(t *testing.T) {
 	tests.SetLogOutput(log, t)
-	defer os.RemoveAll("./test_tmp")
+	defer os.RemoveAll("./test_tmp") //nolint:errcheck // per-test scratch files are disposable; cleanup failure cannot change the assertions.
 
 	if len(conf.GenericS3) == 2 {
 		if !conf.GenericS3[0].Valid() && !conf.GenericS3[1].Valid() {
@@ -40,7 +40,10 @@ func TestMultiS3Storage(t *testing.T) {
 		t.Fatal("error creating test bucket:", err)
 	}
 	defer func() {
-		gclient1.deleteBucket(testBucket)
+		err := gclient1.deleteBucket(testBucket)
+		if err != nil {
+			t.Errorf("delete test bucket from first backend: %v", err)
+		}
 	}()
 
 	gconf2 := conf.GenericS3[1]
@@ -53,7 +56,10 @@ func TestMultiS3Storage(t *testing.T) {
 		t.Fatal("error creating test bucket:", err)
 	}
 	defer func() {
-		gclient2.deleteBucket(testBucket)
+		err := gclient2.deleteBucket(testBucket)
+		if err != nil {
+			t.Errorf("delete test bucket from second backend: %v", err)
+		}
 	}()
 
 	// Stage input files
@@ -70,7 +76,7 @@ func TestMultiS3Storage(t *testing.T) {
 
 	g2FileURL := protocol + gconf2.Endpoint + "/" + testBucket + "/" + fPath + tests.RandomString(6)
 	_, err = worker.UploadOutputs(ctx, []*tes.Output{
-		{Url: g2FileURL, Path: fPath, Type: tes.Directory},
+		{Url: g2FileURL, Path: fPath, Type: tes.Directory.Enum()},
 	}, gclient2.fcli, ev, parallelXfer)
 	if err != nil {
 		t.Fatal("error uploading test file:", err)
@@ -96,7 +102,7 @@ func TestMultiS3Storage(t *testing.T) {
 			{
 				Path: "/opt/workdir/test-output-file.txt",
 				Url:  outFileURL,
-				Type: tes.FileType_FILE,
+				Type: tes.FileType_FILE.Enum(),
 			},
 		},
 		Executors: []*tes.Executor{
@@ -165,7 +171,7 @@ func TestMultiS3Storage(t *testing.T) {
 			{
 				Path: "/opt/workdir/test-output-file.txt",
 				Url:  outFileURL,
-				Type: tes.FileType_FILE,
+				Type: tes.FileType_FILE.Enum(),
 			},
 		},
 		Executors: []*tes.Executor{

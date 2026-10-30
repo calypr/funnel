@@ -16,7 +16,7 @@ import (
 
 func TestSwiftStorage(t *testing.T) {
 	tests.SetLogOutput(log, t)
-	defer os.RemoveAll("./test_tmp")
+	defer os.RemoveAll("./test_tmp") //nolint:errcheck // per-test scratch files are disposable; cleanup failure cannot change the assertions.
 
 	if !conf.Swift.Valid() {
 		t.Skipf("Skipping swift e2e tests...")
@@ -36,7 +36,10 @@ func TestSwiftStorage(t *testing.T) {
 		t.Fatal("error creating test bucket:", err)
 	}
 	defer func() {
-		client.deleteBucket(testBucket)
+		err := client.deleteBucket(testBucket)
+		if err != nil {
+			t.Errorf("delete test bucket %s: %v", testBucket, err)
+		}
 	}()
 
 	protocol := "swift://"
@@ -58,7 +61,7 @@ func TestSwiftStorage(t *testing.T) {
 	dPath := "testdata/test_dir"
 	inDirURL := protocol + testBucket + "/" + dPath
 	_, err = worker.UploadOutputs(ctx, []*tes.Output{
-		{Url: inDirURL, Path: dPath, Type: tes.Directory},
+		{Url: inDirURL, Path: dPath, Type: tes.Directory.Enum()},
 	}, store, ev, parallelXfer)
 	if err != nil {
 		t.Fatal("error uploading test directory:", err)
@@ -85,12 +88,12 @@ func TestSwiftStorage(t *testing.T) {
 			{
 				Path: "/opt/workdir/test-output-file.txt",
 				Url:  outFileURL,
-				Type: tes.FileType_FILE,
+				Type: tes.FileType_FILE.Enum(),
 			},
 			{
 				Path: "/opt/workdir/test-output-directory",
 				Url:  outDirURL,
-				Type: tes.FileType_DIRECTORY,
+				Type: tes.FileType_DIRECTORY.Enum(),
 			},
 		},
 		Executors: []*tes.Executor{
@@ -172,7 +175,7 @@ func TestSwiftStorage(t *testing.T) {
 			{
 				Path: "/opt/workdir/this/path/does/not/exist/test-output-directory",
 				Url:  outDirURL,
-				Type: tes.FileType_DIRECTORY,
+				Type: tes.FileType_DIRECTORY.Enum(),
 			},
 		},
 		Executors: []*tes.Executor{

@@ -1,6 +1,7 @@
 package termdash
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -26,6 +27,12 @@ var (
 func (d *dashboard) View() string {
 	if d.width == 0 {
 		return "loading..."
+	}
+	if d.mode == modeConfirmCancel {
+		return fmt.Sprintf("Cancel task %s? [y/N]", d.cancelID)
+	}
+	if d.mode == modeNodes || d.mode == modeNodeExpanded {
+		return d.nodesView()
 	}
 
 	var b strings.Builder
@@ -87,6 +94,9 @@ func (d *dashboard) headerView() string {
 	if d.err != "" {
 		b.WriteString(errTextStyle.Render(d.err) + "\n")
 	}
+	if d.message != "" {
+		b.WriteString(d.message + "\n")
+	}
 	return b.String()
 }
 
@@ -118,7 +128,7 @@ func (d *dashboard) footerView() string {
 		sortDir = "desc"
 	}
 	return dimStyle.Render(fmt.Sprintf(
-		"%d tasks | sort: %s (%s) | [j/k] move [enter] expand [f] filter [s] sort [r] reverse [a] all [n/p] page [h] help [q] quit",
+		"%d tasks | sort: %s (%s) | [j/k] move [enter] expand [c] cancel [w] workers [f] filter [s] sort [r] reverse [a] all [n/p] page [h] help [q] quit",
 		len(d.tasks), d.sortField, sortDir))
 }
 
@@ -149,6 +159,8 @@ func (d *dashboard) helpView() string {
   pgup/pgdn        Scroll page
   g/home, G/end    Jump to first/last task
   enter            Expand task (full JSON)
+  c                Cancel selected task
+  w                View scheduler workers
   esc, q           Back / quit
   f                Filter tasks (enter applies, esc clears)
   a                Toggle showing all tasks
@@ -158,6 +170,61 @@ func (d *dashboard) helpView() string {
   H                Toggle header
 
 ` + dimStyle.Render("press any key to return")
+}
+
+func (d *dashboard) nodesView() string {
+	total := len(d.nodes) + len(d.taskWorkers)
+	if d.mode == modeNodeExpanded && d.nodeSelected < total {
+		var data []byte
+		var err error
+		var title string
+		if d.nodeSelected < len(d.nodes) {
+			node := d.nodes[d.nodeSelected]
+			data, err = (protojson.MarshalOptions{Multiline: true, Indent: "  "}).Marshal(node)
+			title = "Worker " + node.Id
+		} else {
+			worker := d.taskWorkers[d.nodeSelected-len(d.nodes)]
+			data, err = json.MarshalIndent(worker, "", "  ")
+			title = "Recorded task worker " + worker.TaskID
+		}
+		if err != nil {
+			return fmt.Sprintf("Cannot format worker: %v", err)
+		}
+		lines := strings.Split(string(data), "\n")
+		start := minInt(d.expOffset, maxInt(0, len(lines)-d.expMaxLines()))
+		end := minInt(len(lines), start+d.expMaxLines())
+		return fmt.Sprintf("%s  [esc] back\n%s\n", title, strings.Join(lines[start:end], "\n"))
+	}
+	var b strings.Builder
+	b.WriteString("Workers  [j/k] move [enter] details [esc] tasks\n")
+	b.WriteString("Scheduler nodes and recorded active task workers; task metadata may be stale.\n")
+	if d.err != "" {
+		b.WriteString(errTextStyle.Render(d.err) + "\n")
+	}
+	if total == 0 && d.err == "" {
+		if d.nodesInFlight {
+			b.WriteString("Loading workers...\n")
+		} else {
+			b.WriteString("No scheduler nodes or recorded active task workers.\n")
+		}
+	}
+	start := maxInt(0, d.nodeSelected-maxInt(1, d.height-4)+1)
+	end := minInt(total, start+maxInt(1, d.height-4))
+	for i := start; i < end; i++ {
+		var line string
+		if i < len(d.nodes) {
+			node := d.nodes[i]
+			line = fmt.Sprintf("scheduler  %-40s %-15s %s", truncate(node.Id, 40), node.State.String(), node.Hostname)
+		} else {
+			worker := d.taskWorkers[i-len(d.nodes)]
+			line = fmt.Sprintf("recorded   %-40s %-15s %s", truncate(worker.TaskID, 40), worker.State, worker.Hostname)
+		}
+		if i == d.nodeSelected {
+			line = selectedStyle.Render(line)
+		}
+		b.WriteString(line + "\n")
+	}
+	return b.String()
 }
 
 func (d *dashboard) expandedView() string {

@@ -81,7 +81,7 @@ func TestGenericS3PutFailedWriteCannotUseStaleDestination(t *testing.T) {
 	store := publicationS3(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPut {
 			w.WriteHeader(http.StatusForbidden)
-			io.WriteString(w, `<Error><Code>AccessDenied</Code><Message>write denied</Message></Error>`)
+			writeTestResponse(t, w, []byte(`<Error><Code>AccessDenied</Code><Message>write denied</Message></Error>`))
 			return
 		}
 		reads.Add(1)
@@ -116,7 +116,7 @@ func TestGenericS3PutDirectoryAcknowledgesEveryFile(t *testing.T) {
 				uploaded = append(uploaded, r.URL.Path)
 				if fail && r.URL.Path == "/outputs/task/b.txt" {
 					w.WriteHeader(http.StatusForbidden)
-					io.WriteString(w, `<Error><Code>AccessDenied</Code></Error>`)
+					writeTestResponse(t, w, []byte(`<Error><Code>AccessDenied</Code></Error>`))
 					return
 				}
 				w.Header().Set("ETag", `"receipt"`)
@@ -193,7 +193,7 @@ func TestGenericS3PutLocalReadabilityWaitHonorsCancellation(t *testing.T) {
 func TestGenericS3ListPropagatesObjectError(t *testing.T) {
 	store := publicationS3(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
-		io.WriteString(w, `<Error><Code>AccessDenied</Code><Message>list denied</Message></Error>`)
+		writeTestResponse(t, w, []byte(`<Error><Code>AccessDenied</Code><Message>list denied</Message></Error>`))
 	})
 	objects, err := store.List(context.Background(), "s3://outputs/task")
 	if err == nil || len(objects) != 0 {

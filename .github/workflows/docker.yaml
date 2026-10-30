@@ -52,11 +52,27 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
+      - name: Set Funnel version
+        id: funnel_version
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          if [[ "$REF_TYPE" == "tag" ]]; then
+            echo "value=$REF_NAME" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${COMMIT_SHA:0:8}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build and push by digest
         id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           platforms: ${{ matrix.platform }}
+          build-args: |
+            FUNNEL_VERSION=${{ steps.funnel_version.outputs.value }}
+            GIT_COMMIT=${{ github.sha }}
           labels: ${{ steps.meta.outputs.labels }}
           outputs: type=image,name=${{ env.QUAY_REPO }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=funnel-${{ env.PLATFORM_PAIR }}

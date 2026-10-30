@@ -46,7 +46,7 @@ func TestClaimExecutionIsDurableAndOneShot(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			claimed, err := db.ClaimExecution(ctx, "concurrent")
+			claimed, err := db.ClaimExecution(ctx, "concurrent", nil)
 			results <- claimed
 			errors <- err
 		}()
@@ -69,8 +69,8 @@ func TestClaimExecutionIsDurableAndOneShot(t *testing.T) {
 	if wins != 1 {
 		t.Fatalf("concurrent claims succeeded %d times, want once", wins)
 	}
-	assertBoltClaimState(t, db, ctx, "concurrent", tes.State_RUNNING, true)
-	if claimed, err := db.ClaimExecution(ctx, "concurrent"); err != nil || claimed {
+	assertBoltClaimState(t, db, ctx, "concurrent", tes.State_INITIALIZING, true)
+	if claimed, err := db.ClaimExecution(ctx, "concurrent", nil); err != nil || claimed {
 		t.Fatalf("retry claim = %t, %v; want false, nil", claimed, err)
 	}
 	if err := db.WriteEvent(ctx, events.NewState("concurrent", tes.State_COMPLETE)); err != nil {
@@ -80,14 +80,14 @@ func TestClaimExecutionIsDurableAndOneShot(t *testing.T) {
 	if err := db.WriteEvent(ctx, events.NewTaskCreated(&tes.Task{Id: "concurrent"})); err == nil {
 		t.Fatal("task creation reused an existing execution ID")
 	}
-	if claimed, err := db.ClaimExecution(ctx, "concurrent"); err != nil || claimed {
+	if claimed, err := db.ClaimExecution(ctx, "concurrent", nil); err != nil || claimed {
 		t.Fatalf("claim after terminal state = %t, %v; want false, nil", claimed, err)
 	}
 
-	if claimed, err := db.ClaimExecution(ctx, "initializing"); err != nil || !claimed {
+	if claimed, err := db.ClaimExecution(ctx, "initializing", nil); err != nil || !claimed {
 		t.Fatalf("initializing claim = %t, %v; want true, nil", claimed, err)
 	}
-	assertBoltClaimState(t, db, ctx, "initializing", tes.State_RUNNING, true)
+	assertBoltClaimState(t, db, ctx, "initializing", tes.State_INITIALIZING, true)
 
 	unauthorized := context.Background()
 	_, err = server.NewAuthentication(nil, nil, server.AccessOwner).Interceptor(unauthorized, nil, nil,
@@ -98,7 +98,7 @@ func TestClaimExecutionIsDurableAndOneShot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if claimed, err := db.ClaimExecution(unauthorized, "private"); err != tes.ErrNotPermitted || claimed {
+	if claimed, err := db.ClaimExecution(unauthorized, "private", nil); err != tes.ErrNotPermitted || claimed {
 		t.Fatalf("unauthorized claim = %t, %v; want false, not permitted", claimed, err)
 	}
 	assertBoltClaimState(t, db, ctx, "private", tes.State_QUEUED, false)
@@ -109,7 +109,7 @@ func TestClaimExecutionIsDurableAndOneShot(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if claimed, err := db.ClaimExecution(ctx, "rollback"); err == nil || claimed {
+	if claimed, err := db.ClaimExecution(ctx, "rollback", nil); err == nil || claimed {
 		t.Fatalf("claim with invalid marker slot = %t, %v; want false, error", claimed, err)
 	}
 	assertBoltClaimState(t, db, ctx, "rollback", tes.State_QUEUED, false)
@@ -118,7 +118,7 @@ func TestClaimExecutionIsDurableAndOneShot(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if claimed, err := db.ClaimExecution(ctx, "rollback"); err != nil || !claimed {
+	if claimed, err := db.ClaimExecution(ctx, "rollback", nil); err != nil || !claimed {
 		t.Fatalf("claim after rollback repair = %t, %v; want true, nil", claimed, err)
 	}
 }
@@ -147,7 +147,7 @@ func TestInitBackfillsLegacyExecutionClaims(t *testing.T) {
 	if err := db.Init(); err != nil {
 		t.Fatal(err)
 	}
-	if claimed, err := db.ClaimExecution(ctx, "legacy-running"); err != nil || claimed {
+	if claimed, err := db.ClaimExecution(ctx, "legacy-running", nil); err != nil || claimed {
 		t.Fatalf("legacy running claim = %t, %v; want false, nil", claimed, err)
 	}
 	assertBoltClaimState(t, db, ctx, "legacy-running", tes.State_RUNNING, true)

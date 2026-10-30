@@ -2,6 +2,7 @@ package boltdb
 
 import (
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/calypr/funnel/compute/scheduler"
@@ -175,5 +176,12 @@ func (taskBolt *BoltDB) Init() error {
 }
 
 func (taskBolt *BoltDB) Close() {
-	taskBolt.db.Close()
+	err := taskBolt.db.Close()
+	if err != nil {
+		if taskBolt.log != nil {
+			taskBolt.log.Error("closing BoltDB database", "error", err)
+		} else {
+			log.Printf("closing BoltDB database: %v", err)
+		}
+	}
 }
