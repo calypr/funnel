@@ -57,7 +57,11 @@ func TestMetrics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer hresp.Body.Close()
+	defer func() {
+		if err := hresp.Body.Close(); err != nil {
+			t.Errorf("close metrics response body: %v", err)
+		}
+	}()
 
 	parser := expfmt.TextParser{}
 	met, err := parser.TextToMetricFamilies(hresp.Body)
@@ -73,5 +77,7 @@ func TestMetrics(t *testing.T) {
 			}
 		}
 	}
-	pp.Println(met["funnel_tasks_state_count"].Metric)
+	if _, err := pp.Println(met["funnel_tasks_state_count"].Metric); err != nil {
+		t.Fatalf("print task state metrics: %v", err)
+	}
 }

@@ -270,7 +270,7 @@ func (s3b *AmazonS3) Put(ctx context.Context, url, path string) (*Object, error)
 			return nil, fmt.Errorf("amazonS3: opening file %v: %v", path, err)
 		}
 	}
-	defer hf.Close()
+	defer hf.Close() //nolint:errcheck // The source is read-only, so close cannot change the uploaded object.
 
 	uploadInput := &s3.PutObjectInput{
 		Bucket:               aws.String(u.bucket),

@@ -118,13 +118,18 @@ func TestWorkerFinalStateFailureRecoveryLive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
 	rpcServer := grpc.NewServer()
 	fixture := &rejectCompletionRPC{writer: db, claimer: db}
 	events.RegisterEventServiceServer(rpcServer, fixture)
 	tes.RegisterTaskServiceServer(rpcServer, &taskReaderRPC{database: db})
-	go func() { _ = rpcServer.Serve(listener) }()
-	defer rpcServer.Stop()
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- rpcServer.Serve(listener) }()
+	defer func() {
+		rpcServer.Stop()
+		if err := <-serveErr; err != nil {
+			t.Errorf("serve worker fixture RPC: %v", err)
+		}
+	}()
 	port := listener.Addr().(*net.TCPAddr).Port
 	workerConfig := config.EmptyConfig()
 	workerConfig.RPCClient.ServerAddress = fmt.Sprintf("host.k3d.internal:%d", port)

@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"path/filepath"
@@ -60,17 +61,26 @@ func TestListTasksLargeResponses(t *testing.T) {
 				}
 			}
 			listener := bufconn.Listen(1024 * 1024)
-			defer listener.Close()
 			rpc := grpc.NewServer(grpc.MaxSendMsgSize(8*1024*1024), grpc.UnaryInterceptor(server.NewAuthentication(nil, nil, server.AccessAll).Interceptor))
 			serviceConf := config.DefaultConfig()
 			tes.RegisterTaskServiceServer(rpc, &server.TaskService{Read: db, Config: serviceConf})
-			go func() { _ = rpc.Serve(listener) }()
-			defer rpc.Stop()
+			serveDone := make(chan error, 1)
+			go func() { serveDone <- rpc.Serve(listener) }()
+			defer func() {
+				rpc.Stop()
+				if err := <-serveDone; err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+					t.Errorf("serve list size test RPC: %v", err)
+				}
+			}()
 			connection, err := grpc.NewClient("passthrough:///list-size", grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) { return listener.Dial() }))
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer connection.Close()
+			defer func() {
+				if err := connection.Close(); err != nil {
+					t.Errorf("close list size test connection: %v", err)
+				}
+			}()
 			client := tes.NewTaskServiceClient(connection)
 			for _, view := range []string{"MINIMAL", "BASIC", "FULL"} {
 				t.Run(view, func(t *testing.T) {

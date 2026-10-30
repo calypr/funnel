@@ -156,8 +156,12 @@ func TestServeTaskViewsThroughGRPCGateway(t *testing.T) {
 	for {
 		resp, err := client.Get(base + "/healthz")
 		if err == nil {
-			_, _ = io.Copy(io.Discard, resp.Body)
-			resp.Body.Close()
+			if _, err := io.Copy(io.Discard, resp.Body); err != nil {
+				t.Fatal(err)
+			}
+			if err := resp.Body.Close(); err != nil {
+				t.Fatal(err)
+			}
 			break
 		}
 		if time.Now().After(deadline) {
@@ -181,7 +185,7 @@ func TestServeTaskViewsThroughGRPCGateway(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer resp.Body.Close()
+			defer resp.Body.Close() //nolint:errcheck // Read-only HTTP response cleanup cannot change the test assertions.
 			body, err := io.ReadAll(resp.Body)
 			if err != nil {
 				t.Fatal(err)

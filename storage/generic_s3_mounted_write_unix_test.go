@@ -44,7 +44,7 @@ func TestMountedWriteRejectsFIFOWithoutBlocking(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				defer unblock.Close()
+				closeTestResource(t, unblock)
 				select {
 				case <-result:
 				case <-time.After(time.Second):

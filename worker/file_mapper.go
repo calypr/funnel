@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -43,7 +44,11 @@ type Volume struct {
 // NewFileMapper returns a new FileMapper, which maps files into the given
 // base directory.
 func NewFileMapper(dir string) *FileMapper {
-	dir, _ = filepath.Abs(dir)
+	// A failed resolution leaves dir relative so MapTask can reject it before filesystem access.
+	absDir, err := filepath.Abs(dir)
+	if err == nil {
+		dir = absDir
+	}
 	return &FileMapper{
 		Volumes: []Volume{},
 		Inputs:  []*tes.Input{},
@@ -130,7 +135,7 @@ func (mapper *FileMapper) CopyInputsToScratch(scratchDir string) error {
 
 		info, err := os.Stat(input.Path)
 		if err != nil {
-			fmt.Println(err)
+			return fmt.Errorf("stat input %s: %w", input.Path, err)
 		}
 		if info.IsDir() {
 			// Ensure the scratch target directory exists
@@ -149,7 +154,6 @@ func (mapper *FileMapper) CopyInputsToScratch(scratchDir string) error {
 			if err != nil {
 				return fmt.Errorf("failed to copy input file to scratch directory: %w", err)
 			}
-			_, _ = os.ReadFile(scratchTarget)
 		}
 	}
 
@@ -169,7 +173,7 @@ func (mapper *FileMapper) CopyOutputsToWorkDir(scratchDir string) error {
 			return nil
 		})
 	if err != nil {
-		fmt.Println(err)
+		return fmt.Errorf("walking scratch directory %s: %w", scratchAbsDir, err)
 	}
 
 	// Copy the input file or directory to the scratch target
@@ -196,7 +200,9 @@ func (mapper *FileMapper) CopyOutputsToWorkDir(scratchDir string) error {
 				if err = os.MkdirAll(output.Path, 0755); err != nil {
 					return fmt.Errorf("failed to create output path: %w", err)
 				}
-				_ = copyDir(src, output.Path)
+				if err := copyDir(src, output.Path); err != nil {
+					return fmt.Errorf("failed to copy output directory %s to %s: %w", src, output.Path, err)
+				}
 				// If output is a file
 			} else {
 				// Ensure the scratch target directory exists
@@ -243,21 +249,29 @@ func copyDir(src string, dst string) error {
 	return nil
 }
 
-func copyFile(src string, dst string) error {
+func copyFile(src string, dst string) (copyErr error) {
 	sourceFile, err := os.Open(src)
 	if err != nil {
 		return err
 	}
-	defer sourceFile.Close()
+	defer func() {
+		if err := sourceFile.Close(); err != nil {
+			copyErr = errors.Join(copyErr, fmt.Errorf("close source file %s: %w", src, err))
+		}
+	}()
 
 	destFile, err := os.Create(dst)
 	if err != nil {
 		return err
 	}
-	defer destFile.Close()
+	defer func() {
+		if err := destFile.Close(); err != nil {
+			copyErr = errors.Join(copyErr, fmt.Errorf("close destination file %s: %w", dst, err))
+		}
+	}()
 
-	_, err = io.Copy(destFile, sourceFile)
-	return err
+	_, copyErr = io.Copy(destFile, sourceFile)
+	return copyErr
 }
 
 // AddVolume adds a mapped volume to the mapper. A corresponding Volume record

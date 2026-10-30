@@ -6,12 +6,11 @@ import (
 
 	"github.com/calypr/funnel/events"
 	"github.com/calypr/funnel/tes"
-	"github.com/testcontainers/testcontainers-go"
 )
 
 func TestListTasksCursorFollowsCreationOrder(t *testing.T) {
 	db, container := getTestPostgres(t)
-	defer testcontainers.TerminateContainer(container)
+	t.Cleanup(func() { terminateTestContainer(t, container) })
 	defer db.Close()
 	ctx := getUserContext()
 	for _, task := range []*tes.Task{
@@ -47,7 +46,7 @@ func TestListTasksCursorFollowsCreationOrder(t *testing.T) {
 
 func TestListTasksCursorTiesAndDeletion(t *testing.T) {
 	db, container := getTestPostgres(t)
-	defer testcontainers.TerminateContainer(container)
+	t.Cleanup(func() { terminateTestContainer(t, container) })
 	defer db.Close()
 	ctx := getUserContext()
 	for _, id := range []string{"a", "b", "c"} {

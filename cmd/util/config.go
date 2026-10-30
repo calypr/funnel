@@ -73,7 +73,8 @@ func TempConfigFile(c *config.Config, name string) (path string, cleanup func())
 	}
 
 	cleanup = func() {
-		os.RemoveAll(tmpdir)
+		//nolint:errcheck // removing the temporary config directory is best-effort test cleanup.
+		_ = os.RemoveAll(tmpdir)
 	}
 
 	p := filepath.Join(tmpdir, name)

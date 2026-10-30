@@ -38,10 +38,20 @@ func TestCreateReportsJSONErrorLocationFromFile(t *testing.T) {
 	}
 }
 
+func TestCreateReportsMissingTaskFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing.json")
+	err := Create("http://127.0.0.1:1", []string{path}, strings.NewReader(""), io.Discard)
+	if err == nil || !strings.Contains(err.Error(), path) {
+		t.Fatalf("expected missing task file error for %q, got %v", path, err)
+	}
+}
+
 func TestCreateReportsLocationAfterPreviousTask(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"id":"first"}`)
+		if _, err := io.WriteString(w, `{"id":"first"}`); err != nil {
+			t.Error(err)
+		}
 	}))
 	defer server.Close()
 

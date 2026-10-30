@@ -72,7 +72,9 @@ func NewCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("marshaling output: %s", err)
 			}
-			fmt.Println(string(b))
+			if _, err := fmt.Fprintln(cmd.OutOrStdout(), string(b)); err != nil {
+				return fmt.Errorf("writing storage output: %w", err)
+			}
 			return nil
 		},
 	}
@@ -94,6 +96,7 @@ func NewCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("opening task file: %s", err)
 			}
+			//nolint:errcheck // the task file is read-only; close is best-effort cleanup.
 			defer f.Close()
 
 			dec := json.NewDecoder(f)
@@ -105,36 +108,54 @@ func NewCommand() *cobra.Command {
 					break
 				}
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "error: %s\n", err)
+					if _, writeErr := fmt.Fprintf(cmd.ErrOrStderr(), "error: %s\n", err); writeErr != nil {
+						return fmt.Errorf("writing error output: %w", writeErr)
+					}
 					continue
 				}
 
 				err = protojson.Unmarshal(jsonData, task)
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "error: %s\n", err)
+					if _, writeErr := fmt.Fprintf(cmd.ErrOrStderr(), "error: %s\n", err); writeErr != nil {
+						return fmt.Errorf("writing error output: %w", writeErr)
+					}
 					continue
 				}
 
 				for _, in := range task.Inputs {
 					obj, err := store.Stat(context.Background(), in.Url)
 					if err != nil {
-						fmt.Fprintf(os.Stderr, "error: %s\n", err)
+						if _, writeErr := fmt.Fprintf(cmd.ErrOrStderr(), "error: %s\n", err); writeErr != nil {
+							return fmt.Errorf("writing error output: %w", writeErr)
+						}
 						continue
 					}
 
-					b, _ := json.Marshal(obj)
-					fmt.Println(string(b))
+					b, err := json.Marshal(obj)
+					if err != nil {
+						return fmt.Errorf("marshaling storage output: %w", err)
+					}
+					if _, err := fmt.Fprintln(cmd.OutOrStdout(), string(b)); err != nil {
+						return fmt.Errorf("writing storage output: %w", err)
+					}
 				}
 
 				for _, out := range task.Outputs {
 					obj, err := store.Stat(context.Background(), out.Url)
 					if err != nil {
-						fmt.Fprintf(os.Stderr, "error: %s\n", err)
+						if _, writeErr := fmt.Fprintf(cmd.ErrOrStderr(), "error: %s\n", err); writeErr != nil {
+							return fmt.Errorf("writing error output: %w", writeErr)
+						}
 						continue
 					}
 
-					b, _ := json.Marshal(obj)
-					fmt.Println(string(b))
+					b, err := json.Marshal(obj)
+					if err != nil {
+						return fmt.Errorf("marshaling storage output: %w", err)
+					}
+					if _, err := fmt.Fprintln(cmd.OutOrStdout(), string(b)); err != nil {
+						return fmt.Errorf("writing storage output: %w", err)
+					}
 				}
 			}
 
@@ -164,7 +185,9 @@ func NewCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("marshaling output: %s", err)
 			}
-			fmt.Println(string(b))
+			if _, err := fmt.Fprintln(cmd.OutOrStdout(), string(b)); err != nil {
+				return fmt.Errorf("writing storage output: %w", err)
+			}
 			return nil
 		},
 	}
@@ -191,7 +214,9 @@ func NewCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("marshaling output: %s", err)
 			}
-			fmt.Println(string(b))
+			if _, err := fmt.Fprintln(cmd.OutOrStdout(), string(b)); err != nil {
+				return fmt.Errorf("writing storage output: %w", err)
+			}
 			return nil
 		},
 	}
@@ -218,7 +243,9 @@ func NewCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("marshaling output: %s", err)
 			}
-			fmt.Println(string(b))
+			if _, err := fmt.Fprintln(cmd.OutOrStdout(), string(b)); err != nil {
+				return fmt.Errorf("writing storage output: %w", err)
+			}
 			return nil
 		},
 	}

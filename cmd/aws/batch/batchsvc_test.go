@@ -27,9 +27,13 @@ func TestCreateJobDefinitionResourceRequirements(t *testing.T) {
 				t.Error(err)
 			}
 			properties = request.ContainerProperties
-			_, _ = io.WriteString(w, `{"jobDefinitionName":"test","jobDefinitionArn":"arn:example","revision":1}`)
+			if _, err := io.WriteString(w, `{"jobDefinitionName":"test","jobDefinitionArn":"arn:example","revision":1}`); err != nil {
+				t.Error(err)
+			}
 		case "/v1/describejobdefinitions":
-			_, _ = io.WriteString(w, `{"jobDefinitions":[{"jobDefinitionName":"test","jobDefinitionArn":"arn:example","revision":1,"type":"container"}]}`)
+			if _, err := io.WriteString(w, `{"jobDefinitions":[{"jobDefinitionName":"test","jobDefinitionArn":"arn:example","revision":1,"type":"container"}]}`); err != nil {
+				t.Error(err)
+			}
 		default:
 			t.Errorf("unexpected request path %s", r.URL.Path)
 			w.WriteHeader(http.StatusNotFound)
@@ -113,7 +117,9 @@ func TestCreateResourcesReturnsDescribeErrors(t *testing.T) {
 				}
 				w.Header().Set("Content-Type", "application/x-amz-json-1.1")
 				w.WriteHeader(http.StatusForbidden)
-				_, _ = io.WriteString(w, `{"__type":"AccessDeniedException","message":"not authorized"}`)
+				if _, err := io.WriteString(w, `{"__type":"AccessDeniedException","message":"not authorized"}`); err != nil {
+					t.Error(err)
+				}
 			}))
 			defer server.Close()
 

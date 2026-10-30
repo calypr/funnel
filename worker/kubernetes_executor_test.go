@@ -476,12 +476,14 @@ func TestRunUsesNamedExecutorForLogsAndExitClassification(t *testing.T) {
 		case r.Method == http.MethodPost && r.URL.Path == "/apis/batch/v1/namespaces/jobs/jobs":
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
-			_ = json.NewEncoder(w).Encode(&batchv1.Job{
+			if err := json.NewEncoder(w).Encode(&batchv1.Job{
 				TypeMeta:   metav1.TypeMeta{APIVersion: "batch/v1", Kind: "Job"},
 				ObjectMeta: metav1.ObjectMeta{Name: "task-123-0", Namespace: "jobs"},
-			})
+			}); err != nil {
+				t.Errorf("encode Kubernetes job response: %v", err)
+			}
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/namespaces/jobs/pods" && r.URL.Query().Get("watch") == "true":
-			pod, _ := json.Marshal(&corev1.Pod{
+			pod, err := json.Marshal(&corev1.Pod{
 				TypeMeta:   metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"},
 				ObjectMeta: metav1.ObjectMeta{Name: "task-123-0-pod", Namespace: "jobs", ResourceVersion: "1"},
 				Status: corev1.PodStatus{
@@ -492,11 +494,17 @@ func TestRunUsesNamedExecutorForLogsAndExitClassification(t *testing.T) {
 					},
 				},
 			})
+			if err != nil {
+				t.Errorf("marshal Kubernetes pod response: %v", err)
+				return
+			}
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(struct {
+			if err := json.NewEncoder(w).Encode(struct {
 				Type   watch.EventType `json:"type"`
 				Object json.RawMessage `json:"object"`
-			}{Type: watch.Modified, Object: pod})
+			}{Type: watch.Modified, Object: pod}); err != nil {
+				t.Errorf("encode Kubernetes watch response: %v", err)
+			}
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/log"):
 			if failLogs.Load() {
 				http.Error(w, "log stream unavailable", http.StatusInternalServerError)
@@ -506,7 +514,9 @@ func TestRunUsesNamedExecutorForLogsAndExitClassification(t *testing.T) {
 			logContainer = r.URL.Query().Get("container")
 			mu.Unlock()
 			w.Header().Set("Content-Type", "text/plain")
-			_, _ = io.WriteString(w, "executor output")
+			if _, err := io.WriteString(w, "executor output"); err != nil {
+				t.Errorf("write executor log response: %v", err)
+			}
 		default:
 			http.Error(w, fmt.Sprintf("unexpected Kubernetes request %s %s", r.Method, r.URL.String()), http.StatusNotFound)
 		}

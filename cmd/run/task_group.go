@@ -52,14 +52,18 @@ func (tg *taskGroup) _run(task *tes.Task, wait bool, waitFor []string) error {
 	if tg.printTask {
 		// Marshal message to JSON
 		taskJSON := tg.client.Marshaler.Format(task)
-		fmt.Println(taskJSON)
+		if _, err := fmt.Fprintln(os.Stdout, taskJSON); err != nil {
+			return fmt.Errorf("writing task output: %w", err)
+		}
 		return nil
 	}
 
 	if len(waitFor) > 0 {
 		for _, tid := range waitFor {
 			if err := tg.client.WaitForTask(context.Background(), tid); err != nil {
-				fmt.Fprintf(os.Stderr, "[WARN] waiting for task %s: %v\n", tid, err)
+				if _, writeErr := fmt.Fprintf(os.Stderr, "[WARN] waiting for task %s: %v\n", tid, err); writeErr != nil {
+					return fmt.Errorf("writing task wait warning: %w", writeErr)
+				}
 			}
 		}
 	}
@@ -70,7 +74,9 @@ func (tg *taskGroup) _run(task *tes.Task, wait bool, waitFor []string) error {
 	}
 
 	taskID := resp.Id
-	fmt.Println(taskID)
+	if _, err := fmt.Fprintln(os.Stdout, taskID); err != nil {
+		return fmt.Errorf("writing created task ID: %w", err)
+	}
 
 	if wait {
 		return tg.client.WaitForTask(context.Background(), taskID)

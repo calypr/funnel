@@ -16,7 +16,7 @@ func (db *Postgres) migrateNodeHeartbeats(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = tx.Rollback(context.Background()) }()
+	defer func() { _ = tx.Rollback(context.Background()) }() //nolint:errcheck // Rolls back early exits and is a no-op after a successful commit.
 	if _, err := tx.Exec(ctx, `LOCK TABLE scheduler_migrations IN EXCLUSIVE MODE`); err != nil {
 		return err
 	}
@@ -46,7 +46,7 @@ func (db *Postgres) putReportedNode(ctx context.Context, report *scheduler.Node)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = tx.Rollback(context.Background()) }()
+	defer func() { _ = tx.Rollback(context.Background()) }() //nolint:errcheck // Rolls back early exits and is a no-op after a successful commit.
 	var stamp int64
 	// All status mutations acquire the heartbeat row before the node row.
 	// Allocation transactions never acquire the heartbeat row.
@@ -152,7 +152,7 @@ func (db *Postgres) SetNodeState(ctx context.Context, observed *scheduler.Node) 
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = tx.Rollback(context.Background()) }()
+	defer func() { _ = tx.Rollback(context.Background()) }() //nolint:errcheck // Rolls back early exits and is a no-op after a successful commit.
 	var stamp int64
 	err = tx.QueryRow(ctx, `SELECT last_ping FROM node_heartbeats WHERE id=$1 FOR UPDATE`, observed.Id).Scan(&stamp)
 	if err == pgx.ErrNoRows {

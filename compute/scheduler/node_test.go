@@ -28,7 +28,9 @@ func TestStopNode(t *testing.T) {
 	cleanup := timeLimit(t, time.Millisecond*100)
 	defer cleanup()
 	stop()
-	n.Wait()
+	if err := n.Wait(); err != nil {
+		t.Fatal(err)
+	}
 	n.Client.AssertCalled(t, "Close")
 }
 
@@ -38,7 +40,7 @@ func TestDrainPublishesBeforeNextUpdate(t *testing.T) {
 	n := newTestNode(conf, t)
 
 	client := new(MockClient)
-	client.On("Close").Return()
+	client.On("Close").Return(nil)
 	n.Client = client
 	n.client = client
 
@@ -72,8 +74,9 @@ func TestDrainPublishesBeforeNextUpdate(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	runDone := make(chan struct{})
+	runErr := make(chan error, 1)
 	go func() {
-		_ = n.Run(ctx)
+		runErr <- n.Run(ctx)
 		close(runDone)
 	}()
 	defer func() {
@@ -81,6 +84,9 @@ func TestDrainPublishesBeforeNextUpdate(t *testing.T) {
 		close(finishWorker)
 		select {
 		case <-runDone:
+			if err := <-runErr; err != nil {
+				t.Errorf("run node: %v", err)
+			}
 		case <-time.After(time.Second):
 			t.Fatal("node did not stop during test cleanup")
 		}
@@ -164,7 +170,9 @@ func TestNodeTimeout(t *testing.T) {
 	defer cleanup()
 
 	// Wait for the node to exit
-	n.Wait()
+	if err := n.Wait(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // Test that a node does nothing where there are no assigned tasks.

@@ -13,7 +13,7 @@ import (
 type Client interface {
 	events.EventServiceClient
 	SchedulerServiceClient
-	Close()
+	Close() error
 }
 
 type client struct {
@@ -36,6 +36,6 @@ func NewClient(ctx context.Context, conf *config.RPCClient) (Client, error) {
 }
 
 // Close closes the client connection.
-func (client *client) Close() {
-	client.conn.Close()
+func (client *client) Close() error {
+	return client.conn.Close()
 }

@@ -259,7 +259,9 @@ func TestWalkFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	files, err := fsutil.WalkFiles(tmp)
 	if err != nil {

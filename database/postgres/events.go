@@ -138,8 +138,11 @@ func (db *Postgres) WriteEvent(ctx context.Context, req *events.Event) error {
 			SET data = jsonb_set(data, $1::text[], $2::jsonb, true)
 			WHERE id = $3
 		`
-		jsonVal, _ := json.Marshal(jsonValue)
-		_, err := db.client.Exec(ctx, updateSQL, jsonPath, jsonVal, selector)
+		jsonVal, err := json.Marshal(jsonValue)
+		if err != nil {
+			return fmt.Errorf("marshal task event value: %w", err)
+		}
+		_, err = db.client.Exec(ctx, updateSQL, jsonPath, jsonVal, selector)
 
 		// Log error
 		return err
@@ -169,7 +172,10 @@ func (db *Postgres) WriteEvent(ctx context.Context, req *events.Event) error {
 
 		currentLogs = append(currentLogs, logValue)
 
-		newLogsJSON, _ := json.Marshal(currentLogs)
+		newLogsJSON, err := json.Marshal(currentLogs)
+		if err != nil {
+			return fmt.Errorf("marshal task system logs: %w", err)
+		}
 
 		updateSQL := `
             UPDATE tasks

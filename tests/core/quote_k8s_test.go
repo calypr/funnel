@@ -169,7 +169,7 @@ func loadTaskFromFileK8s(t *testing.T, file string) *tes.Task {
 	if err != nil {
 		t.Fatalf("Failed to open fixture file %s: %v", file, err)
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck // read-only task fixture is closed after decoding; a close error cannot change the parsed test data.
 
 	var task tes.Task
 	if err := json.NewDecoder(f).Decode(&task); err != nil {

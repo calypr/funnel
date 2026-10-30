@@ -16,7 +16,7 @@ func TestWriteRootFileAtomicallyKeepsDestinationOnCancellation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer root.Close()
+	closeTestResource(t, root)
 	if err := os.WriteFile(filepath.Join(dir, "target"), []byte("old"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestWriteRootFileAtomicallyRejectsTrailingSeparator(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer root.Close()
+	closeTestResource(t, root)
 	if err := os.Mkdir(filepath.Join(dir, "target"), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestWriteRootFileAtomicallyKeepsDestinationOnRenameError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer root.Close()
+	closeTestResource(t, root)
 	destination := filepath.Join(dir, "target")
 	if err := os.Mkdir(destination, 0700); err != nil {
 		t.Fatal(err)
@@ -126,7 +126,7 @@ func TestWriteRootFileAtomicallyWithModeUsesRequestedMode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer root.Close()
+	closeTestResource(t, root)
 
 	if err := writeRootFileAtomicallyWithMode(context.Background(), root, "target", 0600, func(file *os.File) error {
 		_, err := io.WriteString(file, "new")

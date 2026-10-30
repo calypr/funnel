@@ -12,7 +12,10 @@ import (
 
 // DefaultConfig returns configuration with simple defaults.
 func DefaultConfig() *Config {
-	cwd, _ := os.Getwd()
+	cwd, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
 	workDir := path.Join(cwd, "funnel-work-dir")
 
 	allowedDirs := []string{cwd}

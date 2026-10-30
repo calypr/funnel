@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/textproto"
@@ -135,8 +136,8 @@ func connect(url string, conf *config.FTPStorage) (*ftpclient, error) {
 }
 
 func (b *ftpclient) Close() {
-	_ = b.client.Logout()
-	_ = b.client.Quit()
+	_ = b.client.Logout() //nolint:errcheck // Logout is best-effort connection cleanup after the operation result is known.
+	_ = b.client.Quit()   //nolint:errcheck // Quit is best-effort connection cleanup after the operation result is known.
 }
 
 // Stat returns information about the object at the given storage URL.
@@ -171,7 +172,7 @@ func (b *ftpclient) Stat(ctx context.Context, url string) (*Object, error) {
 }
 
 // Get copies a file from a given URL to the host path.
-func (b *ftpclient) Get(ctx context.Context, url, path string) (*Object, error) {
+func (b *ftpclient) Get(ctx context.Context, url, path string) (obj *Object, retErr error) {
 	obj, err := b.Stat(ctx, url)
 	if err != nil {
 		return nil, err
@@ -181,7 +182,11 @@ func (b *ftpclient) Get(ctx context.Context, url, path string) (*Object, error) 
 	if err != nil {
 		return nil, fmt.Errorf("ftpStorage: executing RETR request: %s", err)
 	}
-	defer src.Close()
+	defer func() {
+		if err := src.Close(); err != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("ftpStorage: closing download stream: %w", err))
+		}
+	}()
 
 	dest, err := os.Create(path)
 	if err != nil {
@@ -212,7 +217,7 @@ func (b *ftpclient) Put(ctx context.Context, url string, hostPath string) (*Obje
 	if err != nil {
 		return nil, fmt.Errorf("ftpStorage: opening host file for %q: %v", url, err)
 	}
-	defer reader.Close()
+	defer reader.Close() //nolint:errcheck // The upload source is read-only, so close cannot change uploaded data.
 
 	dirpath, name := pathlib.Split(u.Path)
 	if dirpath != "" {

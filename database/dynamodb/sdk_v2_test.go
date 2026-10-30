@@ -161,3 +161,32 @@ func TestDynamoDBFullViewPagination(t *testing.T) {
 		t.Fatalf("incomplete full view %v, queries %d", task, queries)
 	}
 }
+
+func TestDynamoDBFullViewRejectsInvalidContentIndex(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		index string
+	}{
+		{name: "nonnumeric", index: "not-a-number"},
+		{name: "out-of-range", index: "1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := fixtureDB(t, func(operation string, request map[string]json.RawMessage) string {
+				if operation == "GetItem" {
+					return `{"Item":{"id":{"S":"task-1"},"inputs":{"L":[{"M":{"path":{"S":"/input"}}}]},"logs":{"L":[]}}}`
+				}
+				if operation != "Query" {
+					t.Fatalf("unexpected operation %s", operation)
+				}
+				if string(request["TableName"]) != `"content"` {
+					return `{"Items":[]}`
+				}
+				return fmt.Sprintf(`{"Items":[{"index":{"N":%q},"content":{"S":"wrong input"}}]}`, tc.index)
+			})
+
+			if _, err := db.GetTask(t.Context(), &tes.GetTaskRequest{Id: "task-1", View: tes.View_FULL.String()}); err == nil {
+				t.Fatalf("GetTask accepted invalid DynamoDB content index %q", tc.index)
+			}
+		})
+	}
+}

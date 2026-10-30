@@ -87,12 +87,14 @@ func TestHTTPTransferTimeouts(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
-			_, _ = w.Write([]byte("first"))
+			writeTestResponse(t, w, []byte("first"))
 			w.(http.Flusher).Flush()
 			time.Sleep(250 * time.Millisecond)
-			_, _ = w.Write([]byte("second"))
+			writeTestResponse(t, w, []byte("second"))
 		case http.MethodPut:
-			_, _ = io.Copy(io.Discard, r.Body)
+			if _, err := io.Copy(io.Discard, r.Body); err != nil {
+				t.Errorf("read upload body: %v", err)
+			}
 			time.Sleep(250 * time.Millisecond)
 			w.WriteHeader(http.StatusCreated)
 		}
@@ -135,7 +137,9 @@ func TestHTTPTransferTimeouts(t *testing.T) {
 
 func TestHTTPUploadCancellation(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = io.Copy(io.Discard, r.Body)
+		if _, err := io.Copy(io.Discard, r.Body); err != nil {
+			t.Errorf("read upload body: %v", err)
+		}
 		<-r.Context().Done()
 	}))
 	defer server.Close()
@@ -154,7 +158,7 @@ func TestHTTPUploadCancellation(t *testing.T) {
 func TestHTTPDelayedResponseHeaders(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(200 * time.Millisecond)
-		_, _ = w.Write([]byte("complete"))
+		writeTestResponse(t, w, []byte("complete"))
 	}))
 	defer server.Close()
 	store, err := NewHTTP(config.DefaultConfig().HTTPStorage)
@@ -236,7 +240,11 @@ func TestHTTPPutUploadsWithContentLength(t *testing.T) {
 		if r.ContentLength != int64(len(content)) {
 			t.Errorf("content length = %d, want %d", r.ContentLength, len(content))
 		}
-		body, _ := io.ReadAll(r.Body)
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read upload body: %v", err)
+			return
+		}
 		if string(body) != content {
 			t.Errorf("body = %q, want %q", body, content)
 		}
@@ -285,7 +293,7 @@ func TestHTTPPutUploadsEmptyFile(t *testing.T) {
 func TestHTTPPutReportsRejection(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
-		io.WriteString(w, "<Error><Code>SignatureDoesNotMatch</Code></Error>")
+		writeTestResponse(t, w, []byte("<Error><Code>SignatureDoesNotMatch</Code></Error>"))
 	}))
 	defer server.Close()
 
@@ -317,7 +325,11 @@ func TestHTTPPutFollowsRedirectWithBody(t *testing.T) {
 		if len(r.TransferEncoding) != 0 || r.ContentLength != int64(len(content)) {
 			t.Errorf("transfer encoding = %v, content length = %d, want none and %d", r.TransferEncoding, r.ContentLength, len(content))
 		}
-		body, _ := io.ReadAll(r.Body)
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read upload body: %v", err)
+			return
+		}
 		if string(body) != content {
 			t.Errorf("body = %q, want %q", body, content)
 		}
@@ -373,7 +385,7 @@ func TestHTTPPutStopsAtRedirectToGet(t *testing.T) {
 func TestHTTPGetFollowsRedirect(t *testing.T) {
 	content := "redirected download\n"
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		io.WriteString(w, content)
+		writeTestResponse(t, w, []byte(content))
 	}))
 	defer target.Close()
 
@@ -386,7 +398,10 @@ func TestHTTPGetFollowsRedirect(t *testing.T) {
 	if _, err := newTestHTTP(t).Get(context.Background(), gateway.URL+"/download/token/input.txt", dest); err != nil {
 		t.Fatal("Unexpected error for Get call:", err)
 	}
-	got, _ := os.ReadFile(dest)
+	got, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if string(got) != content {
 		t.Errorf("downloaded %q, want %q", got, content)
 	}

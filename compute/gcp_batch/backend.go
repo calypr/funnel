@@ -6,6 +6,7 @@ package gcp_batch
 import (
 	"context"
 	"fmt"
+	"log"
 	"path"
 	"strconv"
 	"strings"
@@ -166,7 +167,13 @@ func (b *Backend) WriteEvent(ctx context.Context, ev *events.Event) error {
 
 func (b *Backend) Close() {
 	if b.loggingClient != nil {
-		b.loggingClient.Close()
+		if err := b.loggingClient.Close(); err != nil {
+			if b.log != nil {
+				b.log.Error("closing Google Cloud Logging client", "error", err)
+			} else {
+				log.Printf("closing Google Cloud Logging client: %v", err)
+			}
+		}
 	}
 	b.database.Close()
 	b.event.Close()

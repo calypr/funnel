@@ -20,7 +20,7 @@ import (
 
 func TestAmazonS3Storage(t *testing.T) {
 	tests.SetLogOutput(log, t)
-	defer os.RemoveAll("./test_tmp")
+	defer os.RemoveAll("./test_tmp") //nolint:errcheck // per-test scratch files are disposable; cleanup failure cannot change the assertions.
 
 	if !conf.AmazonS3.Valid() {
 		t.Skipf("Skipping amazon s3 e2e tests...")
@@ -40,7 +40,9 @@ func TestAmazonS3Storage(t *testing.T) {
 		t.Fatal("error creating test bucket:", err)
 	}
 	defer func() {
-		client.deleteBucket(testBucket)
+		if err := client.deleteBucket(testBucket); err != nil {
+			t.Errorf("delete test bucket %s: %v", testBucket, err)
+		}
 	}()
 
 	protocol := "s3://"

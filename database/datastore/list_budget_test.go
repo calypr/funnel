@@ -37,19 +37,30 @@ func TestDatastoreByteBudgetResumes(t *testing.T) {
 	listener := bufconn.Listen(1024 * 1024)
 	rpc := grpc.NewServer()
 	pb.RegisterDatastoreServer(rpc, budgetDatastoreServer{})
-	go func() { _ = rpc.Serve(listener) }()
-	defer rpc.Stop()
-	defer listener.Close()
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- rpc.Serve(listener) }()
+	t.Cleanup(func() {
+		rpc.Stop()
+		if err := <-serveErr; err != nil {
+			t.Errorf("serve Datastore fixture RPC: %v", err)
+		}
+		if err := listener.Close(); err != nil {
+			t.Errorf("close Datastore fixture listener: %v", err)
+		}
+	})
 	conn, err := grpc.NewClient("passthrough:///datastore", grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) { return listener.Dial() }))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
 	client, err := cloud.NewClient(t.Context(), "test", option.WithGRPCConn(conn), option.WithoutAuthentication())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer client.Close()
+	t.Cleanup(func() {
+		if err := client.Close(); err != nil {
+			t.Errorf("close Datastore fixture client: %v", err)
+		}
+	})
 	db := &Datastore{client: client}
 	ctx := tes.WithTaskPageBytes(t.Context(), 230)
 	token := ""

@@ -17,8 +17,9 @@ type MockClient struct {
 }
 
 // Close provides a mock function with given fields:
-func (_m *MockClient) Close() {
-	_m.Called()
+func (_m *MockClient) Close() error {
+	ret := _m.Called()
+	return ret.Error(0)
 }
 
 // DeleteNode provides a mock function with given fields: ctx, in, opts

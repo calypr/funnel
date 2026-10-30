@@ -49,17 +49,17 @@ func startMinio(t *testing.T) string {
 	}
 
 	t.Cleanup(func() {
-		testcontainers.TerminateContainer(ctr)
+		if err := testcontainers.TerminateContainer(ctr); err != nil {
+			t.Errorf("terminate MinIO test container: %v", err)
+		}
 	})
 
 	host, err := ctr.Host(ctx)
 	if err != nil {
-		testcontainers.TerminateContainer(ctr)
 		t.Fatal("could not get MinIO container host:", err)
 	}
 	port, err := ctr.MappedPort(ctx, "9000")
 	if err != nil {
-		testcontainers.TerminateContainer(ctr)
 		t.Fatal("could not get MinIO container port:", err)
 	}
 
@@ -68,7 +68,7 @@ func startMinio(t *testing.T) string {
 
 func TestGenericS3Storage(t *testing.T) {
 	tests.SetLogOutput(log, t)
-	defer os.RemoveAll("./test_tmp")
+	defer os.RemoveAll("./test_tmp") //nolint:errcheck // per-test scratch files are disposable; cleanup failure cannot change the assertions.
 
 	if len(conf.GenericS3) == 0 {
 		endpoint := startMinio(t)

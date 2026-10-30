@@ -181,9 +181,9 @@ func LogTail(ctx context.Context, taskID string, attempt, index uint32, size int
 	go func() {
 		defer wg.Done()
 		<-ctx.Done()
-		// Best-effort final flush; the writers are closed either way.
-		_ = flush(stdoutbuf, Type_EXECUTOR_STDOUT)
-		_ = flush(stderrbuf, Type_EXECUTOR_STDERR)
+		// Final flush is best-effort; writers are closed after cancellation either way.
+		_ = flush(stdoutbuf, Type_EXECUTOR_STDOUT) //nolint:errcheck // A final log event must not replace command completion or cancellation.
+		_ = flush(stderrbuf, Type_EXECUTOR_STDERR) //nolint:errcheck // A final log event must not replace command completion or cancellation.
 	}()
 
 	return stdoutbuf, stderrbuf
@@ -267,7 +267,6 @@ func StreamLogTail(ctx context.Context, taskID string, attempt, index uint32, si
 			err := out.WriteEvent(ctx, e)
 			cancel()
 
-			// Track successful events
 			if err == nil {
 				switch e.Type {
 				case Type_EXECUTOR_STDOUT:
@@ -301,12 +300,12 @@ func StreamLogTail(ctx context.Context, taskID string, attempt, index uint32, si
 					flushboth(immediate)
 				}
 			case b := <-stdoutch:
-				_, _ = stdoutbuf.Write(b)
+				_, _ = stdoutbuf.Write(b) //nolint:errcheck // ring.Buffer.Write only copies into memory and has no error path.
 				if limiter.Allow() {
 					flushboth(immediate)
 				}
 			case b := <-stderrch:
-				_, _ = stderrbuf.Write(b)
+				_, _ = stderrbuf.Write(b) //nolint:errcheck // ring.Buffer.Write only copies into memory and has no error path.
 				if limiter.Allow() {
 					flushboth(immediate)
 				}

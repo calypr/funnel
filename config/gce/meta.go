@@ -100,7 +100,7 @@ func LoadMetadataFromURL(url string) (*Metadata, error) {
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("Non-200 response status from GCE Metadata: %d", resp.StatusCode)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck // Read-only HTTP response cleanup cannot change the parsed metadata.
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err

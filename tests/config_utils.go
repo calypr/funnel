@@ -15,7 +15,6 @@ import (
 
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/logger"
-	"github.com/calypr/funnel/util/fsutil"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
@@ -68,9 +67,14 @@ func TestifyConfig(conf *config.Config) *config.Config {
 	conf.PBS.ReconcileRate = reconcile
 	conf.AWSBatch.ReconcileRate = reconcile
 
-	storageDir, _ := os.MkdirTemp("./test_tmp", "funnel-test-storage-")
-	wd, _ := os.Getwd()
-	_ = fsutil.EnsureDir(storageDir)
+	storageDir, err := os.MkdirTemp("./test_tmp", "funnel-test-storage-")
+	if err != nil {
+		panic(fmt.Errorf("create test storage directory: %w", err))
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		panic(fmt.Errorf("get test working directory: %w", err))
+	}
 
 	conf.LocalStorage = &config.LocalStorage{
 		AllowedDirs: []string{storageDir, wd},
@@ -97,7 +101,9 @@ func randomPorts(count int) []string {
 	listeners := make([]net.Listener, 0, count)
 	defer func() {
 		for _, listener := range listeners {
-			_ = listener.Close()
+			if err := listener.Close(); err != nil {
+				panic(fmt.Errorf("release allocated test port: %w", err))
+			}
 		}
 	}()
 
@@ -115,8 +121,13 @@ func randomPorts(count int) []string {
 
 // TempDirConfig returns a modified config with workdir and db path set to a temp. directory.
 func TempDirConfig(conf *config.Config) *config.Config {
-	_ = os.MkdirAll("./test_tmp", os.ModePerm)
-	f, _ := os.MkdirTemp("./test_tmp", "funnel-test-")
+	if err := os.MkdirAll("./test_tmp", os.ModePerm); err != nil {
+		panic(fmt.Errorf("create test temp directory: %w", err))
+	}
+	f, err := os.MkdirTemp("./test_tmp", "funnel-test-")
+	if err != nil {
+		panic(fmt.Errorf("create test work directory: %w", err))
+	}
 	conf.Worker.WorkDir = f
 	conf.BoltDB.Path = path.Join(f, "funnel.db")
 	conf.Badger.Path = path.Join(f, "funnel.badger.db")

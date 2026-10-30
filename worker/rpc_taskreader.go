@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/events"
@@ -70,6 +71,7 @@ func (r *RPCTaskReader) ClaimExecution(ctx context.Context, taskID string, owner
 
 // Close closes the connection.
 func (r *RPCTaskReader) Close() {
-
-	r.conn.Close()
+	if err := r.conn.Close(); err != nil {
+		log.Printf("close task RPC connection: %v", err)
+	}
 }

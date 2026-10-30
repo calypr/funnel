@@ -113,8 +113,9 @@ func (b *Backend) Submit(task *tes.Task) error {
 	}
 
 	go func() {
-		// The worker reports its own errors via the event stream.
-		_ = w.Run(ctx)
+		if err := w.Run(ctx); err != nil {
+			b.log.Error("local worker failed", "taskID", task.Id, "error", err)
+		}
 		w.Close()
 	}()
 

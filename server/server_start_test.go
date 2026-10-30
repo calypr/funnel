@@ -19,7 +19,7 @@ func TestServeReturnsHTTPBindErrorAndReleasesRPCListener(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer httpListener.Close()
+	defer httpListener.Close() //nolint:errcheck // Best-effort cleanup of the port intentionally held by the test.
 
 	rpcAddress := freeTCPAddress(t)
 	s := newTestServer(rpcAddress, strconv.Itoa(httpListener.Addr().(*net.TCPAddr).Port))
@@ -41,7 +41,9 @@ func TestServeReturnsHTTPBindErrorAndReleasesRPCListener(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RPC listener was not released after HTTP bind failure: %v", err)
 	}
-	rpcListener.Close()
+	if err := rpcListener.Close(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestServeCancellationWaitsForBothListenersToStop(t *testing.T) {
@@ -60,7 +62,9 @@ func TestServeCancellationWaitsForBothListenersToStop(t *testing.T) {
 	for {
 		response, err := http.Get(url)
 		if err == nil {
-			response.Body.Close()
+			if err := response.Body.Close(); err != nil {
+				t.Fatal(err)
+			}
 			break
 		}
 		select {
@@ -85,7 +89,9 @@ func TestServeCancellationWaitsForBothListenersToStop(t *testing.T) {
 		if err != nil {
 			t.Fatalf("listener at %s was not released: %v", address, err)
 		}
-		listener.Close()
+		if err := listener.Close(); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

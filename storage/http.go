@@ -64,12 +64,13 @@ func (b *HTTP) Stat(ctx context.Context, url string) (*Object, error) {
 	if err != nil {
 		return nil, fmt.Errorf("httpStorage: executing HEAD request: %s", err)
 	}
+	defer resp.Body.Close() //nolint:errcheck // HEAD metadata is in the headers; closing the unused body is cleanup only.
 
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("httpStorage: HEAD request returned status code: %d", resp.StatusCode)
 	}
 
-	modtime, _ := http.ParseTime(resp.Header.Get("Last-Modified"))
+	modtime, _ := http.ParseTime(resp.Header.Get("Last-Modified")) //nolint:errcheck // Malformed optional metadata leaves LastModified at zero, matching prior behavior.
 
 	return &Object{
 		URL:          url,
@@ -96,7 +97,7 @@ func (b *HTTP) Get(ctx context.Context, url, path string) (*Object, error) {
 	if err != nil {
 		return nil, fmt.Errorf("httpStorage: executing GET request: %s", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck // io.Copy reports transfer failures; closing releases non-200 or fully-read responses.
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("httpStorage: GET request returned status code: %d", resp.StatusCode)
 	}
@@ -116,7 +117,7 @@ func (b *HTTP) Get(ctx context.Context, url, path string) (*Object, error) {
 		return nil, fmt.Errorf("httpStorage: closing file: %s", closeErr)
 	}
 
-	modtime, _ := http.ParseTime(resp.Header.Get("Last-Modified"))
+	modtime, _ := http.ParseTime(resp.Header.Get("Last-Modified")) //nolint:errcheck // Malformed optional metadata leaves LastModified at zero, matching prior behavior.
 
 	return &Object{
 		URL:          url,
@@ -140,7 +141,7 @@ func (b *HTTP) Put(ctx context.Context, url string, hostPath string) (*Object, e
 	if err != nil {
 		return nil, fmt.Errorf("httpStorage: opening host file: %s", err)
 	}
-	defer src.Close()
+	defer src.Close() //nolint:errcheck // The upload source is read-only, so close cannot change uploaded data.
 
 	info, err := src.Stat()
 	if err != nil {
@@ -182,11 +183,14 @@ func (b *HTTP) Put(ctx context.Context, url string, hostPath string) (*Object, e
 	if err != nil {
 		return nil, fmt.Errorf("httpStorage: executing PUT request: %s", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck // The rejection body is intentionally bounded; close only releases the response.
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		// Object stores explain a rejection, such as an expired or mismatched
 		// signature, in the response body.
-		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		msg, readErr := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		if readErr != nil {
+			return nil, fmt.Errorf("httpStorage: PUT request returned status code: %d while reading rejection body: %w", resp.StatusCode, readErr)
+		}
 		return nil, fmt.Errorf("httpStorage: PUT request returned status code: %d: %s", resp.StatusCode, strings.TrimSpace(string(msg)))
 	}
 

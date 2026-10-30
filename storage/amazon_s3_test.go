@@ -77,7 +77,7 @@ func TestAmazonS3Transfers(t *testing.T) {
 					w.Header().Set("Content-Length", fmt.Sprint(len(uploaded)))
 				case http.MethodGet:
 					w.Header().Set("Content-Length", fmt.Sprint(len(uploaded)))
-					_, _ = w.Write(uploaded)
+					writeTestResponse(t, w, uploaded)
 				default:
 					t.Errorf("unexpected request %s", r.Method)
 				}
@@ -148,12 +148,12 @@ func TestAmazonS3ListPagination(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/xml")
 		if requests == 1 {
-			_, _ = io.WriteString(w, `<ListBucketResult><IsTruncated>true</IsTruncated><NextContinuationToken>next-page</NextContinuationToken><Contents><Key>dir/</Key></Contents><Contents><Key>dir/a</Key><Size>1</Size><ETag>a</ETag><LastModified>2006-01-02T15:04:05Z</LastModified></Contents></ListBucketResult>`)
+			writeTestResponse(t, w, []byte(`<ListBucketResult><IsTruncated>true</IsTruncated><NextContinuationToken>next-page</NextContinuationToken><Contents><Key>dir/</Key></Contents><Contents><Key>dir/a</Key><Size>1</Size><ETag>a</ETag><LastModified>2006-01-02T15:04:05Z</LastModified></Contents></ListBucketResult>`))
 		} else {
 			if r.URL.Query().Get("continuation-token") != "next-page" {
 				t.Error("missing next page token")
 			}
-			_, _ = io.WriteString(w, `<ListBucketResult><IsTruncated>false</IsTruncated><Contents><Key>dir/b</Key><Size>2</Size><ETag>b</ETag><LastModified>2006-01-02T15:04:05Z</LastModified></Contents></ListBucketResult>`)
+			writeTestResponse(t, w, []byte(`<ListBucketResult><IsTruncated>false</IsTruncated><Contents><Key>dir/b</Key><Size>2</Size><ETag>b</ETag><LastModified>2006-01-02T15:04:05Z</LastModified></Contents></ListBucketResult>`))
 		}
 	}))
 	defer server.Close()
@@ -183,7 +183,7 @@ func TestAmazonS3ListPreservesEndpointQualifiedURL(t *testing.T) {
 				t.Errorf("unexpected list URL %s", r.URL)
 			}
 			w.Header().Set("Content-Type", "application/xml")
-			_, _ = io.WriteString(w, `<ListBucketResult><IsTruncated>false</IsTruncated><Contents><Key>dir/file.txt</Key><Size>4</Size><ETag>file</ETag><LastModified>2006-01-02T15:04:05Z</LastModified></Contents></ListBucketResult>`)
+			writeTestResponse(t, w, []byte(`<ListBucketResult><IsTruncated>false</IsTruncated><Contents><Key>dir/file.txt</Key><Size>4</Size><ETag>file</ETag><LastModified>2006-01-02T15:04:05Z</LastModified></Contents></ListBucketResult>`))
 		default:
 			t.Errorf("unexpected request %s", r.Method)
 		}
@@ -262,7 +262,7 @@ func TestAmazonS3RegionDiscoveryDefaultsWhenHeaderMissing(t *testing.T) {
 				w.Header().Set("Content-Range", "bytes 0-6/7")
 				w.WriteHeader(http.StatusPartialContent)
 			}
-			_, _ = io.WriteString(w, "fixture")
+			writeTestResponse(t, w, []byte("fixture"))
 		case r.Method == http.MethodPut && r.URL.Path == "/bucket/object":
 			data, err := io.ReadAll(r.Body)
 			if err != nil {
@@ -388,7 +388,7 @@ func TestAmazonS3CustomerKeyFallback(t *testing.T) {
 		w.Header().Set("Last-Modified", "Mon, 02 Jan 2006 15:04:05 GMT")
 		w.Header().Set("ETag", `"fixture"`)
 		if r.Method == http.MethodGet {
-			_, _ = io.WriteString(w, "release")
+			writeTestResponse(t, w, []byte("release"))
 		}
 	}))
 	defer server.Close()
@@ -423,7 +423,7 @@ func TestAmazonS3MultipartTransfer(t *testing.T) {
 				if r.Header.Get("X-Amz-Server-Side-Encryption") != "AES256" {
 					t.Errorf("missing SSE-S3 header on multipart initiation: %v", r.Header)
 				}
-				_, _ = io.WriteString(w, `<InitiateMultipartUploadResult><UploadId>upload-fixture</UploadId></InitiateMultipartUploadResult>`)
+				writeTestResponse(t, w, []byte(`<InitiateMultipartUploadResult><UploadId>upload-fixture</UploadId></InitiateMultipartUploadResult>`))
 				return
 			}
 			lock.Lock()
@@ -432,7 +432,7 @@ func TestAmazonS3MultipartTransfer(t *testing.T) {
 			if !bytes.Equal(append(append([]byte{}, parts[1]...), parts[2]...), body) {
 				t.Error("multipart upload changed contents")
 			}
-			_, _ = io.WriteString(w, `<CompleteMultipartUploadResult><ETag>fixture</ETag></CompleteMultipartUploadResult>`)
+			writeTestResponse(t, w, []byte(`<CompleteMultipartUploadResult><ETag>fixture</ETag></CompleteMultipartUploadResult>`))
 			return
 		}
 		if r.Method == http.MethodPut {
@@ -470,7 +470,7 @@ func TestAmazonS3MultipartTransfer(t *testing.T) {
 		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", first, last, len(body)))
 		w.Header().Set("Content-Length", fmt.Sprint(last-first+1))
 		w.WriteHeader(http.StatusPartialContent)
-		_, _ = w.Write(body[first : last+1])
+		writeTestResponse(t, w, body[first:last+1])
 	}))
 	defer server.Close()
 	store, err := NewAmazonS3(&config.AmazonS3Storage{AWSConfig: &config.AWSConfig{Endpoint: server.URL, Region: "local", DisableAutoCredentialLoad: true}, SSE: &config.SSE{S3Managed: true}})

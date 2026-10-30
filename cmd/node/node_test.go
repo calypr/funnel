@@ -15,7 +15,10 @@ func TestPersistentPreRun(t *testing.T) {
 	host := "test"
 	rpcport := "9999"
 
-	cwd, _ := os.Getwd()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
 	workDir := path.Join(cwd, "funnel-work-dir")
 
 	fileConf := config.EmptyConfig()
@@ -38,8 +41,7 @@ func TestPersistentPreRun(t *testing.T) {
 	}
 
 	c.SetArgs([]string{"run", "--config", tmp, "--Server.HostName", host, "--Server.RPCPort", rpcport})
-	err := c.Execute()
-	if err != nil {
+	if err := c.Execute(); err != nil {
 		t.Fatal(err)
 	}
 }

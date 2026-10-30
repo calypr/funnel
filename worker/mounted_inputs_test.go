@@ -78,7 +78,9 @@ func TestFlattenInputsListsS3DirectoryBySlashQualifiedPrefix(t *testing.T) {
 					contents += `<Contents><Key>directory.txt</Key><LastModified>2006-01-02T15:04:05.000Z</LastModified><ETag>"sibling"</ETag><Size>7</Size><StorageClass>STANDARD</StorageClass></Contents>`
 				}
 				w.Header().Set("Content-Type", "application/xml")
-				fmt.Fprintf(w, `<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Name>bucket</Name><Prefix>%s</Prefix><IsTruncated>false</IsTruncated>%s</ListBucketResult>`, prefix, contents)
+				if _, err := fmt.Fprintf(w, `<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Name>bucket</Name><Prefix>%s</Prefix><IsTruncated>false</IsTruncated>%s</ListBucketResult>`, prefix, contents); err != nil {
+					t.Errorf("write S3 list response: %v", err)
+				}
 			}))
 			defer server.Close()
 

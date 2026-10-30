@@ -284,7 +284,9 @@ ReconcileLoop:
 								b.Log.Error("writing system-error log event", "taskID", task.Id, "error", werr)
 							}
 							if t.Remove {
-								_ = exec.Command(b.CancelCmd, t.ID).Run()
+								if err := exec.Command(b.CancelCmd, t.ID).Run(); err != nil {
+									b.Log.Error("canceling failed HPC task", "taskID", task.Id, "backendID", t.ID, "error", err)
+								}
 							}
 						}
 					}
@@ -311,7 +313,10 @@ func (b *HPCBackend) setupTemplatedHPCSubmit(ctx context.Context, task *tes.Task
 
 	// TODO document that these working dirs need manual cleanup
 	workdir := path.Join(b.Conf.Worker.WorkDir, task.Id)
-	workdir, _ = filepath.Abs(workdir)
+	workdir, err = filepath.Abs(workdir)
+	if err != nil {
+		return "", fmt.Errorf("resolve task working directory: %w", err)
+	}
 	err = fsutil.EnsureDir(workdir)
 	if err != nil {
 		return "", err
@@ -320,11 +325,6 @@ func (b *HPCBackend) setupTemplatedHPCSubmit(ctx context.Context, task *tes.Task
 	submitName := fmt.Sprintf("%s.submit", b.Name)
 
 	submitPath := path.Join(workdir, submitName)
-	f, err := os.Create(submitPath)
-	if err != nil {
-		return "", err
-	}
-
 	submitTpl, err := template.New(submitName).Parse(b.Template)
 	if err != nil {
 		return "", err
@@ -351,6 +351,11 @@ func (b *HPCBackend) setupTemplatedHPCSubmit(ctx context.Context, task *tes.Task
 		}
 		args = fmt.Sprintf("--config %v", configFile)
 	}
+	f, err := os.Create(submitPath)
+	if err != nil {
+		return "", err
+	}
+
 	err = submitTpl.Execute(f, map[string]interface{}{
 		"TaskId":            task.Id,
 		"WorkDir":           workdir,
@@ -362,9 +367,14 @@ func (b *HPCBackend) setupTemplatedHPCSubmit(ctx context.Context, task *tes.Task
 		"BackendParameters": backendParameters,
 	})
 	if err != nil {
+		if closeErr := f.Close(); closeErr != nil {
+			return "", fmt.Errorf("write submit file: %v; close submit file: %w", err, closeErr)
+		}
 		return "", err
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		return "", fmt.Errorf("close submit file: %w", err)
+	}
 
 	return submitPath, nil
 }

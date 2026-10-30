@@ -28,14 +28,19 @@ func (panicTaskService) GetTask(_ context.Context, req *tes.GetTaskRequest) (*te
 
 func TestGRPCServerSurvivesHandlerPanic(t *testing.T) {
 	listener := bufconn.Listen(1024 * 1024)
-	t.Cleanup(func() { _ = listener.Close() })
+	t.Cleanup(func() { _ = listener.Close() }) //nolint:errcheck // Stopping the test gRPC server also closes this listener.
 	server := grpc.NewServer(grpc.ChainUnaryInterceptor(
 		NewAuthentication(nil, nil, AccessAll).Interceptor,
 		newDebugInterceptor(logger.NewLogger("panic-integration", logger.DefaultConfig())),
 	))
 	tes.RegisterTaskServiceServer(server, panicTaskService{})
 	stopped := make(chan struct{})
-	go func() { defer close(stopped); _ = server.Serve(listener) }()
+	go func() {
+		defer close(stopped)
+		if err := server.Serve(listener); err != nil {
+			t.Errorf("serve test RPC: %v", err)
+		}
+	}()
 	t.Cleanup(func() { server.Stop(); <-stopped })
 	connection, err := grpc.NewClient("passthrough:///panic-test",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -44,7 +49,7 @@ func TestGRPCServerSurvivesHandlerPanic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = connection.Close() })
+	t.Cleanup(func() { _ = connection.Close() }) //nolint:errcheck // Best-effort test connection cleanup after assertions.
 	client := tes.NewTaskServiceClient(connection)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

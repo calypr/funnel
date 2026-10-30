@@ -23,7 +23,7 @@ func TestNodeDead(t *testing.T) {
 		State: scheduler.NodeState_ALIVE,
 	})
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 
 	// Some databases need time to sync the PutNode.
@@ -33,7 +33,7 @@ func TestNodeDead(t *testing.T) {
 	// Should mark node as dead.
 	err = srv.Scheduler.CheckNodes()
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 
 	resp, err := srv.Scheduler.Nodes.ListNodes(ctx, &scheduler.ListNodesRequest{})
@@ -64,11 +64,13 @@ func TestNodeInitFail(t *testing.T) {
 		State: scheduler.NodeState_INITIALIZING,
 	})
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 
 	time.Sleep(conf.Scheduler.NodeInitTimeout.GetDuration().AsDuration())
-	srv.Scheduler.CheckNodes()
+	if err := srv.Scheduler.CheckNodes(); err != nil {
+		t.Fatal(err)
+	}
 
 	resp, err := srv.Scheduler.Nodes.ListNodes(ctx, &scheduler.ListNodesRequest{})
 	if err != nil {
@@ -97,13 +99,17 @@ func TestNodeDeadTimeout(t *testing.T) {
 		State: scheduler.NodeState_DEAD,
 	})
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 
-	srv.Scheduler.CheckNodes()
+	if err := srv.Scheduler.CheckNodes(); err != nil {
+		t.Fatal(err)
+	}
 
 	time.Sleep(conf.Scheduler.NodeDeadTimeout.GetDuration().AsDuration())
-	srv.Scheduler.CheckNodes()
+	if err := srv.Scheduler.CheckNodes(); err != nil {
+		t.Fatal(err)
+	}
 
 	resp, err := srv.Scheduler.Nodes.ListNodes(ctx, &scheduler.ListNodesRequest{})
 	if err != nil {

@@ -234,7 +234,6 @@ func runWorkerRestartRecoveryLive(t *testing.T, client kubernetes.Interface, ima
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
 	rpcServer := grpc.NewServer()
 	fixture := &lostOwnerClaimRPC{
 		writer:               db,
@@ -246,8 +245,14 @@ func runWorkerRestartRecoveryLive(t *testing.T, client kubernetes.Interface, ima
 	}
 	events.RegisterEventServiceServer(rpcServer, fixture)
 	tes.RegisterTaskServiceServer(rpcServer, &taskReaderRPC{database: db})
-	go func() { _ = rpcServer.Serve(listener) }()
-	defer rpcServer.Stop()
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- rpcServer.Serve(listener) }()
+	defer func() {
+		rpcServer.Stop()
+		if err := <-serveErr; err != nil {
+			t.Errorf("serve worker fixture RPC: %v", err)
+		}
+	}()
 
 	workerConfig := config.EmptyConfig()
 	workerConfig.Compute = "kubernetes"
