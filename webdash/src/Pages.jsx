@@ -30,6 +30,7 @@ function TaskList({pageToken, setPageToken,
                    pageSize, setPageSize,
                    stateFilter, tagsFilter}) {
   const [tasks, setTasks] = React.useState([]);
+  const [refreshKey, setRefreshKey] = React.useState(0);
   //const [tasks, setTasks] = React.useState(example_task_list);
 
   const nextPage = () => {
@@ -48,6 +49,8 @@ function TaskList({pageToken, setPageToken,
   };
 
   React.useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
     var url = new URL("/v1/tasks" + window.location.search, window.location.origin);
     var params = url.searchParams;
     params.set("view", "BASIC");
@@ -67,9 +70,10 @@ function TaskList({pageToken, setPageToken,
     if (pageToken !== "") {
       params.set("pageToken", pageToken);
     }
-    get(url)
+    get(url, false, controller.signal)
       .then(
         (result) => {
+          if (!active) return;
           var tasks = [];
           if (result.tasks !== undefined) {
             tasks = result.tasks;
@@ -82,17 +86,23 @@ function TaskList({pageToken, setPageToken,
           setNextPageToken(nextPageToken);
         },
         (error) => {
+          if (!active || error.name === 'AbortError') return;
           console.log("listTasks", url.toString(), "error:", error);
         },
       );
-  }, [stateFilter, tagsFilter, pageSize, pageToken]);
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [stateFilter, tagsFilter, pageSize, pageToken, refreshKey]);
 
   return (
-    <div>
-      <Typography variant="h4" gutterBottom component="h2">
-        Tasks
-      </Typography>
-      <Paper style={{minWidth: "250px", width: "100%", overflowX: "auto"}}>
+    <div className="dashboard-page">
+      <div className="page-heading">
+        <Typography variant="h4" component="h2">Tasks</Typography>
+        <Typography className="page-description">Review task status and inspect execution details.</Typography>
+      </div>
+      <Paper className="dashboard-card" style={{minWidth: "250px", width: "100%", overflowX: "auto"}}>
         <Table style={{width: "100%"}}>
           <TableHead>
             <TableRow>
@@ -107,12 +117,12 @@ function TaskList({pageToken, setPageToken,
           <TableBody>
             {tasks.map(t => (
               <TableRow hover key={t.id} style={{height: "63px"}}>
-                <TableCell style={{width: '15%'}}><Link to={"/tasks/" + t.id}>{t.id}</Link></TableCell>
-                <TableCell style={{width: '15%'}}>{t.state}</TableCell>
+                <TableCell style={{width: '15%'}}><Link className="task-link" title={t.id} to={"/tasks/" + t.id}>{t.id}</Link></TableCell>
+                <TableCell style={{width: '15%'}}><span className={`status-badge status-${(t.state || 'unknown').toLowerCase()}`}>{t.state || 'UNKNOWN'}</span></TableCell>
                 <TableCell style={{width: '30%'}}>{t.name}</TableCell>
-                <TableCell style={{width: '15%'}}>{formatDate(t.creationTime)}</TableCell>
+                <TableCell style={{width: '15%'}}>{formatDate(t.creationTime ?? t.creation_time)}</TableCell>
                 <TableCell style={{width: '15%'}}>{elapsedTime(t)}</TableCell>
-                <TableCell style={{width: '10%'}}><CancelButton task={t} /></TableCell>
+                <TableCell style={{width: '10%'}}><CancelButton task={t} onCanceled={() => setRefreshKey(key => key + 1)} /></TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -269,16 +279,17 @@ function NodeList() {
   };
 
   return (
-    <div>
-      <Typography variant="h4" gutterBottom component="h2">
-        Nodes
-      </Typography>
+    <div className="dashboard-page">
+      <div className="page-heading">
+        <Typography variant="h4" component="h2">Nodes</Typography>
+        <Typography className="page-description">Inspect scheduler nodes and their available resources.</Typography>
+      </div>
       {loadError && <Typography>Could not load nodes.</Typography>}
       {nodes !== null && (activeNodes.length === 0 ? (
         <Typography>No active nodes</Typography>
       ) : (
-        <Paper sx={{ mb: 2, p: 2 }}>
-          <Typography variant="h6" component="h3">Resources on active nodes</Typography>
+        <Paper className="dashboard-card resource-card" sx={{ mb: 2 }}>
+          <Typography className="card-heading" variant="h6" component="h3">Resources on active nodes</Typography>
           <Table aria-label="Resources on active nodes" size="small">
             <TableHead><TableRow><TableCell>Resource</TableCell><TableCell>Available</TableCell><TableCell>Total</TableCell></TableRow></TableHead>
             <TableBody>
@@ -293,7 +304,7 @@ function NodeList() {
           </Table>
         </Paper>
       ))}
-      <Paper style={{minWidth: "250px", width: "100%", overflowX: "auto"}}>
+      <Paper className="dashboard-card node-list-card" style={{minWidth: "250px", width: "100%", overflowX: "auto"}}>
         <Table style={{width: "100%"}}>
           <TableHead>
             <TableRow>
@@ -306,9 +317,9 @@ function NodeList() {
           <TableBody>
             {(nodes ?? []).map(n => (
               <TableRow hover key={n.id}>
-                <TableCell><Link to={"/nodes/" + n.id}>{n.id}</Link></TableCell>
+                <TableCell><Link className="task-link" to={"/nodes/" + n.id}>{n.id}</Link></TableCell>
                 <TableCell>{n.hostname}</TableCell>
-                <TableCell>{n.state}</TableCell>
+                <TableCell><span className={`status-badge status-${(n.state || 'unknown').toLowerCase()}`}>{n.state || 'UNKNOWN'}</span></TableCell>
                 <TableCell>{nTasks(n)}</TableCell>
               </TableRow>
             ))}
@@ -322,6 +333,7 @@ function NodeList() {
 function Task() {
   let { task_id } = useParams();
   const [task, setTask] = React.useState({});
+  const [refreshKey, setRefreshKey] = React.useState(0);
   //const [task, setTask] = React.useState(example_task);
 
   React.useEffect(() => {
@@ -347,7 +359,7 @@ function Task() {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [task_id]);
+  }, [task_id, refreshKey]);
 
   const json = (
     <ReactJson
@@ -373,7 +385,7 @@ function Task() {
       <Typography variant="h4" gutterBottom>
         Task: {task_id}
       </Typography>
-      <CancelButton task={task} />
+      <CancelButton task={task} onCanceled={() => setRefreshKey(key => key + 1)} />
       {!isDone(task) && (<br/>)}
     </div>
   );
@@ -409,15 +421,16 @@ function Node() {
   );
 
   const header = (
-    <div>
-      <Typography variant="h4" gutterBottom component="h2">
+    <div className="page-heading">
+      <Typography variant="h4" component="h2">
         Node: {node_id}
       </Typography>
+      <Typography className="page-description">Inspect node resources and assigned tasks.</Typography>
     </div>
   );
 
   return (
-    SimpleTabs(header, <NodeInfo node={node} />, json)
+    <div className="dashboard-page details-page">{SimpleTabs(header, <NodeInfo node={node} />, json)}</div>
   );
 };
 
@@ -446,15 +459,16 @@ function ServiceInfo() {
   );
 
   const header = (
-    <div>
-      <Typography variant="h4" gutterBottom component="h2">
-        System Info
+    <div className="page-heading">
+      <Typography variant="h4" component="h2">
+        Service Info
       </Typography>
+      <Typography className="page-description">View service details and configuration.</Typography>
     </div>
   );
 
   return (
-    SimpleTabs(header, <SystemInfo info={info} />, json)
+    <div className="dashboard-page details-page">{SimpleTabs(header, <SystemInfo info={info} />, json)}</div>
   );
 };
 

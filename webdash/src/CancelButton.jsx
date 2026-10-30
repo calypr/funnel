@@ -8,17 +8,13 @@ import DialogTitle from '@mui/material/DialogTitle';
 
 import { isDone, post } from './utils';
 
-function CancelButton({task}) {
+function CancelButton({task, onCanceled}) {
   const [open, setOpen] = React.useState(false);
-
-  const cancelTask = () => {
-    var url = new URL("/v1/tasks/" + task.id + ":cancel", window.location.origin);
-    post(url).catch((error) =>
-      console.log("cancelTask", url.toString(), "error:", error)
-    );
-  };
+  const [pending, setPending] = React.useState(false);
+  const [error, setError] = React.useState('');
 
   const handleClickOpen = () => {
+    setError('');
     setOpen(true);
   };
 
@@ -26,9 +22,19 @@ function CancelButton({task}) {
     setOpen(false);
   };
 
-  const handleYes = () => {
-    cancelTask(task.id);
-    setOpen(false);
+  const handleYes = async () => {
+    setPending(true);
+    setError('');
+    try {
+      const url = new URL('/v1/tasks/' + encodeURIComponent(task.id) + ':cancel', window.location.origin);
+      await post(url);
+      setOpen(false);
+      if (onCanceled) onCanceled();
+    } catch (err) {
+      setError(`Cancellation failed: ${err.message}`);
+    } finally {
+      setPending(false);
+    }
   };
 
   if (task.state === undefined || isDone(task)) {
@@ -50,13 +56,14 @@ function CancelButton({task}) {
             <DialogContentText id="alert-dialog-description">
               This action can not be undone.
             </DialogContentText>
+            {error && <DialogContentText role="alert" color="error">{error}</DialogContentText>}
           </DialogContent>
           <DialogActions>
-            <Button onClick={handleNo} color="primary">
+            <Button onClick={handleNo} color="primary" disabled={pending}>
               No
             </Button>
-            <Button onClick={handleYes} color="primary" autoFocus>
-              Yes
+            <Button onClick={handleYes} color="primary" autoFocus disabled={pending}>
+              {pending ? 'Canceling...' : 'Yes'}
             </Button>
           </DialogActions>
         </Dialog>

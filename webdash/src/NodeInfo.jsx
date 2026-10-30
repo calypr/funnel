@@ -7,11 +7,6 @@ import TableRow from '@mui/material/TableRow';
 import { Link } from "react-router-dom";
 
 import { formatTimestamp } from './utils';
-import { styles } from './TaskInfo';
-
-const keyCellSx = { ...styles.cell, ...styles.key };
-const valueCellSx = { ...styles.cell, ...styles.value };
-
 function NodeInfoRaw(props) {
   const { node } = props;
 
@@ -25,9 +20,9 @@ function NodeInfoRaw(props) {
     }
     if ( key && val ) {
       return (
-        <TableRow key={key} sx={styles.row}>
-          <TableCell sx={keyCellSx}><b>{key}</b></TableCell>
-          <TableCell sx={valueCellSx}>{val}</TableCell>
+        <TableRow key={key}>
+          <TableCell component="th" scope="row">{key}</TableCell>
+          <TableCell>{val}</TableCell>
         </TableRow>
       );
     }
@@ -40,7 +35,7 @@ function NodeInfoRaw(props) {
     }
     return (
       renderRow('Tasks', taskList.map(tid => ( 
-          <div><Link to={"/tasks/" + tid}>{tid}</Link><br/></div>
+          <div key={tid}><Link className="task-link" to={"/tasks/" + tid}>{tid}</Link></div>
       )))
     );
   };
@@ -69,7 +64,7 @@ function NodeInfoRaw(props) {
     }
     return (
       <div>
-        <Table sx={styles.table}>
+        <Table className="info-table" aria-label="Node information">
           <TableBody>
             {renderRow('ID', node.id)}
             {renderRow('Hostname', node.hostname)}

@@ -253,7 +253,7 @@ function TaskInfoRaw(props) {
             {renderRow('State', task.state)}
             {renderRow('Description', task.description)}
             {renderResources(task.resources)}
-            {renderRow('Creation Time', task.creationTime, formatDate)}
+            {renderRow('Creation Time', task.creationTime ?? task.creation_time, formatDate)}
             {renderRow('Elapsed Time', task, elapsedTime)}
           </TableBody>
         </Table>
