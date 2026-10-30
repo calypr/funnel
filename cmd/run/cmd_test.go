@@ -179,3 +179,17 @@ func TestParse(t *testing.T) {
 		t.Fatal("unexpected results")
 	}
 }
+
+func TestParseEmptyTagValue(t *testing.T) {
+	task, err := ParseString("echo --container busybox --tag foo=")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(task) != 1 {
+		t.Fatalf("got %d tasks", len(task))
+	}
+	value, ok := task[0].Tags["foo"]
+	if !ok || value != "" {
+		t.Fatalf("tags = %#v, want foo with empty value", task[0].Tags)
+	}
+}

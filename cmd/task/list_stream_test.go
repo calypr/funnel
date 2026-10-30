@@ -121,3 +121,21 @@ func TestListAllReportsLaterPageFailure(t *testing.T) {
 		t.Fatalf("expected partial output after a failed page, got %q", output.String())
 	}
 }
+
+func TestListEmptyTagValue(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		if q.Get("tag_key") != "foo" {
+			t.Errorf("query = %v, want tag_key=foo", q)
+		}
+		values, ok := q["tag_value"]
+		if !ok || len(values) != 1 || values[0] != "" {
+			t.Errorf("query = %v, want empty tag_value", q)
+		}
+		_, _ = fmt.Fprint(w, `{}`)
+	}))
+	defer server.Close()
+	if err := List(server.URL, "basic", "", "", []string{"foo="}, "", 10, false, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+}
