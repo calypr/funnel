@@ -394,18 +394,16 @@ func (ts *TaskService) CancelTask(ctx context.Context, req *tes.CancelTaskReques
 // GetServiceInfo returns service metadata.
 func (ts *TaskService) GetServiceInfo(ctx context.Context, info *tes.GetServiceInfoRequest) (*tes.ServiceInfo, error) {
 	resp := &tes.ServiceInfo{
-		CreatedAt: "2016-03-21T16:27:49-07:00",
-		// TODO: Change this to "mailto:ellrott@ohsu.edu" when support for "mailto:" URL's are
-		// added to tes-compliance-suite
-		ContactUrl:       "https://ohsu-comp-bio.github.io/funnel/",
+		CreatedAt:        "2016-03-21T16:27:49-07:00",
+		ContactUrl:       "https://github.com/calypr/",
 		Description:      "Funnel is a toolkit for distributed task execution via a simple, standard API.",
-		DocumentationUrl: "https://ohsu-comp-bio.github.io/funnel/",
+		DocumentationUrl: "https://github.com/calypr/funnel",
 		Environment:      "development",
 		Id:               "org.ga4gh.funnel",
 		Name:             ts.Name,
 		Organization: map[string]string{
-			"name": "OHSU Computational Biology",
-			"url":  "https://github.com/ohsu-comp-bio",
+			"name": "CALYPR Data Platform",
+			"url":  "https://github.com/calypr/",
 		},
 		Storage: []string{
 			"file:///path/to/local/funnel-storage",
@@ -415,7 +413,7 @@ func (ts *TaskService) GetServiceInfo(ctx context.Context, info *tes.GetServiceI
 		Type: &tes.ServiceType{
 			Artifact: "tes",
 			Group:    "org.ga4gh",
-			Version:  version.Version,
+			Version:  "1.1.0",
 		},
 		UpdatedAt: time.Now().Format(time.RFC3339),
 		Version:   version.Version,
