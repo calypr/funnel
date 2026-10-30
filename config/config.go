@@ -70,3 +70,11 @@ func (h *HTTPStorage) Valid() bool {
 func (h *FTPStorage) Valid() bool {
 	return !h.Disabled
 }
+
+// ResponseBytes resolves the server's bounded gRPC response limit.
+func (s *Server) ResponseBytes() int {
+	if s == nil || s.MaxResponseBytes == 0 {
+		return 4 * 1024 * 1024
+	}
+	return int(s.MaxResponseBytes)
+}

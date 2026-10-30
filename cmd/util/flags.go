@@ -87,6 +87,7 @@ func serverFlags(flagConf *config.Config) *pflag.FlagSet {
 	f.StringVar(&flagConf.Server.HostName, "Server.HostName", flagConf.Server.HostName, "Host name or IP")
 	f.StringVar(&flagConf.Server.HTTPPort, "Server.HTTPPort", flagConf.Server.HTTPPort, "HTTP Port")
 	f.StringVar(&flagConf.Server.RPCPort, "Server.RPCPort", flagConf.Server.RPCPort, "RPC Port")
+	f.Uint32Var(&flagConf.Server.MaxResponseBytes, "Server.MaxResponseBytes", flagConf.Server.MaxResponseBytes, "Maximum gRPC response bytes (0 uses 4 MiB)")
 	f.StringVar(&flagConf.Server.ServiceName, "Server.ServiceName", flagConf.Server.ServiceName, "Host name or IP")
 
 	return f

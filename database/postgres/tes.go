@@ -2,14 +2,18 @@ package postgres
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
+	"time"
+
+	"encoding/json"
 
 	"github.com/calypr/funnel/server"
 	"github.com/calypr/funnel/tes"
 	"github.com/jackc/pgx/v5"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // trimUnusedExecutorLogs removes trailing executor log entries that correspond
@@ -108,7 +112,7 @@ func (db *Postgres) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*
 		return nil, err
 	}
 
-	ctx, cancel := db.context()
+	dbctx, cancel := db.context()
 	defer cancel()
 
 	pageSize := tes.GetPageSize(req.GetPageSize())
@@ -154,11 +158,28 @@ func (db *Postgres) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*
 		paramCount++
 	}
 
-	// Page Token
 	if req.PageToken != "" {
-		whereClauses = append(whereClauses, fmt.Sprintf("id < $%d", paramCount))
-		args = append(args, req.PageToken)
-		paramCount++
+		position, legacy, err := tes.DecodeTaskCursor(req.PageToken)
+		if err != nil {
+			return nil, err
+		}
+		var created time.Time
+		if legacy {
+			if err := db.client.QueryRow(dbctx, "SELECT creation_time FROM tasks WHERE id=$1", position.ID).Scan(&created); err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					return nil, status.Error(codes.InvalidArgument, "legacy task page token no longer exists; restart listing")
+				}
+				return nil, err
+			}
+		} else {
+			created, err = time.Parse(time.RFC3339Nano, position.Created)
+			if err != nil {
+				return nil, status.Error(codes.InvalidArgument, "invalid task page token timestamp")
+			}
+		}
+		whereClauses = append(whereClauses, fmt.Sprintf("(creation_time,id) < ($%d,$%d)", paramCount, paramCount+1))
+		args = append(args, created, position.ID)
+		paramCount += 2
 	}
 
 	whereClause := ""
@@ -170,18 +191,21 @@ func (db *Postgres) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*
 	limitClause := fmt.Sprintf("LIMIT $%d", paramCount)
 	args = append(args, pageSize)
 
-	selectSQL := fmt.Sprintf("SELECT data FROM tasks %s %s %s", whereClause, orderByClause, limitClause)
+	selectSQL := fmt.Sprintf("SELECT data,creation_time FROM tasks %s %s %s", whereClause, orderByClause, limitClause)
 
-	rows, err := db.client.Query(ctx, selectSQL, args...)
+	rows, err := db.client.Query(dbctx, selectSQL, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var tasks []*tes.Task
+	page := tes.NewTaskPage(ctx)
+	taskCount := 0
+	hasMore := false
 	for rows.Next() {
 		var taskJSON []byte
-		if err := rows.Scan(&taskJSON); err != nil {
+		var created time.Time
+		if err := rows.Scan(&taskJSON, &created); err != nil {
 			fmt.Println("Error scanning task row for ListTasks:", err)
 			continue
 		}
@@ -194,20 +218,25 @@ func (db *Postgres) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*
 
 		trimUnusedExecutorLogs(&task)
 
-		tasks = append(tasks, project(&task))
+		projected := project(&task)
+		accepted, err := page.Add(projected, tes.EncodeTaskCursor(created.UTC().Format(time.RFC3339Nano), projected.Id))
+		if err != nil {
+			return nil, err
+		}
+		if !accepted {
+			hasMore = true
+			break
+		}
+		taskCount++
+		if taskCount == pageSize {
+			hasMore = true
+			break
+		}
 	}
 
 	if rows.Err() != nil {
 		return nil, rows.Err()
 	}
 
-	out := tes.ListTasksResponse{
-		Tasks: tasks,
-	}
-	// Determine NextPageToken
-	if len(tasks) == pageSize {
-		out.NextPageToken = tasks[len(tasks)-1].Id
-	}
-
-	return &out, nil
+	return page.Finish(hasMore), nil
 }

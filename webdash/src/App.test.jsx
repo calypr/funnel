@@ -179,3 +179,35 @@ it('does not display an incomplete node list when a later page fails', async () 
   expect(container.textContent).toContain('Could not load nodes.');
   expect(container.querySelector('a[href="/nodes/node-first"]')).toBeNull();
 });
+
+it('requests BASIC task lists and FULL task details', async () => {
+  const requests = [];
+  vi.stubGlobal('fetch', async (input) => {
+    const url = new URL(input);
+    requests.push(url);
+    if (url.pathname === '/v1/tasks') {
+      return { status: 200, json: async () => ({ tasks: [{ id: 'task-view', state: 'COMPLETE', name: 'Example' }] }) };
+    }
+    return { status: 200, json: async () => ({ id: 'task-view', state: 'COMPLETE', logs: [] }) };
+  });
+  const container = document.createElement('div');
+  root = createRoot(container);
+
+  window.history.replaceState({}, '', '/tasks');
+  await act(async () => {
+    root.render(<App />);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  expect(requests[0].pathname).toBe('/v1/tasks');
+  expect(requests[0].searchParams.get('view')).toBe('BASIC');
+
+  act(() => root.unmount());
+  window.history.replaceState({}, '', '/tasks/task-view');
+  const detailRoot = createRoot(container);
+  root = detailRoot;
+  await act(async () => {
+    detailRoot.render(<App />);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  expect(requests.some(url => url.pathname === '/v1/tasks/task-view' && url.searchParams.get('view') === 'FULL')).toBe(true);
+});

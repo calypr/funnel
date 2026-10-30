@@ -291,6 +291,9 @@ func (ts *TaskService) GetTask(ctx context.Context, req *tes.GetTaskRequest) (*t
 	} else if err == tes.ErrNotPermitted {
 		err = status.Errorf(codes.PermissionDenied, "%v: taskID: %s", err.Error(), req.Id)
 	}
+	if err == nil && googleproto.Size(task) > ts.responseBytes() {
+		return nil, status.Errorf(codes.ResourceExhausted, "task %q exceeds Server.MaxResponseBytes; request MINIMAL view or increase the configured response limit and the gRPC client's receive limit", req.Id)
+	}
 	return task, err
 }
 
@@ -304,6 +307,11 @@ func (ts *TaskService) ListTasks(ctx context.Context, req *tes.ListTasksRequest)
 		req = googleproto.Clone(req).(*tes.ListTasksRequest)
 		req.View = view
 	}
+	limit := ts.responseBytes()
+	if limit <= 0 {
+		return nil, status.Error(codes.Internal, "Server.MaxResponseBytes is too small")
+	}
+	ctx = tes.WithTaskPageBytes(ctx, limit)
 	return ts.Read.ListTasks(ctx, req)
 }
 
@@ -437,4 +445,11 @@ func (ts *TaskService) GetServiceInfo(ctx context.Context, info *tes.GetServiceI
 	*/
 
 	return resp, nil
+}
+
+func (ts *TaskService) responseBytes() int {
+	if ts.Config == nil {
+		return tes.DefaultResponseBytes
+	}
+	return ts.Config.Server.ResponseBytes()
 }
