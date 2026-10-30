@@ -3,15 +3,15 @@
     "quay.io/cdis/arborist:master": {
       "platforms": {
         "amd64": {
-          "config": "sha256:f32e7c1d5d997d62fc920f55df64d5222b663efe7f9c9fb07bf47909cd1067f2",
-          "manifest": "sha256:77ec3b0df0e44792ba2b72afd8f5d605b918fb81398e00746cffd8ff4d65056e"
+          "config": "sha256:dc0a3c30d6d1fd1444d3b2cae4102c8c8f39e082ba4449b7850f1702f78d6fda",
+          "manifest": "sha256:ca8c22410521b1a8b5f8b39a2f441c2f2340290fd43abcb26c176d2182f0c753"
         },
         "arm64": {
-          "config": "sha256:2af214e313be162553fa5b8c34ba69b5be427d402e347b3b58b97ff1cd79c7c6",
-          "manifest": "sha256:6de08df7d01cbf84dd46eab35b9c9c430f2dd7e3ec74377033b87cebb0782e4d"
+          "config": "sha256:f14d78321787b30796246b9072faa64fda6d18b373dbd07188a0d7b6ad65fb96",
+          "manifest": "sha256:0bc4eaafd7168f021bcd7416af309ae86bc4abaa55a35cf9c84fb332e4c1af87"
         }
       },
-      "reference": "quay.io/cdis/arborist:master@sha256:308c09045826cc764ca1e4c0b4bf0f6d9b32ac47cabf249ba72e44bc437b9932"
+      "reference": "quay.io/cdis/arborist:master@sha256:f874b5918bbecf38a0f6190030aad8d84ac140ab3621c9af73bdcc256c63742f"
     },
     "quay.io/cdis/docker-bitnami-pgvector:master": {
       "platforms": {
