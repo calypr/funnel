@@ -175,7 +175,7 @@ func (f *Funnel) pollForServerStart(serverDone <-chan error) error {
 		case <-ticker.C:
 		}
 
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, f.Conf.Server.HTTPAddress(), nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, f.Conf.Server.HTTPAddress()+"/healthz", nil)
 		if err != nil {
 			return err
 		}
