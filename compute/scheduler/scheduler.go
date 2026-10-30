@@ -54,7 +54,18 @@ type Scheduler struct {
 // request the the configured backend schedule them, and
 // act on offers made by the backend.
 func (s *Scheduler) Run(ctx context.Context) error {
+	if s.Conf == nil || s.Conf.ScheduleRate == nil {
+		return fmt.Errorf("Scheduler.ScheduleRate must be a positive duration")
+	}
+	err := s.Conf.ScheduleRate.CheckValid()
+	if err != nil {
+		return fmt.Errorf("Scheduler.ScheduleRate: %w", err)
+	}
+	if s.Conf.ScheduleRate.AsDuration() <= 0 {
+		return fmt.Errorf("Scheduler.ScheduleRate must be a positive duration")
+	}
 	ticker := time.NewTicker(time.Duration(s.Conf.ScheduleRate.AsDuration()))
+	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():

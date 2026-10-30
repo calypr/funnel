@@ -25,6 +25,15 @@ func NewBackend(ctx context.Context, conf *config.Config, reader tes.ReadOnlySer
 		conf.PBS.Template = string(content)
 	}
 
+	err := compute.ValidateSubmissionTemplate("PBS.Template", conf.PBS.Template)
+	if err != nil {
+		return nil, err
+	}
+	err = compute.ValidateReconcileRate("PBS.ReconcileRate", conf.PBS.DisableReconciler, conf.PBS.ReconcileRate)
+	if err != nil {
+		return nil, err
+	}
+
 	b := &compute.HPCBackend{
 		Name:          "pbs",
 		SubmitCmd:     "qsub",

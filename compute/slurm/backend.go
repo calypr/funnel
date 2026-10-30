@@ -28,6 +28,15 @@ func NewBackend(ctx context.Context, conf *config.Config, reader tes.ReadOnlySer
 		conf.Slurm.Template = string(content)
 	}
 
+	err := compute.ValidateSubmissionTemplate("Slurm.Template", conf.Slurm.Template)
+	if err != nil {
+		return nil, err
+	}
+	err = compute.ValidateReconcileRate("Slurm.ReconcileRate", conf.Slurm.DisableReconciler, conf.Slurm.ReconcileRate)
+	if err != nil {
+		return nil, err
+	}
+
 	b := &compute.HPCBackend{
 		Name:          "slurm",
 		SubmitCmd:     "sbatch",

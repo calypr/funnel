@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/batch"
 	"github.com/aws/aws-sdk-go-v2/service/batch/types"
+	"github.com/calypr/funnel/compute"
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/events"
 	"github.com/calypr/funnel/logger"
@@ -26,6 +27,17 @@ const defaultBatchRetryMaxAttempts = 4
 
 // NewBackend returns a new local Backend instance.
 func NewBackend(ctx context.Context, conf *config.AWSBatch, reader tes.ReadOnlyServer, writer events.Writer, log *logger.Logger) (*Backend, error) {
+	if conf == nil {
+		return nil, fmt.Errorf("AWSBatch configuration is required")
+	}
+	err := compute.ValidateReconcileRate("AWSBatch.ReconcileRate", conf.DisableReconciler, conf.ReconcileRate)
+	if err != nil {
+		return nil, err
+	}
+	if conf.AWSConfig == nil {
+		return nil, fmt.Errorf("AWSBatch.AWSConfig is required")
+	}
+
 	sess, err := util.NewAWSConfig(ctx, conf.AWSConfig)
 	if err != nil {
 		return nil, fmt.Errorf("error occurred creating batch client: %v", err)
