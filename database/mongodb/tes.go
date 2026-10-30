@@ -10,6 +10,8 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 var basicView = bson.M{
@@ -32,7 +34,7 @@ func (db *MongoDB) GetTask(ctx context.Context, req *tes.GetTaskRequest) (*tes.T
 	case tes.View_BASIC.String():
 		opts = opts.SetProjection(basicView)
 	case tes.View_MINIMAL.String():
-		opts = opts.SetProjection(minimalView)
+		opts = opts.SetProjection(bson.M{"id": 1, "owner": 1, "state": 1, "creationtime": 1})
 	}
 
 	mctx, cancel := db.wrap(ctx)
@@ -72,7 +74,27 @@ func (db *MongoDB) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*t
 	var query = bson.M{}
 	var err error
 	if req.PageToken != "" {
-		query["id"] = bson.M{"$lt": req.PageToken}
+		position, legacy, decodeErr := tes.DecodeTaskCursor(req.PageToken)
+		if decodeErr != nil {
+			return nil, decodeErr
+		}
+		if legacy {
+			var anchor tes.Task
+			mctx, cancel := db.wrap(ctx)
+			lookupErr := db.tasks().FindOne(mctx, bson.M{"id": position.ID}, options.FindOne().SetProjection(bson.M{"creationtime": 1})).Decode(&anchor)
+			cancel()
+			if lookupErr == mongo.ErrNoDocuments {
+				return nil, status.Error(codes.InvalidArgument, "legacy task page token no longer exists; restart listing")
+			}
+			if lookupErr != nil {
+				return nil, lookupErr
+			}
+			position.Created = anchor.CreationTime
+		}
+		query["$or"] = bson.A{
+			bson.M{"creationtime": bson.M{"$lt": position.Created}},
+			bson.M{"creationtime": position.Created, "id": bson.M{"$lt": position.ID}},
+		}
 	}
 
 	if req.State != tes.Unknown {
@@ -95,13 +117,13 @@ func (db *MongoDB) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*t
 		}
 	}
 
-	var opts = options.Find().SetSort(bson.M{"creationtime": -1}).SetLimit(int64(pageSize))
+	var opts = options.Find().SetSort(bson.D{{Key: "creationtime", Value: -1}, {Key: "id", Value: -1}}).SetLimit(int64(pageSize))
 
 	switch req.View {
 	case tes.View_BASIC.String():
 		opts = opts.SetProjection(basicView)
 	case tes.View_MINIMAL.String():
-		opts = opts.SetProjection(minimalView)
+		opts = opts.SetProjection(bson.M{"id": 1, "owner": 1, "state": 1, "creationtime": 1})
 	}
 
 	mctx, cancel := db.wrap(ctx)
@@ -112,21 +134,40 @@ func (db *MongoDB) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*t
 		return nil, err
 	}
 
+	defer cursor.Close(mctx)
+
 	mctx, cancel = db.wrap(ctx)
 	defer cancel()
 
-	var tasks []*tes.Task
-	err = cursor.All(mctx, &tasks)
-	if err != nil {
+	page := tes.NewTaskPage(ctx)
+	taskCount := 0
+	hasMore := false
+	for cursor.Next(mctx) {
+		var task tes.Task
+		if err := cursor.Decode(&task); err != nil {
+			return nil, fmt.Errorf("mongo decode listed task: %w", err)
+		}
+		position := tes.EncodeTaskCursor(task.CreationTime, task.Id)
+		projected := &task
+		if req.View == tes.View_MINIMAL.String() {
+			projected = task.GetMinimalView()
+		}
+		accepted, err := page.Add(projected, position)
+		if err != nil {
+			return nil, err
+		}
+		if !accepted {
+			hasMore = true
+			break
+		}
+		taskCount++
+		if taskCount == pageSize {
+			hasMore = true
+			break
+		}
+	}
+	if err := cursor.Err(); err != nil {
 		return nil, err
 	}
-
-	out := tes.ListTasksResponse{
-		Tasks: tasks,
-	}
-	if len(tasks) == pageSize {
-		out.NextPageToken = tasks[len(tasks)-1].Id
-	}
-
-	return &out, nil
+	return page.Finish(hasMore), nil
 }

@@ -752,6 +752,7 @@ type Server struct {
 	OidcAuth         *OidcAuth              `protobuf:"bytes,6,opt,name=OidcAuth,proto3" json:"OidcAuth,omitempty"`
 	DisableHTTPCache bool                   `protobuf:"varint,7,opt,name=DisableHTTPCache,proto3" json:"DisableHTTPCache,omitempty"`
 	TaskAccess       string                 `protobuf:"bytes,8,opt,name=TaskAccess,proto3" json:"TaskAccess,omitempty"`
+	MaxResponseBytes uint32                 `protobuf:"varint,9,opt,name=MaxResponseBytes,proto3" json:"MaxResponseBytes,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -840,6 +841,13 @@ func (x *Server) GetTaskAccess() string {
 		return x.TaskAccess
 	}
 	return ""
+}
+
+func (x *Server) GetMaxResponseBytes() uint32 {
+	if x != nil {
+		return x.MaxResponseBytes
+	}
+	return 0
 }
 
 // Scheduler contains Funnel's basic scheduler configuration.
@@ -3533,7 +3541,7 @@ const file_config_config_proto_rawDesc = "" +
 	"\aTimeout\x18\x03 \x01(\v2\x15.config.TimeoutConfigR\aTimeout\x12\x1e\n" +
 	"\n" +
 	"MaxRetries\x18\x04 \x01(\rR\n" +
-	"MaxRetries\"\xad\x02\n" +
+	"MaxRetries\"\xd9\x02\n" +
 	"\x06Server\x12 \n" +
 	"\vServiceName\x18\x01 \x01(\tR\vServiceName\x12\x1a\n" +
 	"\bHostName\x18\x02 \x01(\tR\bHostName\x12\x1a\n" +
@@ -3544,7 +3552,8 @@ const file_config_config_proto_rawDesc = "" +
 	"\x10DisableHTTPCache\x18\a \x01(\bR\x10DisableHTTPCache\x12\x1e\n" +
 	"\n" +
 	"TaskAccess\x18\b \x01(\tR\n" +
-	"TaskAccess\"\xb3\x02\n" +
+	"TaskAccess\x12*\n" +
+	"\x10MaxResponseBytes\x18\t \x01(\rR\x10MaxResponseBytes\"\xb3\x02\n" +
 	"\tScheduler\x12=\n" +
 	"\fScheduleRate\x18\x01 \x01(\v2\x19.google.protobuf.DurationR\fScheduleRate\x12$\n" +
 	"\rScheduleChunk\x18\x02 \x01(\x05R\rScheduleChunk\x12?\n" +

@@ -98,9 +98,9 @@ func (d *Datastore) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*
 		q = q.FilterField("TagStrings", "=", encodeKV(k, v))
 	}
 
-	var tasks []*tes.Task
-	var parts []*datastore.Key
-	byID := map[string]*tes.Task{}
+	pageResult := tes.NewTaskPage(ctx)
+	hasMore := false
+	accepted := 0
 
 	it := d.client.Run(ctx, q)
 	for {
@@ -114,34 +114,33 @@ func (d *Datastore) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*
 		}
 		task := t.unmarshal()
 
+		// Materialize FULL before checking the response budget. Otherwise large
+		// output logs would evade the limit and fail later during gRPC encoding.
 		switch req.View {
 		case tes.View_MINIMAL.String():
 			task = task.GetMinimalView()
 		case tes.View_FULL.String():
-			// Determine the keys needed to load the various parts of the full view.
-			parts = append(parts, viewPartKeys(task)...)
-			byID[task.Id] = task
+			if err := d.getFullView(ctx, viewPartKeys(task), map[string]*tes.Task{task.Id: task}); err != nil {
+				return nil, err
+			}
 		}
-		tasks = append(tasks, task)
-	}
-
-	// Load the full view parts
-	if req.View == tes.View_FULL.String() {
-		err := d.getFullView(ctx, parts, byID)
+		cursor, err := it.Cursor()
 		if err != nil {
 			return nil, err
 		}
-	}
-
-	resp := &tes.ListTasksResponse{Tasks: tasks}
-
-	if len(tasks) == size {
-		c, err := it.Cursor()
+		candidateToken := cursor.String()
+		added, err := pageResult.Add(task, candidateToken)
 		if err != nil {
 			return nil, err
 		}
-		resp.NextPageToken = c.String()
+		if !added {
+			hasMore = true
+			break
+		}
+		accepted++
 	}
-
-	return resp, nil
+	if !hasMore {
+		hasMore = accepted == size
+	}
+	return pageResult.Finish(hasMore), nil
 }

@@ -35,8 +35,10 @@ func (db *Badger) GetTask(ctx context.Context, req *tes.GetTaskRequest) (*tes.Ta
 
 // ListTasks returns a list of tasks.
 func (db *Badger) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*tes.ListTasksResponse, error) {
-	var tasks []*tes.Task
+	page := tes.NewTaskPage(ctx)
 	pageSize := tes.GetPageSize(req.GetPageSize())
+	count := 0
+	byteLimited := false
 
 	err := db.db.View(func(txn *badger.Txn) error {
 
@@ -61,7 +63,7 @@ func (db *Badger) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*te
 		}
 
 	taskLoop:
-		for ; it.Valid() && len(tasks) < pageSize; it.Next() {
+		for ; it.Valid() && count < pageSize; it.Next() {
 			// Iterator items are reverse-ordered by keys (starting with
 			// task-keys). So by the time the task-key prefix is passed, only
 			// owner-keys remains, and they can be skipped.
@@ -110,7 +112,15 @@ func (db *Badger) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*te
 				task = task.GetBasicView()
 			}
 
-			tasks = append(tasks, task)
+			accepted, err := page.Add(task, task.Id)
+			if err != nil {
+				return err
+			}
+			if !accepted {
+				byteLimited = true
+				break taskLoop
+			}
+			count++
 			i++
 		}
 
@@ -121,15 +131,7 @@ func (db *Badger) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*te
 		return nil, err
 	}
 
-	out := tes.ListTasksResponse{
-		Tasks: tasks,
-	}
-
-	if len(tasks) == pageSize {
-		out.NextPageToken = tasks[len(tasks)-1].Id
-	}
-
-	return &out, nil
+	return page.Finish(byteLimited || count == pageSize), nil
 }
 
 func getTask(txn *badger.Txn, id string, ctx context.Context) (*tes.Task, error) {

@@ -127,7 +127,7 @@ function fetchWithPost(fetchOpts, doPost) {
 function get(url, postJson, signal) {
   if (!url instanceof URL) {
     throw new Error("Expected URL object; got: " + typeof url);
-  } else if (url.pathname.includes("/v1/tasks")) {
+  } else if (url.pathname.includes("/v1/tasks") && !url.searchParams.has("view")) {
     url.searchParams.set("view", "FULL");
   }
 

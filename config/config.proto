@@ -107,6 +107,7 @@ message Server {
   OidcAuth OidcAuth = 6;
   bool DisableHTTPCache = 7;
   string TaskAccess = 8;
+  uint32 MaxResponseBytes = 9;
 }
 
 // Scheduler contains Funnel's basic scheduler configuration.

@@ -89,7 +89,7 @@ func (db *DynamoDB) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*
 		return nil, err
 	}
 
-	pageSize := int64(tes.GetPageSize(req.GetPageSize()))
+	pageSize := tes.GetPageSize(req.GetPageSize())
 	query := &dynamodb.QueryInput{
 		TableName:                 aws.String(db.taskTable),
 		Limit:                     aws.Int32(int32(pageSize)),
@@ -113,46 +113,56 @@ func (db *DynamoDB) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*
 		}
 	}
 
-	response, err := db.client.Query(ctx, query)
-
-	if err != nil {
-		return nil, err
-	}
-
-	if req.View == tes.View_FULL.String() {
-		for _, item := range response.Items {
-			var errs []error
-			if err := db.getContent(ctx, item); err != nil {
-				errs = append(errs, err)
-			}
-			if err := db.getExecutorOutput(ctx, item, "stdout", db.stdoutTable); err != nil {
-				errs = append(errs, err)
-			}
-			if err := db.getExecutorOutput(ctx, item, "stderr", db.stderrTable); err != nil {
-				errs = append(errs, err)
-			}
-			if err := db.getSystemLogs(ctx, item); err != nil {
-				errs = append(errs, err)
-			}
-			if err := errors.Join(errs...); err != nil {
-				return nil, fmt.Errorf("dynamodb loading task detail: %w", err)
-			}
+	page := tes.NewTaskPage(ctx)
+	accepted := 0
+	var more bool
+	for {
+		query.Limit = aws.Int32(int32(pageSize - accepted))
+		response, err := db.client.Query(ctx, query)
+		if err != nil {
+			return nil, err
 		}
+		for _, item := range response.Items {
+			if req.View == tes.View_FULL.String() {
+				var errs []error
+				if err := db.getContent(ctx, item); err != nil {
+					errs = append(errs, err)
+				}
+				if err := db.getExecutorOutput(ctx, item, "stdout", db.stdoutTable); err != nil {
+					errs = append(errs, err)
+				}
+				if err := db.getExecutorOutput(ctx, item, "stderr", db.stderrTable); err != nil {
+					errs = append(errs, err)
+				}
+				if err := db.getSystemLogs(ctx, item); err != nil {
+					errs = append(errs, err)
+				}
+				if err := errors.Join(errs...); err != nil {
+					return nil, fmt.Errorf("dynamodb loading task detail: %w", err)
+				}
+			}
+			var task tes.Task
+			if err := attributevalue.UnmarshalMapWithOptions(item, &task, decodeJSONTags); err != nil {
+				return nil, fmt.Errorf("failed to DynamoDB unmarshal Task: %w", err)
+			}
+			added, err := page.Add(&task, task.Id)
+			if err != nil {
+				return nil, err
+			}
+			if !added {
+				more = true
+				break
+			}
+			accepted++
+		}
+		if more || len(response.LastEvaluatedKey) == 0 {
+			break
+		}
+		if accepted == pageSize {
+			more = true
+			break
+		}
+		query.ExclusiveStartKey = response.LastEvaluatedKey
 	}
-
-	var tasks []*tes.Task
-	err = attributevalue.UnmarshalListOfMapsWithOptions(response.Items, &tasks, decodeJSONTags)
-	if err != nil {
-		return nil, fmt.Errorf("failed to DynamoDB unmarshal Tasks, %v", err)
-	}
-
-	out := tes.ListTasksResponse{
-		Tasks: tasks,
-	}
-
-	if len(tasks) > 0 && response.LastEvaluatedKey != nil {
-		out.NextPageToken = response.LastEvaluatedKey["id"].(*types.AttributeValueMemberS).Value
-	}
-
-	return &out, nil
+	return page.Finish(more), nil
 }

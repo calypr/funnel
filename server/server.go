@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -45,6 +46,7 @@ type Server struct {
 	Events           events.EventServiceServer
 	Nodes            scheduler.SchedulerServiceServer
 	DisableHTTPCache bool
+	MaxResponseBytes int
 	Log              *logger.Logger
 	Plugins          *config.Plugins
 }
@@ -162,7 +164,15 @@ func (s *Server) Serve(pctx context.Context) error {
 
 	auth := NewAuthentication(s.BasicAuth, s.OidcAuth, s.TaskAccess)
 
+	maxResponseBytes := s.MaxResponseBytes
+	if maxResponseBytes == 0 {
+		maxResponseBytes = tes.DefaultResponseBytes
+	}
+	if maxResponseBytes < 0 {
+		return fmt.Errorf("Server.MaxResponseBytes must be positive")
+	}
 	grpcServer := grpc.NewServer(
+		grpc.MaxSendMsgSize(maxResponseBytes),
 		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
 			MinTime:             10 * time.Second, // min interval between client pings
 			PermitWithoutStream: true,             // allow pings when no active RPCs
@@ -192,6 +202,7 @@ func (s *Server) Serve(pctx context.Context) error {
 
 	dialOpts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(maxResponseBytes)),
 		// Keep the internal gateway→gRPC connection alive so idle periods
 		// don't cause the server to send GOAWAY and drop the next request.
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{

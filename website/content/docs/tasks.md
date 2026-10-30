@@ -588,3 +588,42 @@ For a full, in-depth spec, read the TES standard's [task_execution.proto](https:
 ```
 
 [alpine]: https://hub.docker.com/_/alpine/
+
+## Task response sizes
+
+Task lists honor the requested TES view. `MINIMAL` returns task IDs and states.
+`BASIC` omits input content and executor stdout/stderr, but includes output-file
+logs. `FULL` includes the full task. The dashboard requests `BASIC` for its list
+and `FULL` for task details.
+
+List pages are limited by both the requested task count and a protobuf response
+byte budget. A page can contain fewer tasks than requested; follow its
+`next_page_token` until it is empty. Tasks are never truncated to fit a page.
+
+Treat continuation tokens as opaque. MongoDB and PostgreSQL tokens encode the
+last returned creation time and ID, matching their deterministic sort order.
+Legacy ID-only tokens remain accepted while their referenced task exists; new
+tokens can resume even after that task is deleted.
+
+The server's gRPC response limit defaults to 4 MiB. List pages account for task records and the continuation token within that
+ceiling. If one task cannot fit, Funnel
+returns `RESOURCE_EXHAUSTED` with its task ID and suggests requesting `MINIMAL`
+or increasing the configured limit. Smaller pages cannot make a single large
+task smaller.
+
+To support larger task responses, configure the server before starting it:
+
+```yaml
+Server:
+  MaxResponseBytes: 8388608
+```
+
+`0` selects the default. The setting
+also controls the receive limit of Funnel's internal HTTP-to-gRPC gateway, so
+HTTP clients such as the dashboard and CLI can receive the supported response.
+External gRPC clients must configure their own receive limit when requesting
+larger responses. `GetTask` is subject to the same response ceiling.
+
+This is a protobuf transport budget, not a JSON-size or process-memory limit.
+JSON encoding can be larger, and the server must still load each candidate task
+before measuring it. Set deployment limits according to available resources.
