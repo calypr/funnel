@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/calypr/funnel/events"
 	"github.com/calypr/funnel/storage"
@@ -246,7 +247,7 @@ func (u *upload) Failed(err error) {
 func fixLinks(mapper *FileMapper, basepath string) error {
 	err := filepath.Walk(basepath, func(p string, f os.FileInfo, err error) error {
 		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
+			if errors.Is(err, os.ErrNotExist) || (p == basepath && strings.Contains(basepath, "*") && errors.Is(err, syscall.ENOTDIR)) {
 				return nil
 			}
 			return err
