@@ -29,28 +29,28 @@
     "quay.io/cdis/fence:master": {
       "platforms": {
         "amd64": {
-          "config": "sha256:8ee4dba2009d3e6b22c01133bb9f2ba63ffac07a2e2d7c4d221d1d7a71bea8c7",
-          "manifest": "sha256:b7f06d7c26083df28be0355f0fe80ad9c316f5381f6d2ae4a5fd66565cfe8be4"
+          "config": "sha256:256c3e3a9dfd5c8b113d798a05b1efe6b58918cd3b6362e7828137181604b6a0",
+          "manifest": "sha256:3e04a796eb9e12cb8417d5ed5643eb0ba273a435104595de72514803132f0351"
         },
         "arm64": {
-          "config": "sha256:39a7c42c2db3f2e104f0f65a2b9e6521af3b72975d72fe1ef38d97b7cc9e8b3e",
-          "manifest": "sha256:8e26f3c310371eb679d329bd4fdfde8c5eb97142ee2470cd175bd62ce4671246"
+          "config": "sha256:1edbdf5bde9d305d6409372242a3023edf33eb434b8a0ef18640f7cd522c9acc",
+          "manifest": "sha256:9895bc473d63db73ab7316747bd3a9dfc240f0fe7febc44e550dd4297629f9ff"
         }
       },
-      "reference": "quay.io/cdis/fence:master@sha256:b440a1b0584d2905fd8fa9dc8725736c565af0fb95492494f99ba4b620ae7643"
+      "reference": "quay.io/cdis/fence:master@sha256:1eb006af63776920f39bb30450d36a726bf4088f02db5e05650d579c7832dfab"
     },
     "quay.io/cdis/gen3-workflow:master": {
       "platforms": {
         "amd64": {
-          "config": "sha256:a9bcc99e32cfa56df7ebf6e34402d5e98e43e4bfe70b39c549d5cba7c85f9b1c",
-          "manifest": "sha256:6bd9b3e7fae006b6d7af52b4d75e2925f548d4bc88772887ca03c5b574bb6953"
+          "config": "sha256:b734bb2e04a7197710c217e67841abc3eb05813c5ea9ff4f6592b6305eb82c19",
+          "manifest": "sha256:63c76080b356e907c0185c3a1e50ddae8753c4bfe05eeb273a1564d090f1574f"
         },
         "arm64": {
-          "config": "sha256:e630c6dd7e864af0ece442e7b645bac4c4648b00371617cb7784d1379efca27b",
-          "manifest": "sha256:65387bf22fb2d8a3ff2815121b8a8ae7d0c00c05b8590c5a88518912a985dd8f"
+          "config": "sha256:423e748fea5dee4538c39bbe668548e4a1ed2520e0b2c0311e08944c39ff752a",
+          "manifest": "sha256:d13aeb8f0775c2d32287f96410d33bf089028e6089550d85c3629cc0a218d05a"
         }
       },
-      "reference": "quay.io/cdis/gen3-workflow:master@sha256:699ba8771eb7fecd767388e6b904c80ea9cb60f67f03236f24644450ba34ce61"
+      "reference": "quay.io/cdis/gen3-workflow:master@sha256:8680943ec2af2f04b413c5c62ac6e056923dc470d61d6fc38229d6e64d38f334"
     },
     "quay.io/cdis/indexd:master": {
       "platforms": {
