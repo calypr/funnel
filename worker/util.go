@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"runtime/debug"
 	"syscall"
+
+	"github.com/calypr/funnel/version"
 )
 
 // getExitCode gets the exit status (i.e. exit code) from the result of an executed command.
@@ -34,12 +36,7 @@ func getExitCode(err error) (int, error) {
 // recover from panic and call "cb" with an error value.
 func handlePanic(cb func(error)) {
 	if r := recover(); r != nil {
-		if e, ok := r.(error); ok {
-			b := debug.Stack()
-			cb(fmt.Errorf("panic: %s\n%s", e, string(b)))
-		} else {
-			cb(fmt.Errorf("Unknown worker panic: %+v", r))
-		}
+		cb(fmt.Errorf("panic: %v (version=%s commit=%s)\n%s", r, version.Version, version.GitCommit, debug.Stack()))
 	}
 }
 

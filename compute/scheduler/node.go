@@ -2,7 +2,9 @@ package scheduler
 
 import (
 	"context"
+	"github.com/calypr/funnel/version"
 	"os"
+	"runtime/debug"
 	"time"
 
 	"github.com/calypr/funnel/config"
@@ -241,7 +243,7 @@ func (n *NodeProcess) runTask(ctx context.Context, id string) {
 
 	defer func() {
 		if r := recover(); r != nil {
-			log.Error("caught panic task worker", r)
+			log.Error("caught panic task worker", "panic", r, "taskID", id, "version", version.Version, "commit", version.GitCommit, "stack", string(debug.Stack()))
 		}
 	}()
 
