@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	cmdutil "github.com/calypr/funnel/cmd/util"
 	"github.com/calypr/funnel/compute/aws_batch"
 	"github.com/calypr/funnel/compute/gcp_batch"
 	"github.com/calypr/funnel/compute/gridengine"
@@ -157,6 +158,8 @@ func NewServer(ctx context.Context, conf *config.Config, log *logger.Logger) (*S
 		switch e {
 		case strings.ToLower(conf.Database):
 			continue
+		case "file":
+			writer, err = cmdutil.NewEventFileWriter(conf.EventFile, log)
 		case "log":
 			if conf.Compute == "slurm" {
 				writer = &events.Logger{Log: log}

@@ -65,6 +65,7 @@ func selectorFlags(flagConf *config.Config) *pflag.FlagSet {
 	f := pflag.NewFlagSet("", pflag.ContinueOnError)
 	f.StringVar(&flagConf.Compute, "Compute", flagConf.Compute, "Name of compute backed to use")
 	f.StringVar(&flagConf.Database, "Database", flagConf.Database, "Name of database backed to use")
+	f.StringVar(&flagConf.EventFile, "EventFile", flagConf.EventFile, "Path to a process-owned NDJSON event file")
 	f.StringSliceVar(&flagConf.EventWriters, "EventWriters", flagConf.EventWriters, "Name of an event writer backend to use. This flag can be used multiple times")
 
 	return f

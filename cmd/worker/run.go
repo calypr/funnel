@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	cmdutil "github.com/calypr/funnel/cmd/util"
 	"github.com/calypr/funnel/compute/kubernetes/storageplan"
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/database/datastore"
@@ -243,6 +244,8 @@ func (e *eventWriterBuilder) Add(ctx context.Context, name string, conf *config.
 	var writer events.Writer
 
 	switch strings.ToLower(name) {
+	case "file":
+		writer, err = cmdutil.NewEventFileWriter(conf.EventFile, log)
 	case "log":
 		writer = &events.Logger{Log: log}
 	case "boltdb", "badger", "grpc", "rpc":
@@ -275,7 +278,7 @@ func validateConfig(conf *config.Config, opts *Options) error {
 	// only a subset of event writers are supported.
 	if opts.TaskFile != "" || opts.TaskBase64 != "" {
 		for _, e := range conf.EventWriters {
-			if strings.ToLower(e) != "log" && strings.ToLower(e) != "kafka" && strings.ToLower(e) != "pubsub" {
+			if strings.ToLower(e) != "log" && strings.ToLower(e) != "kafka" && strings.ToLower(e) != "pubsub" && strings.ToLower(e) != "file" {
 				return fmt.Errorf("event writer %q is not supported with a task file/string reader", e)
 			}
 		}
