@@ -67,6 +67,7 @@ func (s *stepWorker) Run(ctx context.Context) error {
 		defer cancelCommand()
 	}
 	go func() {
+		defer handlePanic(func(err error) { done <- err })
 		done <- s.Command.Run(commandCtx)
 	}()
 
