@@ -560,3 +560,28 @@ func TestProcessOutputsDoesNotWarnBeforeHardResolutionError(t *testing.T) {
 		})
 	}
 }
+
+func TestProcessOutputsWarnsWhenGlobParentIsFile(t *testing.T) {
+	workDir := t.TempDir()
+	parent := filepath.Join(workDir, "result")
+	err := os.WriteFile(parent, []byte("hello"), 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mapper := NewFileMapper(workDir)
+	mapper.Outputs = []*tes.Output{{Url: "s3://outputs/", Path: filepath.Join(parent, "*"), PathPrefix: "/", Type: tes.File.Enum()}}
+	store := &capturingUploadStorage{uploaded: make(map[string]string)}
+	writer := &publicationEvents{}
+	run := &helper{}
+	w := &DefaultWorker{Conf: &config.Worker{MaxParallelTransfers: 1}, Store: store}
+	w.processOutputs(context.Background(), events.NewTaskWriter("task", 0, writer), mapper, run)
+	if run.syserr != nil {
+		t.Fatalf("unmatched glob caused system error: %v", run.syserr)
+	}
+	for _, event := range writer.snapshot() {
+		if event.GetSystemLog().GetMsg() == "output pattern matched no files" {
+			return
+		}
+	}
+	t.Fatal("missing unmatched output warning")
+}
