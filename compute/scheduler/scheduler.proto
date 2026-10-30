@@ -42,9 +42,17 @@ message GetNodeRequest {
   string id = 1;
 }
 
-message ListNodesRequest {}
+message ListNodesRequest {
+  // Maximum number of nodes to return. Zero uses the default page size of 500.
+  // Values from 1 through 1000 are accepted.
+  int32 page_size = 1 [json_name = "page_size"];
+  // Opaque continuation token from a previous ListNodes response.
+  string page_token = 2 [json_name = "page_token"];
+}
 message ListNodesResponse {
   repeated Node nodes = 1;
+  // Opaque continuation token. Empty when there are no more nodes.
+  string next_page_token = 2 [json_name = "next_page_token"];
 }
 
 message PutNodeResponse {}

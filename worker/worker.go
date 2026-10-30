@@ -22,11 +22,12 @@ import (
 // sequential process of task initialization, execution, finalization,
 // and logging.
 type DefaultWorker struct {
-	Executor    Executor
-	Conf        *config.Worker
-	Store       storage.Storage
-	TaskReader  TaskReader
-	EventWriter events.Writer
+	Executor         Executor
+	Conf             *config.Worker
+	Store            storage.Storage
+	TaskReader       TaskReader
+	ExecutionClaimer ExecutionClaimer
+	EventWriter      events.Writer
 	Command
 }
 
@@ -94,9 +95,41 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 		runerr = run.syserr
 		return
 	}
+	localTask := false
+	switch r.TaskReader.(type) {
+	case *FileTaskReader, *Base64TaskReader:
+		localTask = true
+	}
+	if !localTask && r.ExecutionClaimer == nil {
+		return errors.New("execution claimer is required for non-local task readers")
+	}
+
+	// Task assignment moves a task to INITIALIZING before the node receives it.
+	// Local task readers also use UNKNOWN or QUEUED before execution. Other states
+	// indicate that this assignment is stale or the task is already in progress.
+	switch task.GetState() {
+	case tes.State_UNKNOWN, tes.State_QUEUED, tes.State_INITIALIZING:
+	case tes.State_RUNNING:
+		if !localTask {
+			return r.waitForExecution(pctx)
+		}
+		return nil
+	default:
+		return
+	}
 
 	if plan := r.Executor.StoragePlan; plan != nil && plan.TaskID != task.Id {
 		return fmt.Errorf("storage plan belongs to task %q, not %q", plan.TaskID, task.Id)
+	}
+	claimed := false
+	if !localTask {
+		claimed, run.syserr = r.ExecutionClaimer.ClaimExecution(pctx, task.Id)
+		if run.syserr != nil {
+			return fmt.Errorf("claim task execution: %w", run.syserr)
+		}
+		if !claimed {
+			return r.waitForExecution(pctx)
+		}
 	}
 
 	// set up task specific utilities
@@ -111,7 +144,9 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 	}
 
 	_ = event.Info("Version", version.LogFields()...)
-	_ = event.State(tes.State_INITIALIZING)
+	if !claimed {
+		_ = event.State(tes.State_INITIALIZING)
+	}
 	_ = event.StartTime(time.Now())
 
 	if name, err := os.Hostname(); err == nil {
@@ -126,24 +161,28 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 	// to ensure they always run, even if there's a missed error.
 	defer func() {
 		_ = event.EndTime(time.Now())
+		var finalState tes.State
 		switch {
 		case errors.Is(context.Cause(run.ctx), errTaskCanceled):
 			// The task was canceled.
 			_ = event.Info("Canceled")
-			_ = event.State(tes.State_CANCELED)
+			finalState = tes.State_CANCELED
 			runerr = errTaskCanceled
 		case run.syserr != nil:
 			// Something else failed
 			_ = event.Error("System error", "error", run.syserr)
-			_ = event.State(tes.State_SYSTEM_ERROR)
+			finalState = tes.State_SYSTEM_ERROR
 			runerr = run.syserr
 		case run.execerr != nil:
 			// One of the executors failed
 			_ = event.Error("Exec error", "error", run.execerr)
-			_ = event.State(tes.State_EXECUTOR_ERROR)
+			finalState = tes.State_EXECUTOR_ERROR
 			runerr = run.execerr
 		default:
-			_ = event.State(tes.State_COMPLETE)
+			finalState = tes.State_COMPLETE
+		}
+		if err := event.State(finalState); err != nil {
+			runerr = errors.Join(runerr, fmt.Errorf("recording final task state %s: %w", finalState, err))
 		}
 
 		// cleanup workdir
@@ -176,7 +215,7 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 		run.syserr = DownloadInputs(ctx, mapper.Inputs, r.Store, event, int(r.Conf.MaxParallelTransfers))
 	}
 
-	if run.ok() {
+	if run.ok() && !claimed {
 		_ = event.State(tes.State_RUNNING)
 	}
 
@@ -206,6 +245,31 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 	r.processOutputs(ctx, event, mapper, &run)
 
 	return
+}
+
+func (r *DefaultWorker) waitForExecution(ctx context.Context) error {
+	interval := time.Second
+	if r.Conf != nil && r.Conf.PollingRate != nil && r.Conf.PollingRate.AsDuration() > 0 {
+		interval = r.Conf.PollingRate.AsDuration()
+	}
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		state, err := r.TaskReader.State(ctx)
+		if err == nil && tes.TerminalState(state) {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
+
 }
 
 func (r *DefaultWorker) Close() {

@@ -124,7 +124,7 @@ function fetchWithPost(fetchOpts, doPost) {
 // Retrieves data from given URL. Usually, it's a GET-request.
 // When postJson is true, it's a POST-request without body.
 // Returns the Promise from the fetch() call.
-function get(url, postJson) {
+function get(url, postJson, signal) {
   if (!url instanceof URL) {
     throw new Error("Expected URL object; got: " + typeof url);
   } else if (url.pathname.includes("/v1/tasks")) {
@@ -133,8 +133,15 @@ function get(url, postJson) {
 
   return fetchOptsPromise
     .then((fetchOpts) => fetchWithPost(fetchOpts, postJson))
-    .then((fetchOpts) => fetch(url.toString(), fetchOpts))
+    .then((fetchOpts) => fetch(url.toString(), signal ? { ...fetchOpts, signal } : fetchOpts))
     .then((response) => {
+      if (response.status === 401 || response.status === 403) {
+        window.dispatchEvent(new CustomEvent('funnel-access-error', { detail: response.status }));
+        throw new Error(`HTTP ${response.status}`);
+      }
+      if (response.ok === false || response.status >= 400) {
+        throw new Error(`HTTP ${response.status}`);
+      }
       return response.json();
     })
     .catch((error) => {

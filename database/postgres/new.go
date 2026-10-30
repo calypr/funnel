@@ -45,7 +45,7 @@ func (db *Postgres) Init() error {
 	retrier := util.NewRetrier()
 	retrier.MaxElapsedTime = time.Second * 300
 
-	return retrier.Retry(ctx, func() error {
+	err := retrier.Retry(ctx, func() error {
 		// Check/create resources (Roles/DBs)
 		if err := ensureDatabaseExists(ctx, db.conf); err != nil {
 			return err
@@ -54,6 +54,22 @@ func (db *Postgres) Init() error {
 		// Create Tables and Indices
 		return db.createTables(ctx)
 	})
+	if err != nil {
+		return err
+	}
+	if err := db.migrateTaskClaims(ctx); err != nil {
+		return err
+	}
+	if err := db.migrateNodeHeartbeats(ctx); err != nil {
+		return err
+	}
+	if err := db.migrateResourceReservations(ctx); err != nil {
+		return err
+	}
+	if err := db.migrateNodeTaskIDProjection(ctx); err != nil {
+		return err
+	}
+	return db.migrateExecutionClaims(ctx)
 }
 
 func (db *Postgres) context() (context.Context, context.CancelFunc) {
@@ -164,6 +180,12 @@ func (db *Postgres) createTables(ctx context.Context) error {
 		return fmt.Errorf("failed to create 'tasks' table: %w", err)
 	}
 
+	// Keep the scheduler's claim separate from the public TES task document.
+	// ALTER TABLE makes this migration safe for existing installations.
+	if _, err := db.client.Exec(ctx, `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS claim_owner VARCHAR(255)`); err != nil {
+		return fmt.Errorf("failed to add 'tasks.claim_owner' column: %w", err)
+	}
+
 	// Nodes
 	nodes := `
     CREATE TABLE IF NOT EXISTS nodes (
@@ -180,7 +202,22 @@ func (db *Postgres) createTables(ctx context.Context) error {
 		return fmt.Errorf("failed to create 'nodes' table: %w", err)
 	}
 
+	for _, query := range []string{
+		`CREATE TABLE IF NOT EXISTS scheduler_migrations (name TEXT PRIMARY KEY)`,
+		`CREATE TABLE IF NOT EXISTS node_heartbeats (id VARCHAR(255) PRIMARY KEY, last_ping BIGINT NOT NULL)`,
+		`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS claim_resources JSONB`,
+		`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS claim_active BOOLEAN NOT NULL DEFAULT false`,
+		`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS execution_claimed BOOLEAN NOT NULL DEFAULT false`,
+		`ALTER TABLE nodes ADD COLUMN IF NOT EXISTS reserved JSONB NOT NULL DEFAULT '{}'::jsonb`,
+		`DROP INDEX IF EXISTS idx_tasks_active_claim`,
+	} {
+		if _, err := db.client.Exec(ctx, query); err != nil {
+			return err
+		}
+	}
 	indices := []string{
+		`CREATE INDEX IF NOT EXISTS idx_tasks_live_allocation ON tasks (claim_owner,id) WHERE claim_active;`,
+		`CREATE INDEX IF NOT EXISTS idx_tasks_queue_order ON tasks (creation_time ASC, id ASC) WHERE state = 'QUEUED';`,
 		"CREATE INDEX IF NOT EXISTS idx_tasks_state ON tasks (state);",
 		"CREATE INDEX IF NOT EXISTS idx_tasks_owner ON tasks (owner);",
 		"CREATE INDEX IF NOT EXISTS idx_tasks_creation_time ON tasks (creation_time DESC);",

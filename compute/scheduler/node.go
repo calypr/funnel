@@ -38,29 +38,31 @@ func NewNodeProcess(ctx context.Context, conf *config.Config, factory Worker, lo
 	state := NodeState_UNINITIALIZED
 
 	return &NodeProcess{
-		conf:      conf,
-		client:    cli,
-		log:       log,
-		resources: res,
-		workerRun: factory,
-		workers:   newRunSet(),
-		timeout:   timeout,
-		state:     state,
-		drained:   make(chan struct{}),
+		conf:          conf,
+		client:        cli,
+		log:           log,
+		resources:     res,
+		workerRun:     factory,
+		workers:       newRunSet(),
+		timeout:       timeout,
+		state:         state,
+		drained:       make(chan struct{}),
+		drainRequests: make(chan struct{}, 1),
 	}, nil
 }
 
 // NodeProcess is a structure used for tracking available resources on a compute resource.
 type NodeProcess struct {
-	conf      *config.Config
-	client    Client
-	log       *logger.Logger
-	resources *Resources
-	workerRun Worker
-	workers   *runSet
-	timeout   util.IdleTimeout
-	state     NodeState
-	drained   chan struct{}
+	conf          *config.Config
+	client        Client
+	log           *logger.Logger
+	resources     *Resources
+	workerRun     Worker
+	workers       *runSet
+	timeout       util.IdleTimeout
+	state         NodeState
+	drained       chan struct{}
+	drainRequests chan struct{}
 }
 
 // Run runs a node with the given config. This is responsible for communication
@@ -84,6 +86,13 @@ func (n *NodeProcess) Run(ctx context.Context) error {
 
 		case <-n.drained:
 			cancel()
+
+		case <-n.drainRequests:
+			if n.state != NodeState_DRAIN {
+				n.state = NodeState_DRAIN
+				n.sync(ctx)
+			}
+			n.checkDrain()
 
 		case <-ctx.Done():
 			n.timeout.Stop()
@@ -259,13 +268,20 @@ func (n *NodeProcess) checkIdleTimer() {
 
 func (n *NodeProcess) checkDrain() {
 	if n.workers.Count() == 0 && n.state == NodeState_DRAIN {
-		close(n.drained)
+		select {
+		case <-n.drained:
+		default:
+			close(n.drained)
+		}
 	}
 }
 
-// Drain sets the node state to DRAIN.
+// Drain requests that the node enter the DRAIN state.
 func (n *NodeProcess) Drain() {
-	n.state = NodeState_DRAIN
+	select {
+	case n.drainRequests <- struct{}{}:
+	default:
+	}
 }
 
 func hostname() string {

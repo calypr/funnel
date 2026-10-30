@@ -161,6 +161,18 @@ func (r taskReader) State(ctx context.Context) (tes.State, error) {
 
 func (r taskReader) Close() {}
 
+type taskExecutionClaimer struct {
+	task *tes.Task
+}
+
+func (c taskExecutionClaimer) ClaimExecution(_ context.Context, taskID string) (bool, error) {
+	if c.task.Id != taskID {
+		return false, fmt.Errorf("unexpected task id %q", taskID)
+	}
+	c.task.State = tes.State_RUNNING
+	return true, nil
+}
+
 // Test that stdout generates events at an expected, consistent rate.
 // The task dumps megabytes of random data to stdout. The test waits
 // 10 seconds and checks how many stdout events were generated.
@@ -184,10 +196,11 @@ func TestLargeLogRate(t *testing.T) {
 	m := &events.MultiWriter{logger, counts}
 
 	w := worker.DefaultWorker{
-		Conf:        conf.Worker,
-		Store:       &storage.Mux{},
-		TaskReader:  newTaskReader(&task),
-		EventWriter: m,
+		Conf:             conf.Worker,
+		Store:            &storage.Mux{},
+		TaskReader:       newTaskReader(&task),
+		ExecutionClaimer: taskExecutionClaimer{task: &task},
+		EventWriter:      m,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
@@ -225,10 +238,11 @@ func TestZeroLogRate(t *testing.T) {
 	m := &events.MultiWriter{logger, counts}
 
 	w := worker.DefaultWorker{
-		Conf:        conf.Worker,
-		Store:       &storage.Mux{},
-		TaskReader:  newTaskReader(&task),
-		EventWriter: m,
+		Conf:             conf.Worker,
+		Store:            &storage.Mux{},
+		TaskReader:       newTaskReader(&task),
+		ExecutionClaimer: taskExecutionClaimer{task: &task},
+		EventWriter:      m,
 	}
 
 	w.Run(context.Background())
@@ -264,10 +278,11 @@ func TestZeroLogTailSize(t *testing.T) {
 	m := &events.MultiWriter{logger, counts}
 
 	w := worker.DefaultWorker{
-		Conf:        conf.Worker,
-		Store:       &storage.Mux{},
-		TaskReader:  newTaskReader(&task),
-		EventWriter: m,
+		Conf:             conf.Worker,
+		Store:            &storage.Mux{},
+		TaskReader:       newTaskReader(&task),
+		ExecutionClaimer: taskExecutionClaimer{task: &task},
+		EventWriter:      m,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
@@ -304,10 +319,11 @@ func TestLogTailContent(t *testing.T) {
 	m := &events.MultiWriter{logger, builder}
 
 	w := worker.DefaultWorker{
-		Conf:        conf.Worker,
-		Store:       &storage.Mux{},
-		TaskReader:  newTaskReader(&task),
-		EventWriter: m,
+		Conf:             conf.Worker,
+		Store:            &storage.Mux{},
+		TaskReader:       newTaskReader(&task),
+		ExecutionClaimer: taskExecutionClaimer{task: &task},
+		EventWriter:      m,
 	}
 
 	err := w.Run(context.Background())
@@ -348,10 +364,11 @@ func TestDockerContainerMetadata(t *testing.T) {
 	m := &events.MultiWriter{logger, builder}
 
 	w := worker.DefaultWorker{
-		Conf:        conf.Worker,
-		Store:       &storage.Mux{},
-		TaskReader:  newTaskReader(&task),
-		EventWriter: m,
+		Conf:             conf.Worker,
+		Store:            &storage.Mux{},
+		TaskReader:       newTaskReader(&task),
+		ExecutionClaimer: taskExecutionClaimer{task: &task},
+		EventWriter:      m,
 	}
 
 	err := w.Run(context.Background())
@@ -415,10 +432,11 @@ func TestExecutorErrorStopsTask(t *testing.T) {
 	m := &events.MultiWriter{logger, builder}
 
 	w := worker.DefaultWorker{
-		Conf:        conf.Worker,
-		Store:       &storage.Mux{},
-		TaskReader:  newTaskReader(&task),
-		EventWriter: m,
+		Conf:             conf.Worker,
+		Store:            &storage.Mux{},
+		TaskReader:       newTaskReader(&task),
+		ExecutionClaimer: taskExecutionClaimer{task: &task},
+		EventWriter:      m,
 	}
 
 	if err := w.Run(context.Background()); err != nil {
@@ -473,10 +491,11 @@ func TestExecutorErrorPreservedWhenWildcardJoinFails(t *testing.T) {
 	logger := &events.Logger{Log: log}
 	m := &events.MultiWriter{logger, builder}
 	w := worker.DefaultWorker{
-		Conf:        conf.Worker,
-		Store:       store,
-		TaskReader:  newTaskReader(&task),
-		EventWriter: m,
+		Conf:             conf.Worker,
+		Store:            store,
+		TaskReader:       newTaskReader(&task),
+		ExecutionClaimer: taskExecutionClaimer{task: &task},
+		EventWriter:      m,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
@@ -539,10 +558,11 @@ func TestExecutorIgnoreErrorContinuesTask(t *testing.T) {
 	m := &events.MultiWriter{logger, builder}
 
 	w := worker.DefaultWorker{
-		Conf:        conf.Worker,
-		Store:       &storage.Mux{},
-		TaskReader:  newTaskReader(&task),
-		EventWriter: m,
+		Conf:             conf.Worker,
+		Store:            &storage.Mux{},
+		TaskReader:       newTaskReader(&task),
+		ExecutionClaimer: taskExecutionClaimer{task: &task},
+		EventWriter:      m,
 	}
 
 	if err := w.Run(context.Background()); err != nil {

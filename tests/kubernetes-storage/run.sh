@@ -48,7 +48,7 @@ test "$(kubectl get storageclass local-path -o jsonpath='{.provisioner}')" = ran
 test "$(kubectl get storageclass local-path -o jsonpath='{.metadata.annotations.storageclass\.kubernetes\.io/is-default-class}')" = true
 kubectl apply -f tests/kubernetes-storage/native-storageclass.yaml
 FUNNEL_KUBERNETES_TEST_KUBECONFIG="$KUBECONFIG" \
-  go test -run '^TestNativeStorage(Permissions)?Live$' -v -count=1 -timeout=10m ./compute/kubernetes \
+  go test -run '^(TestNativeStorage(Permissions)?Live|TestReconcileFailureRecoveryLive|TestWorkerFinalStateFailureRecoveryLive)$' -v -count=1 -timeout=10m ./compute/kubernetes \
   2>&1 | tee "$output_dir/native-storage.log"
 kubectl create namespace funnel-storage-e2e
 kubectl -n funnel-storage-e2e apply -f tests/kubernetes-storage/minio.yaml

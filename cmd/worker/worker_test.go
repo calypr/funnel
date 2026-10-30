@@ -11,6 +11,8 @@ import (
 	"github.com/calypr/funnel/cmd/util"
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/tes"
+	funnelworker "github.com/calypr/funnel/worker"
 )
 
 func TestPersistentPreRun(t *testing.T) {
@@ -97,4 +99,76 @@ func TestTaskFileOption(t *testing.T) {
 
 	c.SetArgs([]string{"run", "-b", "abcd"})
 	c.Execute()
+}
+
+func TestNewTaskReaderRejectsUnknownDatabase(t *testing.T) {
+	_, err := newTaskReader(context.Background(), &config.Config{Database: "elastic"}, &Options{})
+	if err == nil || !strings.Contains(err.Error(), "unknown database: 'elastic'") {
+		t.Fatalf("newTaskReader error = %v, want unknown database error", err)
+	}
+}
+
+type readOnlyDatabaseWithoutClaim struct{}
+
+func (readOnlyDatabaseWithoutClaim) ListTasks(context.Context, *tes.ListTasksRequest) (*tes.ListTasksResponse, error) {
+	return nil, nil
+}
+
+func (readOnlyDatabaseWithoutClaim) GetTask(context.Context, *tes.GetTaskRequest) (*tes.Task, error) {
+	return &tes.Task{Id: "task"}, nil
+}
+
+func (readOnlyDatabaseWithoutClaim) Close() {}
+
+type readOnlyDatabaseWithClaim struct {
+	claimed bool
+	taskID  string
+}
+
+func (db *readOnlyDatabaseWithClaim) ListTasks(context.Context, *tes.ListTasksRequest) (*tes.ListTasksResponse, error) {
+	return nil, nil
+}
+
+func (db *readOnlyDatabaseWithClaim) GetTask(context.Context, *tes.GetTaskRequest) (*tes.Task, error) {
+	return &tes.Task{Id: db.taskID}, nil
+}
+
+func (db *readOnlyDatabaseWithClaim) ClaimExecution(_ context.Context, taskID string) (bool, error) {
+	return taskID == db.taskID && db.claimed, nil
+}
+
+func (db *readOnlyDatabaseWithClaim) Close() {}
+
+func TestDatabaseTaskReaderFailsClosedWithoutClaims(t *testing.T) {
+	reader, err := newDatabaseTaskReader("task", "datastore", readOnlyDatabaseWithoutClaim{}, nil)
+	if err != nil {
+		t.Fatalf("newDatabaseTaskReader() error = %v", err)
+	}
+	claimer, ok := reader.(funnelworker.ExecutionClaimer)
+	if !ok {
+		t.Fatal("database reader does not expose the execution claim boundary")
+	}
+	claimed, err := claimer.ClaimExecution(context.Background(), "task")
+	if err == nil || !strings.Contains(err.Error(), `database "datastore" does not support execution claims`) {
+		t.Fatalf("ClaimExecution() error = %v, want explicit unsupported-backend error", err)
+	}
+	if claimed {
+		t.Fatal("ClaimExecution() = true for unsupported database")
+	}
+}
+
+func TestDatabaseTaskReaderDelegatesExecutionClaim(t *testing.T) {
+	db := &readOnlyDatabaseWithClaim{taskID: "task", claimed: true}
+	reader, err := newDatabaseTaskReader("task", "postgres", db, nil)
+	if err != nil {
+		t.Fatalf("newDatabaseTaskReader() error = %v", err)
+	}
+	claimer, ok := reader.(funnelworker.ExecutionClaimer)
+	if !ok {
+		t.Fatal("database reader does not expose its execution claimer")
+	}
+	claimed, err := claimer.ClaimExecution(context.Background(), "task")
+	if err != nil || !claimed {
+		t.Fatalf("ClaimExecution() = %t, %v, want true, nil", claimed, err)
+	}
 }

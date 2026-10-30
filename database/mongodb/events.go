@@ -3,21 +3,15 @@ package mongodb
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/calypr/funnel/events"
-	"github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/server"
 	"github.com/calypr/funnel/tes"
-	"github.com/calypr/funnel/util"
 	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/v2/mongo"
-	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 // WriteEvent creates an event for the server to handle.
 func (db *MongoDB) WriteEvent(ctx context.Context, req *events.Event) error {
-	logger := logger.NewLogger("mongodb", logger.DefaultConfig())
 	tasks := db.tasks()
 
 	update := bson.M{}
@@ -26,6 +20,7 @@ func (db *MongoDB) WriteEvent(ctx context.Context, req *events.Event) error {
 	switch req.Type {
 	case events.Type_TASK_CREATED:
 		task := req.GetTask()
+		task.State = tes.State_QUEUED
 		task.Logs = []*tes.TaskLog{
 			{
 				Logs:       []*tes.ExecutorLog{},
@@ -36,40 +31,7 @@ func (db *MongoDB) WriteEvent(ctx context.Context, req *events.Event) error {
 		return db.insertTask(ctx, task)
 
 	case events.Type_TASK_STATE:
-		retrier := util.NewRetrier()
-		retrier.ShouldRetry = func(err error) bool {
-			_, isTransitionError := err.(*tes.TransitionError)
-			return !isTransitionError && err != tes.ErrNotFound && err != tes.ErrNotPermitted
-		}
-
-		return retrier.Retry(ctx, func() error {
-			// get current state & version
-			state, version, err := db.findTaskStateAndVersion(ctx, req.Id)
-			if err != nil {
-				return err
-			}
-
-			// validate state transition
-			to := req.GetState()
-			if err = tes.ValidateTransition(state, to); err != nil {
-				logger.Debug("mongodb: invalid state transition", "taskID", req.Id, "from", state, "to", to, "error", err)
-				return err
-			}
-
-			// apply version restriction and set update
-			selector["version"] = version
-			update = bson.M{"$set": bson.M{"state": to, "version": time.Now().UnixNano()}}
-
-			mctx, cancel := db.wrap(ctx)
-			defer cancel()
-
-			result, err := tasks.UpdateOne(mctx, selector, update)
-			if result.MatchedCount == 0 {
-				return tes.ErrConcurrentStateChange
-			}
-
-			return err
-		})
+		return db.transitionReservedTask(ctx, req.Id, req.GetState())
 
 	case events.Type_TASK_START_TIME:
 		update = bson.M{
@@ -145,59 +107,20 @@ func (db *MongoDB) WriteEvent(ctx context.Context, req *events.Event) error {
 	mctx, cancel := db.wrap(ctx)
 	defer cancel()
 
-	opts := options.UpdateOne().SetUpsert(true)
-	_, err := tasks.UpdateOne(mctx, selector, update, opts)
-	return err
+	result, err := tasks.UpdateOne(mctx, selector, update)
+	if err != nil {
+		return err
+	}
+	if result.MatchedCount == 0 {
+		return tes.ErrNotFound
+	}
+	return nil
 }
 
 func (db *MongoDB) insertTask(ctx context.Context, task *tes.Task) error {
 	mctx, cancel := db.wrap(ctx)
 	defer cancel()
 
-	tasks := db.tasks()
-	result, err := tasks.InsertOne(mctx, &task)
-
-	if err == nil {
-		mctx, cancel := db.wrap(ctx)
-		defer cancel()
-
-		updateOwner := bson.M{"$set": bson.M{"owner": server.GetUsername(ctx)}}
-		_, err = tasks.UpdateOne(mctx, bson.M{"_id": result.InsertedID}, updateOwner)
-	}
-
+	_, err := db.tasks().InsertOne(mctx, &taskRecord{Task: task, Owner: server.GetUsername(ctx)})
 	return err
-}
-
-func (db *MongoDB) findTaskStateAndVersion(ctx context.Context, taskId string) (tes.State, interface{}, error) {
-	mctx, cancel := db.wrap(ctx)
-	defer cancel()
-
-	props := make(map[string]interface{})
-	opts := options.FindOne().SetProjection(bson.M{"state": 1, "version": 1, "owner": 1})
-	err := db.tasks().FindOne(mctx, bson.M{"id": taskId}, opts).Decode(&props)
-
-	if err == mongo.ErrNoDocuments {
-		return tes.State_UNKNOWN, nil, tes.ErrNotFound
-	} else if err != nil {
-		return tes.State_UNKNOWN, nil, err
-	}
-
-	// Check if "owner" is nil
-	if props["owner"] == nil {
-		return tes.State_UNKNOWN, nil, fmt.Errorf("owner field is missing in task properties")
-	}
-
-	taskOwner := props["owner"].(string)
-	if !server.GetUser(ctx).IsAccessible(taskOwner) {
-		return tes.State_UNKNOWN, nil, tes.ErrNotPermitted
-	}
-
-	// Check if "state" is nil
-	if props["state"] == nil {
-		return tes.State_UNKNOWN, nil, fmt.Errorf("state field is missing in task properties")
-	}
-
-	state := tes.State(props["state"].(int32))
-	version := props["version"]
-	return state, version, nil
 }

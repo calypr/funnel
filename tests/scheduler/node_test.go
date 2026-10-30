@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -210,88 +211,57 @@ func TestDeadNodeTaskCleanup(t *testing.T) {
 // Tests a bug where tasks and nodes were not being correctly cleaned up
 // when the node crashed and was restarted.
 func TestNodeCleanup(t *testing.T) {
-	log := logger.NewLogger("node", tests.LogConfig())
 	ctx := context.Background()
-
 	conf := tests.DefaultConfig()
 	conf.Compute = "manual"
 	srv := tests.NewFunnel(conf)
+	tasks := make([]*tes.Task, 5)
+	for i := range tasks {
+		tasks[i] = tests.HelloWorld()
+		if _, err := srv.Server.Tasks.CreateTask(ctx, tasks[i]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i, indices := range [][]int{{0, 1, 2}, {3}, {4}} {
+		node := &scheduler.Node{Id: fmt.Sprintf("cleanup-%d", i), State: scheduler.NodeState_ALIVE, Resources: &scheduler.Resources{Cpus: 100, RamGb: 100, DiskGb: 100}}
+		if _, err := srv.Scheduler.Nodes.PutNode(ctx, node); err != nil {
+			t.Fatal(err)
+		}
 
-	e := srv.Server.Events
-
-	t1 := tests.HelloWorld()
-	srv.Server.Tasks.CreateTask(ctx, t1)
-	e.WriteEvent(ctx, events.NewState(t1.Id, tes.Complete))
-
-	t2 := tests.HelloWorld()
-	srv.Server.Tasks.CreateTask(ctx, t2)
-	e.WriteEvent(ctx, events.NewState(t2.Id, tes.Running))
-
-	t3 := tests.HelloWorld()
-	srv.Server.Tasks.CreateTask(ctx, t3)
-	e.WriteEvent(ctx, events.NewState(t3.Id, tes.SystemError))
-
-	t4 := tests.HelloWorld()
-	srv.Server.Tasks.CreateTask(ctx, t4)
-	e.WriteEvent(ctx, events.NewState(t4.Id, tes.Running))
-
-	t5 := tests.HelloWorld()
-	srv.Server.Tasks.CreateTask(ctx, t5)
-	e.WriteEvent(ctx, events.NewState(t5.Id, tes.Running))
-
-	srv.Scheduler.Nodes.PutNode(ctx, &scheduler.Node{
-		Id:      "test-gone-node-cleanup-restart-1",
-		State:   scheduler.NodeState_GONE,
-		TaskIds: []string{t1.Id, t2.Id, t3.Id},
-	})
-
-	srv.Scheduler.Nodes.PutNode(ctx, &scheduler.Node{
-		Id:      "test-gone-node-cleanup-restart-2",
-		State:   scheduler.NodeState_GONE,
-		TaskIds: []string{t4.Id},
-	})
-
-	srv.Scheduler.Nodes.PutNode(ctx, &scheduler.Node{
-		Id:      "test-gone-node-cleanup-restart-3",
-		State:   scheduler.NodeState_ALIVE,
-		TaskIds: []string{t5.Id},
-	})
-
-	ns, _ := srv.Scheduler.Nodes.ListNodes(ctx, &scheduler.ListNodesRequest{})
-	log.Info("nodes before", ns)
-
-	err := srv.Scheduler.CheckNodes()
+		for _, index := range indices {
+			if _, err := srv.Scheduler.AtomicAssigner.TryAssign(ctx, tasks[index], node); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	for i, state := range []tes.State{tes.Complete, tes.Running, tes.SystemError, tes.Running, tes.Running} {
+		if _, err := srv.Server.Events.WriteEvent(ctx, events.NewState(tasks[i].Id, state)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, id := range []string{"cleanup-0", "cleanup-1"} {
+		node, err := srv.Scheduler.Nodes.GetNode(ctx, &scheduler.GetNodeRequest{Id: id})
+		if err != nil {
+			t.Fatal(err)
+		}
+		node.State = scheduler.NodeState_GONE
+		if _, err := srv.Scheduler.Nodes.PutNode(ctx, node); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := srv.Scheduler.CheckNodes(); err != nil {
+		t.Fatal(err)
+	}
+	nodes, err := scheduler.ListAllNodes(ctx, srv.Scheduler.Nodes)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
-
-	ns, _ = srv.Scheduler.Nodes.ListNodes(ctx, &scheduler.ListNodesRequest{})
-	if len(ns.Nodes) != 1 {
-		t.Error("expected 1 node")
+	if len(nodes) != 1 || nodes[0].Id != "cleanup-2" {
+		t.Fatalf("remaining nodes = %v", nodes)
 	}
-
-	if ns.Nodes[0].Id != "test-gone-node-cleanup-restart-3" {
-		t.Error("unexpected node")
-	}
-
-	ts, _ := srv.Server.Tasks.ListTasks(ctx, &tes.ListTasksRequest{})
-	if len(ts.Tasks) != 5 {
-		log.Info("tasks", ts)
-		t.Error("expected 5 tasks")
-	}
-
-	expected := []tes.State{
-		tes.Running,
-		tes.SystemError,
-		tes.SystemError,
-		tes.SystemError,
-		tes.Complete,
-	}
-
-	for i, task := range ts.Tasks {
-		e := expected[i]
-		if task.State != e {
-			t.Error("expected state for task", i, task.State, e)
+	for i, want := range []tes.State{tes.Complete, tes.SystemError, tes.SystemError, tes.SystemError, tes.Running} {
+		if got := srv.GetView(tasks[i].Id, tes.Minimal).State; got != want {
+			t.Errorf("task %s state=%s want=%s", tasks[i].Id, got, want)
 		}
 	}
 }
@@ -324,8 +294,13 @@ func TestNodeDrain(t *testing.T) {
 	// test worker that blocks until the test unblocks it below.
 	block := make(chan struct{})
 	worker := func(ctx context.Context, taskID string) error {
-		<-block
-		return nil
+		select {
+		case <-block:
+			_, err := srv.Server.Events.WriteEvent(ctx, events.NewState(taskID, tes.Complete))
+			return err
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
 
 	srv.Conf.Node.ID = "test-node-drain"

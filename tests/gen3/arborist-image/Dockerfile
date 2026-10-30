@@ -1,9 +1,10 @@
-FROM quay.io/cdis/arborist@sha256:1177d8614452ad512bf7e022eec21899a1cbcef086e337a135749b2e0edfe27e
+FROM quay.io/cdis/arborist@sha256:f874b5918bbecf38a0f6190030aad8d84ac140ab3621c9af73bdcc256c63742f
 USER 0
 ARG TARGETARCH
 WORKDIR /go/src/github.com/uc-cdis/arborist
 RUN test "$TARGETARCH" = arm64 && \
-    test "$(git -c safe.directory="$PWD" rev-parse HEAD)" = ccf67c19c381edc72a13fea58adc42b83af003e8 && \
+    git -c safe.directory="$PWD" checkout --detach 506332cc538a12b69ac764db39b50deab31d3aa8 && \
+    test "$(git -c safe.directory="$PWD" rev-parse HEAD)" = 506332cc538a12b69ac764db39b50deab31d3aa8 && \
     GITCOMMIT=$(git -c safe.directory="$PWD" rev-parse HEAD) && \
     GITVERSION=$(git -c safe.directory="$PWD" describe --always --tags) && \
     git config --global --add safe.directory "$PWD" && \
