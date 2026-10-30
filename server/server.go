@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"runtime/debug"
 	"strings"
 
 	"time"
@@ -23,6 +24,7 @@ import (
 	"github.com/calypr/funnel/events"
 	"github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/version"
 	"github.com/calypr/funnel/webdash"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 
@@ -51,12 +53,18 @@ type Server struct {
 func newDebugInterceptor(log *logger.Logger) grpc.UnaryServerInterceptor {
 	// Return a function that is the interceptor.
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo,
-		handler grpc.UnaryHandler) (interface{}, error) {
+		handler grpc.UnaryHandler) (resp interface{}, err error) {
+		defer func() {
+			if value := recover(); value != nil {
+				log.Error("caught RPC panic", "panic", value, "method", info.FullMethod, "version", version.Version, "commit", version.GitCommit, "stack", string(debug.Stack()))
+				resp, err = nil, status.Error(codes.Internal, "internal server error")
+			}
+		}()
 		log.Debug(
 			"received: "+info.FullMethod,
 			"request", req,
 		)
-		resp, err := handler(ctx, req)
+		resp, err = handler(ctx, req)
 		log.Debug(
 			"responding: "+info.FullMethod,
 			"resp", resp,
