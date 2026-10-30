@@ -12,6 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
+	"github.com/calypr/funnel/compute"
 	"github.com/calypr/funnel/compute/kubernetes/resources"
 	"github.com/calypr/funnel/compute/kubernetes/storageplan"
 	"github.com/calypr/funnel/config"
@@ -56,6 +57,10 @@ func NewBackend(ctx context.Context, conf *config.Config, reader tes.ReadOnlySer
 	// Funnel Server Namespace
 	if conf.Kubernetes.Namespace == "" {
 		return nil, fmt.Errorf("invalid configuration; must provide a kubernetes namespace")
+	}
+	err := compute.ValidateReconcileRate("Kubernetes.ReconcileRate", conf.Kubernetes.DisableReconciler, conf.Kubernetes.ReconcileRate)
+	if err != nil {
+		return nil, err
 	}
 
 	// Funnel Worker + Executor Namespace

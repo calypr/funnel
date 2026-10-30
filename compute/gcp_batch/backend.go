@@ -16,6 +16,7 @@ import (
 	"cloud.google.com/go/batch/apiv1/batchpb"
 	"cloud.google.com/go/logging"
 	logadmin "cloud.google.com/go/logging/apiv2"
+	"github.com/calypr/funnel/compute"
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/events"
 	"github.com/calypr/funnel/logger"
@@ -115,6 +116,20 @@ type Backend struct {
 }
 
 func NewBackend(ctx context.Context, conf *config.GCPBatch, reader tes.ReadOnlyServer, writer events.Writer, log *logger.Logger) (*Backend, error) {
+	if conf == nil {
+		return nil, fmt.Errorf("GCPBatch configuration is required")
+	}
+	if strings.TrimSpace(conf.Project) == "" {
+		return nil, fmt.Errorf("GCPBatch.Project must not be empty")
+	}
+	if strings.TrimSpace(conf.Location) == "" {
+		return nil, fmt.Errorf("GCPBatch.Location must not be empty")
+	}
+	err := compute.ValidateReconcileRate("GCPBatch.ReconcileRate", conf.DisableReconciler, conf.ReconcileRate)
+	if err != nil {
+		return nil, err
+	}
+
 	client, err := batch.NewClient(ctx)
 	if err != nil {
 		return nil, err

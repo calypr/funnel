@@ -274,6 +274,16 @@ func (e *eventWriterBuilder) Add(ctx context.Context, name string, conf *config.
 }
 
 func validateConfig(conf *config.Config, opts *Options) error {
+	if conf.Worker == nil || conf.Worker.PollingRate == nil {
+		return fmt.Errorf("Worker.PollingRate must be a positive duration")
+	}
+	err := conf.Worker.PollingRate.CheckValid()
+	if err != nil {
+		return fmt.Errorf("Worker.PollingRate: %w", err)
+	}
+	if conf.Worker.PollingRate.AsDuration() <= 0 {
+		return fmt.Errorf("Worker.PollingRate must be a positive duration")
+	}
 	// If the task reader is a file or string,
 	// only a subset of event writers are supported.
 	if opts.TaskFile != "" || opts.TaskBase64 != "" {

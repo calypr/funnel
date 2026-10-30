@@ -27,6 +27,15 @@ func NewBackend(ctx context.Context, conf *config.Config, reader tes.ReadOnlySer
 		conf.HTCondor.Template = string(content)
 	}
 
+	err := compute.ValidateSubmissionTemplate("HTCondor.Template", conf.HTCondor.Template)
+	if err != nil {
+		return nil, err
+	}
+	err = compute.ValidateReconcileRate("HTCondor.ReconcileRate", conf.HTCondor.DisableReconciler, conf.HTCondor.ReconcileRate)
+	if err != nil {
+		return nil, err
+	}
+
 	b := &compute.HPCBackend{
 		Name:          "htcondor",
 		SubmitCmd:     "condor_submit",
