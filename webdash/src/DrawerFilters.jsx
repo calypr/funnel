@@ -1,33 +1,36 @@
 import React from 'react';
 import PropTypes from 'prop-types';
-import ListItem from '@mui/material/ListItem';
 import ListItemButton from '@mui/material/ListItemButton';
 import ListItemText from '@mui/material/ListItemText';
-import ListSubheader from '@mui/material/ListSubheader';
-import Input from '@mui/material/Input';
-import InputLabel from '@mui/material/InputLabel';
+import Button from '@mui/material/Button';
 import MenuItem from '@mui/material/MenuItem';
-import FormGroup from '@mui/material/FormGroup';
 import Select from '@mui/material/Select';
 import TextField from '@mui/material/TextField';
-import Icon from '@mui/material/Icon';
 import IconButton from '@mui/material/IconButton';
 import DeleteIcon from '@mui/icons-material/Delete';
-import { Link } from "react-router-dom";
+import AddIcon from '@mui/icons-material/Add';
+import AssignmentOutlinedIcon from '@mui/icons-material/AssignmentOutlined';
+import DnsOutlinedIcon from '@mui/icons-material/DnsOutlined';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import { NavLink } from "react-router-dom";
 
 function ListItemLink(props) {
-  return <ListItemButton component={Link} {...props} />;
+  return <ListItemButton component={NavLink} className="dashboard-nav-item" {...props} />;
 }
 
 const NavListItems = (
   <div>
+    <div className="sidebar-section-label">Workspace</div>
     <ListItemLink to="/tasks">
+      <AssignmentOutlinedIcon fontSize="small" />
       <ListItemText primary="Tasks" />
     </ListItemLink>
     <ListItemLink to="/nodes">
+      <DnsOutlinedIcon fontSize="small" />
       <ListItemText primary="Nodes" />
     </ListItemLink>
     <ListItemLink to="/service-info">
+      <InfoOutlinedIcon fontSize="small" />
       <ListItemText primary="Service Info" />
     </ListItemLink>
   </div>
@@ -55,24 +58,21 @@ function TaskFilters({show, stateFilter, tagsFilter, setStateFilter, setTagsFilt
     return (<div />);
   };
   return (
-    <div>
-      <ListSubheader>Task Filters</ListSubheader>
-      <ListItem style={{paddingBottom:"0"}}>
-        <InputLabel shrink htmlFor="state-placeholder">
-          State
-        </InputLabel>
-      </ListItem>
-      <ListItem style={{paddingTop:"5px"}}>
+    <div className="sidebar-filters">
+      <div className="sidebar-section-label">Task filters</div>
+      <label className="filter-label" htmlFor="state-placeholder">State</label>
         <Select
           value={stateFilter}
           onChange={(event) => setStateFilter(event.target.value)}
-          input={<Input name="stateFilter" id="state-placeholder" />}
+          id="state-placeholder"
+          size="small"
+          fullWidth
+          inputProps={{ 'aria-label': 'Task state' }}
           displayEmpty
-          autoWidth
           name="stateFilter"
         >
           <MenuItem value="">
-            <em>None</em>
+            All states
           </MenuItem>
           <MenuItem value="QUEUED">Queued</MenuItem>
           <MenuItem value="INITIALIZING">Initializing</MenuItem>
@@ -82,22 +82,17 @@ function TaskFilters({show, stateFilter, tagsFilter, setStateFilter, setTagsFilt
           <MenuItem value="EXECUTOR_ERROR">Executor Error</MenuItem>
           <MenuItem value="SYSTEM_ERROR">System error</MenuItem>
         </Select>
-      </ListItem>
-      <ListItem style={{paddingBottom:"0"}}>
-        <InputLabel shrink htmlFor="state-placeholder">
-          Tags
-        </InputLabel>
-        <IconButton onClick={addTagFilter}>
-          <Icon >add_circle</Icon>
-        </IconButton>
-      </ListItem>
+      <div className="tag-filter-heading">
+        <span className="filter-label">Tags</span>
+        <Button onClick={addTagFilter} startIcon={<AddIcon />} size="small" aria-label="Add tag filter">Add tag</Button>
+      </div>
       {tagsFilter.map((tag, index) => (
-        <ListItem key={index} style={{paddingTop:"5px", paddingRight:"0px"}}>
+        <div className="tag-filter-row" key={index}>
           <TagFilter index={index} tag={tag} updateTagFilter={updateTagFilter} />
-          <IconButton onClick={() => removeTagFilter(index)}>
-            <DeleteIcon />
+          <IconButton onClick={() => removeTagFilter(index)} aria-label="Remove tag filter">
+            <DeleteIcon fontSize="small" />
           </IconButton>
-        </ListItem>
+        </div>
       ))}
     </div>
   );
@@ -138,29 +133,29 @@ function TagFilter({tag, index, updateTagFilter}) {
   }, [debouncedKey, debouncedValue, index]);
 
   return(
-    <div style={{borderColor: "#eeeeee", borderWidth: "1px", borderStyle:"solid"}}>
-      <form autoComplete="off">
-        <FormGroup style={{flexDirection:"row", padding:"10px"}}>
+    <div className="tag-filter-fields">
+      <div className="tag-inputs">
           <TextField 
-            id="key"
             label="Key"
             placeholder=""
             value={key}
             margin="normal"
+            size="small"
+            fullWidth
             style={{marginTop:"0px"}}
             onChange={(event) => setKey(event.target.value)}
           />
           <TextField 
-            id="value"
             label="Value"
             placeholder=""
             value={value}
             margin="normal"
+            size="small"
+            fullWidth
             style={{marginTop:"0px"}}
             onChange={(event) => setValue(event.target.value)}
           />
-        </FormGroup>
-      </form>
+      </div>
     </div>
   );
 };
