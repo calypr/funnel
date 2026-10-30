@@ -200,7 +200,8 @@ func (mapper *FileMapper) CopyOutputsToWorkDir(scratchDir string) error {
 				if err = os.MkdirAll(output.Path, 0755); err != nil {
 					return fmt.Errorf("failed to create output path: %w", err)
 				}
-				if err := copyDir(src, output.Path); err != nil {
+				err := copyDir(src, output.Path)
+				if err != nil {
 					return fmt.Errorf("failed to copy output directory %s to %s: %w", src, output.Path, err)
 				}
 				// If output is a file
@@ -255,7 +256,8 @@ func copyFile(src string, dst string) (copyErr error) {
 		return err
 	}
 	defer func() {
-		if err := sourceFile.Close(); err != nil {
+		err := sourceFile.Close()
+		if err != nil {
 			copyErr = errors.Join(copyErr, fmt.Errorf("close source file %s: %w", src, err))
 		}
 	}()
@@ -265,7 +267,8 @@ func copyFile(src string, dst string) (copyErr error) {
 		return err
 	}
 	defer func() {
-		if err := destFile.Close(); err != nil {
+		err := destFile.Close()
+		if err != nil {
 			copyErr = errors.Join(copyErr, fmt.Errorf("close destination file %s: %w", dst, err))
 		}
 	}()

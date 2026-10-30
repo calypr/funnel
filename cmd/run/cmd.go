@@ -24,7 +24,8 @@ var Cmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		err := Run(args)
 		if err != nil {
-			if usageErr := cmd.Usage(); usageErr != nil {
+			usageErr := cmd.Usage()
+			if usageErr != nil {
 				return errors.Join(err, fmt.Errorf("writing usage: %w", usageErr))
 			}
 			return err
@@ -145,7 +146,8 @@ func scatter(base flagVals) ([]flagVals, error) {
 			// Parse scatter file flags into new flagVals
 			out = append(out, tv)
 		}
-		if err := scanner.Err(); err != nil {
+		err = scanner.Err()
+		if err != nil {
 			//nolint:errcheck // the scatter file is read-only; close is best-effort cleanup.
 			_ = fh.Close()
 			return nil, fmt.Errorf("reading scatter file %s: %w", sc, err)

@@ -32,7 +32,8 @@ func TestListAllStreamsPages(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Query().Get("page_token") {
 		case "":
-			if _, err := fmt.Fprint(w, `{"tasks":[{"id":"task-1","state":"RUNNING"}],"nextPageToken":"page-2"}`); err != nil {
+			_, err := fmt.Fprint(w, `{"tasks":[{"id":"task-1","state":"RUNNING"}],"nextPageToken":"page-2"}`)
+			if err != nil {
 				t.Error(err)
 			}
 		case "page-2":
@@ -41,11 +42,13 @@ func TestListAllStreamsPages(t *testing.T) {
 			case <-time.After(2 * time.Second):
 				t.Error("first task was not written before requesting page two")
 			}
-			if _, err := fmt.Fprint(w, `{"tasks":[],"nextPageToken":"page-3"}`); err != nil {
+			_, err := fmt.Fprint(w, `{"tasks":[],"nextPageToken":"page-3"}`)
+			if err != nil {
 				t.Error(err)
 			}
 		case "page-3":
-			if _, err := fmt.Fprint(w, `{"tasks":[{"id":"task-2","state":"COMPLETE"}]}`); err != nil {
+			_, err := fmt.Fprint(w, `{"tasks":[{"id":"task-2","state":"COMPLETE"}]}`)
+			if err != nil {
 				t.Error(err)
 			}
 		default:
@@ -72,12 +75,14 @@ func TestListAllStreamsPages(t *testing.T) {
 func TestListPreservesSinglePageAndEmptyOutput(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("page_token") == "empty" {
-			if _, err := fmt.Fprint(w, `{}`); err != nil {
+			_, err := fmt.Fprint(w, `{}`)
+			if err != nil {
 				t.Error(err)
 			}
 			return
 		}
-		if _, err := fmt.Fprint(w, `{"tasks":[{"id":"task-1"}],"nextPageToken":"next"}`); err != nil {
+		_, err := fmt.Fprint(w, `{"tasks":[{"id":"task-1"}],"nextPageToken":"next"}`)
+		if err != nil {
 			t.Error(err)
 		}
 	}))
@@ -105,7 +110,8 @@ func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("output f
 
 func TestListReportsOutputErrors(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if _, err := fmt.Fprint(w, `{"tasks":[{"id":"task-1"}]}`); err != nil {
+		_, err := fmt.Fprint(w, `{"tasks":[{"id":"task-1"}]}`)
+		if err != nil {
 			t.Error(err)
 		}
 	}))
@@ -123,7 +129,8 @@ func TestListAllReportsLaterPageFailure(t *testing.T) {
 			http.Error(w, "page failed", http.StatusServiceUnavailable)
 			return
 		}
-		if _, err := fmt.Fprint(w, `{"tasks":[{"id":"task-1"}],"nextPageToken":"next"}`); err != nil {
+		_, err := fmt.Fprint(w, `{"tasks":[{"id":"task-1"}],"nextPageToken":"next"}`)
+		if err != nil {
 			t.Error(err)
 		}
 	}))
@@ -148,7 +155,8 @@ func TestListEmptyTagValue(t *testing.T) {
 		if !ok || len(values) != 1 || values[0] != "" {
 			t.Errorf("query = %v, want empty tag_value", q)
 		}
-		if _, err := fmt.Fprint(w, `{}`); err != nil {
+		_, err := fmt.Fprint(w, `{}`)
+		if err != nil {
 			t.Error(err)
 		}
 	}))

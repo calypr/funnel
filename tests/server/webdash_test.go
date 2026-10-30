@@ -21,7 +21,8 @@ func TestWebdash(t *testing.T) {
 
 	// Get the response body
 	defer func() {
-		if err := resp.Body.Close(); err != nil {
+		err := resp.Body.Close()
+		if err != nil {
 			t.Errorf("close webdash response body: %v", err)
 		}
 	}()

@@ -28,7 +28,8 @@ func TestStopNode(t *testing.T) {
 	cleanup := timeLimit(t, time.Millisecond*100)
 	defer cleanup()
 	stop()
-	if err := n.Wait(); err != nil {
+	err := n.Wait()
+	if err != nil {
 		t.Fatal(err)
 	}
 	n.Client.AssertCalled(t, "Close")
@@ -84,7 +85,8 @@ func TestDrainPublishesBeforeNextUpdate(t *testing.T) {
 		close(finishWorker)
 		select {
 		case <-runDone:
-			if err := <-runErr; err != nil {
+			err := <-runErr
+			if err != nil {
 				t.Errorf("run node: %v", err)
 			}
 		case <-time.After(time.Second):
@@ -170,7 +172,8 @@ func TestNodeTimeout(t *testing.T) {
 	defer cleanup()
 
 	// Wait for the node to exit
-	if err := n.Wait(); err != nil {
+	err := n.Wait()
+	if err != nil {
 		t.Fatal(err)
 	}
 }

@@ -52,7 +52,8 @@ func TestCancel(t *testing.T) {
 	f.StartServer()
 
 	id := f.Run(`'sleep 1000'`)
-	if err := f.Cancel(id); err != nil {
+	err := f.Cancel(id)
+	if err != nil {
 		t.Fatalf("cancel task: %v", err)
 	}
 	task := f.Get(id)

@@ -100,7 +100,8 @@ func (s *stepWorker) Run(ctx context.Context) error {
 
 		case result := <-done:
 			if ctx.Err() != nil {
-				if err := s.Command.Stop(); err != nil {
+				err := s.Command.Stop()
+				if err != nil {
 					_ = s.Event.Error("failed to stop executor after cancellation", err) //nolint:errcheck // Cancellation remains the task result when reporting stop failure.
 				}
 				if code, err := getExitCode(result); err == nil && code >= 0 {

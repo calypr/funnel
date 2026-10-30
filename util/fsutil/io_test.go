@@ -19,10 +19,12 @@ func TestDeadlineSetupFailureIsReturned(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
 	input := deadlineFailure{failure}
-	if _, err := Reader(ctx, input).Read(make([]byte, 1)); !errors.Is(err, failure) {
+	_, err := Reader(ctx, input).Read(make([]byte, 1))
+	if !errors.Is(err, failure) {
 		t.Errorf("Read returned %v, want deadline failure", err)
 	}
-	if _, err := Writer(ctx, input).Write([]byte("x")); !errors.Is(err, failure) {
+	_, err = Writer(ctx, input).Write([]byte("x"))
+	if !errors.Is(err, failure) {
 		t.Errorf("Write returned %v, want deadline failure", err)
 	}
 }
@@ -31,10 +33,12 @@ func TestUnsupportedFileDeadlineStillAllowsIO(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
 	input := deadlineFailure{os.ErrNoDeadline}
-	if _, err := Reader(ctx, input).Read(make([]byte, 1)); err != nil {
+	_, err := Reader(ctx, input).Read(make([]byte, 1))
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Writer(ctx, input).Write([]byte("x")); err != nil {
+	_, err = Writer(ctx, input).Write([]byte("x"))
+	if err != nil {
 		t.Fatal(err)
 	}
 }

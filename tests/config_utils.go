@@ -101,7 +101,8 @@ func randomPorts(count int) []string {
 	listeners := make([]net.Listener, 0, count)
 	defer func() {
 		for _, listener := range listeners {
-			if err := listener.Close(); err != nil {
+			err := listener.Close()
+			if err != nil {
 				panic(fmt.Errorf("release allocated test port: %w", err))
 			}
 		}
@@ -121,7 +122,8 @@ func randomPorts(count int) []string {
 
 // TempDirConfig returns a modified config with workdir and db path set to a temp. directory.
 func TempDirConfig(conf *config.Config) *config.Config {
-	if err := os.MkdirAll("./test_tmp", os.ModePerm); err != nil {
+	err := os.MkdirAll("./test_tmp", os.ModePerm)
+	if err != nil {
 		panic(fmt.Errorf("create test temp directory: %w", err))
 	}
 	f, err := os.MkdirTemp("./test_tmp", "funnel-test-")
@@ -162,7 +164,8 @@ func TestingWriter(t *testing.T) io.Writer {
 			// Carriage return is the hack for now.
 			t.Log("\r" + scanner.Text())
 		}
-		if err := scanner.Err(); err != nil {
+		err := scanner.Err()
+		if err != nil {
 			t.Error("testing writer scanner error", err)
 		}
 	}()

@@ -275,7 +275,8 @@ func TestUploadOutputsMountedDirectoryKeepsAcknowledgedFilesOnPartialFailure(t *
 			w.WriteHeader(http.StatusOK)
 		case "/bucket/outputs/bundle/z-failed.txt":
 			w.WriteHeader(http.StatusForbidden)
-			if _, err := io.WriteString(w, `<Error><Code>AccessDenied</Code></Error>`); err != nil {
+			_, err := io.WriteString(w, `<Error><Code>AccessDenied</Code></Error>`)
+			if err != nil {
 				t.Errorf("write S3 error response: %v", err)
 			}
 		default:

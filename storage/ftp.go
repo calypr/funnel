@@ -183,7 +183,8 @@ func (b *ftpclient) Get(ctx context.Context, url, path string) (obj *Object, ret
 		return nil, fmt.Errorf("ftpStorage: executing RETR request: %s", err)
 	}
 	defer func() {
-		if err := src.Close(); err != nil {
+		err := src.Close()
+		if err != nil {
 			retErr = errors.Join(retErr, fmt.Errorf("ftpStorage: closing download stream: %w", err))
 		}
 	}()

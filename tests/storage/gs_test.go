@@ -49,7 +49,8 @@ func TestGoogleStorage(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
-		if err := client.deleteBucket(testBucket); err != nil {
+		err := client.deleteBucket(testBucket)
+		if err != nil {
 			t.Errorf("delete test bucket %s: %v", testBucket, err)
 		}
 	}()

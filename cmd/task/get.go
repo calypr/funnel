@@ -41,7 +41,8 @@ func Get(server string, ids []string, taskView string, w io.Writer) error {
 	}
 
 	for _, x := range res {
-		if _, err := fmt.Fprintln(w, x); err != nil {
+		_, err := fmt.Fprintln(w, x)
+		if err != nil {
 			return fmt.Errorf("writing task output: %w", err)
 		}
 	}

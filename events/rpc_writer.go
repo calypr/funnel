@@ -35,7 +35,8 @@ func (r *RPCWriter) WriteEvent(ctx context.Context, e *Event) error {
 
 // Close closes the connection.
 func (r *RPCWriter) Close() {
-	if err := r.conn.Close(); err != nil {
+	err := r.conn.Close()
+	if err != nil {
 		log.Printf("close event RPC connection: %v", err)
 	}
 }

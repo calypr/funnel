@@ -142,7 +142,8 @@ func (db *MongoDB) Close() {
 	if db.active {
 		ctx, cancel := db.context()
 		defer cancel()
-		if err := db.client.Disconnect(ctx); err != nil {
+		err := db.client.Disconnect(ctx)
+		if err != nil {
 			log.Printf("disconnecting MongoDB client: %v", err)
 		}
 	}

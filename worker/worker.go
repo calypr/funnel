@@ -152,7 +152,8 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 
 	_ = event.Info("Version", version.LogFields()...) //nolint:errcheck // Informational logging must not change task execution.
 	if !claimed {
-		if err := event.State(tes.State_INITIALIZING); err != nil {
+		err := event.State(tes.State_INITIALIZING)
+		if err != nil {
 			run.syserr = fmt.Errorf("recording task state %s: %w", tes.State_INITIALIZING, err)
 		}
 	}
@@ -231,7 +232,8 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 
 	// Create symlinks between the working directory and the Scratch Directory
 	if run.ok() && r.Conf.ScratchPath != "" {
-		if err := mapper.CopyInputsToScratch(r.Conf.ScratchPath); err != nil {
+		err := mapper.CopyInputsToScratch(r.Conf.ScratchPath)
+		if err != nil {
 			run.syserr = fmt.Errorf("copy inputs to scratch: %w", err)
 		} else {
 			// Get the absolute path of the scratch directory.
@@ -525,7 +527,8 @@ func (r *DefaultWorker) processOutputs(ctx context.Context, event *events.TaskWr
 	outputsAvailable := true
 	if run.syserr == nil {
 		for _, output := range mapper.Outputs {
-			if err := fixLinks(mapper, output.Path); err != nil {
+			err := fixLinks(mapper, output.Path)
+			if err != nil {
 				outputsAvailable = false
 				if run.execerr != nil {
 					_ = event.Error("Failed to repair output symlink after executor error", "path", output.Path, "error", err) //nolint:errcheck // Preserve the executor result when reporting a secondary output error.
@@ -553,7 +556,8 @@ func (r *DefaultWorker) processOutputs(ctx context.Context, event *events.TaskWr
 	}
 
 	if run.syserr == nil && outputsAvailable && r.Conf.ScratchPath != "" {
-		if err := mapper.CopyOutputsToWorkDir(r.Conf.ScratchPath); err != nil {
+		err := mapper.CopyOutputsToWorkDir(r.Conf.ScratchPath)
+		if err != nil {
 			outputsAvailable = false
 			if run.execerr != nil {
 				_ = event.Error("Failed to copy outputs after executor error", "error", err) //nolint:errcheck // Preserve the executor result when reporting a secondary output error.
@@ -584,7 +588,8 @@ func (r *DefaultWorker) processOutputs(ctx context.Context, event *events.TaskWr
 	}
 
 	if len(outputLog) > 0 {
-		if err := event.Outputs(outputLog); err != nil {
+		err := event.Outputs(outputLog)
+		if err != nil {
 			if run.execerr != nil {
 				_ = event.Error("Failed to record output files after executor error", "error", err) //nolint:errcheck // Preserve executor error precedence while reporting a secondary output error.
 			} else {

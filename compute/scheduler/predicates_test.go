@@ -65,7 +65,8 @@ func testEmptyTask(t *testing.T, p Predicate, name string, wantError bool) {
 
 	j := &tes.Task{}
 	w := &Node{}
-	if err := p(j, w); (err != nil) != wantError {
+	err := p(j, w)
+	if (err != nil) != wantError {
 		t.Errorf("%s returned error %v, want error = %t", name, err, wantError)
 	}
 }

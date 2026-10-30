@@ -41,10 +41,12 @@ func TestDatastoreByteBudgetResumes(t *testing.T) {
 	go func() { serveErr <- rpc.Serve(listener) }()
 	t.Cleanup(func() {
 		rpc.Stop()
-		if err := <-serveErr; err != nil {
+		err := <-serveErr
+		if err != nil {
 			t.Errorf("serve Datastore fixture RPC: %v", err)
 		}
-		if err := listener.Close(); err != nil {
+		err = listener.Close()
+		if err != nil {
 			t.Errorf("close Datastore fixture listener: %v", err)
 		}
 	})
@@ -57,7 +59,8 @@ func TestDatastoreByteBudgetResumes(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		if err := client.Close(); err != nil {
+		err := client.Close()
+		if err != nil {
 			t.Errorf("close Datastore fixture client: %v", err)
 		}
 	})

@@ -249,7 +249,8 @@ func runWorkerRestartRecoveryLive(t *testing.T, client kubernetes.Interface, ima
 	go func() { serveErr <- rpcServer.Serve(listener) }()
 	defer func() {
 		rpcServer.Stop()
-		if err := <-serveErr; err != nil {
+		err := <-serveErr
+		if err != nil {
 			t.Errorf("serve worker fixture RPC: %v", err)
 		}
 	}()

@@ -313,7 +313,8 @@ func submitTask(t *testing.T, port, id, markers string, hold bool) (string, erro
 		return "", fmt.Errorf("dial scheduler server: %w", err)
 	}
 	defer func() {
-		if err := conn.Close(); err != nil {
+		err := conn.Close()
+		if err != nil {
 			t.Errorf("close scheduler connection: %v", err)
 		}
 	}()

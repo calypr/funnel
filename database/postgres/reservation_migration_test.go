@@ -241,7 +241,8 @@ func TestClaimLookupAndHeartbeatDoNotWaitForReservationLocks(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
-		if err := tx.Rollback(context.Background()); err != nil {
+		err := tx.Rollback(context.Background())
+		if err != nil {
 			t.Errorf("rollback test transaction: %v", err)
 		}
 	}()

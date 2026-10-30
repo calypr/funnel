@@ -550,7 +550,8 @@ func TestSingleCharLog(t *testing.T) {
 	if stdout != "a\n" {
 		t.Fatal("Missing logs")
 	}
-	if err := fun.Cancel(id); err != nil {
+	err := fun.Cancel(id)
+	if err != nil {
 		t.Fatalf("cancel task: %v", err)
 	}
 }
@@ -562,7 +563,8 @@ func TestCompleteStateImmutable(t *testing.T) {
     --sh 'echo hello'
   `)
 	fun.Wait(id)
-	if err := fun.Cancel(id); err != nil {
+	err := fun.Cancel(id)
+	if err != nil {
 		t.Fatalf("cancel completed task: %v", err)
 	}
 	task := fun.Get(id)
@@ -580,7 +582,8 @@ func TestCancel(t *testing.T) {
     --sh 'echo never'
   `)
 	fun.WaitForExec(id, 1)
-	if err := fun.Cancel(id); err != nil {
+	err := fun.Cancel(id)
+	if err != nil {
 		t.Fatalf("cancel task: %v", err)
 	}
 	fun.WaitForDockerDestroy(id + "-0")
@@ -634,7 +637,8 @@ func TestExecutorLogLength(t *testing.T) {
   `)
 	fun.WaitForExec(id, 2)
 	task := fun.Get(id)
-	if err := fun.Cancel(id); err != nil {
+	err := fun.Cancel(id)
+	if err != nil {
 		t.Fatalf("cancel task: %v", err)
 	}
 	if len(task.Logs[0].Logs) != 2 {
@@ -657,7 +661,8 @@ func TestMarkCompleteBug(t *testing.T) {
 	if task.State != tes.State_RUNNING {
 		t.Fatal("Unexpected task state")
 	}
-	if err := fun.Cancel(id); err != nil {
+	err := fun.Cancel(id)
+	if err != nil {
 		t.Fatalf("cancel task: %v", err)
 	}
 }

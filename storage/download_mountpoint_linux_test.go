@@ -174,7 +174,8 @@ func TestDownloadMountpoint(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() {
-			if err := unix.Unmount(target, 0); err != nil {
+			err := unix.Unmount(target, 0)
+			if err != nil {
 				t.Errorf("unmount test destination: %v", err)
 			}
 		})

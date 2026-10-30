@@ -55,7 +55,8 @@ func TestBuffer_Reset(t *testing.T) {
 func TestBuffer_ResetNewBytes(t *testing.T) {
 
 	buf := NewBuffer(4)
-	if _, err := buf.Write([]byte("12345")); err != nil {
+	_, err := buf.Write([]byte("12345"))
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -76,7 +77,8 @@ func TestBuffer_ResetNewBytes(t *testing.T) {
 		t.Fatalf("expected content to be 2345, got %s", buf.String())
 	}
 
-	if _, err := buf.Write([]byte("6789")); err != nil {
+	_, err = buf.Write([]byte("6789"))
+	if err != nil {
 		t.Fatal(err)
 	}
 	if buf.NewBytesWritten() != 4 {

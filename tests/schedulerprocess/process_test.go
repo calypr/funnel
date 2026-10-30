@@ -152,7 +152,8 @@ func waitForServer(t *testing.T, process *childProcess, port string) {
 		}
 		conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", port), 100*time.Millisecond)
 		if err == nil {
-			if closeErr := conn.Close(); closeErr != nil {
+			closeErr := conn.Close()
+			if closeErr != nil {
 				t.Errorf("close readiness probe connection: %v", closeErr)
 			}
 			return
@@ -233,7 +234,8 @@ func startHelper(t *testing.T, settings dbSettings, mode string, extra map[strin
 	}()
 	t.Cleanup(func() {
 		if process.exitError() == nil {
-			if err := process.cmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+			err := process.cmd.Process.Kill()
+			if err != nil && !errors.Is(err, os.ErrProcessDone) {
 				t.Errorf("kill child process %s during cleanup: %v", mode, err)
 			}
 			select {
@@ -343,16 +345,19 @@ func stopChildren(t *testing.T, processes []*childProcess) {
 			continue
 		}
 		if err := process.cmd.Process.Signal(syscall.SIGTERM); err != nil {
-			if killErr := process.cmd.Process.Kill(); killErr != nil && !errors.Is(killErr, os.ErrProcessDone) {
+			killErr := process.cmd.Process.Kill()
+			if killErr != nil && !errors.Is(killErr, os.ErrProcessDone) {
 				t.Errorf("kill child process after failed SIGTERM: %v", killErr)
 			}
-			if waitErr := process.wait(t, 5*time.Second); waitErr != nil {
+			waitErr := process.wait(t, 5*time.Second)
+			if waitErr != nil {
 				t.Errorf("child process did not stop after failed SIGTERM: %v\n%s", waitErr, process.diagnostics())
 			}
 			continue
 		}
 		if err := process.wait(t, 5*time.Second); err != nil {
-			if killErr := process.cmd.Process.Kill(); killErr != nil && !errors.Is(killErr, os.ErrProcessDone) {
+			killErr := process.cmd.Process.Kill()
+			if killErr != nil && !errors.Is(killErr, os.ErrProcessDone) {
 				t.Errorf("kill child process after SIGTERM timeout: %v", killErr)
 			}
 			if killErr := process.wait(t, 5*time.Second); killErr != nil {

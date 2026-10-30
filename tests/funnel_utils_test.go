@@ -71,12 +71,14 @@ func TestWaitForDockerDestroy(t *testing.T) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(status)
 				if status == http.StatusOK {
-					if err := json.NewEncoder(w).Encode(map[string]string{"Id": "container-id"}); err != nil {
+					err := json.NewEncoder(w).Encode(map[string]string{"Id": "container-id"})
+					if err != nil {
 						t.Errorf("write container inspect response: %v", err)
 					}
 					return
 				}
-				if err := json.NewEncoder(w).Encode(map[string]string{"message": "container inspect failed"}); err != nil {
+				err := json.NewEncoder(w).Encode(map[string]string{"message": "container inspect failed"})
+				if err != nil {
 					t.Errorf("write container inspect error response: %v", err)
 				}
 			}))
@@ -90,7 +92,8 @@ func TestWaitForDockerDestroy(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer func() {
-				if err := cli.Close(); err != nil {
+				err := cli.Close()
+				if err != nil {
 					t.Errorf("close Docker test client: %v", err)
 				}
 			}()
@@ -175,7 +178,8 @@ func TestFunnelCleanupStopsInProcessServer(t *testing.T) {
 		if err != nil {
 			t.Fatalf("listener at %s remained open after cleanup: %v", address, err)
 		}
-		if err := listener.Close(); err != nil {
+		err = listener.Close()
+		if err != nil {
 			t.Errorf("close listener at %s: %v", address, err)
 		}
 	}
@@ -187,7 +191,8 @@ func TestStartServerReturnsHTTPBindErrorImmediately(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
-		if err := httpListener.Close(); err != nil {
+		err := httpListener.Close()
+		if err != nil {
 			t.Errorf("close HTTP reservation listener: %v", err)
 		}
 	}()
@@ -218,7 +223,8 @@ func TestStartServerReturnsHTTPBindErrorImmediately(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RPC listener remained open after startup failure: %v", err)
 	}
-	if err := rpcListener.Close(); err != nil {
+	err = rpcListener.Close()
+	if err != nil {
 		t.Errorf("close RPC listener after startup failure: %v", err)
 	}
 }

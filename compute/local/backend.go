@@ -113,7 +113,8 @@ func (b *Backend) Submit(task *tes.Task) error {
 	}
 
 	go func() {
-		if err := w.Run(ctx); err != nil {
+		err := w.Run(ctx)
+		if err != nil {
 			b.log.Error("local worker failed", "taskID", task.Id, "error", err)
 		}
 		w.Close()

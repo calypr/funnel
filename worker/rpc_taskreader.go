@@ -71,7 +71,8 @@ func (r *RPCTaskReader) ClaimExecution(ctx context.Context, taskID string, owner
 
 // Close closes the connection.
 func (r *RPCTaskReader) Close() {
-	if err := r.conn.Close(); err != nil {
+	err := r.conn.Close()
+	if err != nil {
 		log.Printf("close task RPC connection: %v", err)
 	}
 }

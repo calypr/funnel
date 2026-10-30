@@ -121,7 +121,8 @@ func runExecutionClaimContracts(t *testing.T, open storeFactory) {
 		}
 		// Legacy retry transitions may be rejected. If accepted, they must not grant
 		// another launch for an ID whose execution was already authorized.
-		if err := db.WriteEvent(ctx, events.NewState(task.Id, tes.Queued)); err != nil {
+		err := db.WriteEvent(ctx, events.NewState(task.Id, tes.Queued))
+		if err != nil {
 			t.Logf("legacy queued transition was rejected: %v", err)
 		}
 		if acquired, err := claimer.ClaimExecution(ctx, task.Id, nil); acquired {

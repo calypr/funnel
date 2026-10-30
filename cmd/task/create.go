@@ -62,7 +62,8 @@ func Create(server string, files []string, reader io.Reader, writer io.Writer) e
 		if err != nil {
 			return err
 		}
-		if _, err := fmt.Fprintln(writer, r.Id); err != nil {
+		_, err = fmt.Fprintln(writer, r.Id)
+		if err != nil {
 			return fmt.Errorf("writing created task ID: %w", err)
 		}
 	}

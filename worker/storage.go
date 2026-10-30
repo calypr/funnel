@@ -285,18 +285,21 @@ func fixLinks(mapper *FileMapper, basepath string) error {
 				if err != nil {
 					return fmt.Errorf("open mapped output symlink target %s: %w", mapped, err)
 				}
-				if err := fh.Close(); err != nil {
+				err = fh.Close()
+				if err != nil {
 					return fmt.Errorf("close mapped output symlink target %s: %w", mapped, err)
 				}
 
 				// Replace the broken link only after confirming its target exists.
-				if err := os.Remove(p); err != nil {
+				err = os.Remove(p)
+				if err != nil {
 					if errors.Is(err, os.ErrNotExist) {
 						return nil
 					}
 					return fmt.Errorf("remove broken output symlink %s: %w", p, err)
 				}
-				if err := os.Symlink(mapped, p); err != nil {
+				err = os.Symlink(mapped, p)
+				if err != nil {
 					return fmt.Errorf("create output symlink %s: %w", p, err)
 				}
 			} else {

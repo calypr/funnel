@@ -38,7 +38,8 @@ var Cmd = &cobra.Command{
 		// Print a list of example names and exit
 		if len(args) == 0 || args[0] == "list" {
 			for _, sn := range keys {
-				if _, err := fmt.Fprintln(cmd.OutOrStdout(), sn); err != nil {
+				_, err := fmt.Fprintln(cmd.OutOrStdout(), sn)
+				if err != nil {
 					return fmt.Errorf("writing example names: %w", err)
 				}
 			}
@@ -52,7 +53,8 @@ var Cmd = &cobra.Command{
 			return fmt.Errorf("No example by the name of %s", name)
 		}
 
-		if _, err := fmt.Fprintln(cmd.OutOrStdout(), data); err != nil {
+		_, err := fmt.Fprintln(cmd.OutOrStdout(), data)
+		if err != nil {
 			return fmt.Errorf("writing example: %w", err)
 		}
 		return nil

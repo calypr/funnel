@@ -53,12 +53,14 @@ func newRPCClaimReader(t *testing.T, service events.EventServiceServer) *RPCTask
 	var conn *grpc.ClientConn
 	t.Cleanup(func() {
 		if conn != nil {
-			if err := conn.Close(); err != nil {
+			err := conn.Close()
+			if err != nil {
 				t.Errorf("close gRPC test connection: %v", err)
 			}
 		}
 		server.Stop()
-		if err := <-serveErr; err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+		err := <-serveErr
+		if err != nil && !errors.Is(err, grpc.ErrServerStopped) {
 			t.Errorf("stop gRPC test server: %v", err)
 		}
 	})

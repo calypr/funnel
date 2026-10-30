@@ -125,7 +125,8 @@ func (f *Funnel) Cleanup() {
 	os.RemoveAll(f.StorageDir)          //nolint:errcheck // test storage is disposable; cleanup failure cannot change the test result.
 	os.RemoveAll(f.Conf.Worker.WorkDir) //nolint:errcheck // test work data is disposable; cleanup failure cannot change the test result.
 	if f.conn != nil {
-		if err := f.conn.Close(); err != nil {
+		err := f.conn.Close()
+		if err != nil {
 			panic(fmt.Errorf("close test RPC connection: %w", err))
 		}
 		f.conn = nil
@@ -183,7 +184,8 @@ func (f *Funnel) pollForServerStart(serverDone <-chan error) error {
 		}
 		resp, err := client.Do(req)
 		if resp != nil {
-			if closeErr := resp.Body.Close(); closeErr != nil {
+			closeErr := resp.Body.Close()
+			if closeErr != nil {
 				return fmt.Errorf("close health check response body: %w", closeErr)
 			}
 		}
@@ -445,10 +447,12 @@ func (f *Funnel) StartServerInDocker(containerName, imageName string, extraArgs 
 	if err != nil {
 		panic(fmt.Errorf("resolve test server config path: %w", err))
 	}
-	if err := config.ToYamlFile(f.Conf, configPath); err != nil {
+	err = config.ToYamlFile(f.Conf, configPath)
+	if err != nil {
 		panic(fmt.Errorf("write test server config: %w", err))
 	}
-	if err := os.Chmod(configPath, 0644); err != nil {
+	err = os.Chmod(configPath, 0644)
+	if err != nil {
 		panic(fmt.Errorf("set test server config permissions: %w", err))
 	}
 

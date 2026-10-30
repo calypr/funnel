@@ -15,7 +15,8 @@ Node:
     DiskGb: 50.0
 `
 	conf := Config{}
-	if err := Parse([]byte(yaml), &conf); err != nil {
+	err := Parse([]byte(yaml), &conf)
+	if err != nil {
 		t.Fatal(err)
 	}
 

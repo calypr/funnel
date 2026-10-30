@@ -68,7 +68,8 @@ func TestListTasksLargeResponses(t *testing.T) {
 			go func() { serveDone <- rpc.Serve(listener) }()
 			defer func() {
 				rpc.Stop()
-				if err := <-serveDone; err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+				err := <-serveDone
+				if err != nil && !errors.Is(err, grpc.ErrServerStopped) {
 					t.Errorf("serve list size test RPC: %v", err)
 				}
 			}()
@@ -77,7 +78,8 @@ func TestListTasksLargeResponses(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer func() {
-				if err := connection.Close(); err != nil {
+				err := connection.Close()
+				if err != nil {
 					t.Errorf("close list size test connection: %v", err)
 				}
 			}()

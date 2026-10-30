@@ -36,7 +36,8 @@ func (db *Datastore) Init() error {
 }
 
 func (db *Datastore) Close() {
-	if err := db.client.Close(); err != nil {
+	err := db.client.Close()
+	if err != nil {
 		log.Printf("closing Datastore client: %v", err)
 	}
 }

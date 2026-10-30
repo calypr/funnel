@@ -27,11 +27,13 @@ func TestCreateJobDefinitionResourceRequirements(t *testing.T) {
 				t.Error(err)
 			}
 			properties = request.ContainerProperties
-			if _, err := io.WriteString(w, `{"jobDefinitionName":"test","jobDefinitionArn":"arn:example","revision":1}`); err != nil {
+			_, err := io.WriteString(w, `{"jobDefinitionName":"test","jobDefinitionArn":"arn:example","revision":1}`)
+			if err != nil {
 				t.Error(err)
 			}
 		case "/v1/describejobdefinitions":
-			if _, err := io.WriteString(w, `{"jobDefinitions":[{"jobDefinitionName":"test","jobDefinitionArn":"arn:example","revision":1,"type":"container"}]}`); err != nil {
+			_, err := io.WriteString(w, `{"jobDefinitions":[{"jobDefinitionName":"test","jobDefinitionArn":"arn:example","revision":1,"type":"container"}]}`)
+			if err != nil {
 				t.Error(err)
 			}
 		default:
@@ -117,7 +119,8 @@ func TestCreateResourcesReturnsDescribeErrors(t *testing.T) {
 				}
 				w.Header().Set("Content-Type", "application/x-amz-json-1.1")
 				w.WriteHeader(http.StatusForbidden)
-				if _, err := io.WriteString(w, `{"__type":"AccessDeniedException","message":"not authorized"}`); err != nil {
+				_, err := io.WriteString(w, `{"__type":"AccessDeniedException","message":"not authorized"}`)
+				if err != nil {
 					t.Error(err)
 				}
 			}))

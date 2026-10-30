@@ -92,7 +92,8 @@ func TestUploadOutputsKeepsAcknowledgedFilesOnPartialFailure(t *testing.T) {
 		}
 		if strings.HasSuffix(r.URL.Path, "failed.txt") {
 			w.WriteHeader(http.StatusForbidden)
-			if _, err := io.WriteString(w, `<Error><Code>AccessDenied</Code><Message>upload denied</Message></Error>`); err != nil {
+			_, err := io.WriteString(w, `<Error><Code>AccessDenied</Code><Message>upload denied</Message></Error>`)
+			if err != nil {
 				t.Errorf("write S3 error response: %v", err)
 			}
 			return
@@ -127,7 +128,8 @@ func TestUploadOutputsRetriesProduceOneSuccessLog(t *testing.T) {
 		}
 		if attempts.Add(1) == 1 {
 			w.WriteHeader(http.StatusForbidden)
-			if _, err := io.WriteString(w, `<Error><Code>AccessDenied</Code><Message>temporary denial</Message></Error>`); err != nil {
+			_, err := io.WriteString(w, `<Error><Code>AccessDenied</Code><Message>temporary denial</Message></Error>`)
+			if err != nil {
 				t.Errorf("write S3 error response: %v", err)
 			}
 			return
@@ -226,7 +228,8 @@ func TestDefaultWorkerWaitsForOutputAcknowledgementBeforeCompletion(t *testing.T
 				}
 				if rejected {
 					w.WriteHeader(http.StatusForbidden)
-					if _, err := io.WriteString(w, `<Error><Code>AccessDenied</Code></Error>`); err != nil {
+					_, err := io.WriteString(w, `<Error><Code>AccessDenied</Code></Error>`)
+					if err != nil {
 						t.Errorf("write S3 error response: %v", err)
 					}
 					return
@@ -354,10 +357,12 @@ func TestProcessOutputsHandlesOutputLogWriteFailures(t *testing.T) {
 				Path: "/outputs/result.txt",
 				Type: tes.File.Enum(),
 			}}}
-			if err := mapper.MapTask(task, "docker"); err != nil {
+			err := mapper.MapTask(task, "docker")
+			if err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(mapper.Outputs[0].Path, []byte("result"), 0600); err != nil {
+			err = os.WriteFile(mapper.Outputs[0].Path, []byte("result"), 0600)
+			if err != nil {
 				t.Fatal(err)
 			}
 			store, err := storage.NewLocal(&config.LocalStorage{AllowedDirs: []string{root}})

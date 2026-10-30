@@ -20,13 +20,15 @@ func TestDefaultRetryAttemptsPreserveDynamoDBRetries(t *testing.T) {
 		if requests.Add(1) <= 3 {
 			w.Header().Set("Content-Type", "application/x-amz-json-1.0")
 			w.WriteHeader(http.StatusBadRequest)
-			if _, err := io.WriteString(w, `{"__type":"com.amazonaws.dynamodb.v20120810#ThrottlingException","message":"throttled"}`); err != nil {
+			_, err := io.WriteString(w, `{"__type":"com.amazonaws.dynamodb.v20120810#ThrottlingException","message":"throttled"}`)
+			if err != nil {
 				t.Errorf("write throttling response: %v", err)
 			}
 			return
 		}
 		w.Header().Set("Content-Type", "application/x-amz-json-1.0")
-		if _, err := io.WriteString(w, `{"TableNames":[]}`); err != nil {
+		_, err := io.WriteString(w, `{"TableNames":[]}`)
+		if err != nil {
 			t.Errorf("write successful response: %v", err)
 		}
 	}))

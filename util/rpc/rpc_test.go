@@ -57,7 +57,8 @@ func TestDialRetriesUnavailableButNotPermissionDenied(t *testing.T) {
 	service := &retryTestService{}
 	grpcServer.RegisterService(&retryTestServiceDesc, service)
 	go func() {
-		if err := grpcServer.Serve(listener); err != nil {
+		err := grpcServer.Serve(listener)
+		if err != nil {
 			t.Errorf("serve test RPC: %v", err)
 		}
 	}()

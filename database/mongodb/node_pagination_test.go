@@ -148,7 +148,8 @@ func assertUniqueNodeIDIndex(t *testing.T, db *MongoDB) {
 		t.Fatalf("list node indexes: %v", err)
 	}
 	defer func() {
-		if err := cursor.Close(ctx); err != nil {
+		err := cursor.Close(ctx)
+		if err != nil {
 			t.Errorf("close node index cursor: %v", err)
 		}
 	}()

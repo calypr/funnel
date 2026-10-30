@@ -41,7 +41,8 @@ func TestPersistentPreRun(t *testing.T) {
 	}
 
 	c.SetArgs([]string{"run", "--config", tmp, "--Server.HostName", host, "--Server.RPCPort", rpcport})
-	if err := c.Execute(); err != nil {
+	err = c.Execute()
+	if err != nil {
 		t.Fatal(err)
 	}
 }

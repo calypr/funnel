@@ -284,7 +284,8 @@ ReconcileLoop:
 								b.Log.Error("writing system-error log event", "taskID", task.Id, "error", werr)
 							}
 							if t.Remove {
-								if err := exec.Command(b.CancelCmd, t.ID).Run(); err != nil {
+								err := exec.Command(b.CancelCmd, t.ID).Run()
+								if err != nil {
 									b.Log.Error("canceling failed HPC task", "taskID", task.Id, "backendID", t.ID, "error", err)
 								}
 							}
@@ -367,12 +368,14 @@ func (b *HPCBackend) setupTemplatedHPCSubmit(ctx context.Context, task *tes.Task
 		"BackendParameters": backendParameters,
 	})
 	if err != nil {
-		if closeErr := f.Close(); closeErr != nil {
+		closeErr := f.Close()
+		if closeErr != nil {
 			return "", fmt.Errorf("write submit file: %v; close submit file: %w", err, closeErr)
 		}
 		return "", err
 	}
-	if err := f.Close(); err != nil {
+	err = f.Close()
+	if err != nil {
 		return "", fmt.Errorf("close submit file: %w", err)
 	}
 

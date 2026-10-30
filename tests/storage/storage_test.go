@@ -157,7 +157,8 @@ func TestOverwriteOutput(t *testing.T) {
 
 func TestEmptyDir(t *testing.T) {
 	tests.SetLogOutput(log, t)
-	if err := os.Mkdir(path.Join(fun.StorageDir, "test_in"), 0777); err != nil {
+	err := os.Mkdir(path.Join(fun.StorageDir, "test_in"), 0777)
+	if err != nil {
 		t.Fatalf("create empty input directory: %v", err)
 	}
 	id := fun.Run(`

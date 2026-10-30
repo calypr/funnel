@@ -162,7 +162,8 @@ func (sw *Swift) Get(ctx context.Context, url, path string) (obj *Object, retErr
 		return nil, &swiftError{"initiating download", url, err}
 	}
 	defer func() {
-		if err := f.Close(); err != nil {
+		err := f.Close()
+		if err != nil {
 			retErr = errors.Join(retErr, &swiftError{"closing download", url, err})
 		}
 	}()

@@ -18,7 +18,8 @@ func TestRandomPortConfigReturnsDistinctAvailablePorts(t *testing.T) {
 			listeners := make([]net.Listener, 0, 2)
 			defer func() {
 				for _, listener := range listeners {
-					if err := listener.Close(); err != nil {
+					err := listener.Close()
+					if err != nil {
 						t.Errorf("close reservation listener: %v", err)
 					}
 				}

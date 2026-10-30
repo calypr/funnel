@@ -38,7 +38,8 @@ func TestFileWriterRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
-		if err := file.Close(); err != nil {
+		err := file.Close()
+		if err != nil {
 			t.Errorf("close event file: %v", err)
 		}
 	}()
@@ -85,7 +86,8 @@ func TestFileWriterConcurrentWrites(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
-		if err := file.Close(); err != nil {
+		err := file.Close()
+		if err != nil {
 			t.Errorf("close event file: %v", err)
 		}
 	}()
@@ -169,7 +171,8 @@ func openTestNDJSONWriter(t *testing.T, path string) (*NDJSONWriter, error) {
 		return nil, err
 	}
 	t.Cleanup(func() {
-		if err := file.Close(); err != nil {
+		err := file.Close()
+		if err != nil {
 			t.Errorf("close event file: %v", err)
 		}
 	})

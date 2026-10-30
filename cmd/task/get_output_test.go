@@ -11,7 +11,8 @@ import (
 
 func TestGetIncludesDefaultValues(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if _, err := fmt.Fprint(w, `{"id":"task-1","logs":[{"logs":[{"exitCode":0}]}],"outputs":[{"path":"/output","type":"FILE"}]}`); err != nil {
+		_, err := fmt.Fprint(w, `{"id":"task-1","logs":[{"logs":[{"exitCode":0}]}],"outputs":[{"path":"/output","type":"FILE"}]}`)
+		if err != nil {
 			t.Error(err)
 		}
 	}))

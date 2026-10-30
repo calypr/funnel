@@ -32,7 +32,8 @@ func TestCreateTaskWithNullTagValue(t *testing.T) {
 		t.Fatalf("failed to create task: %v", err)
 	}
 	defer func() {
-		if err := resp.Body.Close(); err != nil {
+		err := resp.Body.Close()
+		if err != nil {
 			t.Errorf("close create response body: %v", err)
 		}
 	}()
@@ -87,7 +88,8 @@ func TestCreateTaskWithAllNullTagValues(t *testing.T) {
 		t.Fatalf("failed to create task: %v", err)
 	}
 	defer func() {
-		if err := resp.Body.Close(); err != nil {
+		err := resp.Body.Close()
+		if err != nil {
 			t.Errorf("close create response body: %v", err)
 		}
 	}()

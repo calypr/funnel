@@ -156,10 +156,12 @@ func TestServeTaskViewsThroughGRPCGateway(t *testing.T) {
 	for {
 		resp, err := client.Get(base + "/healthz")
 		if err == nil {
-			if _, err := io.Copy(io.Discard, resp.Body); err != nil {
+			_, err := io.Copy(io.Discard, resp.Body)
+			if err != nil {
 				t.Fatal(err)
 			}
-			if err := resp.Body.Close(); err != nil {
+			err = resp.Body.Close()
+			if err != nil {
 				t.Fatal(err)
 			}
 			break

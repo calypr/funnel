@@ -46,7 +46,8 @@ func TestMountpointDirectoryRejectsClosedDescriptor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := dir.Close(); err != nil {
+	err = dir.Close()
+	if err != nil {
 		t.Fatal(err)
 	}
 	if got, err := isMountpointDirectory(dir); got || err == nil {
