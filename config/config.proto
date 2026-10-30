@@ -35,6 +35,7 @@ message Config {
   PubSub PubSub = 16;
   Datastore Datastore = 17;
   Postgres Postgres = 33;
+  string EventFile = 35;
   // Compute
   HPCBackend HTCondor = 18;
   HPCBackend Slurm = 19;
