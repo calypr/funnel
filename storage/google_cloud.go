@@ -171,7 +171,7 @@ func (gs *GoogleCloud) Put(ctx context.Context, url, path string) (*Object, erro
 		Name: u.path,
 	}
 
-	_, err = gs.svc.Objects.Insert(u.bucket, obj).Media(fsutil.Reader(ctx, reader)).Do()
+	_, err = gs.svc.Objects.Insert(u.bucket, obj).Media(fsutil.Reader(ctx, reader)).Context(ctx).Do()
 	if err != nil {
 		return nil, fmt.Errorf("googleStorage: uploading object %s: %v", url, err)
 	}

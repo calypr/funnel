@@ -1,0 +1,2 @@
+mongo_uri_password_retained=true
+separate_password_redacted=true

@@ -2,6 +2,7 @@ package badger
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -12,6 +13,8 @@ import (
 	badger "github.com/dgraph-io/badger/v4"
 	proto "google.golang.org/protobuf/proto"
 )
+
+var errTaskExists = errors.New("task already exists")
 
 // WriteEvent creates an event for the server to handle.
 func (db *Badger) WriteEvent(ctx context.Context, req *events.Event) error {
@@ -24,7 +27,7 @@ func (db *Badger) WriteEvent(ctx context.Context, req *events.Event) error {
 		MaxTries:            50,
 		ShouldRetry: func(err error) bool {
 			_, isTransitionError := err.(*tes.TransitionError)
-			return !isTransitionError && err != tes.ErrNotFound && err != tes.ErrNotPermitted
+			return !isTransitionError && err != tes.ErrNotFound && err != tes.ErrNotPermitted && err != errTaskExists
 		},
 	}
 
@@ -43,6 +46,11 @@ func (db *Badger) writeEvent(ctx context.Context, req *events.Event) error {
 		// just marshal and save the task.
 		if req.Type == events.Type_TASK_CREATED {
 			task := req.GetTask()
+			if _, err := txn.Get(taskKey(task.Id)); err == nil {
+				return errTaskExists
+			} else if err != badger.ErrKeyNotFound {
+				return err
+			}
 			val, err := proto.Marshal(task)
 			if err != nil {
 				return fmt.Errorf("marshaling task to bytes: %s", err)

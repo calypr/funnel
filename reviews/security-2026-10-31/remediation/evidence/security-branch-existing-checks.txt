@@ -1,0 +1,4 @@
+ok  	github.com/calypr/funnel/tes	0.404s
+ok  	github.com/calypr/funnel/util/rpc	11.169s
+ok  	github.com/calypr/funnel/cmd/termdash	0.832s
+ok  	github.com/calypr/funnel/server	1.241s

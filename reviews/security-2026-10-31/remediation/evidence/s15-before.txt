@@ -1,0 +1,2 @@
+task_payload_logged=true transfer_credential_logged=true error_payload_logged=true original_event_preserved=true error_returned=true
+exit status 1

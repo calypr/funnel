@@ -50,7 +50,7 @@ func CreateConfigMap(ctx context.Context, taskId string, conf *config.Config, cl
 	if err != nil {
 		return fmt.Errorf("executing ConfigMapTemplate: %v", err)
 	}
-	log.Debug("rendering ConfigMap template", "TaskID", taskId, "Namespace", conf.Kubernetes.JobsNamespace, "ConfigMapTemplate", conf.Kubernetes.ConfigMapTemplate, "Config", conf.Safe())
+	log.Debug("rendering ConfigMap template", "taskID", taskId, "namespace", conf.Kubernetes.JobsNamespace)
 	decode := scheme.Codecs.UniversalDeserializer().Decode
 	obj, _, err := decode(buf.Bytes(), nil, nil)
 	if err != nil {

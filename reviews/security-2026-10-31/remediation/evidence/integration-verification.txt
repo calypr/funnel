@@ -1,0 +1,20 @@
+go version go1.27.3 darwin/arm64
+All 32 findings have dispositions: {'Deferred': 10, 'Fixed': 21, 'Partially': 1}
+ok  	github.com/calypr/funnel/config	0.354s
+ok  	github.com/calypr/funnel/util/fsutil	0.518s
+ok  	github.com/calypr/funnel/database/badger	0.627s
+ok  	github.com/calypr/funnel/database/boltdb	2.874s
+ok  	github.com/calypr/funnel/compute/local	1.203s
+ok  	github.com/calypr/funnel/compute/aws_batch	0.424s
+ok  	github.com/calypr/funnel/compute/gcp_batch	1.564s
+ok  	github.com/calypr/funnel/compute/kubernetes/resources	2.184s
+ok  	github.com/calypr/funnel/database/postgres	0.520s
+ok  	github.com/calypr/funnel/events	0.496s
+ok  	github.com/calypr/funnel/server	0.577s
+ok  	github.com/calypr/funnel/worker	1.004s
+ok  	github.com/calypr/funnel/storage	0.577s
+ok  	github.com/calypr/funnel/util/fsutil	2.362s
+ok  	github.com/calypr/funnel/compute/local	2.244s
+ok  	github.com/calypr/funnel/database/badger	3.351s
+ok  	github.com/calypr/funnel/database/boltdb	4.747s
+Security remediation checks passed.

@@ -32,9 +32,9 @@ func (el *Logger) WriteEvent(ctx context.Context, ev *Event) error {
 	case Type_TASK_END_TIME:
 		log.Info(ts, "end_time", ev.GetEndTime())
 	case Type_TASK_OUTPUTS:
-		log.Info(ts, "outputs", ev.GetOutputs().Value)
+		log.Info(ts, "outputs", "[redacted]")
 	case Type_TASK_METADATA:
-		log.Info(ts, "metadata", ev.GetMetadata().Value)
+		log.Info(ts, "metadata", "[redacted]")
 	case Type_EXECUTOR_START_TIME:
 		log.Info(ts, "start_time", ev.GetStartTime())
 	case Type_EXECUTOR_END_TIME:
@@ -42,34 +42,29 @@ func (el *Logger) WriteEvent(ctx context.Context, ev *Event) error {
 	case Type_EXECUTOR_EXIT_CODE:
 		log.Info(ts, "exit_code", ev.GetExitCode())
 	case Type_EXECUTOR_STDOUT:
-		log.Info(ts, "stdout", ev.GetStdout())
+		log.Info(ts, "stdout", "[redacted]")
 	case Type_EXECUTOR_STDERR:
-		log.Info(ts, "stderr", ev.GetStderr())
+		log.Info(ts, "stderr", "[redacted]")
 	case Type_SYSTEM_LOG:
-		var args []interface{}
-		for k, v := range ev.GetSystemLog().Fields {
-			args = append(args, k, v)
-		}
 		switch ev.GetSystemLog().Level {
 		case "warning":
-			log.Warn(ev.GetSystemLog().Msg, args...)
+			log.Warn("system log", "severity", "warning")
 		case "error":
 			if pc, file, line, ok := runtime.Caller(2); ok {
 				file = file[strings.LastIndex(file, "/")+1:]
 				funcName := runtime.FuncForPC(pc).Name()
 				src := fmt.Sprintf("%s:%s:%d", file, funcName, line)
-				args = append(args, "src", src)
-				log.Error(ev.GetSystemLog().Msg, args...)
+				log.Error("system log", "severity", "error", "src", src)
 			} else {
-				log.Error(ev.GetSystemLog().Msg, args...)
+				log.Error("system log", "severity", "error")
 			}
 		case "info":
-			log.Info(ev.GetSystemLog().Msg, args...)
+			log.Info("system log", "severity", "info")
 		case "debug":
-			log.Debug(ev.GetSystemLog().Msg, args...)
+			log.Debug("system log", "severity", "debug")
 		}
 	default:
-		log.Info(ts, "event", ev)
+		log.Info(ts)
 	}
 	return nil
 }

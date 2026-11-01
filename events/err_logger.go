@@ -2,6 +2,7 @@ package events
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/calypr/funnel/logger"
 )
@@ -17,7 +18,14 @@ type ErrLogger struct {
 func (e *ErrLogger) WriteEvent(ctx context.Context, ev *Event) error {
 	err := e.Writer.WriteEvent(ctx, ev)
 	if err != nil {
-		e.Log.Error("error writing event", "error", err, "event_type", ev.Type.String(), "event_data", ev.Data)
+		e.Log.Error("error writing event",
+			"error_type", fmt.Sprintf("%T", err),
+			"event_type", ev.Type.String(),
+			"taskID", ev.Id,
+			"attempt", ev.Attempt,
+			"index", ev.Index,
+			"timestamp", ev.Timestamp,
+		)
 	}
 	return err
 }

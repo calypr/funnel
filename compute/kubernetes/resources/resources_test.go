@@ -463,6 +463,27 @@ func TestCreateServiceAccount(t *testing.T) {
 	}
 }
 
+func TestBundledServiceAccountDisablesTokenMount(t *testing.T) {
+	conf := config.DefaultConfig()
+	conf.Kubernetes.JobsNamespace = jobsNamespace
+	conf.Kubernetes.ServiceAccountTemplate = string(config.MustAsset("config/kubernetes/serviceaccount.yaml"))
+	client := fake.NewSimpleClientset()
+	role := "arn:fixture\ncontinued"
+	if err := CreateServiceAccount(t.Context(), &tes.Task{Id: testTaskID, Tags: map[string]string{"_FUNNEL_WORKER_ROLE_ARN": role}}, conf, client, l, nil); err != nil {
+		t.Fatal(err)
+	}
+	sa, err := client.CoreV1().ServiceAccounts(jobsNamespace).Get(t.Context(), "funnel-worker-sa-"+jobsNamespace+"-"+testTaskID, metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sa.AutomountServiceAccountToken == nil || *sa.AutomountServiceAccountToken {
+		t.Fatal("bundled account does not disable API token automount")
+	}
+	if sa.Annotations["eks.amazonaws.com/role-arn"] != role || len(sa.ImagePullSecrets) != 0 {
+		t.Error("role annotation did not remain a scalar")
+	}
+}
+
 func TestDeleteServiceAccount(t *testing.T) {
 	fakeClient := fake.NewSimpleClientset()
 
@@ -484,6 +505,21 @@ func TestDeleteServiceAccount(t *testing.T) {
 	err = DeleteServiceAccount(context.Background(), testTaskID, namespace, fakeClient, l, nil)
 	if err != nil {
 		t.Errorf("DeleteServiceAccount failed: %v", err)
+	}
+}
+
+func TestSharedServiceAccountIsNeverDeleted(t *testing.T) {
+	client := fake.NewSimpleClientset(&corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: "external-account", Namespace: namespace}})
+	if err := DeleteServiceAccount(t.Context(), testTaskID, namespace, client, l, &DeleteServiceAccountOptions{ServiceAccountName: "external-account", SharedSA: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.CoreV1().ServiceAccounts(namespace).Get(t.Context(), "external-account", metav1.GetOptions{}); err != nil {
+		t.Fatal("task cleanup removed the external account", err)
+	}
+	for _, action := range client.Actions() {
+		if action.GetVerb() == "delete" {
+			t.Error("task cleanup attempted external account deletion")
+		}
 	}
 }
 

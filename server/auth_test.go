@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/calypr/funnel/config"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
 
@@ -42,7 +43,7 @@ func TestAuthenticationPoliciesAreIndependent(t *testing.T) {
 				token := base64.StdEncoding.EncodeToString([]byte(tt.username + ":password"))
 				ctx = metadata.NewIncomingContext(ctx, metadata.Pairs("authorization", "Basic "+token))
 			}
-			_, err := tt.auth.Interceptor(ctx, nil, nil, func(ctx context.Context, _ interface{}) (interface{}, error) {
+			_, err := tt.auth.Interceptor(ctx, nil, &grpc.UnaryServerInfo{}, func(ctx context.Context, _ interface{}) (interface{}, error) {
 				user := GetUser(ctx)
 				if got := user.IsAccessible(tt.username); got != tt.own {
 					t.Errorf("own task access = %v, want %v", got, tt.own)

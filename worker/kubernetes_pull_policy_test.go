@@ -75,6 +75,32 @@ func TestExecutorImagePullPolicy(t *testing.T) {
 			if got := submitted.Spec.Template.Spec.Containers[0].ImagePullPolicy; got != tt.want {
 				t.Fatalf("submitted executor image pull policy = %q, want %q", got, tt.want)
 			}
+			pod := submitted.Spec.Template.Spec
+			if pod.ServiceAccountName != command.ServiceAccount {
+				t.Errorf("executor service account = %q, want %q", pod.ServiceAccountName, command.ServiceAccount)
+			}
+			if pod.AutomountServiceAccountToken == nil || *pod.AutomountServiceAccountToken {
+				t.Error("executor must explicitly disable API token automount")
+			}
+		})
+	}
+}
+
+func TestExecutorServiceAccountSelection(t *testing.T) {
+	for _, tc := range []struct{ name, configured, template, want string }{
+		{"existing shared account", "", "", "funnel-sa-test"},
+		{"generated task account", "", "configured-template", "funnel-worker-sa-test-task-1"},
+		{"explicit account", "configured-account", "configured-template", "configured-account"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			worker := DefaultWorker{Executor: Executor{Namespace: "test", JobsNamespace: "test", ServiceAccount: tc.configured, ServiceAccountTemplate: tc.template, Resources: config.DefaultConfig().Kubernetes.Resources}, EventWriter: events.Noop{}}
+			command, err := worker.newKubernetesCommand(t.Context(), events.NewTaskWriter("task-1", 0, events.Noop{}), &tes.Task{Id: "task-1"}, &tes.Executor{}, 0, Command{}, &tes.Resources{CpuCores: 1, RamGb: 1, DiskGb: 1})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if command.ServiceAccount != tc.want {
+				t.Errorf("account = %q, want %q", command.ServiceAccount, tc.want)
+			}
 		})
 	}
 }

@@ -1,0 +1,3 @@
+ok  	github.com/calypr/funnel/database/badger	0.680s
+ok  	github.com/calypr/funnel/server	0.920s
+ok  	github.com/calypr/funnel/storage	1.414s

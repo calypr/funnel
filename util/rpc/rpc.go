@@ -3,8 +3,12 @@ package rpc
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 	"math"
 	"math/rand"
+	"net"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/calypr/funnel/config"
@@ -37,17 +41,25 @@ func (c *loginCreds) GetRequestMetadata(context.Context, ...string) (map[string]
 }
 
 func (c *loginCreds) RequireTransportSecurity() bool {
-	return false
+	return os.Getenv("FUNNEL_ALLOW_INSECURE_CREDENTIALS") != "true"
 }
 
 // Dial returns a new gRPC ClientConn with some default dial and call options set
 func Dial(pctx context.Context, conf *config.RPCClient, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
+	user, password := conf.GetCredential().GetUser(), conf.GetCredential().GetPassword()
+	hasCredentials := user != "" || password != ""
+	allowPlaintext := os.Getenv("FUNNEL_ALLOW_INSECURE_CREDENTIALS") == "true" || loopbackAddress(conf.ServerAddress)
+	if hasCredentials && !allowPlaintext {
+		return nil, fmt.Errorf("rpc: refusing credentials over remote plaintext gRPC; use a secure tunnel or explicitly set FUNNEL_ALLOW_INSECURE_CREDENTIALS=true for a trusted private deployment")
+	}
 	ctx, cancel := context.WithTimeout(pctx, conf.Timeout.GetDuration().AsDuration())
 	defer cancel()
 
 	defaultOpts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		PerRPCPassword(conf.Credential.User, conf.Credential.Password),
+	}
+	if hasCredentials {
+		defaultOpts = append(defaultOpts, grpc.WithPerRPCCredentials(&plaintextLoginCreds{loginCreds{User: user, Password: password}}))
 	}
 	opts = append(opts, defaultOpts...)
 	opts = append(
@@ -115,4 +127,18 @@ func (b *exponentialBackoff) BackoffWithJitter(_ context.Context, attempt uint) 
 	}
 
 	return nextBackoff
+}
+
+// plaintextLoginCreds is used only after Dial validates the destination policy.
+type plaintextLoginCreds struct{ loginCreds }
+
+func (*plaintextLoginCreds) RequireTransportSecurity() bool { return false }
+
+func loopbackAddress(address string) bool {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return false
+	}
+	ip := net.ParseIP(host)
+	return strings.EqualFold(host, "localhost") || (ip != nil && ip.IsLoopback())
 }

@@ -120,8 +120,7 @@ func (ts *TaskSource) Nodes() ([]*scheduler.Node, error) {
 		if err != nil {
 			return nil, err
 		}
-		req.SetBasicAuth(os.Getenv("FUNNEL_SERVER_USER"), os.Getenv("FUNNEL_SERVER_PASSWORD"))
-		resp, err := ts.nodeClient.Do(req)
+		resp, err := tes.DoAuthenticatedRequest(ts.nodeClient, req, os.Getenv("FUNNEL_SERVER_USER"), os.Getenv("FUNNEL_SERVER_PASSWORD"))
 		if err != nil {
 			return nil, fmt.Errorf("fetch scheduler nodes: %w", err)
 		}

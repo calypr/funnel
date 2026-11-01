@@ -45,7 +45,7 @@ func SanitizeLabelValue(s string) string {
 func CreateJob(ctx context.Context, task *tes.Task, conf *config.Config, client kubernetes.Interface, log *logger.Logger, plan *storageplan.Plan) (*v1.Job, error) {
 	// Parse Worker Template
 
-	log.Debug("Creating job from template", "template", conf.Kubernetes.WorkerTemplate)
+	log.Debug("Creating job from template", "taskID", task.Id, "namespace", conf.Kubernetes.JobsNamespace)
 	t, err := template.New(task.Id).Parse(conf.Kubernetes.WorkerTemplate)
 	if err != nil {
 		return nil, fmt.Errorf("%v", err)
@@ -107,7 +107,7 @@ func CreateJob(ctx context.Context, task *tes.Task, conf *config.Config, client 
 		return nil, fmt.Errorf("%v", err)
 	}
 
-	log.Debug("Job template", "template", buf.String())
+	log.Debug("Decoded worker job template", "taskID", task.Id, "namespace", conf.Kubernetes.JobsNamespace)
 	decode := scheme.Codecs.UniversalDeserializer().Decode
 	obj, _, err := decode(buf.Bytes(), nil, nil)
 	if err != nil {

@@ -29,7 +29,7 @@ func TestParseJwtSubjectValidatesOIDCTokens(t *testing.T) {
 	}
 
 	var jwksRequests atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		jwksRequests.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		err := json.NewEncoder(w).Encode(map[string]any{"keys": []map[string]string{{
@@ -43,11 +43,18 @@ func TestParseJwtSubjectValidatesOIDCTokens(t *testing.T) {
 		if err != nil {
 			t.Errorf("write JWKS fixture: %v", err)
 		}
-	}))
-	defer server.Close()
+	})
+	const jwksURL = "https://issuer.example/jwks"
+	previous := http.DefaultTransport
+	http.DefaultTransport = oidcFixtureTransport(func(req *http.Request) (*http.Response, error) {
+		out := httptest.NewRecorder()
+		handler.ServeHTTP(out, req)
+		return out.Result(), nil
+	})
+	t.Cleanup(func() { http.DefaultTransport = previous })
 
 	ctx := context.Background()
-	cache, err := newJWKSCacheWithInterval(ctx, server.URL, time.Hour)
+	cache, err := newJWKSCacheWithInterval(ctx, jwksURL, time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +65,7 @@ func TestParseJwtSubjectValidatesOIDCTokens(t *testing.T) {
 			t.Errorf("shut down JWKS cache: %v", err)
 		}
 	})
-	if _, err := cache.Fetch(ctx, server.URL); err != nil {
+	if _, err := cache.Fetch(ctx, jwksURL); err != nil {
 		t.Fatalf("new JWKS cache is not ready for token validation: %v", err)
 	}
 	refreshCtx, refreshCancel := context.WithTimeout(ctx, 5*time.Second)
@@ -73,7 +80,7 @@ func TestParseJwtSubjectValidatesOIDCTokens(t *testing.T) {
 
 	c := &OidcConfig{
 		local:  &config.OidcAuth{RequireAudience: "funnel", RequireScope: "run"},
-		remote: OidcRemoteConfig{Issuer: "https://issuer.example", JwksURI: server.URL},
+		remote: OidcRemoteConfig{Issuer: "https://issuer.example", JwksURI: jwksURL},
 		jwks:   cache,
 	}
 
@@ -94,6 +101,7 @@ func TestParseJwtSubjectValidatesOIDCTokens(t *testing.T) {
 		{name: "expired", token: signOIDCTestToken(t, key, withOIDCClaim(validClaims, "exp", time.Now().Add(-time.Minute).Unix()))},
 		{name: "wrong issuer", token: signOIDCTestToken(t, key, withOIDCClaim(validClaims, "iss", "https://other.example"))},
 		{name: "wrong audience", token: signOIDCTestToken(t, key, withOIDCClaim(validClaims, "aud", "other-client"))},
+		{name: "missing expiration", token: signOIDCTestToken(t, key, withoutOIDCClaim(validClaims, "exp"))},
 		{name: "scope missing required value", token: signOIDCTestToken(t, key, withOIDCClaim(validClaims, "scope", "openid"))},
 	}
 
@@ -104,11 +112,21 @@ func TestParseJwtSubjectValidatesOIDCTokens(t *testing.T) {
 			}
 		})
 	}
+	c.local.RequireAudience = ""
+	if got := c.ParseJwtSubject(signOIDCTestToken(t, key, validClaims)); got != "" {
+		t.Error("accepted token without a configured API audience")
+	}
 
 	if got := jwksRequests.Load(); got != fetchesBeforeValidation {
 		t.Fatalf("JWKS requests during token validation = %d, want no additional fetch after cache initialization (%d)",
 			got-fetchesBeforeValidation, fetchesBeforeValidation)
 	}
+}
+
+func withoutOIDCClaim(claims map[string]any, name string) map[string]any {
+	result := withOIDCClaim(claims, name, nil)
+	delete(result, name)
+	return result
 }
 
 func signOIDCTestToken(t *testing.T, key *rsa.PrivateKey, claims map[string]any) string {

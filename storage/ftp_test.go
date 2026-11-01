@@ -3,7 +3,26 @@ package storage
 import (
 	"net/url"
 	"testing"
+
+	"github.com/calypr/funnel/config"
 )
+
+func TestFTPSchemeSupport(t *testing.T) {
+	b := &FTP{}
+	if err := b.UnsupportedOperations("sftp://storage.example/file").Get; err == nil {
+		t.Fatal("SSH storage must not be handled by FTP")
+	}
+	if err := b.UnsupportedOperations("ftp://storage.example/file").Get; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestFTPConnectRejectsUnsupportedScheme(t *testing.T) {
+	_, err := connect("sftp://storage.example/file", &config.FTPStorage{})
+	if _, ok := err.(*ErrUnsupportedProtocol); !ok {
+		t.Fatalf("error = %v, want unsupported protocol before dialing", err)
+	}
+}
 
 func TestFTPJoinEscapesPathSegments(t *testing.T) {
 	tests := []struct {

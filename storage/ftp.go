@@ -81,7 +81,7 @@ func (b *FTP) UnsupportedOperations(url string) UnsupportedOperations {
 }
 
 func (b *FTP) supportsPrefix(url string) error {
-	if !strings.HasPrefix(url, "ftp://") && !strings.HasPrefix(url, "sftp://") {
+	if !strings.HasPrefix(url, "ftp://") {
 		return &ErrUnsupportedProtocol{"ftpStorage"}
 	}
 	return nil
@@ -98,14 +98,13 @@ func connect(url string, conf *config.FTPStorage) (*ftpclient, error) {
 	if err != nil {
 		return nil, fmt.Errorf("ftpStorage: parsing URL: %s", err)
 	}
+	if u.Scheme != "ftp" {
+		return nil, &ErrUnsupportedProtocol{"ftpStorage"}
+	}
 
 	host := u.Host
 	if u.Port() == "" {
-		if u.Scheme == "sftp" {
-			host += ":22"
-		} else {
-			host += ":21"
-		}
+		host += ":21"
 	}
 
 	client, err := ftp.Dial(host)

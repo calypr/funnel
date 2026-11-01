@@ -62,7 +62,7 @@ func (db *Postgres) GetTask(ctx context.Context, req *tes.GetTaskRequest) (*tes.
 		return nil, err
 	}
 
-	ctx, cancel := db.context()
+	ctx, cancel := db.requestContext(ctx)
 	defer cancel()
 
 	var selectFields string
@@ -112,7 +112,7 @@ func (db *Postgres) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*
 		return nil, err
 	}
 
-	dbctx, cancel := db.context()
+	dbctx, cancel := db.requestContext(ctx)
 	defer cancel()
 
 	pageSize := tes.GetPageSize(req.GetPageSize())
