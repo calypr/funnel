@@ -1,0 +1,24 @@
+database/badger/create_test.go:18:19: Error return value of `store.Close` is not checked (errcheck)
+	defer store.Close()
+	                 ^
+server/auth_oidc_init_test.go:30:4: Error return value of `c.jwks.Shutdown` is not checked (errcheck)
+			_ = c.jwks.Shutdown(context.Background())
+			^
+storage/google_cloud_context_test.go:21:22: Error return value of `req.Body.Close` is not checked (errcheck)
+	defer req.Body.Close()
+	                    ^
+storage/http_source_test.go:37:3: Error return value of `req.Body.Close` is not checked (errcheck)
+		_ = req.Body.Close()
+		^
+storage/http_source_test.go:46:4: Error return value of `body.Close` is not checked (errcheck)
+			_ = body.Close()
+			^
+storage/http_source_test.go:53:5: Error return value of `b.Put` is not checked (errcheck)
+	_, _ = b.Put(t.Context(), "https://upload.example/file", file)
+	   ^
+storage/ftp_test.go:4:1: File is not properly formatted (goimports)
+	"github.com/calypr/funnel/config"
+^
+7 issues:
+* errcheck: 6
+* goimports: 1

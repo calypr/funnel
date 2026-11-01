@@ -9,6 +9,7 @@ import (
 )
 
 type client interface {
+	CancelJob(ctx context.Context, req *batchpb.CancelJobRequest, opts ...gax.CallOption) (*batch.CancelJobOperation, error)
 	CreateJob(ctx context.Context, req *batchpb.CreateJobRequest, opts ...gax.CallOption) (*batchpb.Job, error)
 	GetJob(ctx context.Context, req *batchpb.GetJobRequest, opts ...gax.CallOption) (*batchpb.Job, error)
 	ListJobs(ctx context.Context, req *batchpb.ListJobsRequest, opts ...gax.CallOption) *batch.JobIterator

@@ -462,7 +462,7 @@ func (b *Backend) Submit(task *tes.Task) error {
 		},
 	}
 
-	logger.Debug("GCP Batch Job Request", "request", req)
+	logger.Debug("GCP Batch job request", "taskID", task.Id, "project", b.conf.Project, "location", b.conf.Location)
 
 	resp, err := b.client.CreateJob(context.Background(), req)
 
@@ -497,8 +497,16 @@ func (b *Backend) Submit(task *tes.Task) error {
 }
 
 func (b *Backend) Cancel(ctx context.Context, taskID string) error {
-	// TODO: Implement
-	return nil
+	_, err := b.database.GetTask(ctx, &tes.GetTaskRequest{Id: taskID, View: tes.View_BASIC.String()})
+	if err != nil {
+		return err
+	}
+	if taskID == "" || taskID == "." || taskID == ".." || strings.ContainsAny(taskID, "/\\") {
+		return fmt.Errorf("invalid GCP Batch task ID")
+	}
+	name := fmt.Sprintf("projects/%s/locations/%s/jobs/%s", b.conf.Project, b.conf.Location, taskID)
+	_, err = b.client.CancelJob(ctx, &batchpb.CancelJobRequest{Name: name})
+	return err
 }
 
 // Reconciler adapted from aws_batch/backend.go (worker-based executor) to "direct"-based executor model with GCP Batch.

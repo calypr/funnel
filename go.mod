@@ -1,6 +1,6 @@
 module github.com/calypr/funnel
 
-go 1.27.2
+go 1.27.3
 
 require (
 	cloud.google.com/go/batch v1.23.0

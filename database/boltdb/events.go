@@ -73,10 +73,18 @@ func (taskBolt *BoltDB) WriteEvent(ctx context.Context, req *events.Event) error
 
 	tl := &tes.TaskLog{}
 	el := &tes.ExecutorLog{}
+	update := func(write func(*bolt.Tx) error) error {
+		return taskBolt.db.Update(func(tx *bolt.Tx) error {
+			if err := checkOwner(tx, req.Id, ctx); err != nil {
+				return err
+			}
+			return write(tx)
+		})
+	}
 
 	switch req.Type {
 	case events.Type_TASK_STATE:
-		err = taskBolt.db.Update(func(tx *bolt.Tx) error {
+		err = update(func(tx *bolt.Tx) error {
 			if err := checkOwner(tx, req.Id, ctx); err != nil {
 				return err
 			}
@@ -85,19 +93,19 @@ func (taskBolt *BoltDB) WriteEvent(ctx context.Context, req *events.Event) error
 
 	case events.Type_TASK_START_TIME:
 		tl.StartTime = req.GetStartTime()
-		err = taskBolt.db.Update(func(tx *bolt.Tx) error {
+		err = update(func(tx *bolt.Tx) error {
 			return updateTaskLogs(tx, req.Id, tl)
 		})
 
 	case events.Type_TASK_END_TIME:
 		tl.EndTime = req.GetEndTime()
-		err = taskBolt.db.Update(func(tx *bolt.Tx) error {
+		err = update(func(tx *bolt.Tx) error {
 			return updateTaskLogs(tx, req.Id, tl)
 		})
 
 	case events.Type_TASK_OUTPUTS:
 		tl.Outputs = req.GetOutputs().Value
-		err = taskBolt.db.Update(func(tx *bolt.Tx) error {
+		err = update(func(tx *bolt.Tx) error {
 			return updateTaskLogs(tx, req.Id, tl)
 		})
 
@@ -107,61 +115,53 @@ func (taskBolt *BoltDB) WriteEvent(ctx context.Context, req *events.Event) error
 			return fmt.Errorf("task metadata key %q is reserved", events.ExecutionOwnerMetadataKey)
 		}
 		tl.Metadata = metadata
-		err = taskBolt.db.Update(func(tx *bolt.Tx) error {
+		err = update(func(tx *bolt.Tx) error {
 			return updateTaskLogs(tx, req.Id, tl)
 		})
 
 	case events.Type_EXECUTOR_START_TIME:
 		el.StartTime = req.GetStartTime()
-		err = taskBolt.db.Update(func(tx *bolt.Tx) error {
+		err = update(func(tx *bolt.Tx) error {
 			return updateExecutorLogs(tx, fmt.Sprint(req.Id, req.Index), el)
 		})
 
 	case events.Type_EXECUTOR_END_TIME:
 		el.EndTime = req.GetEndTime()
-		err = taskBolt.db.Update(func(tx *bolt.Tx) error {
+		err = update(func(tx *bolt.Tx) error {
 			return updateExecutorLogs(tx, fmt.Sprint(req.Id, req.Index), el)
 		})
 
 	case events.Type_EXECUTOR_EXIT_CODE:
 		el.ExitCode = req.GetExitCode()
-		err = taskBolt.db.Update(func(tx *bolt.Tx) error {
+		err = update(func(tx *bolt.Tx) error {
 			return updateExecutorLogs(tx, fmt.Sprint(req.Id, req.Index), el)
 		})
 
 	case events.Type_EXECUTOR_STDOUT:
-		err = taskBolt.db.Update(func(tx *bolt.Tx) error {
+		err = update(func(tx *bolt.Tx) error {
 			return updateExecutorStdout(tx, fmt.Sprint(req.Id, req.Index), req.GetStdout())
 		})
 
 	case events.Type_EXECUTOR_STDERR:
-		err = taskBolt.db.Update(func(tx *bolt.Tx) error {
+		err = update(func(tx *bolt.Tx) error {
 			return updateExecutorStderr(tx, fmt.Sprint(req.Id, req.Index), req.GetStderr())
 		})
 
 	case events.Type_SYSTEM_LOG:
-		var syslogs []string
 		idBytes := []byte(req.Id)
-
-		err = taskBolt.db.View(func(tx *bolt.Tx) error {
+		err = update(func(tx *bolt.Tx) error {
+			var syslogs []string
 			existing := tx.Bucket(SysLogs).Get(idBytes)
 			if existing != nil {
-				return json.Unmarshal(existing, &syslogs)
+				if err := json.Unmarshal(existing, &syslogs); err != nil {
+					return err
+				}
 			}
-			return nil
-		})
-		if err != nil {
-			return err
-		}
-
-		syslogs = append(syslogs, req.SysLogString())
-
-		logbytes, err := json.Marshal(syslogs)
-		if err != nil {
-			return err
-		}
-
-		err = taskBolt.db.Update(func(tx *bolt.Tx) error {
+			syslogs = append(syslogs, req.SysLogString())
+			logbytes, err := json.Marshal(syslogs)
+			if err != nil {
+				return err
+			}
 			return tx.Bucket(SysLogs).Put(idBytes, logbytes)
 		})
 		if err != nil {
@@ -170,7 +170,7 @@ func (taskBolt *BoltDB) WriteEvent(ctx context.Context, req *events.Event) error
 
 	case events.Type_TASK_RESOURCES:
 		r := req.GetResources()
-		err = taskBolt.db.Update(func(tx *bolt.Tx) error {
+		err = update(func(tx *bolt.Tx) error {
 			if err := checkOwner(tx, req.Id, ctx); err != nil {
 				return err
 			}

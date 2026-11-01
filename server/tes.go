@@ -124,11 +124,10 @@ func (ts *TaskService) HandleDoPluginAction(ctx context.Context, task *tes.Task,
 	}
 	if pluginResponse.Code != 200 {
 		return pluginResponse, fmt.Errorf(
-			"Plugin returned error: code: %d, message: %s, user: %s, task: %v",
+			"Plugin returned error: code: %d, message: %s, user: %s",
 			pluginResponse.Code,
 			pluginResponse.Message,
 			pluginResponse.UserId,
-			pluginResponse.Task,
 		)
 	}
 	if pluginResponse.Config == nil {
@@ -149,12 +148,7 @@ func (ts *TaskService) CreateTask(ctx context.Context, task *tes.Task) (*tes.Cre
 				return nil, err
 			}
 		}
-		ts.Log.Debug("Plugin", "Response Code", pluginResponse.Code,
-			"Message", pluginResponse.Message,
-			"User", pluginResponse.UserId,
-			"Task", pluginResponse.Task,
-			"Config", pluginResponse.Config.Safe(),
-		)
+		ts.Log.Debug("Plugin response", "response_code", pluginResponse.Code, "taskID", task.Id)
 		ctx = context.WithValue(ctx, "pluginResponse", pluginResponse)
 
 		// If using plugin, replace existing task with returned task from plugin
@@ -327,12 +321,7 @@ func (ts *TaskService) CancelTask(ctx context.Context, req *tes.CancelTaskReques
 				return nil, err
 			}
 		}
-		ts.Log.Debug("Plugin", "Response Code", pluginResponse.Code,
-			"Message", pluginResponse.Message,
-			"User", pluginResponse.UserId,
-			"Task", pluginResponse.Task,
-			"Config", pluginResponse.Config.Safe(),
-		)
+		ts.Log.Debug("Plugin response", "response_code", pluginResponse.Code, "taskID", req.Id)
 		ctx = context.WithValue(ctx, "pluginResponse", pluginResponse)
 	}
 

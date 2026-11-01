@@ -156,6 +156,12 @@ func (a *Authentication) Interceptor(
 	if !authorized {
 		return nil, authErr
 	}
+	switch info.FullMethod {
+	case "/scheduler.SchedulerService/PutNode", "/scheduler.SchedulerService/DeleteNode":
+		if !GetUser(ctx).IsAdmin {
+			return nil, status.Error(codes.PermissionDenied, "scheduler node management requires administrator credentials")
+		}
+	}
 
 	return handler(ctx, req)
 }

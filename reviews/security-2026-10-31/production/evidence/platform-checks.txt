@@ -1,0 +1,6 @@
+serviceaccount_strict_decode_error=error unmarshaling JSON: while decoding JSON: json: unknown field "spec"
+created_sa=funnel-worker-sa-synthetic-synthetic-task automount_pointer_nil=true
+worker-job.yaml sa=funnel-sa-synthetic pod_automount_pointer_nil=true
+executor-job.yaml sa=funnel-sa-synthetic pod_automount_pointer_nil=true
+reserved_identity_tag_validation_errors=0
+template_variable_identity_selected=preexisting-privileged-sa

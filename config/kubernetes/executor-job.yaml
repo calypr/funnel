@@ -45,10 +45,11 @@ spec:
       {{- end }}
 
       restartPolicy: OnFailure
-      serviceAccountName: funnel-sa-{{.Namespace}}
+      serviceAccountName: {{printf "%q" .ServiceAccountName}}
+      automountServiceAccountToken: false
       containers:
       - name: funnel-worker-{{.TaskId}}
-        image: {{.Image}}
+        image: {{printf "%q" .Image}}
         imagePullPolicy: {{or .ImagePullPolicy "Always"}}
         {{- if .UseShell}}
         command: ["/bin/sh", "-c"]
@@ -60,7 +61,7 @@ spec:
           - {{printf "%q" .}}
           {{- end}}
         {{- end}}
-        workingDir: {{.Workdir}}
+        workingDir: {{printf "%q" .Workdir}}
         resources:
           requests:
             cpu: {{.Cpus}}
@@ -71,8 +72,8 @@ spec:
         {{- if .NeedsPVC }}
           {{- range $idx, $item := .Volumes}}
           - name: funnel-storage-{{$.TaskId}}
-            mountPath: {{$item.ContainerPath}}
-            subPath: {{$.TaskId}}{{$item.ContainerPath}}
+            mountPath: {{printf "%q" $item.ContainerPath}}
+            subPath: {{printf "%q" (printf "%s%s" $.TaskId $item.ContainerPath)}}
           {{- end}}
         {{- end }}
 

@@ -2,7 +2,8 @@ package server
 
 import (
 	"context"
-	"crypto/sha256"
+	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -51,6 +52,9 @@ func initOidcConfig(config *config.OidcAuth) *OidcConfig {
 	} else if config.ClientSecret == "" {
 		fmt.Printf("[ERROR] Missing configuration value [Server.OidcAuth.ClientSecret]")
 		os.Exit(1)
+	} else if config.RequireAudience == "" {
+		fmt.Printf("[ERROR] Missing configuration value [Server.OidcAuth.RequireAudience]")
+		os.Exit(1)
 	} else if config.RedirectURL == "" {
 		fmt.Printf("[ERROR] Missing configuration value [Server.OidcAuth.RedirectURL]")
 		os.Exit(1)
@@ -76,7 +80,7 @@ func (c *OidcConfig) initConfig() {
 
 	c.initJwks()
 
-	c.oauth2.ClientID = c.local.ClientId
+	c.oauth2 = &oauth2.Config{ClientID: c.local.ClientId}
 	c.oauth2.ClientSecret = c.local.ClientSecret
 	if c.local.RequireScope == "" {
 		c.oauth2.Scopes = []string{"openid"}
@@ -109,7 +113,14 @@ func (c *OidcConfig) initJwks() {
 }
 
 func (c *OidcConfig) RedirectToLogin(w http.ResponseWriter, req *http.Request) {
-	authCodeURL := c.oauth2.AuthCodeURL(c.computeState(req))
+	var nonce [32]byte
+	if _, err := rand.Read(nonce[:]); err != nil {
+		http.Error(w, "Failed to create login state.", http.StatusInternalServerError)
+		return
+	}
+	state := hex.EncodeToString(nonce[:])
+	http.SetCookie(w, &http.Cookie{Name: oidcStateCookieName(req), Value: state, Path: "/", MaxAge: 600, HttpOnly: true, Secure: req.TLS != nil, SameSite: http.SameSiteLaxMode})
+	authCodeURL := c.oauth2.AuthCodeURL(state)
 	http.Redirect(w, req, authCodeURL, http.StatusSeeOther)
 }
 
@@ -123,11 +134,14 @@ func (c *OidcConfig) HandleAuthCode(w http.ResponseWriter, req *http.Request) {
 	if state == "" {
 		c.RedirectToLogin(w, req)
 		return
-	} else if state != c.computeState(req) {
+	}
+	stateCookie, err := req.Cookie(oidcStateCookieName(req))
+	if err != nil || stateCookie.Value == "" || subtle.ConstantTimeCompare([]byte(state), []byte(stateCookie.Value)) != 1 {
 		msg := "Unexpected value in the 'state' query-parameter."
 		http.Error(w, msg, http.StatusBadRequest)
 		return
 	}
+	http.SetCookie(w, &http.Cookie{Name: oidcStateCookieName(req), Path: "/", MaxAge: -1, HttpOnly: true, Secure: req.TLS != nil, SameSite: http.SameSiteLaxMode})
 
 	errorCode := req.FormValue("error")
 	errorDesc := req.FormValue("error_description")
@@ -143,7 +157,7 @@ func (c *OidcConfig) HandleAuthCode(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	token, err := c.oauth2.Exchange(context.Background(), code)
+	token, err := c.oauth2.Exchange(req.Context(), code)
 	if err != nil {
 		msg := "Failed to receive a JWT for the authorization code: " + err.Error()
 		http.Error(w, msg, http.StatusInternalServerError)
@@ -171,6 +185,7 @@ func (c *OidcConfig) HandleAuthCode(w http.ResponseWriter, req *http.Request) {
 // uses this login-token endpoint to establish JWT first, and then provide the
 // JWT value in the Authorization header of API requests.
 func (c *OidcConfig) EchoTokenHandler(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	cookie, err := req.Cookie("jwt")
 	if err != nil || len(cookie.Value) == 0 {
 		msg := "Missing 'jwt' cookie. Please log in first."
@@ -187,16 +202,11 @@ func (c *OidcConfig) EchoTokenHandler(w http.ResponseWriter, req *http.Request) 
 	}
 }
 
-func (c *OidcConfig) computeState(req *http.Request) string {
-	str := c.local.ServiceConfigURL + ":" +
-		c.local.ClientId + ":" +
-		c.local.ClientSecret + ":" +
-		req.Header.Get("User-Agent")
-
-	hash := sha256.New()
-	hash.Write([]byte(str))
-	b := hash.Sum(nil)
-	return hex.EncodeToString(b)[:10]
+func oidcStateCookieName(req *http.Request) string {
+	if req.TLS != nil {
+		return "__Host-funnel_oidc_state"
+	}
+	return "funnel_oidc_state"
 }
 
 func (c *OidcConfig) Authorize(authorization string) *UserInfo {
@@ -239,6 +249,12 @@ func (c *OidcConfig) ParseJwtSubject(jwtString string) string {
 }
 
 func (c *OidcConfig) isJwtValid(token *jwt.Token) bool {
+	if _, ok := (*token).Expiration(); !ok {
+		return false
+	}
+	if c.local.RequireAudience == "" {
+		return false
+	}
 	// If audience is required, it must be in the token.
 	if c.local.RequireAudience != "" {
 		found := false

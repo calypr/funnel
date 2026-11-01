@@ -19,8 +19,9 @@ import (
 
 // mockClient implements the client interface for testing.
 type mockClient struct {
-	CancelJobFunc func(context.Context, *batch.CancelJobInput) (*batch.CancelJobOutput, error)
-	SubmitJobFunc func(ctx context.Context, req *batch.SubmitJobInput) (*batch.SubmitJobOutput, error)
+	TerminateJobFunc func(context.Context, *batch.TerminateJobInput) (*batch.TerminateJobOutput, error)
+	SubmitJobFunc    func(ctx context.Context, req *batch.SubmitJobInput) (*batch.SubmitJobOutput, error)
+	DescribeJobsFunc func(context.Context, *batch.DescribeJobsInput) (*batch.DescribeJobsOutput, error)
 }
 
 func (m *mockClient) SubmitJob(ctx context.Context, req *batch.SubmitJobInput, opts ...func(*batch.Options)) (*batch.SubmitJobOutput, error) {
@@ -30,14 +31,17 @@ func (m *mockClient) SubmitJob(ctx context.Context, req *batch.SubmitJobInput, o
 	return &batch.SubmitJobOutput{JobId: aws.String("test-job-id")}, nil
 }
 
-func (m *mockClient) CancelJob(ctx context.Context, req *batch.CancelJobInput, opts ...func(*batch.Options)) (*batch.CancelJobOutput, error) {
-	if m.CancelJobFunc != nil {
-		return m.CancelJobFunc(ctx, req)
+func (m *mockClient) TerminateJob(ctx context.Context, req *batch.TerminateJobInput, opts ...func(*batch.Options)) (*batch.TerminateJobOutput, error) {
+	if m.TerminateJobFunc != nil {
+		return m.TerminateJobFunc(ctx, req)
 	}
-	return &batch.CancelJobOutput{}, nil
+	return &batch.TerminateJobOutput{}, nil
 }
 
 func (m *mockClient) DescribeJobs(ctx context.Context, req *batch.DescribeJobsInput, opts ...func(*batch.Options)) (*batch.DescribeJobsOutput, error) {
+	if m.DescribeJobsFunc != nil {
+		return m.DescribeJobsFunc(ctx, req)
+	}
 	return &batch.DescribeJobsOutput{}, nil
 }
 
@@ -120,12 +124,12 @@ func TestBatchRequestContexts(t *testing.T) {
 			}
 			return nil, got.Err()
 		},
-		CancelJobFunc: func(got context.Context, req *batch.CancelJobInput) (*batch.CancelJobOutput, error) {
+		DescribeJobsFunc: func(got context.Context, req *batch.DescribeJobsInput) (*batch.DescribeJobsOutput, error) {
 			canceled = true
 			if got != ctx {
 				t.Error("cancellation lost caller context")
 			}
-			if aws.ToString(req.JobId) != "batch-job" {
+			if len(req.Jobs) != 1 || req.Jobs[0] != "batch-job" {
 				t.Error("cancellation lost AWS job ID")
 			}
 			return nil, got.Err()

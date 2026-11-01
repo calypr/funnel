@@ -22,7 +22,13 @@ func (db *Postgres) WriteEvent(ctx context.Context, req *events.Event) error {
 
 	selector := req.Id
 
-	logger.Debug("Postgres", "WriteEvent request:", req)
+	logger.Debug("Postgres: writing event",
+		"event_type", req.Type.String(),
+		"taskID", req.Id,
+		"attempt", req.Attempt,
+		"index", req.Index,
+		"timestamp", req.Timestamp,
+	)
 	switch req.Type {
 
 	// Task Created

@@ -137,7 +137,7 @@ func (b *HTTP) Put(ctx context.Context, url string, hostPath string) (*Object, e
 		return nil, fmt.Errorf("httpStorage: parsing URL: %s", err)
 	}
 
-	src, err := os.Open(hostPath)
+	src, err := openRegularFile(hostPath)
 	if err != nil {
 		return nil, fmt.Errorf("httpStorage: opening host file: %s", err)
 	}
@@ -168,7 +168,7 @@ func (b *HTTP) Put(ctx context.Context, url string, hostPath string) (*Object, e
 	if info.Size() > 0 {
 		req.Header.Set("Expect", "100-continue")
 		req.GetBody = func() (io.ReadCloser, error) {
-			f, err := os.Open(hostPath)
+			f, err := openRegularFile(hostPath)
 			if err != nil {
 				return nil, err
 			}

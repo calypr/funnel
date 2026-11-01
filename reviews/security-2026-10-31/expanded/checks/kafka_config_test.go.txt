@@ -1,0 +1,14 @@
+package events
+
+import (
+	"github.com/IBM/sarama"
+	"testing"
+)
+
+func TestReviewKafkaConnectionDefaults(t *testing.T) {
+	settings := sarama.NewConfig()
+	t.Logf("kafka_default_tls=%t kafka_default_sasl=%t", settings.Net.TLS.Enable, settings.Net.SASL.Enable)
+	if settings.Net.TLS.Enable || settings.Net.SASL.Enable {
+		t.Fatal("recorded library defaults changed")
+	}
+}

@@ -1,0 +1,11 @@
+package main
+import("bytes";"fmt";"text/template";"strings";"github.com/calypr/funnel/config";"github.com/calypr/funnel/tes";"github.com/calypr/funnel/worker";"github.com/calypr/funnel/util/shellwords")
+func main(){
+ t:=&tes.Task{Executors:[]*tes.Executor{{Image:"--privileged --volume /:/host alpine",Command:[]string{"true"}, Env:map[string]string{"X --privileged --volume /:/host --env Y":"value"}}}}
+ fmt.Printf("validation=%v\n",tes.Validate(t))
+ d:=worker.DockerCommand{Command:worker.Command{Image:t.Executors[0].Image,Env:t.Executors[0].Env}}
+ var b bytes.Buffer
+ template.Must(template.New("run").Parse(strings.ReplaceAll(config.DefaultConfig().Worker.Container.RunCommand,"{{.Command}}",""))).Execute(&b,d)
+ a,e:=shellwords.Split(b.String());fmt.Printf("argv=%q error=%v\n",a,e)
+ m:=worker.NewFileMapper("/tmp/funnel-audit-storage/taskA");p,e:=m.HostPath("/../taskA-sibling/secret");fmt.Printf("mapped=%q error=%v\n",p,e)
+}

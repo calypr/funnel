@@ -1,0 +1,317 @@
+--- a/events/log_writer.go
++++ b/events/log_writer.go
+@@ -32,9 +32,9 @@
+ 	case Type_TASK_END_TIME:
+ 		log.Info(ts, "end_time", ev.GetEndTime())
+ 	case Type_TASK_OUTPUTS:
+-		log.Info(ts, "outputs", ev.GetOutputs().Value)
++		log.Info(ts, "outputs", "[redacted]")
+ 	case Type_TASK_METADATA:
+-		log.Info(ts, "metadata", ev.GetMetadata().Value)
++		log.Info(ts, "metadata", "[redacted]")
+ 	case Type_EXECUTOR_START_TIME:
+ 		log.Info(ts, "start_time", ev.GetStartTime())
+ 	case Type_EXECUTOR_END_TIME:
+@@ -42,34 +42,29 @@
+ 	case Type_EXECUTOR_EXIT_CODE:
+ 		log.Info(ts, "exit_code", ev.GetExitCode())
+ 	case Type_EXECUTOR_STDOUT:
+-		log.Info(ts, "stdout", ev.GetStdout())
++		log.Info(ts, "stdout", "[redacted]")
+ 	case Type_EXECUTOR_STDERR:
+-		log.Info(ts, "stderr", ev.GetStderr())
++		log.Info(ts, "stderr", "[redacted]")
+ 	case Type_SYSTEM_LOG:
+-		var args []interface{}
+-		for k, v := range ev.GetSystemLog().Fields {
+-			args = append(args, k, v)
+-		}
+ 		switch ev.GetSystemLog().Level {
+ 		case "warning":
+-			log.Warn(ev.GetSystemLog().Msg, args...)
++			log.Warn("system log", "severity", "warning")
+ 		case "error":
+ 			if pc, file, line, ok := runtime.Caller(2); ok {
+ 				file = file[strings.LastIndex(file, "/")+1:]
+ 				funcName := runtime.FuncForPC(pc).Name()
+ 				src := fmt.Sprintf("%s:%s:%d", file, funcName, line)
+-				args = append(args, "src", src)
+-				log.Error(ev.GetSystemLog().Msg, args...)
++				log.Error("system log", "severity", "error", "src", src)
+ 			} else {
+-				log.Error(ev.GetSystemLog().Msg, args...)
++				log.Error("system log", "severity", "error")
+ 			}
+ 		case "info":
+-			log.Info(ev.GetSystemLog().Msg, args...)
++			log.Info("system log", "severity", "info")
+ 		case "debug":
+-			log.Debug(ev.GetSystemLog().Msg, args...)
++			log.Debug("system log", "severity", "debug")
+ 		}
+ 	default:
+-		log.Info(ts, "event", ev)
++		log.Info(ts)
+ 	}
+ 	return nil
+ }
+--- a/events/err_logger.go
++++ b/events/err_logger.go
+@@ -2,6 +2,7 @@
+ 
+ import (
+ 	"context"
++	"fmt"
+ 
+ 	"github.com/calypr/funnel/logger"
+ )
+@@ -17,7 +18,14 @@
+ func (e *ErrLogger) WriteEvent(ctx context.Context, ev *Event) error {
+ 	err := e.Writer.WriteEvent(ctx, ev)
+ 	if err != nil {
+-		e.Log.Error("error writing event", "error", err, "event_type", ev.Type.String(), "event_data", ev.Data)
++		e.Log.Error("error writing event",
++			"error_type", fmt.Sprintf("%T", err),
++			"event_type", ev.Type.String(),
++			"taskID", ev.Id,
++			"attempt", ev.Attempt,
++			"index", ev.Index,
++			"timestamp", ev.Timestamp,
++		)
+ 	}
+ 	return err
+ }
+--- a/server/server.go
++++ b/server/server.go
+@@ -52,16 +52,9 @@
+ 	// Return a function that is the interceptor.
+ 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo,
+ 		handler grpc.UnaryHandler) (interface{}, error) {
+-		log.Debug(
+-			"received: "+info.FullMethod,
+-			"request", req,
+-		)
++		log.Debug("received request", "method", info.FullMethod)
+ 		resp, err := handler(ctx, req)
+-		log.Debug(
+-			"responding: "+info.FullMethod,
+-			"resp", resp,
+-			"err", err,
+-		)
++		log.Debug("completed request", "method", info.FullMethod, "status", status.Code(err).String())
+ 
+ 		return resp, err
+ 	}
+@@ -349,7 +342,7 @@
+ // handleError handles errors in the HTTP stack, logging errors, stack traces,
+ // and returning an HTTP error code.
+ func (s *Server) handleError(w http.ResponseWriter, req *http.Request, err string, code int) {
+-	s.Log.Error("HTTP handler error", "error", err, "url", req.URL)
++	s.Log.Error("HTTP handler error", "method", req.Method, "status", code)
+ 	http.Error(w, err, code)
+ }
+ 
+--- a/server/tes.go
++++ b/server/tes.go
+@@ -105,11 +105,10 @@
+ 	}
+ 	if pluginResponse.Code != 200 {
+ 		return pluginResponse, fmt.Errorf(
+-			"Plugin returned error: code: %d, message: %s, user: %s, task: %v",
++			"Plugin returned error: code: %d, message: %s, user: %s",
+ 			pluginResponse.Code,
+ 			pluginResponse.Message,
+ 			pluginResponse.UserId,
+-			pluginResponse.Task,
+ 		)
+ 	}
+ 	if pluginResponse.Config == nil {
+@@ -130,12 +129,7 @@
+ 				return nil, err
+ 			}
+ 		}
+-		ts.Log.Debug("Plugin", "Response Code", pluginResponse.Code,
+-			"Message", pluginResponse.Message,
+-			"User", pluginResponse.UserId,
+-			"Task", pluginResponse.Task,
+-			"Config", pluginResponse.Config.Safe(),
+-		)
++		ts.Log.Debug("Plugin response", "response_code", pluginResponse.Code, "taskID", task.Id)
+ 		ctx = context.WithValue(ctx, "pluginResponse", pluginResponse)
+ 
+ 		// If using plugin, replace existing task with returned task from plugin
+@@ -254,12 +248,7 @@
+ 				return nil, err
+ 			}
+ 		}
+-		ts.Log.Debug("Plugin", "Response Code", pluginResponse.Code,
+-			"Message", pluginResponse.Message,
+-			"User", pluginResponse.UserId,
+-			"Task", pluginResponse.Task,
+-			"Config", pluginResponse.Config.Safe(),
+-		)
++		ts.Log.Debug("Plugin response", "response_code", pluginResponse.Code, "taskID", req.Id)
+ 		ctx = context.WithValue(ctx, "pluginResponse", pluginResponse)
+ 	}
+ 
+--- a/worker/kubernetes.go
++++ b/worker/kubernetes.go
+@@ -177,7 +177,7 @@
+ 		"ServiceAccountName": kcmd.ServiceAccount,
+ 	}
+ 
+-	logger.Debug("Creating executor job from template", "template", kcmd.TaskTemplate, "data", templateData)
++	logger.Debug("Creating executor job from template", "taskID", taskId, "jobID", kcmd.JobId)
+ 	var buf bytes.Buffer
+ 	err = tpl.Execute(&buf, templateData)
+ 	if err != nil {
+@@ -188,7 +188,7 @@
+ 		}
+ 	}
+ 
+-	logger.Debug("Decoding job template", "template", buf.String())
++	logger.Debug("Decoding executor job template", "taskID", taskId, "jobID", kcmd.JobId)
+ 	decode := scheme.Codecs.UniversalDeserializer().Decode
+ 	obj, _, err := decode(buf.Bytes(), nil, nil)
+ 	if err != nil {
+--- a/compute/gcp_batch/backend.go
++++ b/compute/gcp_batch/backend.go
+@@ -332,7 +332,7 @@
+ 		},
+ 	}
+ 
+-	logger.Debug("GCP Batch Job Request", "request", req)
++	logger.Debug("GCP Batch job request", "taskID", task.Id, "project", b.conf.Project, "location", b.conf.Location)
+ 
+ 	resp, err := b.client.CreateJob(context.Background(), req)
+ 
+--- a/compute/kubernetes/resources/job.go
++++ b/compute/kubernetes/resources/job.go
+@@ -39,7 +39,7 @@
+ func CreateJob(ctx context.Context, task *tes.Task, conf *config.Config, client kubernetes.Interface, log *logger.Logger, plan *storageplan.Plan) (*v1.Job, error) {
+ 	// Parse Worker Template
+ 
+-	log.Debug("Creating job from template", "template", conf.Kubernetes.WorkerTemplate)
++	log.Debug("Creating job from template", "taskID", task.Id, "namespace", conf.Kubernetes.JobsNamespace)
+ 	t, err := template.New(task.Id).Parse(conf.Kubernetes.WorkerTemplate)
+ 	if err != nil {
+ 		return nil, fmt.Errorf("%v", err)
+@@ -101,7 +101,7 @@
+ 		return nil, fmt.Errorf("%v", err)
+ 	}
+ 
+-	log.Debug("Job template", "template", buf.String())
++	log.Debug("Decoded worker job template", "taskID", task.Id, "namespace", conf.Kubernetes.JobsNamespace)
+ 	decode := scheme.Codecs.UniversalDeserializer().Decode
+ 	obj, _, err := decode(buf.Bytes(), nil, nil)
+ 	if err != nil {
+--- a/compute/kubernetes/resources/configmap.go
++++ b/compute/kubernetes/resources/configmap.go
+@@ -50,7 +50,7 @@
+ 	if err != nil {
+ 		return fmt.Errorf("executing ConfigMapTemplate: %v", err)
+ 	}
+-	log.Debug("rendering ConfigMap template", "TaskID", taskId, "Namespace", conf.Kubernetes.JobsNamespace, "ConfigMapTemplate", conf.Kubernetes.ConfigMapTemplate, "Config", conf.Safe())
++	log.Debug("rendering ConfigMap template", "taskID", taskId, "namespace", conf.Kubernetes.JobsNamespace)
+ 	decode := scheme.Codecs.UniversalDeserializer().Decode
+ 	obj, _, err := decode(buf.Bytes(), nil, nil)
+ 	if err != nil {
+--- a/compute/kubernetes/backend.go
++++ b/compute/kubernetes/backend.go
+@@ -110,7 +110,7 @@
+ 	switch ev.Type {
+ 	case events.Type_TASK_CREATED:
+ 		taskConfig := googleproto.Clone(b.conf).(*config.Config)
+-		b.log.Debug("taskConfig", "before plugin", taskConfig.Safe())
++		b.log.Debug("preparing task configuration", "taskID", ev.Id)
+ 		if b.conf.Plugins != nil {
+ 			resp, ok := ctx.Value("pluginResponse").(*proto.JobResponse)
+ 			if !ok {
+@@ -122,7 +122,7 @@
+ 				return fmt.Errorf("merging plugin config: %w", err)
+ 			}
+ 		}
+-		b.log.Debug("taskConfig", "after plugin", taskConfig.Safe())
++		b.log.Debug("task configuration prepared", "taskID", ev.Id)
+ 
+ 		res := b.Submit(ctx, ev.GetTask(), taskConfig)
+ 		return res
+--- a/cmd/server/run.go
++++ b/cmd/server/run.go
+@@ -54,8 +54,6 @@
+ 
+ // NewServer returns a new Funnel server + scheduler based on the given config.
+ func NewServer(ctx context.Context, conf *config.Config, log *logger.Logger) (*Server, error) {
+-	log.Debug("NewServer", "config", conf.Safe())
+-
+ 	var database Database
+ 	var reader tes.ReadOnlyServer
+ 	var nodes scheduler.SchedulerServiceServer
+--- a/cmd/worker/run.go
++++ b/cmd/worker/run.go
+@@ -32,8 +32,6 @@
+ 
+ // NewWorker returns a new Funnel worker based on the given config.
+ func NewWorker(ctx context.Context, conf *config.Config, log *logger.Logger, opts *Options) (*worker.DefaultWorker, error) {
+-	log.Debug("NewWorker", "config", conf.Safe())
+-
+ 	err := validateConfig(conf, opts)
+ 	if err != nil {
+ 		return nil, fmt.Errorf("validating config: %v", err)
+--- a/compute/scheduler/node.go
++++ b/compute/scheduler/node.go
+@@ -16,7 +16,6 @@
+ // NewNodeProcess returns a new Node instance
+ func NewNodeProcess(ctx context.Context, conf *config.Config, factory Worker, log *logger.Logger) (*NodeProcess, error) {
+ 	log = log.WithFields("nodeID", conf.Node.ID)
+-	log.Debug("NewNode", "config", conf.Safe())
+ 
+ 	cli, err := NewClient(ctx, conf.RPCClient)
+ 	if err != nil {
+--- a/storage/generic_s3.go
++++ b/storage/generic_s3.go
+@@ -62,9 +62,6 @@
+ 		region = "us-east-1"
+ 	}
+ 
+-	logger := logger.NewLogger("GenericS3", logger.DefaultConfig())
+-	logger.Debug("generics3: connecting to endpoint", "endpoint", endpoint)
+-
+ 	pathStyle := endpoint != "" && !strings.Contains(endpoint, ".amazonaws.com")
+ 
+ 	loadOpts := []func(*awscfg.LoadOptions) error{
+@@ -217,7 +214,7 @@
+ 		Key:    aws.String(u.path),
+ 	})
+ 	if err != nil {
+-		logger.Debug("genericS3: getting object from s3.client.HeadObject", "url", url, "error", err)
++		logger.Debug("genericS3: getting object from s3.client.HeadObject", "bucket", u.bucket, "path", u.path, "error_type", fmt.Sprintf("%T", err))
+ 		// the key may represent a directory prefix rather than an object
+ 		isDir, derr := s3b.isDir(ctx, u.bucket, u.path)
+ 		if derr == nil && isDir {
+@@ -308,7 +305,7 @@
+ 		return obj, err
+ 	}
+ 	logger := logger.NewLogger("GenericS3", logger.DefaultConfig())
+-	logger.Debug("genericS3: Get called", "url", url, "path", path)
++	logger.Debug("genericS3: Get called", "path", path)
+ 
+ 	obj, err := s3b.Stat(ctx, url)
+ 	if err != nil {
+--- a/database/postgres/events.go
++++ b/database/postgres/events.go
+@@ -21,7 +21,13 @@
+ 
+ 	selector := req.Id
+ 
+-	logger.Debug("Postgres", "WriteEvent request:", req)
++	logger.Debug("Postgres: writing event",
++		"event_type", req.Type.String(),
++		"taskID", req.Id,
++		"attempt", req.Attempt,
++		"index", req.Index,
++		"timestamp", req.Timestamp,
++	)
+ 	switch req.Type {
+ 
+ 	// Task Created
