@@ -62,3 +62,13 @@ $ export FUNNEL_SERVER_USER=funnel
 $ export FUNNEL_SERVER_PASSWORD=abc123
 $ funnel task list
 ```
+
+## API audit logs
+
+The server writes structured `AUDIT` entries at Info level for unary gRPC API
+requests, including calls through the HTTP gateway and authentication failures.
+Entries record the method, user ID, result code, and task ID when available.
+Public or unauthenticated requests use `ANONYMOUS`; internal calls without a
+user context use `SYSTEM`. Request bodies, bearer tokens, and raw error or panic
+values are excluded. The configured logger controls output and log level;
+these entries use the same logging destination as other server messages.

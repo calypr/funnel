@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/logger"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -20,6 +21,7 @@ type Authentication struct {
 	basic      map[string]string
 	oidc       *OidcConfig
 	accessMode string
+	log        *logger.Logger
 }
 
 const (
@@ -122,11 +124,13 @@ func (a *Authentication) Interceptor(
 
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
+		logAuditEntry(a.log, info.FullMethod, anonymousUserID, "", errMissingMetadata)
 		return nil, errMissingMetadata
 	}
 
 	values := md["authorization"]
 	if len(values) == 0 {
+		logAuditEntry(a.log, info.FullMethod, anonymousUserID, "", errTokenRequired)
 		return nil, errTokenRequired
 	}
 
@@ -154,12 +158,15 @@ func (a *Authentication) Interceptor(
 	}
 
 	if !authorized {
+		logAuditEntry(a.log, info.FullMethod, anonymousUserID, "", authErr)
 		return nil, authErr
 	}
 	switch info.FullMethod {
 	case "/scheduler.SchedulerService/PutNode", "/scheduler.SchedulerService/DeleteNode":
 		if !GetUser(ctx).IsAdmin {
-			return nil, status.Error(codes.PermissionDenied, "scheduler node management requires administrator credentials")
+			err := status.Error(codes.PermissionDenied, "scheduler node management requires administrator credentials")
+			logAuditEntry(a.log, info.FullMethod, GetUserID(ctx), "", err)
+			return nil, err
 		}
 	}
 
