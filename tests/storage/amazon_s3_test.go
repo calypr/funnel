@@ -20,7 +20,6 @@ import (
 
 func TestAmazonS3Storage(t *testing.T) {
 	tests.SetLogOutput(log, t)
-	defer os.RemoveAll("./test_tmp") //nolint:errcheck // per-test scratch files are disposable; cleanup failure cannot change the assertions.
 
 	if !conf.AmazonS3.Valid() {
 		t.Skipf("Skipping amazon s3 e2e tests...")
