@@ -337,7 +337,7 @@ function Task() {
   //const [task, setTask] = React.useState(example_task);
 
   React.useEffect(() => {
-    const url = new URL("/v1/tasks/" + task_id, window.location.origin);
+    const url = new URL("/v1/tasks/" + encodeURIComponent(task_id), window.location.origin);
     const controller = new AbortController();
     let active = true;
     let timer;
@@ -401,7 +401,7 @@ function Node() {
   //const [node, setNode] = React.useState(example_node);
 
   React.useEffect(() => {
-    var url = new URL("/v1/nodes/" + node_id, window.location.origin);
+    var url = new URL("/v1/nodes/" + encodeURIComponent(node_id), window.location.origin);
     get(url).then(
       (node) => {
         setNode(node);

@@ -127,15 +127,22 @@ function fetchWithPost(fetchOpts, doPost) {
 // When postJson is true, it's a POST-request without body.
 // Returns the Promise from the fetch() call.
 function get(url, postJson, signal) {
-  if (!url instanceof URL) {
+  if (!(url instanceof URL)) {
     throw new Error("Expected URL object; got: " + typeof url);
-  } else if (url.pathname.includes("/v1/tasks") && !url.searchParams.has("view")) {
+  }
+  const allowedPath = postJson
+    ? /^\/v1\/tasks\/[^/]+:cancel$/
+    : /^\/v1\/(tasks(?:\/[^/]+)?|nodes(?:\/[^/]+)?|service-info)$/;
+  if (url.origin !== window.location.origin || url.username || url.password || !allowedPath.test(url.pathname)) {
+    throw new Error("Dashboard requests must target a supported same-origin API endpoint");
+  }
+  if (url.pathname.startsWith("/v1/tasks") && !url.searchParams.has("view")) {
     url.searchParams.set("view", "FULL");
   }
 
   return fetchOptsPromise
     .then((fetchOpts) => fetchWithPost(fetchOpts, postJson))
-    .then((fetchOpts) => fetch(url.toString(), signal ? { ...fetchOpts, signal } : fetchOpts))
+    .then((fetchOpts) => fetch(url.toString(), { ...fetchOpts, signal, mode: "same-origin", redirect: "error" }))
     .then((response) => {
       if (response.status === 401 || response.status === 403) {
         window.dispatchEvent(new CustomEvent('funnel-access-error', { detail: response.status }));
