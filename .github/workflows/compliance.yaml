@@ -18,6 +18,9 @@
 
 name: TES API compliance tests
 
+permissions:
+  contents: read
+
 on:
   push:
 

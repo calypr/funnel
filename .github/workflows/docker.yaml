@@ -4,6 +4,9 @@
 
 name: Build and publish container images
 
+permissions:
+  contents: read
+
 on:
   push:
 
