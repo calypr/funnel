@@ -29,15 +29,15 @@
     "quay.io/cdis/fence:master": {
       "platforms": {
         "amd64": {
-          "config": "sha256:256c3e3a9dfd5c8b113d798a05b1efe6b58918cd3b6362e7828137181604b6a0",
-          "manifest": "sha256:3e04a796eb9e12cb8417d5ed5643eb0ba273a435104595de72514803132f0351"
+          "config": "sha256:e736cb50901108175073ca762e362ee0b7d76165cd81623fae56bd1090b45a2c",
+          "manifest": "sha256:e37288958b9381b7488e44205472da603d4009e57147b604f7ac8344826f0baf"
         },
         "arm64": {
-          "config": "sha256:1edbdf5bde9d305d6409372242a3023edf33eb434b8a0ef18640f7cd522c9acc",
-          "manifest": "sha256:9895bc473d63db73ab7316747bd3a9dfc240f0fe7febc44e550dd4297629f9ff"
+          "config": "sha256:f4bb048e18576825ef109477b437120bea8713ed4b279a339eea7f8e06582115",
+          "manifest": "sha256:a26a873f11241375cc45b978f9b231b713daf00b6bb5ab19d5f005df6d2045f7"
         }
       },
-      "reference": "quay.io/cdis/fence:master@sha256:1eb006af63776920f39bb30450d36a726bf4088f02db5e05650d579c7832dfab"
+      "reference": "quay.io/cdis/fence:master@sha256:92792d3ddba614a124e016d98562372b5e7b7ff9c7ae24b5c9c295f895314224"
     },
     "quay.io/cdis/gen3-workflow:master": {
       "platforms": {
@@ -81,15 +81,15 @@
     "quay.io/cdis/nginx:master": {
       "platforms": {
         "amd64": {
-          "config": "sha256:d767e7b176891cf25abaca67a6166322ded1f03842c42110b69b223cb12ef581",
-          "manifest": "sha256:b1f89b2588b350b32f94bb7e9fe640e5aba29fa949a400bcf192c31db40f0c16"
+          "config": "sha256:63952b40c869d36ed1148b3188ef0d9d068fa2b31a1cc40f2318c4c6a894dad8",
+          "manifest": "sha256:07d4b6968837435e2ba26a7fa9754743ec4c8f74fc48d84a45ab809b9e9960d5"
         },
         "arm64": {
-          "config": "sha256:0718ba2632490c38de14e99df8335fcdc6bbb19bd753de32d5837b219040c5c1",
-          "manifest": "sha256:be7935249dc93b0e3cb8d4987623e766d690cd7cae968990e82c63964415b26e"
+          "config": "sha256:bde27e0c002f4743fdbd4548779b44b808831974aa3ee2e65d95dcf6f01a107a",
+          "manifest": "sha256:64a967e1f563efba965aa700a2ad0dfd2efc7ef664f55be22fbdd67cd79bbcd0"
         }
       },
-      "reference": "quay.io/cdis/nginx:master@sha256:dad0a9ba117f9a932d55b01982b53b75054fa7bb38469219dcf9638016793d17"
+      "reference": "quay.io/cdis/nginx:master@sha256:001b5218ca30cbbb82646b05c23c644f2ace427147edaef58b6c4c238279cd1e"
     }
   }
 }
