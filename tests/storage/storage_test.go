@@ -34,6 +34,9 @@ func TestFileMount(t *testing.T) {
     -o out={{ .storage }}/test_out
   `)
 	task := fun.Wait(id)
+	if task.State != tes.State_COMPLETE {
+		t.Fatalf("file mount task failed: %v", task)
+	}
 	c := fun.ReadFile("test_out")
 	if c != "hello\n" {
 		t.Fatal("Unexpected output file", task, c)
