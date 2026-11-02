@@ -196,8 +196,9 @@ MongoDB:
     duration: 300s
   # Username and Password inform the credentials for the initial authentication
   # done on the database defined by the Database field.
-  Username: ""
-  Password: ""
+  # Set both credentials when MongoDB requires authentication.
+  # Username: <mongodb-user>
+  # Password: <mongodb-password>
 
 Kafka:
   Servers:
@@ -385,7 +386,8 @@ GoogleStorage:
 Swift:
   Disabled: false
   UserName: ""
-  Password: ""
+  # Set Password or OS_PASSWORD when configuring authenticated Swift access.
+  # Password: <swift-password>
   AuthURL: ""
   TenantName: ""
   TenantID: ""

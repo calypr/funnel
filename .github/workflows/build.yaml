@@ -1,5 +1,8 @@
 name: Build Funnel binary
 
+permissions:
+  contents: read
+
 on:
   workflow_call:
     inputs:
