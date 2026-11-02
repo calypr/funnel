@@ -375,7 +375,7 @@ func (s *Server) addHeadertoCtx(req *http.Request) *http.Request {
 // handleError handles errors in the HTTP stack, logging errors, stack traces,
 // and returning an HTTP error code.
 func (s *Server) handleError(w http.ResponseWriter, req *http.Request, err string, code int) {
-	s.Log.Error("HTTP handler error", "error", err, "url", req.URL)
+	s.Log.Error("HTTP handler error", "method", req.Method, "status", code)
 	http.Error(w, err, code)
 }
 
