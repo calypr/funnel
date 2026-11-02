@@ -51,8 +51,11 @@ function TaskList({pageToken, setPageToken,
   React.useEffect(() => {
     const controller = new AbortController();
     let active = true;
-    var url = new URL("/v1/tasks" + window.location.search, window.location.origin);
+    var url = new URL("/v1/tasks", window.location.origin);
     var params = url.searchParams;
+    for (const [key, value] of new URLSearchParams(window.location.search)) {
+      params.append(key, value);
+    }
     params.set("view", "BASIC");
     params.set("pageSize", pageSize);
     if (stateFilter !== "") {
