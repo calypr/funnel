@@ -182,14 +182,15 @@ func (s3b *GenericS3) isDir(ctx context.Context, bucketName, objectName string) 
 			key := aws.ToString(obj.Key)
 			if key == objectName {
 				seenExact = true
-			} else if strings.HasPrefix(key, objectName) {
+			} else if objectName == "" || strings.HasPrefix(key, objectName+"/") {
 				seenPrefix = true
 			}
 		}
 	}
 	// The requested key wins over sibling keys sharing the prefix: an
-	// existing object is a file even when sample.bam.bai sits next to
-	// sample.bam. If no objects share the prefix, it's a file too.
+	// existing object is a file even when children share its name. Only
+	// descendants beneath objectName/ make a missing key a directory; the
+	// empty name denotes the bucket root.
 	return !seenExact && seenPrefix, nil
 }
 
