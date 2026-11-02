@@ -156,6 +156,7 @@ func (s *Server) Serve(pctx context.Context) error {
 	defer lis.Close() //nolint:errcheck // Listener cleanup is best effort after the server has stopped.
 
 	auth := NewAuthentication(s.BasicAuth, s.OidcAuth, s.TaskAccess)
+	auth.log = s.Log
 
 	maxResponseBytes := s.MaxResponseBytes
 	if maxResponseBytes == 0 {
@@ -172,6 +173,7 @@ func (s *Server) Serve(pctx context.Context) error {
 		}),
 		grpc.ChainUnaryInterceptor(
 			auth.Interceptor,
+			newAuditInterceptor(s.Log),
 			s.authorizeEventWrites,
 			newDebugInterceptor(s.Log),
 		),

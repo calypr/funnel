@@ -3,10 +3,10 @@ package server
 import (
 	"context"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/tes"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -29,9 +29,13 @@ func (panicTaskService) GetTask(_ context.Context, req *tes.GetTaskRequest) (*te
 func TestGRPCServerSurvivesHandlerPanic(t *testing.T) {
 	listener := bufconn.Listen(1024 * 1024)
 	t.Cleanup(func() { _ = listener.Close() }) //nolint:errcheck // Stopping the test gRPC server also closes this listener.
+	log, output := serverCaptureLogger(t)
+	auth := NewAuthentication(nil, nil, AccessAll)
+	auth.log = log
 	server := grpc.NewServer(grpc.ChainUnaryInterceptor(
-		NewAuthentication(nil, nil, AccessAll).Interceptor,
-		newDebugInterceptor(logger.NewLogger("panic-integration", logger.DefaultConfig())),
+		auth.Interceptor,
+		newAuditInterceptor(log),
+		newDebugInterceptor(log),
 	))
 	tes.RegisterTaskServiceServer(server, panicTaskService{})
 	stopped := make(chan struct{})
@@ -67,5 +71,12 @@ func TestGRPCServerSurvivesHandlerPanic(t *testing.T) {
 	}
 	if task.Id != "healthy" || task.State != tes.State_COMPLETE {
 		t.Fatalf("unexpected response: %v", task)
+	}
+	logs := output.String()
+	if strings.Count(logs, `"msg":"AUDIT"`) != 2 || !strings.Contains(logs, `"code":"Internal"`) || !strings.Contains(logs, `"code":"OK"`) {
+		t.Fatalf("missing panic or successful-request audit entry: %s", logs)
+	}
+	if strings.Contains(logs, "private integration panic") {
+		t.Fatal("panic payload reached the audit or recovery log")
 	}
 }
