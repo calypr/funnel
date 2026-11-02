@@ -4,7 +4,6 @@ import (
 	"os"
 	"path"
 	"strings"
-	"syscall"
 	"testing"
 
 	"github.com/calypr/funnel/logger"
@@ -22,7 +21,10 @@ func TestMain(m *testing.M) {
 	conf.Worker.LeaveWorkDir = true
 	fun = tests.NewFunnel(conf)
 	fun.StartServer()
-	os.Exit(m.Run())
+	result := m.Run()
+	fun.Cleanup()
+	_ = os.RemoveAll("./test_tmp") //nolint:errcheck // Shared scratch cleanup is best effort after the server and all tests stop.
+	os.Exit(result)
 }
 
 // Test that a file can be passed as an input and output.
@@ -43,30 +45,19 @@ func TestFileMount(t *testing.T) {
 	}
 }
 
-// Test that the local storage system hard links input files.
-// TODO this test is unix specific because it uses syscall?
-func TestLocalFilesystemHardLinkInput(t *testing.T) {
+func TestLocalFilesystemInputIsolation(t *testing.T) {
 	tests.SetLogOutput(log, t)
-	fun.WriteFile("test_hard_link_input", "content")
+	fun.WriteFile("test_input_isolation", "content")
 	id := fun.Run(`
-    --sh "echo foo"
-    -i in={{ .storage }}/test_hard_link_input
+    --sh 'printf changed > $in'
+    -i in={{ .storage }}/test_input_isolation
   `)
 	task := fun.Wait(id)
 	if task.State != tes.State_COMPLETE {
 		t.Fatal("unexpected task failure")
 	}
-	name := fun.StorageDir + "/test_hard_link_input"
-	fi, sterr := os.Lstat(name)
-	if sterr != nil {
-		panic(sterr)
-	}
-	s, ok := fi.Sys().(*syscall.Stat_t)
-	if !ok {
-		panic("can't retrieve Stat_t")
-	}
-	if uint16(s.Nlink) != uint16(2) {
-		t.Fatal("expected two links", s.Nlink)
+	if got := fun.ReadFile("test_input_isolation"); got != "content" {
+		t.Fatalf("executor changed the source input: %q", got)
 	}
 }
 

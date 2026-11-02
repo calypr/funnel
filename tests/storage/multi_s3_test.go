@@ -14,7 +14,6 @@ import (
 
 func TestMultiS3Storage(t *testing.T) {
 	tests.SetLogOutput(log, t)
-	defer os.RemoveAll("./test_tmp") //nolint:errcheck // per-test scratch files are disposable; cleanup failure cannot change the assertions.
 
 	if len(conf.GenericS3) == 2 {
 		if !conf.GenericS3[0].Valid() && !conf.GenericS3[1].Valid() {
