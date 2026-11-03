@@ -42,15 +42,15 @@
     "quay.io/cdis/gen3-workflow:master": {
       "platforms": {
         "amd64": {
-          "config": "sha256:b734bb2e04a7197710c217e67841abc3eb05813c5ea9ff4f6592b6305eb82c19",
-          "manifest": "sha256:63c76080b356e907c0185c3a1e50ddae8753c4bfe05eeb273a1564d090f1574f"
+          "config": "sha256:2a9e7c7325db546e8f0c0212568881fbabfe192601d574002df5452ec6c9e546",
+          "manifest": "sha256:50d9785c9a7c485da46ae2a28bb9f3d51c5ecb229857ac025d652ad24194e096"
         },
         "arm64": {
-          "config": "sha256:423e748fea5dee4538c39bbe668548e4a1ed2520e0b2c0311e08944c39ff752a",
-          "manifest": "sha256:d13aeb8f0775c2d32287f96410d33bf089028e6089550d85c3629cc0a218d05a"
+          "config": "sha256:c4ea1dce6242adb4c66befc0e52f8e7780e8934ca30e98707a22750f3d5cbb4c",
+          "manifest": "sha256:4b9bf5f3a8e0580f898074b7e33a5f98d960ede392f60effd22c0c14c3ca88a9"
         }
       },
-      "reference": "quay.io/cdis/gen3-workflow:master@sha256:8680943ec2af2f04b413c5c62ac6e056923dc470d61d6fc38229d6e64d38f334"
+      "reference": "quay.io/cdis/gen3-workflow:master@sha256:8da51f683638d5fc42bd730c1e12bb7beefbe65706c9955ebca6cd99d5cc3b70"
     },
     "quay.io/cdis/indexd:master": {
       "platforms": {
