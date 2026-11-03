@@ -49,8 +49,11 @@ function TaskList({pageToken, setPageToken,
   };
 
   React.useEffect(() => {
+<<<<<<< HEAD
     const controller = new AbortController();
     let active = true;
+=======
+>>>>>>> feature/scheduler-reliability-1027
     var url = new URL("/v1/tasks", window.location.origin);
     var params = url.searchParams;
     for (const [key, value] of new URLSearchParams(window.location.search)) {
@@ -340,6 +343,7 @@ function Task() {
   //const [task, setTask] = React.useState(example_task);
 
   React.useEffect(() => {
+<<<<<<< HEAD
     const url = new URL("/v1/tasks/" + encodeURIComponent(task_id), window.location.origin);
     const controller = new AbortController();
     let active = true;
@@ -363,6 +367,14 @@ function Task() {
       controller.abort();
     };
   }, [task_id, refreshKey]);
+=======
+    var url = new URL("/v1/tasks/" + encodeURIComponent(task_id), window.location.origin);
+    get(url).then(
+      (task) => {
+        setTask(task);
+      }).catch((error) => console.log("getTask error:", error));
+  }, [task_id]);
+>>>>>>> feature/scheduler-reliability-1027
 
   const json = (
     <ReactJson
