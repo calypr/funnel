@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"net"
 	"sync"
 	"testing"
@@ -20,15 +21,17 @@ type rpcExecutionClaimer struct {
 	mu      sync.Mutex
 	calls   int
 	taskID  string
+	owner   *events.ExecutionOwner
 	claimed bool
 	err     error
 }
 
-func (c *rpcExecutionClaimer) ClaimExecution(_ context.Context, taskID string) (bool, error) {
+func (c *rpcExecutionClaimer) ClaimExecution(_ context.Context, taskID string, owner *events.ExecutionOwner) (bool, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.calls++
 	c.taskID = taskID
+	c.owner = owner
 	return c.claimed, c.err
 }
 
@@ -43,11 +46,26 @@ func newRPCClaimReader(t *testing.T, service events.EventServiceServer) *RPCTask
 	listener := bufconn.Listen(1024 * 1024)
 	server := grpc.NewServer()
 	events.RegisterEventServiceServer(server, service)
+	serveErr := make(chan error, 1)
 	go func() {
-		_ = server.Serve(listener)
+		serveErr <- server.Serve(listener)
 	}()
+	var conn *grpc.ClientConn
+	t.Cleanup(func() {
+		if conn != nil {
+			err := conn.Close()
+			if err != nil {
+				t.Errorf("close gRPC test connection: %v", err)
+			}
+		}
+		server.Stop()
+		err := <-serveErr
+		if err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+			t.Errorf("stop gRPC test server: %v", err)
+		}
+	})
 
-	conn, err := grpc.NewClient(
+	clientConn, err := grpc.NewClient(
 		"passthrough:///bufconn",
 		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) { return listener.Dial() }),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -58,15 +76,9 @@ func newRPCClaimReader(t *testing.T, service events.EventServiceServer) *RPCTask
 		)),
 	)
 	if err != nil {
-		server.Stop()
-		listener.Close()
 		t.Fatalf("create gRPC connection: %v", err)
 	}
-	t.Cleanup(func() {
-		_ = conn.Close()
-		server.Stop()
-		_ = listener.Close()
-	})
+	conn = clientConn
 
 	return &RPCTaskReader{
 		eventClient: events.NewEventServiceClient(conn),
@@ -78,8 +90,9 @@ func newRPCClaimReader(t *testing.T, service events.EventServiceServer) *RPCTask
 func TestRPCTaskReaderClaimsExecutionOverGRPC(t *testing.T) {
 	claimer := &rpcExecutionClaimer{claimed: true}
 	reader := newRPCClaimReader(t, &events.Service{Writer: events.Noop{}, Claimer: claimer})
+	owner := &events.ExecutionOwner{Namespace: "jobs", PodName: "worker-abc", PodUid: "pod-uid"}
 
-	claimed, err := reader.ClaimExecution(context.Background(), "task-1")
+	claimed, err := reader.ClaimExecution(context.Background(), "task-1", owner)
 	if err != nil {
 		t.Fatalf("ClaimExecution() error = %v", err)
 	}
@@ -89,13 +102,16 @@ func TestRPCTaskReaderClaimsExecutionOverGRPC(t *testing.T) {
 	if claimer.callCount() != 1 || claimer.taskID != "task-1" {
 		t.Fatalf("server saw %d claims for task %q", claimer.callCount(), claimer.taskID)
 	}
+	if claimer.owner == nil || claimer.owner.GetNamespace() != owner.GetNamespace() || claimer.owner.GetPodName() != owner.GetPodName() || claimer.owner.GetPodUid() != owner.GetPodUid() {
+		t.Fatalf("server saw owner %v, want %v", claimer.owner, owner)
+	}
 }
 
 func TestRPCTaskReaderDoesNotRetryLostClaimResponse(t *testing.T) {
 	claimer := &rpcExecutionClaimer{err: status.Error(codes.Unavailable, "claim committed but response was lost")}
 	reader := newRPCClaimReader(t, &events.Service{Writer: events.Noop{}, Claimer: claimer})
 
-	claimed, err := reader.ClaimExecution(context.Background(), "task-1")
+	claimed, err := reader.ClaimExecution(context.Background(), "task-1", nil)
 	if status.Code(err) != codes.Unavailable {
 		t.Fatalf("ClaimExecution() error code = %s, want %s", status.Code(err), codes.Unavailable)
 	}
@@ -110,7 +126,7 @@ func TestRPCTaskReaderDoesNotRetryLostClaimResponse(t *testing.T) {
 func TestRPCTaskReaderFailsClosedWhenDatabaseDoesNotSupportClaims(t *testing.T) {
 	reader := newRPCClaimReader(t, &events.Service{Writer: events.Noop{}})
 
-	claimed, err := reader.ClaimExecution(context.Background(), "task-1")
+	claimed, err := reader.ClaimExecution(context.Background(), "task-1", nil)
 	if status.Code(err) != codes.FailedPrecondition {
 		t.Fatalf("ClaimExecution() error code = %s, want %s", status.Code(err), codes.FailedPrecondition)
 	}
@@ -130,7 +146,7 @@ func (oldEventService) WriteEvent(context.Context, *events.Event) (*events.Write
 func TestRPCTaskReaderFailsClosedWithOldServer(t *testing.T) {
 	reader := newRPCClaimReader(t, oldEventService{})
 
-	claimed, err := reader.ClaimExecution(context.Background(), "task-1")
+	claimed, err := reader.ClaimExecution(context.Background(), "task-1", nil)
 	if status.Code(err) != codes.Unimplemented {
 		t.Fatalf("ClaimExecution() error code = %s, want %s", status.Code(err), codes.Unimplemented)
 	}

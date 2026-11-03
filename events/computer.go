@@ -2,6 +2,7 @@ package events
 
 import (
 	"context"
+	"sort"
 
 	tes "github.com/calypr/funnel/tes"
 
@@ -19,12 +20,9 @@ type Backend struct {
 }
 
 func (b Backend) CheckBackendParameterSupport(task *tes.Task) error {
-	taskBackendParameters := task.Resources.GetBackendParameters()
-	for k := range taskBackendParameters {
-		_, ok := b.BackendParameters[k]
-		if !ok {
-			return status.Errorf(codes.InvalidArgument, "backend parameters not supported: %s", k)
-		}
+	_, err := tes.FilterBackendParameters(task.GetResources(), b.BackendParameterKeys())
+	if err != nil {
+		return status.Error(codes.InvalidArgument, err.Error())
 	}
 
 	return nil
@@ -36,3 +34,12 @@ func (b Backend) WriteEvent(ctx context.Context, ev *Event) error {
 }
 
 func (b Backend) Close() {}
+
+func (b Backend) BackendParameterKeys() []string {
+	keys := make([]string, 0, len(b.BackendParameters))
+	for key := range b.BackendParameters {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}

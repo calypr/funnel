@@ -42,7 +42,7 @@ func TestDownloadMountpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer parent.Close()
+	closeTestResource(t, parent)
 	if mountpoint, err := isMountpointDirectory(parent); err != nil || !mountpoint {
 		t.Fatalf("test directory is not a verified Mountpoint mount: %v", err)
 	}
@@ -173,7 +173,12 @@ func TestDownloadMountpoint(t *testing.T) {
 		if err := unix.Mount(outside, target, "", unix.MS_BIND, ""); err != nil {
 			t.Fatal(err)
 		}
-		defer unix.Unmount(target, 0)
+		t.Cleanup(func() {
+			err := unix.Unmount(target, 0)
+			if err != nil {
+				t.Errorf("unmount test destination: %v", err)
+			}
+		})
 		err := writeDownloadedFile(ctx, target, func(stage *os.File) error {
 			_, err := io.WriteString(stage, "replacement")
 			return err

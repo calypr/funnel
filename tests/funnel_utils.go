@@ -122,10 +122,13 @@ func (f *Funnel) Cleanup() {
 		f.serverCancel = nil
 		f.serverStopped = nil
 	}
-	os.RemoveAll(f.StorageDir)
-	os.RemoveAll(f.Conf.Worker.WorkDir)
+	os.RemoveAll(f.StorageDir)          //nolint:errcheck // test storage is disposable; cleanup failure cannot change the test result.
+	os.RemoveAll(f.Conf.Worker.WorkDir) //nolint:errcheck // test work data is disposable; cleanup failure cannot change the test result.
 	if f.conn != nil {
-		f.conn.Close()
+		err := f.conn.Close()
+		if err != nil {
+			panic(fmt.Errorf("close test RPC connection: %w", err))
+		}
 		f.conn = nil
 	}
 }
@@ -175,13 +178,16 @@ func (f *Funnel) pollForServerStart(serverDone <-chan error) error {
 		case <-ticker.C:
 		}
 
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, f.Conf.Server.HTTPAddress(), nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, f.Conf.Server.HTTPAddress()+"/healthz", nil)
 		if err != nil {
 			return err
 		}
 		resp, err := client.Do(req)
 		if resp != nil {
-			resp.Body.Close()
+			closeErr := resp.Body.Close()
+			if closeErr != nil {
+				return fmt.Errorf("close health check response body: %w", closeErr)
+			}
 		}
 		if err != nil {
 			continue
@@ -380,8 +386,14 @@ func (f *Funnel) WaitForExec(id string, i int) {
 
 // Tempdir returns a new temporary directory path
 func (f *Funnel) Tempdir() string {
-	d, _ := os.MkdirTemp(f.StorageDir, "")
-	d, _ = filepath.Abs(d)
+	d, err := os.MkdirTemp(f.StorageDir, "")
+	if err != nil {
+		panic(fmt.Errorf("create test storage directory: %w", err))
+	}
+	d, err = filepath.Abs(d)
+	if err != nil {
+		panic(fmt.Errorf("resolve test storage directory: %w", err))
+	}
 	return d
 }
 
@@ -412,6 +424,7 @@ func (f *Funnel) StartServerInDocker(containerName, imageName string, extraArgs 
 		funnelBinary, err = filepath.Abs("../../funnel")
 		if err != nil {
 			log.Error("Error finding funnel binary", err)
+			panic(err)
 		}
 	} else {
 		if runtime.GOOS == "linux" {
@@ -430,12 +443,27 @@ func (f *Funnel) StartServerInDocker(containerName, imageName string, extraArgs 
 	}
 
 	// write config file
-	configPath, _ := filepath.Abs(filepath.Join(f.Conf.Worker.WorkDir, "config.yml"))
-	_ = config.ToYamlFile(f.Conf, configPath)
-	_ = os.Chmod(configPath, 0644)
+	configPath, err := filepath.Abs(filepath.Join(f.Conf.Worker.WorkDir, "config.yml"))
+	if err != nil {
+		panic(fmt.Errorf("resolve test server config path: %w", err))
+	}
+	err = config.ToYamlFile(f.Conf, configPath)
+	if err != nil {
+		panic(fmt.Errorf("write test server config: %w", err))
+	}
+	err = os.Chmod(configPath, 0644)
+	if err != nil {
+		panic(fmt.Errorf("set test server config permissions: %w", err))
+	}
 
-	httpPort, _ := strconv.ParseInt(f.Conf.Server.HTTPPort, 0, 32)
-	rpcPort, _ := strconv.ParseInt(f.Conf.Server.RPCPort, 0, 32)
+	httpPort, err := strconv.ParseInt(f.Conf.Server.HTTPPort, 0, 32)
+	if err != nil {
+		panic(fmt.Errorf("parse test HTTP port: %w", err))
+	}
+	rpcPort, err := strconv.ParseInt(f.Conf.Server.RPCPort, 0, 32)
+	if err != nil {
+		panic(fmt.Errorf("parse test RPC port: %w", err))
+	}
 
 	// detect gid of /var/run/docker.sock
 	fi, err := os.Stat("/var/run/docker.sock")

@@ -240,7 +240,12 @@ func TestClaimLookupAndHeartbeatDoNotWaitForReservationLocks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = tx.Rollback(context.Background()) }()
+	defer func() {
+		err := tx.Rollback(context.Background())
+		if err != nil {
+			t.Errorf("rollback test transaction: %v", err)
+		}
+	}()
 	if _, err := tx.Exec(ctx, `SELECT id FROM tasks WHERE id=$1 FOR UPDATE`, task.Id); err != nil {
 		t.Fatal(err)
 	}

@@ -25,9 +25,12 @@ var hostResourceProbe = resourceProbe{
 }
 
 // GenNodeID returns a UUID string.
-func GenNodeID() string {
-	u, _ := uuid.NewV7()
-	return u.String()
+func GenNodeID() (string, error) {
+	u, err := uuid.NewV7()
+	if err != nil {
+		return "", fmt.Errorf("generate node ID: %w", err)
+	}
+	return u.String(), nil
 }
 
 // detectResources helps determine the amount of resources to report.

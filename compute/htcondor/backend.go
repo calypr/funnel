@@ -27,6 +27,15 @@ func NewBackend(ctx context.Context, conf *config.Config, reader tes.ReadOnlySer
 		conf.HTCondor.Template = string(content)
 	}
 
+	err := compute.ValidateSubmissionTemplate("HTCondor.Template", conf.HTCondor.Template)
+	if err != nil {
+		return nil, err
+	}
+	err = compute.ValidateReconcileRate("HTCondor.ReconcileRate", conf.HTCondor.DisableReconciler, conf.HTCondor.ReconcileRate)
+	if err != nil {
+		return nil, err
+	}
+
 	b := &compute.HPCBackend{
 		Name:          "htcondor",
 		SubmitCmd:     "condor_submit",
@@ -58,7 +67,7 @@ func extractID(in string) string {
 }
 
 type record struct {
-	ClusterId int //nolint
+	ClusterID int `json:"ClusterId"`
 	JobStatus int
 	ExitCode  int
 }
@@ -93,13 +102,16 @@ func mapStates(ids []string) ([]*compute.HPCTaskState, error) {
 	parsed := append(qparsed, hparsed...)
 
 	for _, t := range parsed {
-		id := fmt.Sprintf("%v", t.ClusterId)
+		id := fmt.Sprintf("%v", t.ClusterID)
 		exitcode := t.ExitCode
 		state := stateMap[t.JobStatus]
 
 		switch state {
 		case "Idle":
-			stuck, _ := checkIdleStatus(id)
+			stuck, err := checkIdleStatus(id)
+			if err != nil {
+				return nil, fmt.Errorf("checking idle status for HTCondor job %s: %w", id, err)
+			}
 			if stuck {
 				output = append(output, &compute.HPCTaskState{
 					ID: id, TESState: tes.SystemError, State: state, Reason: "no machines matched the jobs's constraints", Remove: true,

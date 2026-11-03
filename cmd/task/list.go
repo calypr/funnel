@@ -25,8 +25,6 @@ func List(server, taskView, pageToken, stateFilter string, tagsFilter []string, 
 		return err
 	}
 
-	output := &tes.ListTasksResponse{}
-
 	state, err := getTaskState(stateFilter)
 	if err != nil {
 		return err
@@ -43,6 +41,7 @@ func List(server, taskView, pageToken, stateFilter string, tagsFilter []string, 
 		tagVals = append(tagVals, parts[1])
 	}
 
+	started := false
 	for {
 		req := &tes.ListTasksRequest{
 			View:       taskView,
@@ -59,17 +58,33 @@ func List(server, taskView, pageToken, stateFilter string, tagsFilter []string, 
 			return err
 		}
 
-		output.Tasks = append(output.Tasks, resp.Tasks...)
-		output.NextPageToken = resp.NextPageToken
-		pageToken = resp.NextPageToken
+		if !all {
+			_, err = fmt.Fprintln(writer, cli.Marshaler.Format(resp))
+			return err
+		}
 
-		if !all || (all && pageToken == "") {
-			break
+		for _, task := range resp.Tasks {
+			data, err := cli.Marshaler.Marshal(task)
+			if err != nil {
+				return err
+			}
+			separator := ",\n"
+			if !started {
+				separator = "{\"tasks\":[\n"
+				started = true
+			}
+			if _, err := fmt.Fprintf(writer, "%s%s", separator, data); err != nil {
+				return err
+			}
+		}
+		pageToken = resp.NextPageToken
+		if pageToken == "" {
+			if started {
+				_, err = fmt.Fprintln(writer, "\n]}")
+			} else {
+				_, err = fmt.Fprintln(writer, "{}")
+			}
+			return err
 		}
 	}
-
-	response := cli.Marshaler.Format(output)
-
-	fmt.Fprintf(writer, "%s\n", response)
-	return nil
 }

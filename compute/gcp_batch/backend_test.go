@@ -425,11 +425,175 @@ func TestSubmit_NoInputsOutputs(t *testing.T) {
 	if len(volumes) != 0 {
 		t.Errorf("Expected 0 volumes, got %d", len(volumes))
 	}
+	if capturedReq.Job.AllocationPolicy != nil {
+		t.Errorf("Expected no allocation policy without GPU parameters, got %v", capturedReq.Job.AllocationPolicy)
+	}
 
 	// Command should be passed directly (no sh -c wrapping when no redirection needed)
 	cmds := capturedReq.Job.TaskGroups[0].TaskSpec.Runnables[0].GetContainer().Commands
 	if len(cmds) != 2 || cmds[0] != "echo" || cmds[1] != "hello" {
 		t.Errorf("Expected direct command [echo hello], got %v", cmds)
+	}
+}
+
+func TestSubmit_GPUParameters(t *testing.T) {
+	log := logger.NewLogger("test", logger.DefaultConfig())
+	var capturedReq *batchpb.CreateJobRequest
+	backend := &Backend{
+		client: &mockClient{
+			CreateJobFunc: func(req *batchpb.CreateJobRequest) (*batchpb.Job, error) {
+				capturedReq = req
+				return &batchpb.Job{Name: "test-job", Uid: "test-uid"}, nil
+			},
+		},
+		conf:  &config.GCPBatch{Project: "test-project", Location: "us-west1"},
+		log:   log,
+		event: &noopEventWriter{},
+	}
+	task := &tes.Task{
+		Id: "task-gpu",
+		Resources: &tes.Resources{BackendParameters: map[string]string{
+			"GPU_TYPE":            "nvidia-tesla-t4",
+			"gpu_count":           "2",
+			"machine_type":        "n1-standard-8",
+			"install_gpu_drivers": "false",
+		}},
+		Executors: []*tes.Executor{
+			{Image: "nvidia/cuda", Command: []string{"nvidia-smi"}, Workdir: "/work"},
+			{Image: "nvidia/cuda", Command: []string{"nvidia-smi"}},
+		},
+	}
+
+	if err := backend.CheckBackendParameterSupport(task); err != nil {
+		t.Fatalf("CheckBackendParameterSupport() error = %v", err)
+	}
+	if err := backend.Submit(task); err != nil {
+		t.Fatalf("Submit() error = %v", err)
+	}
+	if capturedReq == nil {
+		t.Fatal("CreateJob request was not captured")
+	}
+	instances := capturedReq.Job.GetAllocationPolicy().GetInstances()
+	if len(instances) != 1 {
+		t.Fatalf("expected one allocation instance, got %d", len(instances))
+	}
+	instance := instances[0]
+	policy := instance.GetPolicy()
+	if policy == nil {
+		t.Fatal("expected an instance policy")
+	}
+	if policy.GetMachineType() != "n1-standard-8" {
+		t.Errorf("machine type = %q, want n1-standard-8", policy.GetMachineType())
+	}
+	accelerators := policy.GetAccelerators()
+	if len(accelerators) != 1 || accelerators[0].GetType() != "nvidia-tesla-t4" || accelerators[0].GetCount() != 2 {
+		t.Errorf("accelerators = %v, want nvidia-tesla-t4 x 2", accelerators)
+	}
+	if instance.GetInstallGpuDrivers() {
+		t.Error("install GPU drivers = true, want explicit false")
+	}
+	runnables := capturedReq.Job.TaskGroups[0].TaskSpec.Runnables
+	if got := runnables[0].GetContainer().Options; got != "--workdir /work --gpus all" {
+		t.Errorf("first container options = %q, want %q", got, "--workdir /work --gpus all")
+	}
+	if got := runnables[1].GetContainer().Options; got != "--gpus all" {
+		t.Errorf("second container options = %q, want %q", got, "--gpus all")
+	}
+}
+
+func TestSubmit_GPUParametersDefaultDriversAndValidation(t *testing.T) {
+	log := logger.NewLogger("test", logger.DefaultConfig())
+	validGPUParams := map[string]string{"gpu_type": "nvidia-tesla-t4", "gpu_count": "1"}
+	var capturedReq *batchpb.CreateJobRequest
+	backend := &Backend{
+		client: &mockClient{
+			CreateJobFunc: func(req *batchpb.CreateJobRequest) (*batchpb.Job, error) {
+				capturedReq = req
+				return &batchpb.Job{Name: "test-job", Uid: "test-uid"}, nil
+			},
+		},
+		conf:  &config.GCPBatch{Project: "test-project", Location: "us-west1"},
+		log:   log,
+		event: &noopEventWriter{},
+	}
+	if err := backend.Submit(&tes.Task{
+		Id:        "task-gpu-default-drivers",
+		Resources: &tes.Resources{BackendParameters: validGPUParams},
+		Executors: []*tes.Executor{{Image: "nvidia/cuda", Command: []string{"nvidia-smi"}}},
+	}); err != nil {
+		t.Fatalf("Submit() error = %v", err)
+	}
+	if got := capturedReq.Job.AllocationPolicy.Instances[0].GetInstallGpuDrivers(); !got {
+		t.Error("install GPU drivers = false, want default true")
+	}
+}
+
+func TestBackendParameterSupport_GPUValidation(t *testing.T) {
+	log := logger.NewLogger("test", logger.DefaultConfig())
+	backend := &Backend{
+		client: &mockClient{},
+		conf:   &config.GCPBatch{Project: "test-project", Location: "us-west1"},
+		log:    log,
+		event:  &noopEventWriter{},
+	}
+	tests := []struct {
+		name       string
+		parameters map[string]string
+		strict     bool
+	}{
+		{name: "missing count", parameters: map[string]string{"gpu_type": "nvidia-tesla-t4"}},
+		{name: "missing type", parameters: map[string]string{"gpu_count": "1"}},
+		{name: "zero count", parameters: map[string]string{"gpu_type": "nvidia-tesla-t4", "gpu_count": "0"}},
+		{name: "invalid count", parameters: map[string]string{"gpu_type": "nvidia-tesla-t4", "gpu_count": "many"}},
+		{name: "empty type", parameters: map[string]string{"gpu_type": "", "gpu_count": "1"}},
+		{name: "machine type without GPU", parameters: map[string]string{"machine_type": "n1-standard-8"}},
+		{name: "invalid driver flag", parameters: map[string]string{"gpu_type": "nvidia-tesla-t4", "gpu_count": "1", "install_gpu_drivers": "sometimes"}},
+		{name: "case-insensitive duplicate", parameters: map[string]string{"gpu_type": "nvidia-tesla-t4", "GPU_TYPE": "nvidia-l4", "gpu_count": "1"}},
+		{name: "strict unknown", parameters: map[string]string{"vendor_option": "x"}, strict: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var calls int
+			backend.client = &mockClient{CreateJobFunc: func(req *batchpb.CreateJobRequest) (*batchpb.Job, error) {
+				calls++
+				return &batchpb.Job{Name: "test-job", Uid: "test-uid"}, nil
+			}}
+			task := &tes.Task{
+				Id:        "invalid-gpu-task",
+				Resources: &tes.Resources{BackendParameters: tt.parameters, BackendParametersStrict: tt.strict},
+			}
+			if err := backend.CheckBackendParameterSupport(task); err == nil {
+				t.Fatal("CheckBackendParameterSupport() error = nil, want validation error")
+			}
+			if err := backend.Submit(task); err == nil {
+				t.Fatal("Submit() error = nil, want validation error")
+			}
+			if calls != 0 {
+				t.Errorf("CreateJob calls = %d, want 0", calls)
+			}
+		})
+	}
+
+	if err := backend.CheckBackendParameterSupport(&tes.Task{Resources: &tes.Resources{BackendParameters: map[string]string{"vendor_option": "x"}}}); err != nil {
+		t.Errorf("non-strict unknown parameter error = %v, want nil", err)
+	}
+}
+
+func TestBackendParameterKeys(t *testing.T) {
+	backend := &Backend{}
+	want := []string{"gpu_type", "gpu_count", "machine_type", "install_gpu_drivers"}
+	got := backend.BackendParameterKeys()
+	if len(got) != len(want) {
+		t.Fatalf("BackendParameterKeys() = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("BackendParameterKeys()[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+	got[0] = "mutated"
+	if backend.BackendParameterKeys()[0] != want[0] {
+		t.Error("BackendParameterKeys() exposes mutable shared state")
 	}
 }
 

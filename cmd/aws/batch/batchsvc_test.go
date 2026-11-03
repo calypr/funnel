@@ -1,9 +1,11 @@
 package batch
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -11,6 +13,71 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 )
+
+func TestCreateJobDefinitionResourceRequirements(t *testing.T) {
+	var properties map[string]json.RawMessage
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch strings.ToLower(r.URL.Path) {
+		case "/v1/registerjobdefinition":
+			var request struct {
+				ContainerProperties map[string]json.RawMessage `json:"containerProperties"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				t.Error(err)
+			}
+			properties = request.ContainerProperties
+			_, err := io.WriteString(w, `{"jobDefinitionName":"test","jobDefinitionArn":"arn:example","revision":1}`)
+			if err != nil {
+				t.Error(err)
+			}
+		case "/v1/describejobdefinitions":
+			_, err := io.WriteString(w, `{"jobDefinitions":[{"jobDefinitionName":"test","jobDefinitionArn":"arn:example","revision":1,"type":"container"}]}`)
+			if err != nil {
+				t.Error(err)
+			}
+		default:
+			t.Errorf("unexpected request path %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	conf := DefaultConfig()
+	conf.JobDef.JobRoleArn = "arn:example"
+	conf.JobDef.MemoryMiB = 8192
+	conf.JobDef.VCPUs = 4
+	svc := &batchsvc{sess: aws.Config{Region: "us-east-1", BaseEndpoint: aws.String(server.URL), Credentials: credentials.NewStaticCredentialsProvider("fixture", "secret", "")}, conf: conf}
+	if _, err := svc.CreateJobDefinition(true); err != nil {
+		t.Fatal(err)
+	}
+	var command []string
+	if err := json.Unmarshal(properties["command"], &command); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(command, " "), "--Compute aws-batch") {
+		t.Fatalf("worker command omits compute identity: %v", command)
+	}
+	if _, ok := properties["memory"]; ok {
+		t.Fatal("deprecated memory field was sent")
+	}
+	if _, ok := properties["vcpus"]; ok {
+		t.Fatal("deprecated vcpus field was sent")
+	}
+	var requirements []struct {
+		Type  string `json:"type"`
+		Value string `json:"value"`
+	}
+	if err := json.Unmarshal(properties["resourceRequirements"], &requirements); err != nil {
+		t.Fatal(err)
+	}
+	values := map[string]string{}
+	for _, requirement := range requirements {
+		values[requirement.Type] = requirement.Value
+	}
+	if !reflect.DeepEqual(values, map[string]string{"MEMORY": "8192", "VCPU": "4"}) {
+		t.Fatalf("unexpected resource requirements: %v", values)
+	}
+}
 
 func TestCreateResourcesReturnsDescribeErrors(t *testing.T) {
 	for _, test := range []struct {
@@ -52,7 +119,10 @@ func TestCreateResourcesReturnsDescribeErrors(t *testing.T) {
 				}
 				w.Header().Set("Content-Type", "application/x-amz-json-1.1")
 				w.WriteHeader(http.StatusForbidden)
-				_, _ = io.WriteString(w, `{"__type":"AccessDeniedException","message":"not authorized"}`)
+				_, err := io.WriteString(w, `{"__type":"AccessDeniedException","message":"not authorized"}`)
+				if err != nil {
+					t.Error(err)
+				}
 			}))
 			defer server.Close()
 

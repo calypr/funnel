@@ -56,7 +56,7 @@ spec:
       {{- end }}
 
       serviceAccountName: funnel-sa-{{.Namespace}}
-      restartPolicy: OnFailure
+      restartPolicy: Never
       containers:
         - name: funnel-worker-{{.TaskId}}
           # TODO: Make the image + tag configurable

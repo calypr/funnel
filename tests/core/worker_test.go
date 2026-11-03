@@ -165,7 +165,7 @@ type taskExecutionClaimer struct {
 	task *tes.Task
 }
 
-func (c taskExecutionClaimer) ClaimExecution(_ context.Context, taskID string) (bool, error) {
+func (c taskExecutionClaimer) ClaimExecution(_ context.Context, taskID string, _ *events.ExecutionOwner) (bool, error) {
 	if c.task.Id != taskID {
 		return false, fmt.Errorf("unexpected task id %q", taskID)
 	}
@@ -205,7 +205,10 @@ func TestLargeLogRate(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
-	w.Run(ctx)
+	err := w.Run(ctx)
+	if err != nil && !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("run worker before timeout: %v", err)
+	}
 
 	// Given the difficulty of timing how long it task a task + docker container to start,
 	// we just check that a small amount of events were generated.
@@ -245,7 +248,10 @@ func TestZeroLogRate(t *testing.T) {
 		EventWriter:      m,
 	}
 
-	w.Run(context.Background())
+	err := w.Run(context.Background())
+	if err != nil {
+		t.Fatalf("run worker: %v", err)
+	}
 
 	time.Sleep(time.Second)
 
@@ -439,7 +445,8 @@ func TestExecutorErrorStopsTask(t *testing.T) {
 		EventWriter:      m,
 	}
 
-	if err := w.Run(context.Background()); err != nil {
+	err := w.Run(context.Background())
+	if err != nil {
 		t.Log(err)
 	}
 
@@ -565,7 +572,8 @@ func TestExecutorIgnoreErrorContinuesTask(t *testing.T) {
 		EventWriter:      m,
 	}
 
-	if err := w.Run(context.Background()); err != nil {
+	err := w.Run(context.Background())
+	if err != nil {
 		t.Log(err)
 	}
 

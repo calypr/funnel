@@ -48,7 +48,7 @@ function TaskInfoRaw(props) {
         console.log("renderRow: formatFunc was not a function:", typeof(formatFunc));
       }
     }
-    if ( key && val ) {
+    if ( key && (val || val === 0) ) {
       return (
         <TableRow key={key} sx={styles.row}>
           <TableCell sx={keyCellSx}><b>{key}</b></TableCell>
@@ -106,7 +106,7 @@ function TaskInfoRaw(props) {
                  <TableCell sx={keyCellSx}>
                    <b>{k}</b>
                  </TableCell>
-                 <TableCell sx={valueCellSx}>
+                 <TableCell sx={{ ...valueCellSx, whiteSpace: 'pre-line', overflowWrap: 'anywhere' }}>
                    {data[k]}
                  </TableCell>
                </TableRow>
@@ -152,10 +152,7 @@ function TaskInfoRaw(props) {
   const renderExecutors = (task) => {
     if ( task.executors ) {
       var executors = task.executors;
-      var logs = [{}];
-      if ( task.logs && task.logs && task.logs[0].logs ) {
-        logs = task.logs[0].logs;
-      }
+      const logs = task.logs?.[0]?.logs ?? [];
       const cmdString = function(cmd) {
        return cmd.join(" ");
       };
@@ -224,22 +221,15 @@ function TaskInfoRaw(props) {
   };
 
   const renderSysLogs = (logs) => {
-    if ( logs && logs.length && logs[0].systemLogs && Array.isArray(logs[0].systemLogs)) {
-      const syslogs = logs[0].systemLogs;
-      var entryList = syslogs.map(item => {
-        var parts = item.split("' ").map(p => p.replace(/'/g, "").split("="));
-        return parts;
-      });
-      var entries = [];
-      for (var i in entryList) {        
-        var entry = {};
-        for (var j in entryList[i]) {
-          if (entryList[i][j][1] !== "") {
-            entry[entryList[i][j][0]] = entryList[i][j][1];
-          }
+    const syslogs = logs?.[0]?.system_logs ?? logs?.[0]?.systemLogs;
+    if (Array.isArray(syslogs)) {
+      const entries = syslogs.map(item => {
+        const entry = {};
+        for (const [, key, value] of item.matchAll(/(\S+)='((?:\\'|[^'])*)'/g)) {
+          if (value !== "") entry[key] = value.replace(/\\'/g, "'");
         }
-        entries.push(entry);
-      }
+        return entry;
+      });
       return (
         <div style={{padding: '40px 0px 0px 0px'}}>
           {renderTitle('System Logs')}
@@ -263,7 +253,7 @@ function TaskInfoRaw(props) {
             {renderRow('State', task.state)}
             {renderRow('Description', task.description)}
             {renderResources(task.resources)}
-            {renderRow('Creation Time', task.creationTime, formatDate)}
+            {renderRow('Creation Time', task.creationTime ?? task.creation_time, formatDate)}
             {renderRow('Elapsed Time', task, elapsedTime)}
           </TableBody>
         </Table>

@@ -3,6 +3,7 @@ package cmd
 
 import (
 	"github.com/calypr/funnel/cmd/aws"
+	"github.com/calypr/funnel/cmd/debug"
 	"github.com/calypr/funnel/cmd/examples"
 	"github.com/calypr/funnel/cmd/gce"
 	"github.com/calypr/funnel/cmd/kubernetes"
@@ -26,6 +27,7 @@ var RootCmd = &cobra.Command{
 
 func init() {
 	RootCmd.AddCommand(aws.Cmd)
+	RootCmd.AddCommand(debug.NewCommand())
 	RootCmd.AddCommand(examples.Cmd)
 	RootCmd.AddCommand(gce.Cmd)
 	RootCmd.AddCommand(kubernetes.Cmd)

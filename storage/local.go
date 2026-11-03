@@ -146,7 +146,7 @@ func copyFile(ctx context.Context, source string, dest string) (err error) {
 	if err != nil {
 		return fmt.Errorf("failed to open source file for copying: %v", err)
 	}
-	defer sf.Close()
+	defer sf.Close() //nolint:errcheck // The copy reports source read failures; closing the input file is cleanup only.
 
 	// Create and open dest file for writing
 	df, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0775)

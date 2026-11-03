@@ -2,6 +2,7 @@ package badger
 
 import (
 	"fmt"
+	"log"
 
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/util/fsutil"
@@ -33,7 +34,10 @@ func (db *Badger) Init() error {
 }
 
 func (db *Badger) Close() {
-	db.db.Close()
+	err := db.db.Close()
+	if err != nil {
+		log.Printf("closing Badger database: %v", err)
+	}
 }
 
 var taskKeyPrefix = []byte("tasks")

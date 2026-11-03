@@ -32,7 +32,7 @@ func TestParseJwtSubjectValidatesOIDCTokens(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		jwksRequests.Add(1)
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"keys": []map[string]string{{
+		err := json.NewEncoder(w).Encode(map[string]any{"keys": []map[string]string{{
 			"kty": "RSA",
 			"use": "sig",
 			"kid": "test-key",
@@ -40,6 +40,9 @@ func TestParseJwtSubjectValidatesOIDCTokens(t *testing.T) {
 			"n":   base64.RawURLEncoding.EncodeToString(key.N.Bytes()),
 			"e":   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.E)).Bytes()),
 		}}})
+		if err != nil {
+			t.Errorf("write JWKS fixture: %v", err)
+		}
 	}))
 	defer server.Close()
 

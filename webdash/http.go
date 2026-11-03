@@ -45,6 +45,6 @@ func RootHandler() http.Handler {
 			http.Error(resp, "web dashboard assets unavailable", http.StatusInternalServerError)
 			return
 		}
-		_, _ = resp.Write(b)
+		_, _ = resp.Write(b) //nolint:errcheck // Static response delivery cannot recover from a client write failure.
 	})
 }

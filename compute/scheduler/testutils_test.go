@@ -3,7 +3,6 @@ package scheduler
 import (
 	"context"
 	"fmt"
-	"os"
 	"testing"
 	"time"
 
@@ -19,16 +18,21 @@ type testNode struct {
 	*NodeProcess
 	Client *MockClient
 	done   chan struct{}
+	runErr chan error
 }
 
 func newTestNode(conf *config.Config, t *testing.T) testNode {
-	workDir, _ := os.MkdirTemp("", "funnel-test-storage-")
+	t.Helper()
+	workDir := t.TempDir()
 	conf.Worker.WorkDir = workDir
 	log := logger.NewLogger("test-node", logger.DebugConfig())
 
 	// A mock scheduler client allows this code to fake/control the worker's
 	// communication with a scheduler service.
-	res, _ := detectResources(conf.Node, conf.Worker.WorkDir)
+	res, err := detectResources(conf.Node, conf.Worker.WorkDir)
+	if err != nil {
+		t.Fatal(err)
+	}
 	s := new(MockClient)
 	n := &NodeProcess{
 		conf:          conf,
@@ -53,6 +57,7 @@ func newTestNode(conf *config.Config, t *testing.T) testNode {
 		NodeProcess: n,
 		Client:      s,
 		done:        make(chan struct{}),
+		runErr:      make(chan error, 1),
 	}
 }
 
@@ -61,14 +66,15 @@ func (t *testNode) Start() context.CancelFunc {
 	t.Client.On("GetNode", mock.Anything, mock.Anything, mock.Anything).
 		Return(emptyNodeResponse, nil)
 	go func() {
-		t.NodeProcess.Run(ctx)
+		t.runErr <- t.NodeProcess.Run(ctx)
 		close(t.done)
 	}()
 	return cancel
 }
 
-func (t *testNode) Wait() {
+func (t *testNode) Wait() error {
 	<-t.done
+	return <-t.runErr
 }
 
 func emptyNodeResponse(context.Context, *GetNodeRequest, ...grpc.CallOption) *Node {

@@ -172,7 +172,9 @@ func getTaskView(tx *bolt.Tx, id string, view tes.View, ctx context.Context) (*t
 
 // ListTasks returns a list of taskIDs
 func (taskBolt *BoltDB) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*tes.ListTasksResponse, error) {
-	var tasks []*tes.Task
+	page := tes.NewTaskPage(ctx)
+	count := 0
+	byteLimited := false
 	// If the tags filter request is non-nil we need the basic or full view
 	view := req.View
 	if req.View == tes.Minimal.String() && req.GetTags() != nil {
@@ -224,26 +226,30 @@ func (taskBolt *BoltDB) ListTasks(ctx context.Context, req *tes.ListTasksRequest
 			}
 
 			if viewMode != tes.View_BASIC {
-				task, _ = getTaskView(tx, taskId, viewMode, ctx)
+				task, err = getTaskView(tx, taskId, viewMode, ctx)
+				if err != nil {
+					return err
+				}
 			}
 
-			tasks = append(tasks, task)
+			accepted, err := page.Add(task, taskId)
+			if err != nil {
+				return err
+			}
+			if !accepted {
+				byteLimited = true
+				break taskLoop
+			}
+			count++
 			i++
 		}
 		return nil
 	}); err != nil {
 		taskBolt.log.Error("listing tasks", "error", err)
+		return nil, err
 	}
 
-	out := tes.ListTasksResponse{
-		Tasks: tasks,
-	}
-
-	if len(tasks) == pageSize {
-		out.NextPageToken = tasks[len(tasks)-1].Id
-	}
-
-	return &out, nil
+	return page.Finish(byteLimited || count == pageSize), nil
 }
 
 func checkOwner(tx *bolt.Tx, taskId string, ctx context.Context) error {

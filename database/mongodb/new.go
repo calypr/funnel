@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
+	"net/url"
 	"strings"
 
 	"github.com/calypr/funnel/compute/scheduler"
@@ -27,11 +29,22 @@ func NewMongoDB(conf *config.MongoDB) (*MongoDB, error) {
 		SetHosts(conf.Addrs).
 		SetAppName("funnel")
 
+	hasCredentials := conf.Username != "" && conf.Password != ""
 	if len(conf.Addrs) == 1 && (strings.HasPrefix(conf.Addrs[0], "mongodb://") || strings.HasPrefix(conf.Addrs[0], "mongodb+srv://")) {
-		opts = options.Client().ApplyURI(conf.Addrs[0]).SetAppName("funnel")
-	}
-
-	if len(conf.Username) > 0 && len(conf.Password) > 0 {
+		uri := conf.Addrs[0]
+		if hasCredentials {
+			scheme, address, _ := strings.Cut(uri, "://")
+			authority, suffix := address, ""
+			if i := strings.IndexAny(address, "/?"); i >= 0 {
+				authority, suffix = address[:i], address[i:]
+			}
+			if i := strings.LastIndex(authority, "@"); i >= 0 {
+				authority = authority[i+1:]
+			}
+			uri = scheme + "://" + url.UserPassword(conf.Username, conf.Password).String() + "@" + authority + suffix
+		}
+		opts = options.Client().ApplyURI(uri).SetAppName("funnel")
+	} else if hasCredentials {
 		opts = opts.SetAuth(options.Credential{
 			Username: conf.Username,
 			Password: conf.Password,
@@ -69,7 +82,7 @@ func (db *MongoDB) nodes() *mongo.Collection {
 }
 
 func (db *MongoDB) tasks() *mongo.Collection {
-	return db.collection("tasks")
+	return db.database.Collection("tasks", options.Collection().SetRegistry(taskRegistry))
 }
 
 // Init creates tables in MongoDB.
@@ -129,7 +142,10 @@ func (db *MongoDB) Close() {
 	if db.active {
 		ctx, cancel := db.context()
 		defer cancel()
-		_ = db.client.Disconnect(ctx)
+		err := db.client.Disconnect(ctx)
+		if err != nil {
+			log.Printf("disconnecting MongoDB client: %v", err)
+		}
 	}
 	db.active = false
 }

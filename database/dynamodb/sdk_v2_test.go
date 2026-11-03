@@ -67,12 +67,26 @@ func TestDynamoDBTaskWireFormat(t *testing.T) {
 		}
 	})
 	task := &tes.Task{Id: "task-1", State: tes.Queued, CreationTime: "2026-10-15T00:00:00Z", Tags: map[string]string{"empty": ""}, Resources: &tes.Resources{CpuCores: 2, RamGb: 4}, Inputs: []*tes.Input{{Path: "/input", Content: "inline content"}}}
+	task.Outputs = []*tes.Output{
+		{Path: "/outputs/inferred"},
+		{Path: "/outputs/file", Type: tes.File.Enum()},
+		{Path: "/outputs/directory", Type: tes.Directory.Enum()},
+	}
 	if err := db.WriteEvent(t.Context(), events.NewTaskCreated(task)); err != nil {
 		t.Fatal(err)
 	}
 	got, err := db.GetTask(t.Context(), &tes.GetTaskRequest{Id: task.Id, View: tes.View_BASIC.String()})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(got.Outputs) != len(task.Outputs) {
+		t.Fatalf("outputs lost during storage: %v", got.Outputs)
+	}
+	for i, output := range got.Outputs {
+		want := task.Outputs[i]
+		if (output.Type == nil) != (want.Type == nil) || output.GetType() != want.GetType() {
+			t.Fatalf("output %d type changed during storage: got %v, want %v", i, output, want)
+		}
 	}
 	if got.Id != task.Id || got.CreationTime != task.CreationTime || got.Resources.CpuCores != 2 || contentWrites != 1 {
 		t.Fatalf("task round trip changed %v, content writes %d", got, contentWrites)
@@ -145,5 +159,35 @@ func TestDynamoDBFullViewPagination(t *testing.T) {
 	}
 	if queries != 5 || contentPages != 2 || task.Inputs[0].Content != "first" || task.Inputs[1].Content != "second" || task.Logs[0].Logs[0].Stdout != "stdout text" || task.Logs[0].Logs[0].Stderr != "stderr text" || task.Logs[0].SystemLogs[0] != "system text" {
 		t.Fatalf("incomplete full view %v, queries %d", task, queries)
+	}
+}
+
+func TestDynamoDBFullViewRejectsInvalidContentIndex(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		index string
+	}{
+		{name: "nonnumeric", index: "not-a-number"},
+		{name: "out-of-range", index: "1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := fixtureDB(t, func(operation string, request map[string]json.RawMessage) string {
+				if operation == "GetItem" {
+					return `{"Item":{"id":{"S":"task-1"},"inputs":{"L":[{"M":{"path":{"S":"/input"}}}]},"logs":{"L":[]}}}`
+				}
+				if operation != "Query" {
+					t.Fatalf("unexpected operation %s", operation)
+				}
+				if string(request["TableName"]) != `"content"` {
+					return `{"Items":[]}`
+				}
+				return fmt.Sprintf(`{"Items":[{"index":{"N":%q},"content":{"S":"wrong input"}}]}`, tc.index)
+			})
+
+			_, err := db.GetTask(t.Context(), &tes.GetTaskRequest{Id: "task-1", View: tes.View_FULL.String()})
+			if err == nil {
+				t.Fatalf("GetTask accepted invalid DynamoDB content index %q", tc.index)
+			}
+		})
 	}
 }

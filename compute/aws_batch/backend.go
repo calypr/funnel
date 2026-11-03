@@ -7,22 +7,37 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/batch"
 	"github.com/aws/aws-sdk-go-v2/service/batch/types"
+	"github.com/calypr/funnel/compute"
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/events"
 	"github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/tes"
 	util "github.com/calypr/funnel/util/aws"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const defaultBatchRetryMaxAttempts = 4
 
 // NewBackend returns a new local Backend instance.
 func NewBackend(ctx context.Context, conf *config.AWSBatch, reader tes.ReadOnlyServer, writer events.Writer, log *logger.Logger) (*Backend, error) {
+	if conf == nil {
+		return nil, fmt.Errorf("AWSBatch configuration is required")
+	}
+	err := compute.ValidateReconcileRate("AWSBatch.ReconcileRate", conf.DisableReconciler, conf.ReconcileRate)
+	if err != nil {
+		return nil, err
+	}
+	if conf.AWSConfig == nil {
+		return nil, fmt.Errorf("AWSBatch.AWSConfig is required")
+	}
+
 	sess, err := util.NewAWSConfig(ctx, conf.AWSConfig)
 	if err != nil {
 		return nil, fmt.Errorf("error occurred creating batch client: %v", err)
@@ -79,6 +94,27 @@ func (b *Backend) WriteEvent(ctx context.Context, ev *events.Event) error {
 	return nil
 }
 
+func (b *Backend) BackendParameterKeys() []string {
+	return []string{"gpu_count", "job_definition", "job_queue"}
+}
+
+func (b *Backend) CheckBackendParameterSupport(task *tes.Task) error {
+	if _, err := tes.FilterBackendParameters(task.GetResources(), b.BackendParameterKeys()); err != nil {
+		return status.Error(codes.InvalidArgument, err.Error())
+	}
+	if _, err := tes.GPUCount(task.GetResources()); err != nil {
+		return status.Error(codes.InvalidArgument, err.Error())
+	}
+	for _, key := range []string{"job_queue", "job_definition"} {
+		if value, exists := task.GetResources().GetBackendParameters()[key]; exists {
+			if value == "" || strings.ContainsAny(value, "\r\n\t ") {
+				return status.Errorf(codes.InvalidArgument, "%s must be an AWS resource name or ARN", key)
+			}
+		}
+	}
+	return nil
+}
+
 func (b *Backend) Close() {
 	b.database.Close()
 	b.event.Close()
@@ -90,6 +126,14 @@ func (b *Backend) Submit(task *tes.Task) error {
 }
 
 func (b *Backend) submit(ctx context.Context, task *tes.Task) error {
+	if err := b.CheckBackendParameterSupport(task); err != nil {
+		return err
+	}
+	gpuCount, err := tes.GPUCount(task.Resources)
+	if err != nil {
+		return status.Error(codes.InvalidArgument, err.Error())
+	}
+
 	req := &batch.SubmitJobInput{
 		// JobDefinition: aws.String(b.jobDef),
 		JobDefinition: aws.String(b.conf.JobDefinition),
@@ -107,19 +151,33 @@ func (b *Backend) submit(ctx context.Context, task *tes.Task) error {
 	if task.Resources != nil {
 		ram := int64(task.Resources.RamGb * 953.674)
 		if ram > 0 {
-			req.ContainerOverrides.Memory = aws.Int32(int32(ram))
-			req.ContainerOverrides.ResourceRequirements = []types.ResourceRequirement{
-				{
-					Type:  types.ResourceTypeMemory,
-					Value: aws.String(strconv.FormatInt(ram, 10)),
-				},
-			}
+			req.ContainerOverrides.ResourceRequirements = append(req.ContainerOverrides.ResourceRequirements, types.ResourceRequirement{
+				Type:  types.ResourceTypeMemory,
+				Value: aws.String(strconv.FormatInt(ram, 10)),
+			})
 		}
 
 		vcpus := int64(task.Resources.CpuCores)
 		if vcpus > 0 {
-			req.ContainerOverrides.Vcpus = aws.Int32(int32(vcpus))
+			req.ContainerOverrides.ResourceRequirements = append(req.ContainerOverrides.ResourceRequirements, types.ResourceRequirement{
+				Type:  types.ResourceTypeVcpu,
+				Value: aws.String(strconv.FormatInt(vcpus, 10)),
+			})
 		}
+	}
+	if gpuCount > 0 {
+		req.ContainerOverrides.ResourceRequirements = append(req.ContainerOverrides.ResourceRequirements, types.ResourceRequirement{
+			Type:  types.ResourceTypeGpu,
+			Value: aws.String(strconv.Itoa(gpuCount)),
+		})
+	}
+
+	parameters := task.GetResources().GetBackendParameters()
+	if value := parameters["job_queue"]; value != "" {
+		req.JobQueue = aws.String(value)
+	}
+	if value := parameters["job_definition"]; value != "" {
+		req.JobDefinition = aws.String(value)
 	}
 
 	resp, err := b.client.SubmitJob(ctx, req)

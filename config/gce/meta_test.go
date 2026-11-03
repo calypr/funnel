@@ -40,13 +40,16 @@ func TestGetMetadata(t *testing.T) {
 		if v, ok := r.URL.Query()["recursive"]; !ok || v[0] != "true" {
 			t.Fatal("Expected recursive query")
 		}
-		w.Write(loadTestData("metadata1"))
+		w.Write(loadTestData("metadata1")) //nolint:errcheck // Fixture response is unused once the test client disconnects.
 	})
 	defer ts.Close()
 
 	var cerr error
 	conf := config.DefaultConfig()
-	meta, _ := LoadMetadataFromURL("http://localhost:20002")
+	meta, err := LoadMetadataFromURL("http://localhost:20002")
+	if err != nil {
+		t.Fatal(err)
+	}
 	conf, cerr = WithMetadataConfig(conf, meta)
 	if cerr != nil {
 		t.Fatal(cerr)

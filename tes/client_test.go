@@ -4,6 +4,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -33,16 +34,18 @@ func TestAddressTrailingSlash(t *testing.T) {
 }
 
 func TestGetTask(t *testing.T) {
-	var err error
-
 	// Set up test server response
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/tasks/test-id", func(w http.ResponseWriter, r *http.Request) {
 		ta := Task{Id: "test-id"}
-		o, _ := Marshaler.Marshal(&ta)
+		o, err := Marshaler.Marshal(&ta)
+		if err != nil {
+			t.Errorf("marshal response: %v", err)
+			return
+		}
 		_, err = w.Write(o)
 		if err != nil {
-			t.Fatal(err)
+			t.Errorf("write response: %v", err)
 		}
 	})
 
@@ -68,16 +71,18 @@ func TestGetTask(t *testing.T) {
 }
 
 func TestGetTaskTrailingSlash(t *testing.T) {
-	var err error
-
 	// Set up test server response
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/tasks/test-id", func(w http.ResponseWriter, r *http.Request) {
 		ta := Task{Id: "test-id"}
-		o, _ := Marshaler.Marshal(&ta)
+		o, err := Marshaler.Marshal(&ta)
+		if err != nil {
+			t.Errorf("marshal response: %v", err)
+			return
+		}
 		_, err = w.Write(o)
 		if err != nil {
-			t.Fatal(err)
+			t.Errorf("write response: %v", err)
 		}
 	})
 
@@ -126,5 +131,16 @@ func TestClientTimeout(t *testing.T) {
 	close(ch)
 	if err == nil {
 		t.Fatal("Request did not timeout.")
+	}
+}
+
+func TestClientReturnsMalformedEndpointError(t *testing.T) {
+	c, err := NewClient("http://bad host")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = c.GetTask(context.Background(), &GetTaskRequest{Id: "test-id"})
+	if err == nil || !strings.Contains(err.Error(), "creating GET request") {
+		t.Fatalf("GetTask error = %v, want request construction error", err)
 	}
 }

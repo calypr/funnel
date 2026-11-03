@@ -18,7 +18,7 @@ func writeRootDownloadedFilePlatform(ctx context.Context, parent *os.Root, name 
 	if err != nil {
 		return fmt.Errorf("pin destination directory: %w", err)
 	}
-	defer dir.Close()
+	defer dir.Close() //nolint:errcheck // The pinned destination directory has no pending writes when it is closed.
 	mountpoint, err := isMountpointDirectory(dir)
 	if err != nil {
 		return fmt.Errorf("identify destination filesystem: %w", err)
@@ -59,7 +59,7 @@ func isMountpointDirectory(dir *os.File) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	defer mounts.Close()
+	defer mounts.Close() //nolint:errcheck // Closing the read-only proc metadata stream cannot change the mount decision.
 	return mountpointMountID(mounts, mountID)
 }
 
@@ -91,7 +91,7 @@ func writeMountpointDownload(ctx context.Context, parent *os.File, name string, 
 	if err != nil {
 		return fmt.Errorf("open local temporary directory: %w", err)
 	}
-	defer temporary.Close()
+	defer temporary.Close() //nolint:errcheck // The temporary directory handle only scopes staging path creation.
 	var filesystem unix.Statfs_t
 	if err := unix.Fstatfs(int(temporary.Fd()), &filesystem); err != nil {
 		return fmt.Errorf("identify temporary directory filesystem: %w", err)

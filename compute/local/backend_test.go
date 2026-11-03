@@ -77,3 +77,35 @@ func TestBackendParamatersStrictFail(t *testing.T) {
 		assert.True(t, strings.Contains(err.Error(), "backend parameters not supported: foo"))
 	}
 }
+
+func TestGPUBackendParameter(t *testing.T) {
+	b := createBackend(nil)
+	for _, tc := range []struct {
+		value  string
+		strict bool
+		valid  bool
+	}{
+		{"2", true, true}, {"0", true, false}, {"-1", false, false},
+	} {
+		err := b.CheckBackendParameterSupport(createTask(&tes.Resources{BackendParameters: map[string]string{"gpu_count": tc.value}, BackendParametersStrict: tc.strict}))
+		if (err == nil) != tc.valid {
+			t.Errorf("gpu_count=%q strict=%v: %v", tc.value, tc.strict, err)
+		}
+	}
+}
+
+func TestGPUDeviceValidationBeforeExecution(t *testing.T) {
+	b := createBackend(nil)
+	for _, params := range []map[string]string{
+		{"gpu_devices": "all"},
+		{"gpu_devices": "0,0"},
+		{"gpu_count": "2", "gpu_devices": "0"},
+	} {
+		if err := b.CheckBackendParameterSupport(createTask(&tes.Resources{BackendParameters: params})); err == nil {
+			t.Errorf("accepted invalid GPU device request %v", params)
+		}
+	}
+	if err := b.CheckBackendParameterSupport(createTask(&tes.Resources{BackendParametersStrict: true, BackendParameters: map[string]string{"GPU_DEVICES": "0,2"}})); err != nil {
+		t.Fatal(err)
+	}
+}

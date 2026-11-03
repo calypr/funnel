@@ -66,7 +66,10 @@ func (c *CustomMarshal) Marshal(v interface{}) ([]byte, error) {
 }
 
 func (c *CustomMarshal) MarshalTask(task *tes.Task) ([]byte, error) {
-	view, _ := c.DetectView(task)
+	view, err := c.DetectView(task)
+	if err != nil {
+		return nil, err
+	}
 	newTask := c.TranslateTask(task, view)
 	return c.m.Marshal(newTask)
 }
@@ -77,7 +80,10 @@ func (c *CustomMarshal) MarshalList(list *tes.ListTasksResponse) ([]byte, error)
 	}
 
 	task := list.Tasks[0]
-	view, _ := c.DetectView(task)
+	view, err := c.DetectView(task)
+	if err != nil {
+		return nil, err
+	}
 
 	if view == tes.View_MINIMAL {
 		minList := &tes.ListTasksResponseMin{}

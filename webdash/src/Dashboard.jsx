@@ -20,7 +20,7 @@ const drawerWidth = 260;
 
 function Dashboard() {
   const location = useLocation();
-  const [tagsFilter, setTagsFilter] = React.useState([{key: "", value: ""}]);
+  const [tagsFilter, setTagsFilter] = React.useState([]);
   const [stateFilter, setStateFilter] = React.useState("");
   const [pageToken, setPageToken] = React.useState("");
   const [pageSize, setPageSize] = React.useState(25);
@@ -54,7 +54,10 @@ function Dashboard() {
       <AppBar
         position="fixed"
         sx={theme => ({
-          backgroundColor: '#000000',
+          backgroundColor: '#ffffff',
+          color: '#222222',
+          boxShadow: 'none',
+          borderBottom: '1px solid #e2e2e2',
           zIndex: theme.zIndex.drawer + 1,
           transition: theme.transitions.create(['width', 'margin'], {
             easing: theme.transitions.easing.sharp,
@@ -86,7 +89,8 @@ function Dashboard() {
             noWrap
             sx={{ flexGrow: 1 }}
           >
-            Funnel
+            <Box component="span" className="brand-name">Funnel</Box>
+            <Box component="span" className="brand-description">TASK EXECUTION</Box>
           </Typography>
         </Toolbar>
       </AppBar>
@@ -96,6 +100,8 @@ function Dashboard() {
           paper: {
             sx: theme => ({
               position: 'relative',
+              backgroundColor: '#f8f8f8',
+              borderRight: '1px solid #e2e2e2',
               whiteSpace: 'nowrap',
               width: drawerWidth,
               overflowX: 'wrap',
@@ -116,7 +122,7 @@ function Dashboard() {
           padding: '0 8px',
           ...theme.mixins.toolbar,
         })}>
-          <IconButton onClick={handleDrawerClose}>
+          <IconButton onClick={handleDrawerClose} aria-label="Close drawer">
             <ChevronLeftIcon />
           </IconButton>
         </Box>
@@ -133,7 +139,9 @@ function Dashboard() {
       </Drawer>
       <Box component="main" sx={theme => ({
         flexGrow: 1,
-        padding: theme.spacing(3),
+        minWidth: 0,
+        padding: { xs: theme.spacing(2), md: theme.spacing(4) },
+        backgroundColor: '#f5f5f5',
         height: '100vh',
         overflow: 'auto',
       })}>

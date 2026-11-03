@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/calypr/funnel/compute/scheduler"
 	"github.com/calypr/funnel/tes"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -18,6 +19,9 @@ const (
 	modeSort
 	modeHelp
 	modeExpanded
+	modeNodes
+	modeNodeExpanded
+	modeConfirmCancel
 )
 
 // tickMsg drives the auto-refresh loop.
@@ -43,6 +47,18 @@ type fetchedTaskMsg struct {
 	err  error
 }
 
+type fetchedNodesMsg struct {
+	nodes      []*scheduler.Node
+	workers    []taskWorker
+	nodesErr   error
+	workersErr error
+}
+
+type canceledTaskMsg struct {
+	id  string
+	err error
+}
+
 type dashboard struct {
 	source *TaskSource
 
@@ -61,8 +77,15 @@ type dashboard struct {
 	allTasks   bool
 	showHeader bool
 
-	listInFlight bool
-	pendingLists []listAction
+	listInFlight   bool
+	pendingLists   []listAction
+	nodes          []*scheduler.Node
+	taskWorkers    []taskWorker
+	nodeSelected   int
+	nodesInFlight  bool
+	nodesLastFetch time.Time
+	cancelID       string
+	message        string
 
 	// expanded view
 	expandedID   string
@@ -144,6 +167,18 @@ func fetchTask(src *TaskSource, id string) tea.Cmd {
 	}
 }
 
+func fetchNodes(src *TaskSource) tea.Cmd {
+	return func() tea.Msg {
+		nodes, nodesErr := src.Nodes()
+		workers, workersErr := src.TaskWorkers()
+		return fetchedNodesMsg{nodes: nodes, workers: workers, nodesErr: nodesErr, workersErr: workersErr}
+	}
+}
+
+func cancelTask(src *TaskSource, id string) tea.Cmd {
+	return func() tea.Msg { return canceledTaskMsg{id: id, err: src.Cancel(id)} }
+}
+
 func (d *dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -155,6 +190,10 @@ func (d *dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		if d.mode == modeList {
 			cmd = d.requestList(listCurrent)
+		} else if d.mode == modeNodes && !d.nodesInFlight && time.Since(d.nodesLastFetch) >= 10*time.Second {
+			d.nodesInFlight = true
+			d.nodesLastFetch = time.Now()
+			cmd = fetchNodes(d.source)
 		}
 		return d, tea.Batch(cmd, tick())
 
@@ -175,6 +214,39 @@ func (d *dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			d.clampOffset()
 		}
 		return d, d.nextListCmd()
+
+	case fetchedNodesMsg:
+		d.nodesInFlight = false
+		if d.mode != modeNodes && d.mode != modeNodeExpanded {
+			return d, nil
+		}
+		d.err = ""
+		if msg.nodesErr != nil {
+			d.err = msg.nodesErr.Error()
+		} else {
+			d.nodes = msg.nodes
+		}
+		if msg.workersErr != nil {
+			if d.err != "" {
+				d.err += "; "
+			}
+			d.err += msg.workersErr.Error()
+		} else {
+			d.taskWorkers = msg.workers
+		}
+		if d.nodeSelected >= len(d.nodes)+len(d.taskWorkers) {
+			d.nodeSelected = maxInt(0, len(d.nodes)+len(d.taskWorkers)-1)
+		}
+		return d, nil
+
+	case canceledTaskMsg:
+		if msg.err != nil {
+			d.err = msg.err.Error()
+		} else {
+			d.err = ""
+			d.message = "Cancellation requested for " + msg.id
+		}
+		return d, d.requestList(listCurrent)
 
 	case fetchedTaskMsg:
 		if msg.err != nil {
@@ -198,6 +270,20 @@ func (d *dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return d, nil
 		case modeExpanded:
 			return d.updateExpanded(msg)
+		case modeNodes:
+			return d.updateNodes(msg)
+		case modeNodeExpanded:
+			return d.updateNodeExpanded(msg)
+		case modeConfirmCancel:
+			id := d.cancelID
+			d.mode = modeList
+			if msg.String() == "y" || msg.String() == "Y" {
+				return d, cancelTask(d.source, id)
+			}
+			if msg.String() == "ctrl+c" {
+				return d, tea.Quit
+			}
+			return d, nil
 		default:
 			return d.updateList(msg)
 		}
@@ -225,6 +311,21 @@ func (d *dashboard) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if t := d.selectedTask(); t != nil {
 			return d, fetchTask(d.source, t.Id)
 		}
+	case "c":
+		if t := d.selectedTask(); t != nil {
+			d.message = ""
+			d.cancelID = t.Id
+			d.mode = modeConfirmCancel
+		}
+	case "w":
+		d.mode = modeNodes
+		d.err = ""
+		if d.nodesInFlight {
+			return d, nil
+		}
+		d.nodesInFlight = true
+		d.nodesLastFetch = time.Now()
+		return d, fetchNodes(d.source)
 	case "n":
 		if d.listInFlight || d.source.NextPageToken() != "" {
 			return d, d.requestList(listNext)
@@ -250,6 +351,49 @@ func (d *dashboard) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "h", "?":
 		d.mode = modeHelp
 	case "q", "esc", "ctrl+c":
+		return d, tea.Quit
+	}
+	return d, nil
+}
+
+func (d *dashboard) updateNodes(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "up", "k":
+		if d.nodeSelected > 0 {
+			d.nodeSelected--
+		}
+	case "down", "j":
+		if d.nodeSelected+1 < len(d.nodes)+len(d.taskWorkers) {
+			d.nodeSelected++
+		}
+	case "enter":
+		if len(d.nodes)+len(d.taskWorkers) > 0 {
+			d.mode = modeNodeExpanded
+			d.expOffset = 0
+		}
+	case "q", "esc", "w":
+		d.mode = modeList
+		d.err = ""
+		return d, d.requestList(listCurrent)
+	case "ctrl+c":
+		return d, tea.Quit
+	}
+	return d, nil
+}
+
+func (d *dashboard) updateNodeExpanded(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "up", "k":
+		d.expOffset = maxInt(0, d.expOffset-1)
+	case "down", "j":
+		d.expOffset++
+	case "pgup":
+		d.expOffset = maxInt(0, d.expOffset-d.expMaxLines())
+	case "pgdown":
+		d.expOffset += d.expMaxLines()
+	case "esc", "q", "h":
+		d.mode = modeNodes
+	case "ctrl+c":
 		return d, tea.Quit
 	}
 	return d, nil
@@ -340,6 +484,9 @@ func (d *dashboard) maxRows() int {
 	}
 	if d.err != "" {
 		rows-- // error line
+	}
+	if d.message != "" && d.showHeader {
+		rows--
 	}
 	if rows < 1 {
 		rows = 1

@@ -8,11 +8,11 @@ import (
 )
 
 func TestZonesFitEmptyTask(t *testing.T) {
-	testEmptyTask(t, ZonesFit, "ZonesFit")
+	testEmptyTask(t, ZonesFit, "ZonesFit", false)
 }
 
 func TestResourcesFitEmptyTask(t *testing.T) {
-	testEmptyTask(t, ResourcesFit, "ResourcesFit")
+	testEmptyTask(t, ResourcesFit, "ResourcesFit", true)
 }
 
 func TestCpuResourcesFit(t *testing.T) {
@@ -56,7 +56,7 @@ func TestCpuResourcesFit(t *testing.T) {
 
 // testEmptyTask tests that the predicates all handle an empty task.
 // Protects against nil-pointer panics.
-func testEmptyTask(t *testing.T, p Predicate, name string) {
+func testEmptyTask(t *testing.T, p Predicate, name string, wantError bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			t.Errorf("Predicate panic: %s\n%s", name, debug.Stack())
@@ -65,5 +65,8 @@ func testEmptyTask(t *testing.T, p Predicate, name string) {
 
 	j := &tes.Task{}
 	w := &Node{}
-	p(j, w)
+	err := p(j, w)
+	if (err != nil) != wantError {
+		t.Errorf("%s returned error %v, want error = %t", name, err, wantError)
+	}
 }
