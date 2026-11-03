@@ -48,8 +48,11 @@ function TaskList({pageToken, setPageToken,
   };
 
   React.useEffect(() => {
-    var url = new URL("/v1/tasks" + window.location.search, window.location.origin);
+    var url = new URL("/v1/tasks", window.location.origin);
     var params = url.searchParams;
+    for (const [key, value] of new URLSearchParams(window.location.search)) {
+      params.append(key, value);
+    }
     params.set("view", "BASIC");
     params.set("pageSize", pageSize);
     if (stateFilter !== "") {
@@ -325,7 +328,7 @@ function Task() {
   //const [task, setTask] = React.useState(example_task);
 
   React.useEffect(() => {
-    var url = new URL("/v1/tasks/" + task_id, window.location.origin);
+    var url = new URL("/v1/tasks/" + encodeURIComponent(task_id), window.location.origin);
     get(url).then(
       (task) => {
         setTask(task);
@@ -372,7 +375,7 @@ function Node() {
   //const [node, setNode] = React.useState(example_node);
 
   React.useEffect(() => {
-    var url = new URL("/v1/nodes/" + node_id, window.location.origin);
+    var url = new URL("/v1/nodes/" + encodeURIComponent(node_id), window.location.origin);
     get(url).then(
       (node) => {
         setNode(node);
