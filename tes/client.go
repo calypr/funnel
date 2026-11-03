@@ -25,6 +25,7 @@ import (
 func NewClient(address string) (*Client, error) {
 	user := os.Getenv("FUNNEL_SERVER_USER")
 	password := os.Getenv("FUNNEL_SERVER_PASSWORD")
+	token := os.Getenv("FUNNEL_SERVER_TOKEN")
 
 	re := regexp.MustCompile("^(.+://)?(.[^/]+)(.+)?$")
 	endpoint := re.ReplaceAllString(address, "$1$2")
@@ -46,6 +47,7 @@ func NewClient(address string) (*Client, error) {
 		Marshaler: &Marshaler,
 		User:      user,
 		Password:  password,
+		Token:     token,
 	}, nil
 }
 
@@ -56,10 +58,15 @@ type Client struct {
 	Marshaler *protojson.MarshalOptions
 	User      string
 	Password  string
+	Token     string
 }
 
 // do applies the credential policy at send time, including redirected requests.
 func (c *Client) do(req *http.Request) (*http.Response, error) {
+	if c.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+		return DoAuthenticatedRequest(c.client, req, "", "")
+	}
 	return DoAuthenticatedRequest(c.client, req, c.User, c.Password)
 }
 

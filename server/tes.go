@@ -198,6 +198,7 @@ func (ts *TaskService) CreateTask(ctx context.Context, task *tes.Task) (*tes.Cre
 
 	pluginResponse := ctx.Value("pluginResponse")
 	conf := ctx.Value("Config")
+	userID := GetUserID(ctx)
 
 	// dispatch to compute backend
 	ts.submitWG.Add(1)
@@ -217,7 +218,7 @@ func (ts *TaskService) CreateTask(ctx context.Context, task *tes.Task) (*tes.Cre
 
 		err := ts.Compute.WriteEvent(workerCtx, events.NewTaskCreated(task))
 		if err != nil {
-			ts.Log.Error("error submitting task to compute backend", "taskID", task.Id, "error", err)
+			ts.Log.Error("error submitting task to compute backend", "taskID", task.Id, "userID", userID, "error", err)
 			failureCtx, cancelFailure := context.WithTimeout(context.WithoutCancel(workerCtx), 10*time.Second)
 			defer cancelFailure()
 			if logErr := ts.Event.WriteEvent(failureCtx, events.NewSystemLog(
@@ -228,10 +229,10 @@ func (ts *TaskService) CreateTask(ctx context.Context, task *tes.Task) (*tes.Cre
 				ts.Log.Error("failed to write system log for compute backend submission error", "taskID", task.Id, "error", logErr)
 			}
 			if err := ts.Event.WriteEvent(failureCtx, events.NewState(task.Id, tes.SystemError)); err != nil {
-				ts.Log.Error("error writing SystemError event after compute backend submission failure", "taskID", task.Id, "error", err)
+				ts.Log.Error("error writing SystemError event after compute backend submission failure", "taskID", task.Id, "userID", userID, "error", err)
 			}
 		} else {
-			ts.Log.Debug("submitted task to compute backend", "taskID", task.Id)
+			ts.Log.Debug("submitted task to compute backend", "taskID", task.Id, "userID", userID)
 		}
 	}()
 
