@@ -65,7 +65,7 @@ func NewBackend(ctx context.Context, conf *config.AWSBatch, reader tes.ReadOnlyS
 // It allows for mocking in tests.
 type client interface {
 	SubmitJob(ctx context.Context, input *batch.SubmitJobInput, opts ...func(*batch.Options)) (*batch.SubmitJobOutput, error)
-	CancelJob(ctx context.Context, input *batch.CancelJobInput, opts ...func(*batch.Options)) (*batch.CancelJobOutput, error)
+	TerminateJob(ctx context.Context, input *batch.TerminateJobInput, opts ...func(*batch.Options)) (*batch.TerminateJobOutput, error)
 	DescribeJobs(ctx context.Context, input *batch.DescribeJobsInput, opts ...func(*batch.Options)) (*batch.DescribeJobsOutput, error)
 }
 
@@ -203,7 +203,7 @@ func (b *Backend) submit(ctx context.Context, task *tes.Task) error {
 	)
 }
 
-// Cancel removes tasks from the AWS batch job queue.
+// Cancel cancels queued jobs and terminates jobs that have already started.
 func (b *Backend) Cancel(ctx context.Context, taskID string) error {
 	task, err := b.database.GetTask(
 		ctx, &tes.GetTaskRequest{Id: taskID, View: tes.View_BASIC.String()},
@@ -212,17 +212,19 @@ func (b *Backend) Cancel(ctx context.Context, taskID string) error {
 		return err
 	}
 
-	// only cancel tasks in a QUEUED state
-	if task.State != tes.State_QUEUED {
-		return nil
-	}
-
 	backendID := getAWSTaskID(task)
 	if backendID == "" {
 		return fmt.Errorf("no AWS Batch ID found in metadata for task %s", taskID)
 	}
+	jobs, err := b.client.DescribeJobs(ctx, &batch.DescribeJobsInput{Jobs: []string{backendID}})
+	if err != nil {
+		return err
+	}
+	if len(jobs.Jobs) != 1 || aws.ToString(jobs.Jobs[0].JobId) != backendID || jobs.Jobs[0].Parameters["taskID"] != taskID {
+		return fmt.Errorf("AWS Batch job is not bound to task %s", taskID)
+	}
 
-	_, err = b.client.CancelJob(ctx, &batch.CancelJobInput{
+	_, err = b.client.TerminateJob(ctx, &batch.TerminateJobInput{
 		JobId:  aws.String(backendID),
 		Reason: aws.String("User requested cancel"),
 	})

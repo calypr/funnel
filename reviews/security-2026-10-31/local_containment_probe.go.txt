@@ -1,0 +1,9 @@
+package main
+import("context";"fmt";"os";"path/filepath";"github.com/calypr/funnel/storage";"github.com/calypr/funnel/config")
+func must(e error){if e!=nil{panic(e)}}
+func main(){
+ base,e:=os.MkdirTemp("/tmp","funnel-containment-fixture-");must(e);defer os.RemoveAll(base)
+ allowed:=filepath.Join(base,"allowed");outside:=filepath.Join(base,"allowed-sibling");must(os.MkdirAll(allowed,0700));must(os.MkdirAll(outside,0700));must(os.WriteFile(filepath.Join(outside,"marker"),[]byte("synthetic-outside-marker"),0600));must(os.Symlink(outside,filepath.Join(allowed,"link")))
+ local,e:=storage.NewLocal(&config.LocalStorage{AllowedDirs:[]string{allowed}});must(e);mux:=&storage.Mux{Backends:[]storage.Storage{local}}
+ for i,relative:=range []string{"allowed-sibling/marker","allowed/../allowed-sibling/marker","allowed/link/marker"}{source:=base+"/"+relative;dest:=filepath.Join(base,fmt.Sprintf("copy-%d",i));_,e=mux.Get(context.Background(),source,dest);data,_:=os.ReadFile(dest);fmt.Printf("case=%s allowed=%t copied=%q error=%v\n",relative,local.UnsupportedOperations(source).Get==nil,data,e)}
+}

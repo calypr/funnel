@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"text/template"
-	"time"
 
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/logger"
@@ -74,33 +73,12 @@ func CreateServiceAccount(ctx context.Context, task *tes.Task, conf *config.Conf
 	return nil
 }
 
-// isServiceAccountAttachedToPods returns true if any active pod for any active pod
-// is still using the given ServiceAccount. Pods are skipped if they are terminating (DeletionTimestamp set)
-func isServiceAccountAttachedToPods(ctx context.Context, saName, namespace string, client kubernetes.Interface, log *logger.Logger) (bool, error) {
-	log.Debug("ServiceAccount", "Sleeping for 5s before ServiceAccount deletion to avoid Race Conditions...")
-	time.Sleep(5 * time.Second)
-	pods, err := client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
-		FieldSelector: fmt.Sprintf("spec.serviceAccountName=%s", saName),
-	})
-	if err != nil {
-		return false, fmt.Errorf("listing pods using ServiceAccount %s: %v", saName, err)
-	}
-	for _, pod := range pods.Items {
-		if pod.DeletionTimestamp == nil {
-			return true, nil
-		}
-	}
-
-	return false, nil
-}
-
 type DeleteServiceAccountOptions struct {
 	// ServiceAccountName overrides the default derived SA name (funnel-worker-$namespace-$taskID).
 	// Required when the SA is externally managed (e.g. a Gen3Workflow per-user SA).
 	ServiceAccountName string
 
-	// SharedSA indicates the SA is shared across tasks. When true, deletion is
-	// skipped if any other active pods are still using it.
+	// SharedSA marks an externally managed account that task cleanup must preserve.
 	SharedSA bool
 }
 
@@ -109,9 +87,7 @@ type DeleteServiceAccountOptions struct {
 // By default (no options), it targets the conventional SA name
 // funnel-worker-$namespace-$taskID and deletes it unconditionally.
 //
-// If opts.SharedSA is true, the SA is treated as shared — deletion is skipped
-// if any active pod is still using it, and the reconciler will retry on the
-// next pass when the last pod finishes.
+// Externally managed shared accounts retain their independent lifecycle.
 func DeleteServiceAccount(ctx context.Context, taskID, namespace string, client kubernetes.Interface, log *logger.Logger, opts *DeleteServiceAccountOptions) error {
 	saName := fmt.Sprintf("funnel-worker-%s-%s", namespace, taskID)
 	sharedSA := false
@@ -124,14 +100,7 @@ func DeleteServiceAccount(ctx context.Context, taskID, namespace string, client 
 	}
 
 	if sharedSA {
-		inUse, err := isServiceAccountAttachedToPods(ctx, saName, namespace, client, log)
-		if err != nil {
-			return fmt.Errorf("checking pod attachment for ServiceAccount %s: %v", saName, err)
-		}
-		if inUse {
-			log.Debug("skipping ServiceAccount deletion — still in use; reconciler will retry", "name", saName, "taskID", taskID)
-			return nil
-		}
+		return nil
 	}
 
 	log.Debug("deleting Worker ServiceAccount", "name", saName, "taskID", taskID)

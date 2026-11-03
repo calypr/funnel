@@ -1,8 +1,37 @@
 package config
 
 import (
+	"strings"
 	"testing"
+
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 )
+
+func TestSafeRedactsCredentialContainers(t *testing.T) {
+	c := &Config{
+		MongoDB: &MongoDB{Addrs: []string{"mongodb://user:fixture-mongo@db.example/tasks", "db.example:27017"}},
+		Worker:  &Worker{Container: &ContainerConfig{Env: map[string]string{"TOKEN": "fixture-env"}}},
+		Swift:   &SwiftStorage{AuthURL: "https://user:fixture-swift@swift.example/auth?key=fixture-query"},
+	}
+	before := proto.Clone(c)
+	safe := c.Safe()
+	body, err := protojson.Marshal(safe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{"fixture-mongo", "fixture-env", "fixture-swift", "fixture-query"} {
+		if strings.Contains(string(body), value) {
+			t.Errorf("safe serialization retains %s", value)
+		}
+	}
+	if safe.MongoDB.Addrs[1] != "db.example:27017" {
+		t.Error("plain MongoDB address was changed")
+	}
+	if !proto.Equal(c, before) {
+		t.Error("Safe mutated the original configuration")
+	}
+}
 
 var redacted = redact("example")
 

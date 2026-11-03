@@ -58,20 +58,13 @@ func newDebugInterceptor(log *logger.Logger) grpc.UnaryServerInterceptor {
 		handler grpc.UnaryHandler) (resp interface{}, err error) {
 		defer func() {
 			if value := recover(); value != nil {
-				log.Error("caught RPC panic", "panic", value, "method", info.FullMethod, "version", version.Version, "commit", version.GitCommit, "stack", string(debug.Stack()))
+				log.Error("caught RPC panic", "panic_type", fmt.Sprintf("%T", value), "method", info.FullMethod, "version", version.Version, "commit", version.GitCommit, "stack", string(debug.Stack()))
 				resp, err = nil, status.Error(codes.Internal, "internal server error")
 			}
 		}()
-		log.Debug(
-			"received: "+info.FullMethod,
-			"request", req,
-		)
+		log.Debug("received request", "method", info.FullMethod)
 		resp, err = handler(ctx, req)
-		log.Debug(
-			"responding: "+info.FullMethod,
-			"resp", resp,
-			"err", err,
-		)
+		log.Debug("completed request", "method", info.FullMethod, "status", status.Code(err).String())
 
 		return resp, err
 	}
@@ -179,6 +172,7 @@ func (s *Server) Serve(pctx context.Context) error {
 		}),
 		grpc.ChainUnaryInterceptor(
 			auth.Interceptor,
+			s.authorizeEventWrites,
 			newDebugInterceptor(s.Log),
 		),
 	)
@@ -406,6 +400,8 @@ func negotiate(req *http.Request) string {
 // Wrap the grpcMux with middleware that intercepts responses with custom messages
 func messageHandler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Match gRPC's default 4 MiB message budget before JSON normalization buffers the body.
+		r.Body = http.MaxBytesReader(w, r.Body, 4<<20)
 		// Create a response recorder to capture the response
 		rec := httptest.NewRecorder()
 		next.ServeHTTP(rec, r)

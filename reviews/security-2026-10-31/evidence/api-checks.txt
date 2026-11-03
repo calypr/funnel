@@ -1,0 +1,29 @@
+=== RUN   TestCrossOwnerEventsAndNodes
+    api_audit_test.go:21: bob read=permission denied state=permission denied metadata=<nil> stdout=<nil> exit=<nil>; alice metadata=map[audit:bob-controlled] stdout="bob-controlled-output" exit=99
+    api_audit_test.go:22: bob delete node=<nil>; alice subsequent get=rpc error: code = NotFound desc = not found: nodeID: victim-node
+--- PASS: TestCrossOwnerEventsAndNodes (0.13s)
+=== RUN   TestExecutionClaimOwnerProtection
+    api_audit_test.go:25: bob claim=<nil> error=permission denied
+    api_audit_test.go:25: alice claim=claimed:true error=<nil>
+--- PASS: TestExecutionClaimOwnerProtection (0.05s)
+=== RUN   TestBadgerRawCreateTakesOwnership
+badger 2026/10/31 19:33:45 INFO: All 0 tables opened in 0s
+badger 2026/10/31 19:33:45 INFO: Discard stats nextEmptySlot: 0
+badger 2026/10/31 19:33:45 INFO: Set nextTxnTs to 0
+    api_audit_test.go:27: bob read before=permission denied overwrite=<nil> read after=<nil> name=bob-overwrite state=COMPLETE; alice read after=permission denied
+badger 2026/10/31 19:33:45 INFO: Lifetime L0 stalled for: 0s
+badger 2026/10/31 19:33:45 INFO: 
+Level 0 [ ]: NumTables: 01. Size: 272 B of 0 B. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 64 MiB
+Level 1 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 2 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 3 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 4 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 5 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 6 [B]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level Done
+--- PASS: TestBadgerRawCreateTakesOwnership (0.06s)
+=== RUN   TestGRPCCrossOwnerEvent
+    api_audit_test.go:29: authenticated bob GRPC WriteEvent=<nil>; alice read=<nil> metadata=map[audit:bob-via-grpc]
+--- PASS: TestGRPCCrossOwnerEvent (0.05s)
+PASS
+ok  	command-line-arguments	0.789s

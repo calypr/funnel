@@ -17,7 +17,6 @@ func TestFTPStorage(t *testing.T) {
 	tests.SetLogOutput(log, t)
 	defer func() {
 		for _, path := range []string{
-			"./test_tmp",
 			"../ftp-test-server/_scratch/ftp-test/bob/test-output-directory",
 			"../ftp-test-server/_scratch/ftp-test/bob/test-output-file.txt",
 			"../ftp-test-server/_scratch/ftp-test/bob/testdata",
@@ -208,7 +207,6 @@ func TestFTPStorageConfigAuth(t *testing.T) {
 	tests.SetLogOutput(log, t)
 	defer func() {
 		for _, path := range []string{
-			"./test_tmp",
 			"../ftp-test-server/_scratch/ftp-test/bob/test-output-directory",
 			"../ftp-test-server/_scratch/ftp-test/bob/test-output-file.txt",
 			"../ftp-test-server/_scratch/ftp-test/bob/testdata",

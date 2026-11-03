@@ -13,6 +13,7 @@ import (
 	"github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/plugins/proto"
 	"github.com/calypr/funnel/tes"
+	protobuf "google.golang.org/protobuf/proto"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -57,45 +58,34 @@ func (b Backend) CheckBackendParameterSupport(task *tes.Task) error {
 // WriteEvent writes an event to the compute backend.
 // Currently, only TASK_CREATED is handled, which calls Submit.
 func (b *Backend) WriteEvent(ctx context.Context, ev *events.Event) error {
-	// TODO: Should this be moved to the switch statement so it's only run on TASK_CREATED?
-	if b.conf.Plugins != nil {
-		err := b.UpdateConfig(ctx)
-		if err != nil {
-			return fmt.Errorf("error updating config from plugin response: %v", err)
-		}
-	}
-
 	switch ev.Type {
 	case events.Type_TASK_CREATED:
-		return b.Submit(ev.GetTask())
+		conf, err := b.configForRequest(ctx)
+		if err != nil {
+			return err
+		}
+		requestBackend := *b
+		requestBackend.conf = conf
+		return requestBackend.Submit(ev.GetTask())
 	}
 	return nil
 }
 
-func (b *Backend) UpdateConfig(ctx context.Context) error {
+func (b *Backend) configForRequest(ctx context.Context) (*config.Config, error) {
+	conf := protobuf.Clone(b.conf).(*config.Config)
+	if conf.Plugins == nil {
+		return conf, nil
+	}
 	resp, ok := ctx.Value("pluginResponse").(*proto.JobResponse)
 	if !ok {
-		return fmt.Errorf("Failed to unmarshal plugin response %v", ctx.Value("pluginResponse"))
+		return nil, fmt.Errorf("missing plugin response")
 	}
-
-	// TODO: Review all security implications of merging configs (injections, shared state, etc.)
 	if resp.Config != nil {
-		err := b.MergeConfigs(resp.Config)
-		if err != nil {
-			b.log.Error("error merging configs from plugin", "error", err)
+		if err := mergo.MergeWithOverwrite(conf, resp.Config); err != nil {
+			return nil, fmt.Errorf("error merging configs: %w", err)
 		}
 	}
-
-	return nil
-}
-
-func (b *Backend) MergeConfigs(c *config.Config) error {
-	err := mergo.MergeWithOverwrite(b.conf, c)
-	if err != nil {
-		return fmt.Errorf("error merging configs: %v", err)
-	}
-
-	return nil
+	return conf, nil
 }
 
 func (b *Backend) Close() {}

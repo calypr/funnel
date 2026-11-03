@@ -28,6 +28,12 @@ Nodes are available via the `funnel node` command. To start a node, run
 funnel node run --config node.config.yml
 ```
 
+When server authentication is enabled, remote nodes must use administrator
+credentials in `RPCClient.Credential` to register and update their scheduler
+records. Set `Admin: true` for the corresponding server Basic authentication
+credential. Ordinary task-submitter credentials cannot create, update, or delete
+scheduler nodes.
+
 To activate the Funnel scheduler, use the `manual` backend in the config.
 
 When upgrading to the task-claim scheduler, stop all older Funnel server

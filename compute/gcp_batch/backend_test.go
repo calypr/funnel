@@ -655,6 +655,10 @@ type mockClient struct {
 	CreateJobFunc func(req *batchpb.CreateJobRequest) (*batchpb.Job, error)
 }
 
+func (m *mockClient) CancelJob(context.Context, *batchpb.CancelJobRequest, ...gax.CallOption) (*batch.CancelJobOperation, error) {
+	return nil, nil
+}
+
 func (m *mockClient) CreateJob(ctx context.Context, req *batchpb.CreateJobRequest, opts ...gax.CallOption) (*batchpb.Job, error) {
 	if m.CreateJobFunc != nil {
 		return m.CreateJobFunc(req)

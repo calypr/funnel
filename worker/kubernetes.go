@@ -181,7 +181,7 @@ func (kcmd KubernetesCommand) Run(ctx context.Context) error {
 		"ServiceAccountName": kcmd.ServiceAccount,
 	}
 
-	logger.Debug("Creating executor job from template", "template", kcmd.TaskTemplate, "data", templateData)
+	logger.Debug("Creating executor job from template", "taskID", taskId, "jobID", kcmd.JobId)
 	var buf bytes.Buffer
 	err = tpl.Execute(&buf, templateData)
 	if err != nil {
@@ -192,7 +192,7 @@ func (kcmd KubernetesCommand) Run(ctx context.Context) error {
 		}
 	}
 
-	logger.Debug("Decoding job template", "template", buf.String())
+	logger.Debug("Decoding executor job template", "taskID", taskId, "jobID", kcmd.JobId)
 	decode := scheme.Codecs.UniversalDeserializer().Decode
 	obj, _, err := decode(buf.Bytes(), nil, nil)
 	if err != nil {
@@ -727,6 +727,13 @@ func (r *DefaultWorker) newKubernetesCommand(ctx context.Context, event *events.
 	task.Resources = resources
 
 	resourceLimits := config.GetResourceLimits(r.Executor.Resources)
+	serviceAccount := r.Executor.ServiceAccount
+	if serviceAccount == "" {
+		serviceAccount = fmt.Sprintf("funnel-sa-%s", r.Executor.Namespace)
+		if r.Executor.ServiceAccountTemplate != "" {
+			serviceAccount = fmt.Sprintf("funnel-worker-sa-%s-%s", r.Executor.JobsNamespace, task.Id)
+		}
+	}
 
 	//nolint:errcheck // Resource metadata is informational and must not change task execution.
 	_ = r.EventWriter.WriteEvent(ctx, events.NewResources(task.Id, task.Resources))
@@ -750,7 +757,7 @@ func (r *DefaultWorker) newKubernetesCommand(ctx context.Context, event *events.
 		NeedsPVC:        len(task.GetInputs()) > 0 || len(task.GetOutputs()) > 0 || len(task.GetVolumes()) > 0,
 		NodeSelector:    r.Executor.NodeSelector,
 		Tolerations:     r.Executor.Tolerations,
-		ServiceAccount:  fmt.Sprintf("funnel-worker-sa-%s-%s", r.Executor.JobsNamespace, task.Id),
+		ServiceAccount:  serviceAccount,
 		ImagePullPolicy: pullPolicy,
 	}
 

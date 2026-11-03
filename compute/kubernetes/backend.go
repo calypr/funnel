@@ -147,7 +147,7 @@ func (b *Backend) WriteEvent(ctx context.Context, ev *events.Event) error {
 	switch ev.Type {
 	case events.Type_TASK_CREATED:
 		taskConfig := googleproto.Clone(b.conf).(*config.Config)
-		b.log.Debug("taskConfig", "before plugin", taskConfig.Safe())
+		b.log.Debug("preparing task configuration", "taskID", ev.Id)
 		if b.conf.Plugins != nil {
 			resp, ok := ctx.Value("pluginResponse").(*proto.JobResponse)
 			if !ok {
@@ -159,7 +159,7 @@ func (b *Backend) WriteEvent(ctx context.Context, ev *events.Event) error {
 				return fmt.Errorf("merging plugin config: %w", err)
 			}
 		}
-		b.log.Debug("taskConfig", "after plugin", taskConfig.Safe())
+		b.log.Debug("task configuration prepared", "taskID", ev.Id)
 
 		res := b.Submit(ctx, ev.GetTask(), taskConfig)
 		return res
