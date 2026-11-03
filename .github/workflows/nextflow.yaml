@@ -1,5 +1,8 @@
 name: Nextflow local-executor integration tests
 
+permissions:
+  contents: read
+
 on:
   # Run on push to main/master/develop (e.g. after PR is merged)
   push:

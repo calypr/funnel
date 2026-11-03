@@ -32,7 +32,6 @@ func TestSafeDoesNotMutateOriginal(t *testing.T) {
 			User: "pguser", Password: "pgpass",
 			AdminUser: "pgadmin", AdminPassword: "pgadminpass",
 		},
-		Elastic: &Elastic{Password: "espass", APIKey: "eskey", ServiceToken: "estoken"},
 		AWSBatch: &AWSBatch{
 			AWSConfig: &AWSConfig{Key: "batchkey", Secret: "batchsecret"},
 		},
@@ -53,9 +52,6 @@ func TestSafeDoesNotMutateOriginal(t *testing.T) {
 	}
 	if c.Postgres.Password != "pgpass" {
 		t.Error("original Postgres.Password was mutated")
-	}
-	if c.Elastic.Password != "espass" {
-		t.Error("original Elastic.Password was mutated")
 	}
 	if c.AWSBatch.AWSConfig.Secret != "batchsecret" {
 		t.Error("original AWSBatch.AWSConfig.Secret was mutated")
@@ -145,33 +141,6 @@ func TestSafePostgresEmptyCredentials(t *testing.T) {
 	if safe.Postgres.User != "" || safe.Postgres.Password != "" ||
 		safe.Postgres.AdminUser != "" || safe.Postgres.AdminPassword != "" {
 		t.Error("expected empty Postgres credentials to stay empty")
-	}
-}
-
-// TestSafeElasticRedaction verifies Password, APIKey, and ServiceToken redaction.
-func TestSafeElasticRedaction(t *testing.T) {
-	c := &Config{
-		Elastic: &Elastic{
-			URL:          "http://elastic:9200",
-			Username:     "esuser",
-			Password:     "espass",
-			APIKey:       "esapikey",
-			ServiceToken: "estoken",
-		},
-	}
-	safe := c.Safe()
-
-	for field, got := range map[string]string{
-		"Password":     safe.Elastic.Password,
-		"APIKey":       safe.Elastic.APIKey,
-		"ServiceToken": safe.Elastic.ServiceToken,
-	} {
-		if got != redacted {
-			t.Errorf("expected Elastic.%s to be redacted, got %q", field, got)
-		}
-	}
-	if safe.Elastic.Username != "esuser" {
-		t.Errorf("expected Elastic.Username to be preserved, got %q", safe.Elastic.Username)
 	}
 }
 

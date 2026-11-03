@@ -143,10 +143,6 @@ func dbFlags(flagConf *config.Config) *pflag.FlagSet {
 	// datastore
 	f.StringVar(&flagConf.Datastore.Project, "Datastore.Project", flagConf.Datastore.Project, "Google project for Datastore")
 
-	// elastic
-	f.StringVar(&flagConf.Elastic.IndexPrefix, "Elastic.IndexPrefix", flagConf.Elastic.IndexPrefix, "Prefix to use for Elasticsearch indices")
-	f.StringVar(&flagConf.Elastic.URL, "Elastic.URL", flagConf.Elastic.URL, "Elasticsearch URL")
-
 	// kafka
 	f.StringSliceVar(&flagConf.Kafka.Servers, "Kafka.Servers", flagConf.Kafka.Servers, "Address of a Kafka server. This flag can be used multiple times")
 	f.StringVar(&flagConf.Kafka.Topic, "Kafka.Topic", flagConf.Kafka.Topic, "Kafka topic to write events to")

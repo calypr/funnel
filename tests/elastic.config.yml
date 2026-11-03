@@ -1,4 +1,0 @@
-Database: elastic
-
-EventWriters: 
-  - log

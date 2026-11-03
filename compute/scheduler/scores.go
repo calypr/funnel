@@ -1,8 +1,6 @@
 package scheduler
 
 import (
-	"sort"
-
 	"github.com/calypr/funnel/tes"
 )
 
@@ -25,11 +23,15 @@ func (s Scores) Average() float32 {
 }
 
 // Weighted returns a new Scores instance with each score multiplied
-// by the given weights. Weights default to 0.0
+// by the given weights. Nil weights preserve the scores; missing explicit weights are zero.
 func (s Scores) Weighted(w map[string]float32) Scores {
 	out := Scores{}
 	for k, v := range s {
-		out[k] = v * w[k]
+		weight := float32(1)
+		if w != nil {
+			weight = w[k]
+		}
+		out[k] = v * weight
 	}
 	return out
 }
@@ -42,37 +44,6 @@ func DefaultScores(w *Node, t *tes.Task) Scores {
 	s := Scores{}
 
 	s[CPU] = float32(int32(avail.GetCpus())+req.GetCpuCores()) / float32(tot.GetCpus())
-	s[RAM] = float32(avail.GetRamGb() + req.GetRamGb()/tot.GetRamGb())
+	s[RAM] = float32((avail.GetRamGb() + req.GetRamGb()) / tot.GetRamGb())
 	return s
-}
-
-// SortByAverageScore sorts the given offers by their average score.
-// This modifies the offers list in place.
-func SortByAverageScore(offers []*Offer) {
-	// Pre-calculate the averages scores so that we're not re-calculating
-	// many times during sort
-	averages := make([]float32, len(offers))
-	for _, o := range offers {
-		averages = append(averages, o.Scores.Average())
-	}
-	s := sorter{offers, averages}
-	sort.Sort(s)
-}
-
-// sorter is a helper which implements Go's sort.Interface
-// in order to sort Offers by average score
-type sorter struct {
-	offers   []*Offer
-	averages []float32
-}
-
-func (s sorter) Len() int {
-	return len(s.offers)
-}
-func (s sorter) Swap(i, j int) {
-	s.offers[i], s.offers[j] = s.offers[j], s.offers[i]
-	s.averages[i], s.averages[j] = s.averages[j], s.averages[i]
-}
-func (s sorter) Less(i, j int) bool {
-	return s.averages[i] < s.averages[j]
 }

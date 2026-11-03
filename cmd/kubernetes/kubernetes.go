@@ -15,7 +15,6 @@ import (
 	"github.com/calypr/funnel/database/boltdb"
 	"github.com/calypr/funnel/database/datastore"
 	"github.com/calypr/funnel/database/dynamodb"
-	"github.com/calypr/funnel/database/elastic"
 	"github.com/calypr/funnel/database/mongodb"
 	"github.com/calypr/funnel/database/postgres"
 	"github.com/calypr/funnel/events"
@@ -102,8 +101,6 @@ func openReader(ctx context.Context, conf *config.Config) (tes.ReadOnlyServer, e
 		return datastore.NewDatastore(conf.Datastore)
 	case "dynamodb":
 		return dynamodb.NewDynamoDB(conf.DynamoDB)
-	case "elastic":
-		return elastic.NewElastic(conf.Elastic)
 	case "mongodb":
 		return mongodb.NewMongoDB(conf.MongoDB)
 	case "postgres", "psql":

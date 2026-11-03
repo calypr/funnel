@@ -7,6 +7,7 @@ import (
 	"github.com/calypr/funnel/compute/scheduler"
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/tes"
 	"github.com/calypr/funnel/util/fsutil"
 	bolt "go.etcd.io/bbolt"
 )
@@ -26,6 +27,16 @@ var TaskOwner = []byte("tasks-owner")
 
 // TaskState maps: task ID -> state string
 var TaskState = []byte("tasks-state")
+
+// ExecutionClaims maps task IDs to durable execution-admission markers.
+var ExecutionClaims = []byte("execution-claims")
+
+// TaskClaims maps task ID -> scheduler-assigned node ID.
+var TaskClaims = []byte("tasks-claims")
+
+// NodeClaims indexes active task claims by node ID. Its creation marks the
+// transactional migration from legacy node task-ID arrays.
+var NodeClaims = []byte("node-claims")
 
 // TasksLog defines the name of a bucket which maps
 // task ID -> tes.TaskLog struct
@@ -95,6 +106,31 @@ func (taskBolt *BoltDB) Init() error {
 				return err
 			}
 		}
+		if tx.Bucket(ExecutionClaims) == nil {
+			claims, err := tx.CreateBucket(ExecutionClaims)
+			if err != nil {
+				return err
+			}
+			states := tx.Bucket(TaskState)
+			if err := states.ForEach(func(taskID, state []byte) error {
+				value, ok := tes.State_value[string(state)]
+				if !ok {
+					return nil
+				}
+				current := tes.State(value)
+				if current != tes.State_RUNNING && !tes.TerminalState(current) {
+					return nil
+				}
+				return claims.Put(taskID, []byte{1})
+			}); err != nil {
+				return err
+			}
+		}
+		if tx.Bucket(TaskClaims) == nil {
+			if _, err := tx.CreateBucket(TaskClaims); err != nil {
+				return err
+			}
+		}
 		if tx.Bucket(TasksLog) == nil {
 			if _, err := tx.CreateBucket(TasksLog); err != nil {
 				return err
@@ -125,7 +161,16 @@ func (taskBolt *BoltDB) Init() error {
 				return err
 			}
 		}
-		return nil
+		if err := migrateTaskClaims(tx); err != nil {
+			return err
+		}
+		if err := migrateNodeHeartbeats(tx); err != nil {
+			return err
+		}
+		if err := migrateResourceReservations(tx); err != nil {
+			return err
+		}
+		return migrateNodeTaskIDProjection(tx)
 	})
 }
 
