@@ -255,29 +255,9 @@ func (mapper *FileMapper) AddVolume(hostPath string, mountPoint string, readonly
 		ContainerPath: mountPoint,
 		Readonly:      readonly,
 	}
-
-	for i, v := range mapper.Volumes {
-		// Volume is already present — nothing to do.
-		if vol == v {
-			return false, nil
-		}
-
-		// If the proposed RW volume is a subpath of an existing RW volume,
-		// the path is already reachable — skip it.
-		// If an existing RW volume is a subpath of the proposed RW volume,
-		// replace the narrower mount with the wider one.
-		if !vol.Readonly && !v.Readonly {
-			if mapper.IsSubpath(vol.ContainerPath, v.ContainerPath) {
-				return false, nil
-			} else if mapper.IsSubpath(v.ContainerPath, vol.ContainerPath) {
-				mapper.Volumes[i] = vol
-				return true, nil
-			}
-		}
-	}
-
-	mapper.Volumes = append(mapper.Volumes, vol)
-	return true, nil
+	var added bool
+	mapper.Volumes, added = mergeVolume(mapper.Volumes, vol, mapper)
+	return added, nil
 }
 
 // HostPath returns a mapped path.
@@ -460,9 +440,14 @@ func (mapper *FileMapper) AddOutput(output *tes.Output) error {
 	return nil
 }
 
-// IsSubpath returns true if the given path "p" is a subpath of "base".
+// IsSubpath returns true if the given path "p" is "base" or below it.
+// Paths are compared by whole components: "/data2" is not below "/data".
 func (mapper *FileMapper) IsSubpath(p string, base string) bool {
-	return strings.HasPrefix(p, base)
+	p, base = path.Clean(p), path.Clean(base)
+	if base == "/" {
+		return strings.HasPrefix(p, "/")
+	}
+	return p == base || strings.HasPrefix(p, base+"/")
 }
 
 // ContainerPath returns an unmapped path.
@@ -476,25 +461,40 @@ func (mapper *FileMapper) ContainerPath(src string) string {
 	return p
 }
 
-// mergeVolume inserts vol into vols using the same RW-deduplication rules as
-// AddVolume: skip if already covered by an existing mount, replace a narrower
-// existing mount with the wider one, otherwise append.
-func mergeVolume(vols []Volume, vol Volume, mapper *FileMapper) []Volume {
-	for i, v := range vols {
+// mergeVolume inserts vol into vols, keeping read-write mounts from nesting:
+// vol is skipped if it equals a mount or an existing read-write mount covers
+// it; otherwise it replaces every read-write mount it covers (at the position
+// of the first one) or is appended. Replacing all of them matters: a covered
+// mount left in place would overlap vol, which the Kubernetes backend rejects
+// ("storage mount ... overlaps job mount ...").
+//
+// It returns the new list and whether vol was added.
+func mergeVolume(vols []Volume, vol Volume, mapper *FileMapper) ([]Volume, bool) {
+	for _, v := range vols {
 		if vol == v {
-			return vols
+			return vols, false
 		}
-		if !vol.Readonly && !v.Readonly {
-			if mapper.IsSubpath(vol.ContainerPath, v.ContainerPath) {
-				return vols
-			}
-			if mapper.IsSubpath(v.ContainerPath, vol.ContainerPath) {
-				vols[i] = vol
-				return vols
-			}
+		if !vol.Readonly && !v.Readonly && mapper.IsSubpath(vol.ContainerPath, v.ContainerPath) {
+			return vols, false
 		}
 	}
-	return append(vols, vol)
+
+	out := make([]Volume, 0, len(vols)+1)
+	inserted := false
+	for _, v := range vols {
+		if !vol.Readonly && !v.Readonly && mapper.IsSubpath(v.ContainerPath, vol.ContainerPath) {
+			if !inserted {
+				out = append(out, vol)
+				inserted = true
+			}
+			continue
+		}
+		out = append(out, v)
+	}
+	if !inserted {
+		out = append(out, vol)
+	}
+	return out, true
 }
 
 // consolidateVolumes optimizes container mounts by replacing individual input
@@ -551,7 +551,7 @@ func (mapper *FileMapper) consolidateVolumes() {
 			ContainerPath: ancestor,
 			Readonly:      false,
 		}
-		nonInputVols = mergeVolume(nonInputVols, inputAncestorVol, mapper)
+		nonInputVols, _ = mergeVolume(nonInputVols, inputAncestorVol, mapper)
 	} else {
 		// Inputs span disjoint subtrees; fall back to promoting each to its
 		// immediate parent directory to at least eliminate file-level mounts.
@@ -564,7 +564,7 @@ func (mapper *FileMapper) consolidateVolumes() {
 				continue
 			}
 			seen[key] = true
-			nonInputVols = mergeVolume(nonInputVols, Volume{
+			nonInputVols, _ = mergeVolume(nonInputVols, Volume{
 				HostPath:      hostParent,
 				ContainerPath: contParent,
 				Readonly:      false,
