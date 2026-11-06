@@ -3,6 +3,7 @@ package worker
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/calypr/funnel/tes"
@@ -312,5 +313,152 @@ func TestMapTaskMultipleInputsAndOutputs(t *testing.T) {
 
 	if seen["/data"] != 1 {
 		t.Errorf("expected /data once in Volumes, got %d; volumes: %+v", seen["/data"], f.Volumes)
+	}
+}
+
+// assertNoNestedVolumes fails if a read-write volume lies inside another one:
+// the Kubernetes backend rejects such mounts ("storage mount ... overlaps job
+// mount ...").
+func assertNoNestedVolumes(t *testing.T, f *FileMapper) {
+	t.Helper()
+	for i, a := range f.Volumes {
+		for j, b := range f.Volumes {
+			if i == j || a.Readonly || b.Readonly {
+				continue
+			}
+			if f.IsSubpath(a.ContainerPath, b.ContainerPath) {
+				t.Errorf("volume %q is inside volume %q; volumes: %+v", a.ContainerPath, b.ContainerPath, f.Volumes)
+			}
+		}
+	}
+}
+
+func containerPaths(f *FileMapper) []string {
+	var out []string
+	for _, v := range f.Volumes {
+		out = append(out, v.ContainerPath)
+	}
+	return out
+}
+
+// A wider volume must replace every narrower volume it covers, not just the
+// first one.
+func TestMapTaskWiderVolumeReplacesAllNarrowerVolumes(t *testing.T) {
+	f := FileMapper{WorkDir: t.TempDir()}
+	task := &tes.Task{
+		Outputs: []*tes.Output{
+			{Url: "file:///out/b", Path: "/out/b", Type: tes.FileType_DIRECTORY},
+			{Url: "file:///out/c", Path: "/out/c", Type: tes.FileType_DIRECTORY},
+			{Url: "file:///out/x.txt", Path: "/out/x.txt", Type: tes.FileType_FILE},
+		},
+	}
+
+	if err := f.MapTask(task); err != nil {
+		t.Fatal(err)
+	}
+
+	assertNoNestedVolumes(t, &f)
+	if got := containerPaths(&f); len(got) != 1 || got[0] != "/out" {
+		t.Errorf("volumes = %v, want [/out]", got)
+	}
+}
+
+func TestMapTaskVolumesNeverNest(t *testing.T) {
+	for name, task := range map[string]*tes.Task{
+		// miniwdl's layout: command and inputs below the container dir, inputs
+		// inside the work directory output, streams next to it
+		"workflow engine layout": {
+			Inputs: []*tes.Input{
+				{Path: "/mnt/c/command", Content: "true"},
+				{Path: "/mnt/c/work/_inputs/0/a.txt", Content: "a"},
+				{Path: "/mnt/c/work/_inputs/1/b.txt", Content: "b"},
+			},
+			Outputs: []*tes.Output{
+				{Url: "file:///o/work", Path: "/mnt/c/work", Type: tes.FileType_DIRECTORY},
+				{Url: "file:///o/stdout.txt", Path: "/mnt/c/stdout.txt", Type: tes.FileType_FILE},
+				{Url: "file:///o/stderr.txt", Path: "/mnt/c/stderr.txt", Type: tes.FileType_FILE},
+			},
+		},
+		"inputs consolidate above outputs": {
+			Inputs: []*tes.Input{
+				{Path: "/data/in/a.txt", Content: "a"},
+				{Path: "/data/ref/b.txt", Content: "b"},
+			},
+			Outputs: []*tes.Output{
+				{Url: "file:///o/x", Path: "/data/out/x", Type: tes.FileType_DIRECTORY},
+				{Url: "file:///o/y", Path: "/data/out/y", Type: tes.FileType_DIRECTORY},
+			},
+		},
+		"outputs first, wider output last": {
+			Outputs: []*tes.Output{
+				{Url: "file:///o/1", Path: "/w/a/1", Type: tes.FileType_DIRECTORY},
+				{Url: "file:///o/2", Path: "/w/b/2", Type: tes.FileType_DIRECTORY},
+				{Url: "file:///o/3", Path: "/w/c/3", Type: tes.FileType_DIRECTORY},
+				{Url: "file:///o/all", Path: "/w", Type: tes.FileType_DIRECTORY},
+			},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := FileMapper{WorkDir: t.TempDir()}
+			if err := f.MapTask(task); err != nil {
+				t.Fatal(err)
+			}
+			assertNoNestedVolumes(t, &f)
+		})
+	}
+}
+
+// "/out2" is not inside "/out": it needs its own volume.
+func TestMapTaskSiblingWithSamePrefixIsMounted(t *testing.T) {
+	f := FileMapper{WorkDir: t.TempDir()}
+	task := &tes.Task{
+		Outputs: []*tes.Output{
+			{Url: "file:///o/out", Path: "/out", Type: tes.FileType_DIRECTORY},
+			{Url: "file:///o/b.txt", Path: "/out2/b.txt", Type: tes.FileType_FILE},
+		},
+	}
+
+	if err := f.MapTask(task); err != nil {
+		t.Fatal(err)
+	}
+
+	got := containerPaths(&f)
+	if len(got) != 2 || got[0] != "/out" || got[1] != "/out2" {
+		t.Errorf("volumes = %v, want [/out /out2]", got)
+	}
+}
+
+func TestIsSubpathComparesWholeComponents(t *testing.T) {
+	f := FileMapper{}
+	for _, tc := range []struct {
+		p, base string
+		want    bool
+	}{
+		{"/data", "/data", true},
+		{"/data/x", "/data", true},
+		{"/data/x", "/data/", true},
+		{"/data2", "/data", false},
+		{"/data2/x", "/data", false},
+		{"/dat", "/data", false},
+		{"/anything", "/", true},
+		{"/data/../etc", "/data", false},
+	} {
+		if got := f.IsSubpath(tc.p, tc.base); got != tc.want {
+			t.Errorf("IsSubpath(%q, %q) = %v, want %v", tc.p, tc.base, got, tc.want)
+		}
+	}
+}
+
+// A task path can't reach a sibling of the work directory whose name starts
+// with the work directory's name.
+func TestHostPathRejectsSiblingOfWorkDir(t *testing.T) {
+	root := t.TempDir()
+	f := FileMapper{WorkDir: filepath.Join(root, "task")}
+
+	if p, err := f.HostPath("/../task2/x"); err == nil {
+		t.Errorf("HostPath accepted %q", p)
+	}
+	if _, err := f.HostPath("/data/x"); err != nil {
+		t.Errorf("HostPath(/data/x): %v", err)
 	}
 }
