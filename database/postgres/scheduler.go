@@ -86,8 +86,14 @@ func (db *Postgres) PutNode(ctx context.Context, node *scheduler.Node) (*schedul
 
 // GetNode gets a node
 func (db *Postgres) GetNode(ctx context.Context, req *scheduler.GetNodeRequest) (*scheduler.Node, error) {
-	ctx, cancel := db.context()
+	ctx, cancel := db.requestContext(ctx)
 	defer cancel()
+
+	tx, err := db.client.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }() //nolint:errcheck // Read transaction cleanup is a no-op after commit.
 
 	selectSQL := `SELECT n.data,n.state,n.version,n.reserved,COALESCE(h.last_ping,0) FROM nodes n LEFT JOIN node_heartbeats h ON h.id=n.id WHERE n.id=$1`
 	var stamp int64
@@ -96,7 +102,7 @@ func (db *Postgres) GetNode(ctx context.Context, req *scheduler.GetNodeRequest) 
 	var nodeState string
 	var version int64
 
-	err := db.client.QueryRow(ctx, selectSQL, req.Id).Scan(&nodeJSON, &nodeState, &version, &reservedJSON, &stamp)
+	err = tx.QueryRow(ctx, selectSQL, req.Id).Scan(&nodeJSON, &nodeState, &version, &reservedJSON, &stamp)
 	if err == pgx.ErrNoRows {
 		return nil, status.Errorf(codes.NotFound, "nodeID: %s not found", req.Id)
 	}
@@ -117,12 +123,15 @@ func (db *Postgres) GetNode(ctx context.Context, req *scheduler.GetNodeRequest) 
 	if err := hydrateNodeProjection(&node, version, reservedJSON, nil); err != nil {
 		return nil, err
 	}
-	taskIDs, err := db.activeTaskIDs(ctx, []string{node.Id})
+	taskIDs, err := activeTaskIDs(ctx, tx, []string{node.Id})
 	if err != nil {
 		return nil, err
 	}
 	node.TaskIds = taskIDs[node.Id]
 	node.LastPing = stamp
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
 	return &node, nil
 }
 
@@ -194,8 +203,21 @@ func (db *Postgres) listNodes(ctx context.Context, req *scheduler.ListNodesReque
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(ctx, db.conf.GetTimeout().GetDuration().AsDuration())
+	ctx, cancel := db.requestContext(ctx)
 	defer cancel()
+
+	var tx pgx.Tx
+	var queryer interface {
+		Query(context.Context, string, ...any) (pgx.Rows, error)
+	} = db.client
+	if includeTaskIDs {
+		tx, err = db.client.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+		if err != nil {
+			return nil, err
+		}
+		defer func() { _ = tx.Rollback(context.Background()) }() //nolint:errcheck // Read transaction cleanup is a no-op after commit.
+		queryer = tx
+	}
 
 	var rows pgx.Rows
 	selectNode := `n.data`
@@ -210,9 +232,9 @@ func (db *Postgres) listNodes(ctx context.Context, req *scheduler.ListNodesReque
 		)`
 	}
 	if page.AfterID == "" {
-		rows, err = db.client.Query(ctx, `SELECT `+selectNode+`,n.state,n.version,n.reserved,COALESCE(h.last_ping,0) FROM nodes n LEFT JOIN node_heartbeats h ON h.id=n.id ORDER BY n.id ASC LIMIT $1`, page.Limit+1)
+		rows, err = queryer.Query(ctx, `SELECT `+selectNode+`,n.state,n.version,n.reserved,COALESCE(h.last_ping,0) FROM nodes n LEFT JOIN node_heartbeats h ON h.id=n.id ORDER BY n.id ASC LIMIT $1`, page.Limit+1)
 	} else {
-		rows, err = db.client.Query(ctx, `SELECT `+selectNode+`,n.state,n.version,n.reserved,COALESCE(h.last_ping,0) FROM nodes n LEFT JOIN node_heartbeats h ON h.id=n.id WHERE n.id > $1 ORDER BY n.id ASC LIMIT $2`, page.AfterID, page.Limit+1)
+		rows, err = queryer.Query(ctx, `SELECT `+selectNode+`,n.state,n.version,n.reserved,COALESCE(h.last_ping,0) FROM nodes n LEFT JOIN node_heartbeats h ON h.id=n.id WHERE n.id > $1 ORDER BY n.id ASC LIMIT $2`, page.AfterID, page.Limit+1)
 	}
 	if err != nil {
 		return nil, err
@@ -247,6 +269,7 @@ func (db *Postgres) listNodes(ctx context.Context, req *scheduler.ListNodesReque
 	if rows.Err() != nil {
 		return nil, rows.Err()
 	}
+	rows.Close()
 
 	owners := make([]string, len(nodes))
 	for i, node := range nodes {
@@ -262,7 +285,7 @@ func (db *Postgres) listNodes(ctx context.Context, req *scheduler.ListNodesReque
 		owners[i] = node.Id
 	}
 	if includeTaskIDs {
-		taskIDs, err := db.activeTaskIDs(ctx, owners)
+		taskIDs, err := activeTaskIDs(ctx, tx, owners)
 		if err != nil {
 			return nil, err
 		}
@@ -270,5 +293,11 @@ func (db *Postgres) listNodes(ctx context.Context, req *scheduler.ListNodesReque
 			node.TaskIds = taskIDs[node.Id]
 		}
 	}
-	return scheduler.NewNodePageResponse(nodes, page.Limit), nil
+	response := scheduler.NewNodePageResponse(nodes, page.Limit)
+	if tx != nil {
+		if err := tx.Commit(ctx); err != nil {
+			return nil, err
+		}
+	}
+	return response, nil
 }

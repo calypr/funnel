@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"sync"
 	"testing"
 
@@ -220,11 +219,11 @@ func runReservationContracts(t *testing.T, open storeFactory) {
 			}
 		}
 	})
-	t.Run("fractional reservations release without capacity drift", func(t *testing.T) {
+	t.Run("fractional releases restore full-capacity placement", func(t *testing.T) {
 		db := open(t)
 		ctx := testContext()
 		createNode(t, db, ctx, "node", 4)
-		for i, size := range []float64{0.1, 0.2, 0.3} {
+		for i, size := range []float64{0.1, 0.2, 0.9} {
 			task := testTask(fmt.Sprintf("fraction-%d", i))
 			task.Resources.RamGb = size
 			task.Resources.DiskGb = size
@@ -239,8 +238,70 @@ func runReservationContracts(t *testing.T, open storeFactory) {
 			completeContractTask(t, db, fmt.Sprintf("fraction-%d", i))
 		}
 		node := readContractNode(t, db, "node")
-		if node.Available.Cpus != 4 || math.Abs(node.Available.RamGb-2) > 1e-12 || math.Abs(node.Available.DiskGb-2) > 1e-12 {
-			t.Fatalf("resource accounting drift: %v", node.Available)
+		if len(node.TaskIds) != 0 {
+			t.Fatalf("released tasks remain assigned: %v", node.TaskIds)
+		}
+		full := testTask("fraction-full-capacity")
+		full.Resources.CpuCores = 4
+		full.Resources.RamGb = 2
+		full.Resources.DiskGb = 2
+		if err := db.WriteEvent(ctx, events.NewTaskCreated(full)); err != nil {
+			t.Fatal(err)
+		}
+		if owner, err := db.TryAssign(ctx, full, node); err != nil || owner != node.Id {
+			t.Fatalf("full-capacity task rejected on empty node: owner=%q err=%v; available cpu=%d ram=%.18g disk=%.18g; want cpu=4 ram=2 disk=2",
+				owner, err, node.Available.Cpus, node.Available.RamGb, node.Available.DiskGb)
+		}
+	})
+	t.Run("small active reservations survive other releases", func(t *testing.T) {
+		db := open(t)
+		ctx := testContext()
+		createNode(t, db, ctx, "node", 4)
+		tiny := testTask("tiny-reservation")
+		tiny.Resources.CpuCores = 0
+		tiny.Resources.RamGb = 1e-13
+		tiny.Resources.DiskGb = 1e-13
+		if err := db.WriteEvent(ctx, events.NewTaskCreated(tiny)); err != nil {
+			t.Fatal(err)
+		}
+		if owner, err := db.TryAssign(ctx, tiny, readContractNode(t, db, "node")); err != nil || owner != "node" {
+			t.Fatalf("reserve zero-CPU task: owner=%q err=%v", owner, err)
+		}
+		for i, size := range []float64{0.1, 0.2, 0.9} {
+			task := testTask(fmt.Sprintf("other-%d", i))
+			task.Resources.RamGb = size
+			task.Resources.DiskGb = size
+			if err := db.WriteEvent(ctx, events.NewTaskCreated(task)); err != nil {
+				t.Fatal(err)
+			}
+			if owner, err := db.TryAssign(ctx, task, readContractNode(t, db, "node")); err != nil || owner != "node" {
+				t.Fatalf("reserve fractional task %d: owner=%q err=%v", i, owner, err)
+			}
+		}
+		for _, i := range []int{1, 0, 2} {
+			completeContractTask(t, db, fmt.Sprintf("other-%d", i))
+		}
+		node := readContractNode(t, db, "node")
+		if len(node.TaskIds) != 1 || node.TaskIds[0] != tiny.Id {
+			t.Fatalf("small active reservation was lost: %v", node.TaskIds)
+		}
+		if node.Available.RamGb >= 2 || node.Available.DiskGb >= 2 {
+			t.Fatalf("small active reservation no longer consumes capacity: %v", node.Available)
+		}
+		full := testTask("blocked-by-tiny-reservation")
+		full.Resources.CpuCores = 4
+		full.Resources.RamGb = 2
+		full.Resources.DiskGb = 2
+		if err := db.WriteEvent(ctx, events.NewTaskCreated(full)); err != nil {
+			t.Fatal(err)
+		}
+		if owner, err := db.TryAssign(ctx, full, node); err == nil || owner != "" {
+			t.Fatalf("full-capacity task bypassed small active reservation: owner=%q err=%v", owner, err)
+		}
+		completeContractTask(t, db, tiny.Id)
+		node = readContractNode(t, db, "node")
+		if owner, err := db.TryAssign(ctx, full, node); err != nil || owner != node.Id {
+			t.Fatalf("full-capacity task rejected after last reservation release: owner=%q err=%v", owner, err)
 		}
 	})
 }

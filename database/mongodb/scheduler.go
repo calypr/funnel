@@ -9,6 +9,8 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
+	"go.mongodb.org/mongo-driver/v2/mongo/readconcern"
+	"go.mongodb.org/mongo-driver/v2/mongo/writeconcern"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -50,28 +52,51 @@ func (db *MongoDB) PutNode(ctx context.Context, node *scheduler.Node) (*schedule
 	return &scheduler.PutNodeResponse{}, db.putReportedNode(ctx, node)
 }
 
+func (db *MongoDB) readNodeSnapshot(ctx context.Context, read func(context.Context) (any, error)) (any, error) {
+	ctx, cancel := db.wrap(ctx)
+	defer cancel()
+	session, err := db.client.StartSession()
+	if err != nil {
+		return nil, err
+	}
+	defer session.EndSession(ctx)
+	if err := session.StartTransaction(options.Transaction().SetReadConcern(readconcern.Snapshot()).SetWriteConcern(writeconcern.Majority())); err != nil {
+		return nil, err
+	}
+	result, err := read(mongo.NewSessionContext(ctx, session))
+	if err != nil {
+		return nil, err
+	}
+	if err := session.CommitTransaction(ctx); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 // GetNode gets a node
 func (db *MongoDB) GetNode(ctx context.Context, req *scheduler.GetNodeRequest) (*scheduler.Node, error) {
-	mctx, cancel := db.wrap(ctx)
-	defer cancel()
-
-	var record nodeRecord
-	err := db.nodes().FindOne(mctx, bson.M{"id": req.Id}, options.FindOne().SetProjection(bson.M{"taskids": 0, "task_ids": 0, "taskIds": 0}).SetCollation(&options.Collation{Locale: "simple"})).Decode(&record)
-	if err == mongo.ErrNoDocuments {
-		return nil, status.Errorf(codes.NotFound, "%v: nodeID: %s", err, req.Id)
-	}
-
+	result, err := db.readNodeSnapshot(ctx, func(mctx context.Context) (any, error) {
+		var record nodeRecord
+		err := db.nodes().FindOne(mctx, bson.M{"id": req.Id}, options.FindOne().SetProjection(bson.M{"taskids": 0, "task_ids": 0, "taskIds": 0}).SetCollation(&options.Collation{Locale: "simple"})).Decode(&record)
+		if err == mongo.ErrNoDocuments {
+			return nil, status.Errorf(codes.NotFound, "%v: nodeID: %s", err, req.Id)
+		}
+		if err != nil {
+			return nil, err
+		}
+		nodes, err := db.hydrateNodeRecords(mctx, []*nodeRecord{&record}, true)
+		if err != nil {
+			return nil, err
+		}
+		if err := db.overlayHeartbeats(mctx, nodes); err != nil {
+			return nil, err
+		}
+		return nodes[0], nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	nodes, err := db.hydrateNodeRecords(mctx, []*nodeRecord{&record}, true)
-	if err != nil {
-		return nil, err
-	}
-	if err := db.overlayHeartbeats(mctx, nodes); err != nil {
-		return nil, err
-	}
-	return nodes[0], nil
+	return result.(*scheduler.Node), nil
 }
 
 // DeleteNode deletes a node
@@ -94,39 +119,51 @@ func (db *MongoDB) listNodes(ctx context.Context, req *scheduler.ListNodesReques
 	if err != nil {
 		return nil, err
 	}
-	mctx, cancel := db.wrap(ctx)
-	defer cancel()
+	read := func(mctx context.Context) (any, error) {
+		filter := bson.M{}
+		if page.AfterID != "" {
+			filter["id"] = bson.M{"$gt": page.AfterID}
+		}
+		projection := bson.M{"taskids": 0, "task_ids": 0, "taskIds": 0}
+		if !includeTaskIDs {
+			projection = bson.M{"id": 1, "state": 1, "resources": 1, "available": 1, "preemptible": 1, "zone": 1, "hostname": 1, "version": 1, "metadata": 1, "reserved": 1}
+		}
+		findOptions := options.Find().
+			SetSort(bson.D{{Key: "id", Value: 1}}).
+			SetLimit(int64(page.Limit + 1)).
+			SetProjection(projection).
+			SetCollation(&options.Collation{Locale: "simple"})
+		var records []*nodeRecord
+		cursor, err := db.nodes().Find(mctx, filter, findOptions)
+		if err != nil {
+			return nil, err
+		}
+		defer cursor.Close(mctx) //nolint:errcheck // Cursor cleanup cannot change the fully materialized read-only result.
 
-	filter := bson.M{}
-	if page.AfterID != "" {
-		filter["id"] = bson.M{"$gt": page.AfterID}
+		err = cursor.All(mctx, &records)
+		if err != nil {
+			return nil, err
+		}
+		nodes, err := db.hydrateNodeRecords(mctx, records, includeTaskIDs)
+		if err != nil {
+			return nil, err
+		}
+		if err := db.overlayHeartbeats(mctx, nodes); err != nil {
+			return nil, err
+		}
+		return scheduler.NewNodePageResponse(nodes, page.Limit), nil
 	}
-	projection := bson.M{"taskids": 0, "task_ids": 0, "taskIds": 0}
-	if !includeTaskIDs {
-		projection = bson.M{"id": 1, "state": 1, "resources": 1, "available": 1, "preemptible": 1, "zone": 1, "hostname": 1, "version": 1, "metadata": 1, "reserved": 1}
-	}
-	findOptions := options.Find().
-		SetSort(bson.D{{Key: "id", Value: 1}}).
-		SetLimit(int64(page.Limit + 1)).
-		SetProjection(projection).
-		SetCollation(&options.Collation{Locale: "simple"})
-	var records []*nodeRecord
-	cursor, err := db.nodes().Find(mctx, filter, findOptions)
-	if err != nil {
-		return nil, err
-	}
-	defer cursor.Close(mctx) //nolint:errcheck // Cursor cleanup cannot change the fully materialized read-only result.
 
-	err = cursor.All(mctx, &records)
+	var result any
+	if includeTaskIDs {
+		result, err = db.readNodeSnapshot(ctx, read)
+	} else {
+		mctx, cancel := db.wrap(ctx)
+		defer cancel()
+		result, err = read(mctx)
+	}
 	if err != nil {
 		return nil, err
 	}
-	nodes, err := db.hydrateNodeRecords(mctx, records, includeTaskIDs)
-	if err != nil {
-		return nil, err
-	}
-	if err := db.overlayHeartbeats(mctx, nodes); err != nil {
-		return nil, err
-	}
-	return scheduler.NewNodePageResponse(nodes, page.Limit), nil
+	return result.(*scheduler.ListNodesResponse), nil
 }

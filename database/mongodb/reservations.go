@@ -196,6 +196,19 @@ func (db *MongoDB) transitionReservedTask(ctx context.Context, id string, target
 				if err != nil {
 					return nil, err
 				}
+				if node.Reserved != (scheduler.ResourceUsage{}) {
+					otherClaims, err := db.tasks().CountDocuments(ctx, bson.M{
+						"claim_owner":  task.ClaimOwner,
+						"claim_active": true,
+						"id":           bson.M{"$ne": id},
+					}, options.Count().SetLimit(1))
+					if err != nil {
+						return nil, err
+					}
+					if otherClaims == 0 {
+						node.Reserved = scheduler.ResourceUsage{}
+					}
+				}
 				if err := db.saveReservedNode(ctx, &node); err != nil {
 					return nil, err
 				}

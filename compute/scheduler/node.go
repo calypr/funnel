@@ -184,7 +184,7 @@ func (n *NodeProcess) sync(ctx context.Context) {
 		meta[k] = v
 	}
 
-	_, err = n.client.PutNode(context.Background(), &Node{
+	_, err = n.client.PutNode(ctx, &Node{
 		Id:        n.conf.Node.ID,
 		Resources: n.resources,
 		State:     n.state,
