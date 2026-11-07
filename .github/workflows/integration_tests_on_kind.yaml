@@ -14,7 +14,7 @@ concurrency:
 jobs:
   integration_tests:
     name: Gen3 workflow tests (Kind, authentication, and storage)
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-24.04
     env:
       TEST_REPO: ${{ github.workspace }}/gen3-code-vigil
       TEST_REPO_SHA: 87da170a9a1cb099cfd1aded9402bc323201d6bc
@@ -44,7 +44,7 @@ jobs:
       HOSTNAME: localhost:8000
       HOSTNAME_PROTOCOL: http
       NAMESPACE: gen3-${{ github.run_id }}
-      FUNNEL_CI_BUILD_PLATFORM: linux/arm64
+      FUNNEL_CI_BUILD_PLATFORM: linux/amd64
       FUNNEL_CI_PYTEST_WORKERS: "4"
       FUNNEL_CI_ARTIFACTS_DIR: ${{ github.workspace }}/logs/gen3-ci
       AWS_DEFAULT_REGION: us-east-1
@@ -153,7 +153,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.FUNNEL_CI_FIXTURE_CACHE_DIR }}
-          key: gen3-fixtures-v4-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tests/gen3/fixture-images.json', 'tests/gen3/csi-images-arm64.yaml', 'tests/gen3/values-ci.yaml') }}
+          key: gen3-fixtures-v4-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tests/gen3/fixture-images.json', 'tests/gen3/csi-images.yaml', 'tests/gen3/csi-images-arm64.yaml', 'tests/gen3/values-ci.yaml') }}
 
       - name: Restore native task images
         id: restore-test-images
@@ -168,7 +168,7 @@ jobs:
         shell: bash
         run: |
           curl --fail --silent --show-error --location --retry 3 --max-time 30 \
-            https://kind.sigs.k8s.io/dl/v0.31.0/kind-linux-arm64 \
+            https://kind.sigs.k8s.io/dl/v0.31.0/kind-linux-amd64 \
             --output "$RUNNER_TEMP/kind"
           sudo install -m 0755 "$RUNNER_TEMP/kind" /usr/local/bin/kind
 
@@ -176,7 +176,7 @@ jobs:
         shell: bash
         run: |
           curl --fail --silent --show-error --location --retry 3 --max-time 30 \
-            https://github.com/mikefarah/yq/releases/download/v4.45.2/yq_linux_arm64 \
+            https://github.com/mikefarah/yq/releases/download/v4.45.2/yq_linux_amd64 \
             --output "$RUNNER_TEMP/yq"
           sudo install -m 0755 "$RUNNER_TEMP/yq" /usr/local/bin/yq
 
@@ -238,7 +238,7 @@ jobs:
         continue-on-error: true
         with:
           path: ${{ env.FUNNEL_CI_FIXTURE_CACHE_DIR }}
-          key: gen3-fixtures-v4-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tests/gen3/fixture-images.json', 'tests/gen3/csi-images-arm64.yaml', 'tests/gen3/values-ci.yaml') }}
+          key: gen3-fixtures-v4-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tests/gen3/fixture-images.json', 'tests/gen3/csi-images.yaml', 'tests/gen3/csi-images-arm64.yaml', 'tests/gen3/values-ci.yaml') }}
 
       - name: Save native task images
         if: always() && steps.lifecycle.outputs.test_images_ready == 'true' && steps.restore-test-images.outputs.cache-hit != 'true'

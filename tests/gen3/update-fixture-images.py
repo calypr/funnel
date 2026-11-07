@@ -15,11 +15,12 @@ def inspect(reference, *arguments):
 
 
 def resolve(reference):
-    descriptor = inspect(reference, "--format", "{{json .Manifest}}")
+    source = images[reference]["reference"].split("@", 1)[0]
+    descriptor = inspect(source, "--format", "{{json .Manifest}}")
     digest = descriptor["digest"]
     if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
         raise ValueError(f"Invalid registry digest: {reference}")
-    pinned = f"{reference}@{digest}"
+    pinned = f"{source}@{digest}"
     manifests = descriptor.get("manifests", [])
     platforms = {}
     if not manifests:
@@ -34,10 +35,10 @@ def resolve(reference):
         architecture = platform.get("architecture")
         if platform.get("os") != "linux" or architecture not in ("amd64", "arm64"):
             continue
-        child = inspect(reference.split("@")[0] + "@" + manifest["digest"], "--raw")
+        child = inspect(source + "@" + manifest["digest"], "--raw")
         platforms[architecture] = {"manifest": manifest["digest"], "config": child["config"]["digest"]}
-    if "arm64" not in platforms:
-        raise ValueError(f"No Linux ARM64 fixture image: {reference}")
+    if not {"amd64", "arm64"} <= platforms.keys():
+        raise ValueError(f"Fixture image must support Linux amd64 and arm64: {reference}")
     return reference, {"reference": pinned, "platforms": platforms}
 
 

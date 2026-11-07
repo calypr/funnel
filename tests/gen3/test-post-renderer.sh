@@ -46,9 +46,26 @@ spec:
       containers:
         - name: arborist
           image: quay.io/cdis/arborist:master
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: usersync
+spec:
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          initContainers:
+            - name: awshelper
+              image: usersync-helper
 YAML
 export FUNNEL_CI_IMAGE_REF=quay.io/ohsu-comp-bio/funnel:ci-123456789abc
 registry_helper=$(yq -r '.global.awshelper_container_image' "$script_dir/values-ci.yaml")
+export USERSYNC_HELPER_IMAGE
+USERSYNC_HELPER_IMAGE=$(yq -r 'explode(.) | .fence.usersync.custom_image' "$script_dir/values-ci.yaml")
+yq eval '(select(.kind == "CronJob" and .metadata.name == "usersync") |
+  .spec.jobTemplate.spec.template.spec.initContainers[0].image) = strenv(USERSYNC_HELPER_IMAGE)' -i "$tmp/input.yaml"
 for mode in plain gen3; do
   export FUNNEL_CI_PLUGIN_IMAGE_REF=
   if [[ "$mode" == gen3 ]]; then
@@ -75,6 +92,13 @@ for mode in plain gen3; do
   else
     [[ "$arborist" == quay.io/cdis/arborist:*@sha256:* ]]
   fi
+  usersync_helper=$(yq -r 'select(.kind == "CronJob" and .metadata.name == "usersync") | .spec.jobTemplate.spec.template.spec.initContainers[0].image' "$tmp/$mode.yaml")
+  expected_usersync_helper=$registry_helper
+  if [[ "$mode" == gen3 ]]; then expected_usersync_helper=funnel-gen3-awshelper:ci; fi
+  [[ "$usersync_helper" == "$expected_usersync_helper" ]] || {
+    printf 'Usersync helper is %s, expected %s\n' "$usersync_helper" "$expected_usersync_helper" >&2
+    exit 1
+  }
   printf 'PASS: %s chart selects the correct helper and Arborist images\n' "$mode"
 done
 
