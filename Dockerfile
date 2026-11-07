@@ -20,11 +20,12 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     fi
 
 # download nerdctl (Docker-compatible CLI for containerd)
-ARG NERDCTL_VERSION=2.2.1
-ARG TARGETARCH=amd64
+ARG NERDCTL_VERSION=2.4.2
+ARG TARGETARCH
 RUN wget -qO /tmp/nerdctl.tgz \
       "https://github.com/containerd/nerdctl/releases/download/v${NERDCTL_VERSION}/nerdctl-${NERDCTL_VERSION}-linux-${TARGETARCH}.tar.gz" && \
-    tar -xz -C /tmp -f /tmp/nerdctl.tgz nerdctl
+    tar -xz -C /tmp -f /tmp/nerdctl.tgz nerdctl && \
+    test "$(go version -m /tmp/nerdctl | sed -n 's/.*GOARCH=//p')" = "$(go env GOARCH)"
 
 # final stage
 FROM alpine
