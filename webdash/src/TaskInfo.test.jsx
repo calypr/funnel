@@ -20,6 +20,49 @@ it('shows a zero exit code for an executor', async () => {
   act(() => root.unmount());
 });
 
+it('renders resources from a gateway-shaped task payload', async () => {
+  const task = JSON.parse(`{
+    "id": "qa",
+    "resources": {
+      "backend_parameters": {},
+      "backend_parameters_strict": false,
+      "cpu_cores": 4,
+      "disk_gb": 16,
+      "preemptible": false,
+      "ram_gb": 8,
+      "zones": []
+    }
+  }`);
+  const container = document.createElement('div');
+  const root = createRoot(container);
+
+  try {
+    await act(async () => root.render(<TaskInfo task={task} />));
+    const row = [...container.querySelectorAll('tr')].find(row => row.cells[0]?.textContent === 'Resources');
+    expect(row?.cells[1]?.textContent).toBe('4 CPU cores, 8 GB RAM, 16 GB disk space');
+  } finally {
+    act(() => root.unmount());
+  }
+});
+
+it('keeps camelCase resource support and renders zero or negative numeric values', async () => {
+  const container = document.createElement('div');
+  const root = createRoot(container);
+
+  try {
+    await act(async () => root.render(
+      <TaskInfo task={{
+        id: 'task-1',
+        resources: { cpuCores: 0, ramGb: -1, diskGb: 0 },
+      }} />,
+    ));
+    const row = [...container.querySelectorAll('tr')].find(row => row.cells[0]?.textContent === 'Resources');
+    expect(row?.cells[1]?.textContent).toBe('0 CPU cores, -1 GB RAM, 0 GB disk space');
+  } finally {
+    act(() => root.unmount());
+  }
+});
+
 it.each(['system_logs', 'systemLogs'])('shows complete commands from %s', async (field) => {
   const container = document.createElement('div');
   const root = createRoot(container);
@@ -37,18 +80,22 @@ it.each(['system_logs', 'systemLogs'])('shows complete commands from %s', async 
 
 it('preserves line breaks in system log errors', async () => {
   const container = document.createElement('div');
+  document.body.append(container);
   const root = createRoot(container);
   const error = 'could not find matching storage\nswift: authentication failed';
   const log = `level='error' msg='System error' error='${error}'`;
 
-  await act(async () => {
-    root.render(<TaskInfo task={{ id: 'task-1', logs: [{ system_logs: [log] }] }} />);
-  });
-
-  const cell = [...container.querySelectorAll('td')].find(element => element.textContent === error);
-  expect(cell).toBeDefined();
-  expect(getComputedStyle(cell).whiteSpace).toBe('pre-line');
-  act(() => root.unmount());
+  try {
+    await act(async () => {
+      root.render(<TaskInfo task={{ id: 'task-1', logs: [{ system_logs: [log] }] }} />);
+    });
+    const cell = [...container.querySelectorAll('td')].find(element => element.textContent === error);
+    expect(cell).toBeDefined();
+    expect(getComputedStyle(cell).whiteSpace).toBe('pre-line');
+  } finally {
+    act(() => root.unmount());
+    container.remove();
+  }
 });
 
 it.each([
