@@ -25,7 +25,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22.22.0'
+          node-version: '22.23.4'
           cache: npm
           cache-dependency-path: webdash/package-lock.json
 
@@ -37,6 +37,10 @@ jobs:
       - name: Install frontend dependencies
         working-directory: webdash
         run: npm ci
+
+      - name: Audit frontend dependencies
+        working-directory: webdash
+        run: npm audit
 
       - name: Test frontend
         working-directory: webdash
