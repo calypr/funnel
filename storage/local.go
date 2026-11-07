@@ -58,7 +58,7 @@ func (local *Local) List(ctx context.Context, url string) ([]*Object, error) {
 		return nil, err
 	}
 	defer root.Close() //nolint:errcheck // Directory handle cleanup cannot affect completed IO.
-	files, err := localWalk(root, rel)
+	files, err := localWalk(ctx, root, rel)
 	if err != nil {
 		return nil, err
 	}

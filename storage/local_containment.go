@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -37,10 +38,7 @@ type localEndpoint struct {
 }
 
 func (e localEndpoint) open() (*os.File, error) {
-	if e.root != nil {
-		return e.root.Open(e.path)
-	}
-	return os.Open(e.path)
+	return openLocalFile(e.root, e.path, os.O_RDONLY, 0)
 }
 func (e localEndpoint) child(name string) localEndpoint {
 	return localEndpoint{e.root, filepath.Join(e.path, name)}
@@ -51,11 +49,40 @@ func (e localEndpoint) mkdir() error {
 	}
 	return os.MkdirAll(e.path, 0755)
 }
-func (e localEndpoint) writable(mode os.FileMode) (*os.File, error) {
-	if e.root != nil {
-		return e.root.OpenFile(e.path, os.O_CREATE|os.O_WRONLY, mode)
+func (e localEndpoint) writable(mode os.FileMode) (*os.File, bool, error) {
+	for attempts := 0; attempts < 40; attempts++ {
+		file, err := openLocalFile(e.root, e.path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, mode)
+		if err == nil {
+			return file, true, nil
+		}
+		if !errors.Is(err, fs.ErrExist) {
+			return nil, false, err
+		}
+		file, err = openLocalFile(e.root, e.path, os.O_WRONLY, 0)
+		if !errors.Is(err, fs.ErrNotExist) {
+			return file, false, err
+		}
+		var target string
+		if e.root != nil {
+			target, err = e.root.Readlink(e.path)
+		} else {
+			target, err = os.Readlink(e.path)
+		}
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return nil, false, err
+		}
+		if filepath.IsAbs(target) {
+			e.path = target
+		} else {
+			// Keep parent symlinks and ".." for the rooted open to resolve.
+			dir, _ := filepath.Split(e.path)
+			e.path = dir + target
+		}
 	}
-	return os.OpenFile(e.path, os.O_CREATE|os.O_WRONLY, mode)
+	return nil, false, fmt.Errorf("localStorage: destination changed too many times: %s", e.path)
 }
 
 // Copy from opened descriptors, including the same-file check before truncation.
@@ -84,6 +111,9 @@ func localTransfer(ctx context.Context, source, dest localEndpoint) error {
 }
 
 func localTransferTree(ctx context.Context, source, dest localEndpoint, ancestors []os.FileInfo) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	sf, err := source.open()
 	if err != nil {
 		return err
@@ -123,7 +153,7 @@ func localTransferTree(ctx context.Context, source, dest localEndpoint, ancestor
 	if err != nil {
 		return err
 	}
-	df, err := dest.writable(info.Mode().Perm())
+	df, created, err := dest.writable(info.Mode().Perm())
 	if err != nil {
 		return err
 	}
@@ -131,6 +161,9 @@ func localTransferTree(ctx context.Context, source, dest localEndpoint, ancestor
 	target, err := df.Stat()
 	if err != nil {
 		return err
+	}
+	if !target.Mode().IsRegular() {
+		return fmt.Errorf("localStorage: destination is not a regular file: %s", dest.path)
 	}
 	if os.SameFile(info, target) {
 		return nil
@@ -143,14 +176,22 @@ func localTransferTree(ctx context.Context, source, dest localEndpoint, ancestor
 	if err != nil {
 		return err
 	}
+	if created {
+		if err := preserveLocalFileMetadata(df, info); err != nil {
+			return err
+		}
+	}
 	return df.Close()
 }
 
-func localWalk(root *os.Root, path string) ([]fsutil.Hostfile, error) {
+func localWalk(ctx context.Context, root *os.Root, path string) ([]fsutil.Hostfile, error) {
 	var files []fsutil.Hostfile
 	var walk func(string, string, []os.FileInfo) error
 	walk = func(name, rel string, ancestors []os.FileInfo) error {
-		file, err := root.Open(name)
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		file, err := (localEndpoint{root: root, path: name}).open()
 		if err != nil {
 			return err
 		}
@@ -160,6 +201,9 @@ func localWalk(root *os.Root, path string) ([]fsutil.Hostfile, error) {
 			return err
 		}
 		if !info.IsDir() {
+			if !info.Mode().IsRegular() {
+				return fmt.Errorf("localStorage: listed path is not a regular file: %s", name)
+			}
 			files = append(files, fsutil.Hostfile{Rel: rel, LastModified: info.ModTime(), Size: info.Size()})
 			return nil
 		}
