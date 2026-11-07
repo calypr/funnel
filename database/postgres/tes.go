@@ -123,8 +123,9 @@ func (db *Postgres) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*
 
 	// Name prefix filter
 	if req.NamePrefix != "" {
-		whereClauses = append(whereClauses, fmt.Sprintf("data ->> 'name' LIKE $%d", paramCount))
-		args = append(args, req.NamePrefix+"%") // PostgreSQL LIKE operator needs % for prefix match
+		whereClauses = append(whereClauses, fmt.Sprintf(`data ->> 'name' LIKE $%d ESCAPE E'\\'`, paramCount))
+		prefix := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(req.NamePrefix)
+		args = append(args, prefix+"%")
 		paramCount++
 	}
 
