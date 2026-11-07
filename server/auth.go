@@ -114,7 +114,7 @@ func (a *Authentication) Interceptor(
 	info *grpc.UnaryServerInfo,
 	handler grpc.UnaryHandler) (interface{}, error) {
 
-	if info.FullMethod == tes.TaskService_GetServiceInfo_FullMethodName || (len(a.basic) == 0 && a.oidc == nil) {
+	if (len(a.basic) == 0 && a.oidc == nil) || info.FullMethod == tes.TaskService_GetServiceInfo_FullMethodName {
 		userInfo := publicUserInfo
 		userInfo.accessMode = a.accessMode
 		ctx = context.WithValue(ctx, UserInfoKey, &userInfo)
