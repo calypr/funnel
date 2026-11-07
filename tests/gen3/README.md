@@ -24,11 +24,13 @@ Native helper and task-image archives are cached separately by architecture and
 recipe content, avoiding repeated builds and exports. Imported images must match
 both their architecture and recipe label.
 
-The GitHub job uses `ubuntu-24.04-arm`. The local runner uses four CPUs,
-16 GiB of memory, the same lifecycle script, four pytest workers, and the same
-service image digests. Docker Desktop supplies the local Linux kernel, so host
-kernels and networking still differ. Executable ELF headers are checked as well as image metadata, so Docker
-Desktop binary translation cannot hide an x86 executable in an ARM image.
+The GitHub job uses `ubuntu-24.04` and builds `linux/amd64` images. The local
+runner uses four CPUs, 16 GiB of memory, the same lifecycle script, four pytest
+workers, and the same service image digests in an ARM64 Linux container on an
+ARM host. Local runs build ARM64 task images while hosted runs build AMD64 task
+images. Docker Desktop supplies the local Linux kernel, so host kernels and
+networking still differ. Each run checks image metadata and ELF headers for the
+architecture it builds.
 
 After a failure, use `docker-dev.sh resume` to rerun the lifecycle against the
 retained fixture, or `docker-dev.sh step <phase>` to retry one bootstrap phase.
@@ -72,8 +74,9 @@ retries that reuse those fixtures. Run the complete selection without
 `RUNNING_LOCAL` for final verification.
 
 Local image builds include uncommitted source and use content-derived image tags.
-Local and hosted Gen3 runs build ARM64 images. Focused local passes are
-debugging evidence; require the complete fresh lifecycle for final verification.
+Local Gen3 runs build ARM64 images. Hosted Gen3 runs build AMD64 images. Focused
+local passes are debugging evidence; require the complete fresh lifecycle for
+final verification.
 
 The Gen3 check has no repository-imposed overall deadline. Its five-to-six-minute
 runtime target still includes setup, tests, and diagnostics. GitHub's platform
@@ -91,13 +94,15 @@ bounded parallel image pulls and runs the upstream
 `gen3_workflow and not wip` test selection. The fixture uses one replica of each
 required Gen3 service and omits the unused Elasticsearch pod. Java 21 and
 Nextflow 26.10.1 are checked before pytest. The original DICOM utility scripts
-and requirements are fetched from checksum-verified image layers and built
-for ARM64; the canary fixture uses native Ubuntu 24.04. The Gen3 AWS helper
-retains its upstream scripts with a native AWS CLI, checked during its build.
-Arborist is rebuilt from the exact source embedded in its pinned upstream image
-because its ARM manifest ships an x86 server binary. Native helper and executor
-binaries are checked before use; service executables are checked before pytest. These replace the two
-AMD64-only upstream test images without changing the workflow assertions. The fixture retains real authentication services, PostgreSQL, MinIO, and Mountpoint CSI. Two
+and requirements are fetched from checksum-verified image layers and built for
+the selected platform. The canary fixture uses native Ubuntu 24.04. The Gen3
+AWS helper retains its upstream scripts with a native AWS CLI, checked during
+its build. Arborist is rebuilt for the selected platform from the exact source
+embedded in its pinned upstream image because its ARM manifest ships an x86
+server binary. Native helper and executor binaries are checked before use.
+Service executables are checked before pytest. These images replace the two
+AMD64-only upstream test images without changing the workflow assertions. The
+fixture retains real authentication services, PostgreSQL, MinIO, and Mountpoint CSI. Two
 gateways share the same Funnel backend: `/workflows/` keeps the upstream Kind
 bearer-token mode, while `/ga4gh/tes/` validates real DPoP proofs. This keeps the
 task-token executor test enabled without changing ordinary client authentication.
@@ -145,10 +150,10 @@ time for a final snapshot and uploads artifacts after failure. Inspect the
 phase timings, pytest output, pod states, and image identity when a check fails.
 
 The upstream test suite still uses MinIO and the real Mountpoint S3 CSI driver.
-The setup script pins CSI chart 2.8.0. Native ARM runs use the upstream
-ARM64 digests in `csi-images-arm64.yaml`. The legacy AMD64 configuration uses
-images mirrored in `quay.io/ohsu-comp-bio/funnel`
-under `ci-csi-*` tags. GitHub-hosted runners exhausted ECR's anonymous data
+The setup script pins CSI chart 2.8.0. Hosted AMD64 runs use the images mirrored
+in `quay.io/ohsu-comp-bio/funnel` under `ci-csi-*` tags. Local ARM64 runs use
+the upstream ARM64 digests in `csi-images-arm64.yaml`. GitHub-hosted runners
+exhausted ECR's anonymous data
 allowance, so pulling directly from ECR failed before tests could start.
 
 Each mirror preserves the corresponding upstream Linux/amd64 manifest digest.

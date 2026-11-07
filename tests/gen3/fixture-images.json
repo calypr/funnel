@@ -3,15 +3,15 @@
     "quay.io/cdis/arborist:master": {
       "platforms": {
         "amd64": {
-          "config": "sha256:9c17fee8fd7303ce4e6c31b29d24bbb5a0aae035affbc6f9fb52f887f54ee865",
-          "manifest": "sha256:bd44b9df83e452c96551694cdc0efb2310c763ed62ff13bb008379d882ef9ce5"
+          "config": "sha256:cb78778a1710d4e17c127903ac3dbf3150488cded6495c01ab4adcb25d981c41",
+          "manifest": "sha256:cc8035fecc635ec08ecec9d58ea266d495e5235a816681a96f594f36392336e9"
         },
         "arm64": {
-          "config": "sha256:f28f0cff26093f1ab2e83a60512e5ae294b53fcb72d9c7c481a7c458ccb4e11f",
-          "manifest": "sha256:ef631c76595eb496204c7f5d53f685fbe07926e92dae7f3d3680b169bce3cd84"
+          "config": "sha256:893bf1a6bbb681fed7f4a48f6ce4ffd3b69f53922b43f960b9ae1d278dc78d6d",
+          "manifest": "sha256:910b75a38f2fa93e2dddec572c01d9ec6dba879ce18ffb062f6eba0b71ba83bf"
         }
       },
-      "reference": "quay.io/cdis/arborist:master@sha256:1177d8614452ad512bf7e022eec21899a1cbcef086e337a135749b2e0edfe27e"
+      "reference": "quay.io/cdis/arborist:4.1.2@sha256:70675dd573ce31cab098e45d60e6c5983ebf089faa39015a17002db81ea9778a"
     },
     "quay.io/cdis/docker-bitnami-pgvector:master": {
       "platforms": {
@@ -29,28 +29,28 @@
     "quay.io/cdis/fence:master": {
       "platforms": {
         "amd64": {
-          "config": "sha256:8ee4dba2009d3e6b22c01133bb9f2ba63ffac07a2e2d7c4d221d1d7a71bea8c7",
-          "manifest": "sha256:b7f06d7c26083df28be0355f0fe80ad9c316f5381f6d2ae4a5fd66565cfe8be4"
+          "config": "sha256:9aa15bbf3509474896732bd4a1837dc150e6259cd01625e1324b44d1ac641ead",
+          "manifest": "sha256:784efbeb800404e49ff7464a994a3fcf5a52ec1d81fa4a88dcc0348ab051fc22"
         },
         "arm64": {
-          "config": "sha256:39a7c42c2db3f2e104f0f65a2b9e6521af3b72975d72fe1ef38d97b7cc9e8b3e",
-          "manifest": "sha256:8e26f3c310371eb679d329bd4fdfde8c5eb97142ee2470cd175bd62ce4671246"
+          "config": "sha256:d6047d8f91d7a3ee55db3a709323d3cdd91000341a71b9423296d4f67eb04a52",
+          "manifest": "sha256:183be9928f608dde2a99d6338e4ffd15493ce5c3f472b7413bebd1bea3f75876"
         }
       },
-      "reference": "quay.io/cdis/fence:master@sha256:b440a1b0584d2905fd8fa9dc8725736c565af0fb95492494f99ba4b620ae7643"
+      "reference": "quay.io/cdis/fence:master@sha256:12ca758de0b091b7e3d18eb3b96ed6f42ce77d819a2f812e6f13a8e6ff7a9c68"
     },
     "quay.io/cdis/gen3-workflow:master": {
       "platforms": {
         "amd64": {
-          "config": "sha256:7bdf4687af254b2474391240ac571a6db05bad201677c42ce282bb9a70d62305",
-          "manifest": "sha256:04593306f0f3e669aa10773355d6d1ad1cd2c2a9c5c7daac33521dbb3ddfef11"
+          "config": "sha256:e0585d27cde8d03624eab7eebcc4ac5cf5d5e3fd23cff5b04d9acfabb94b7fcd",
+          "manifest": "sha256:037d633c66308a3313efdaed7cd4318b860acafbe75e92ffda6625cad117291d"
         },
         "arm64": {
-          "config": "sha256:f12c1d059c7557579c2b934103b07d462289a6e3c56c5d4627abe085d96b50de",
-          "manifest": "sha256:7b8ca47d4f5d3201ca15e54b5965dfb0ce03753fcd93f687ee03a87302f50bb8"
+          "config": "sha256:0dd0e982df3ae56b38e30c12f3afcb07940bf1285d2e3672542d75ba3fe3b6e5",
+          "manifest": "sha256:2053ff4f58e682da20de251e273a6e49f8d3f781eb96e0a7b770ce175318cc31"
         }
       },
-      "reference": "quay.io/cdis/gen3-workflow:master@sha256:7dc54615269202c6b497714c9cd54a15704fe709d3e25342b5c5cb70078abb19"
+      "reference": "quay.io/cdis/gen3-workflow:master@sha256:0ff97e2bb37a9b6d637314e200097e4312795277d65799d83582285fc4d4cf9b"
     },
     "quay.io/cdis/indexd:master": {
       "platforms": {
@@ -81,15 +81,15 @@
     "quay.io/cdis/nginx:master": {
       "platforms": {
         "amd64": {
-          "config": "sha256:d767e7b176891cf25abaca67a6166322ded1f03842c42110b69b223cb12ef581",
-          "manifest": "sha256:b1f89b2588b350b32f94bb7e9fe640e5aba29fa949a400bcf192c31db40f0c16"
+          "config": "sha256:63952b40c869d36ed1148b3188ef0d9d068fa2b31a1cc40f2318c4c6a894dad8",
+          "manifest": "sha256:07d4b6968837435e2ba26a7fa9754743ec4c8f74fc48d84a45ab809b9e9960d5"
         },
         "arm64": {
-          "config": "sha256:0718ba2632490c38de14e99df8335fcdc6bbb19bd753de32d5837b219040c5c1",
-          "manifest": "sha256:be7935249dc93b0e3cb8d4987623e766d690cd7cae968990e82c63964415b26e"
+          "config": "sha256:bde27e0c002f4743fdbd4548779b44b808831974aa3ee2e65d95dcf6f01a107a",
+          "manifest": "sha256:64a967e1f563efba965aa700a2ad0dfd2efc7ef664f55be22fbdd67cd79bbcd0"
         }
       },
-      "reference": "quay.io/cdis/nginx:master@sha256:dad0a9ba117f9a932d55b01982b53b75054fa7bb38469219dcf9638016793d17"
+      "reference": "quay.io/cdis/nginx:master@sha256:001b5218ca30cbbb82646b05c23c644f2ace427147edaef58b6c4c238279cd1e"
     }
   }
 }
