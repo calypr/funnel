@@ -29,6 +29,7 @@ jobs:
     - name: Compile storage permission test as runner
       run: go test -c ./storage -o "$RUNNER_TEMP/storage-permissions.test"
     - name: Run storage tests with separate executor identities
+      working-directory: storage
       run: sudo env FUNNEL_TEST_LOCAL_OWNERSHIP=1 "$RUNNER_TEMP/storage-permissions.test" -test.count=1 -test.v -test.timeout=2m
 
   docker-resource-integration:
