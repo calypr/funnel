@@ -477,6 +477,47 @@ func (mapper *FileMapper) addOutput(output *tes.Output, rootStreamPaths map[stri
 	return nil
 }
 
+func (mapper *FileMapper) prepareRootStreamFiles(task *tes.Task) (map[string]bool, error) {
+	rootStreamPaths := map[string]bool{}
+	for _, executor := range task.Executors {
+		for _, stream := range []string{executor.Stdout, executor.Stderr} {
+			if stream == "" {
+				continue
+			}
+			containerPath := path.Clean(stream)
+			if path.Dir(containerPath) != "/" {
+				continue
+			}
+			hostPath, err := mapper.HostPath(containerPath)
+			if err != nil {
+				return nil, err
+			}
+			filePath := hostPath
+			if mapper.ScratchDir != "" {
+				filePath, err = mapper.HostScratchPath(containerPath)
+				if err != nil {
+					return nil, err
+				}
+			}
+			if err := fsutil.EnsureDir(path.Dir(filePath)); err != nil {
+				return nil, err
+			}
+			f, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY, 0666)
+			if err != nil {
+				return nil, fmt.Errorf("preparing executor stream file %q: %w", containerPath, err)
+			}
+			if err := f.Close(); err != nil {
+				return nil, err
+			}
+			if _, err := mapper.AddVolume(hostPath, containerPath, false); err != nil {
+				return nil, err
+			}
+			rootStreamPaths[containerPath] = true
+		}
+	}
+	return rootStreamPaths, nil
+}
+
 // IsSubpath returns true if the given path "p" is "base" or below it.
 // Paths are compared by whole components: "/data2" is not below "/data".
 func (mapper *FileMapper) IsSubpath(p string, base string) bool {
@@ -621,7 +662,7 @@ func (mapper *FileMapper) consolidateVolumes(inputs []*tes.Input) {
 				HostPath:      hostParent,
 				ContainerPath: contParent,
 				Readonly:      false,
-			})
+			}, mapper)
 		}
 	}
 	mapper.Volumes = nonInputVols

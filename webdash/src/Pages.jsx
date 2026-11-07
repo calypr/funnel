@@ -49,6 +49,8 @@ function TaskList({pageToken, setPageToken,
   };
 
   React.useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
     var url = new URL("/v1/tasks", window.location.origin);
     var params = url.searchParams;
     for (const [key, value] of new URLSearchParams(window.location.search)) {
@@ -338,12 +340,29 @@ function Task() {
   //const [task, setTask] = React.useState(example_task);
 
   React.useEffect(() => {
-    var url = new URL("/v1/tasks/" + encodeURIComponent(task_id), window.location.origin);
-    get(url).then(
-      (task) => {
-        setTask(task);
-      }).catch((error) => console.log("getTask error:", error));
-  }, [task_id]);
+    const url = new URL("/v1/tasks/" + encodeURIComponent(task_id), window.location.origin);
+    const controller = new AbortController();
+    let active = true;
+    let timer;
+    const refresh = async () => {
+      try {
+        const updated = await get(url, false, controller.signal);
+        if (!active) return;
+        setTask(updated);
+        if (isDone(updated)) return;
+      } catch (error) {
+        if (!active) return;
+        console.log("getTask error:", error);
+      }
+      timer = setTimeout(refresh, 10000);
+    };
+    refresh();
+    return () => {
+      active = false;
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [task_id, refreshKey]);
 
   const json = (
     <ReactJson

@@ -468,13 +468,13 @@ func TestMapTaskWiderVolumeReplacesAllNarrowerVolumes(t *testing.T) {
 	f := FileMapper{WorkDir: t.TempDir()}
 	task := &tes.Task{
 		Outputs: []*tes.Output{
-			{Url: "file:///out/b", Path: "/out/b", Type: tes.FileType_DIRECTORY},
-			{Url: "file:///out/c", Path: "/out/c", Type: tes.FileType_DIRECTORY},
-			{Url: "file:///out/x.txt", Path: "/out/x.txt", Type: tes.FileType_FILE},
+			{Url: "file:///out/b", Path: "/out/b", Type: tes.FileType_DIRECTORY.Enum()},
+			{Url: "file:///out/c", Path: "/out/c", Type: tes.FileType_DIRECTORY.Enum()},
+			{Url: "file:///out/x.txt", Path: "/out/x.txt", Type: tes.FileType_FILE.Enum()},
 		},
 	}
 
-	if err := f.MapTask(task); err != nil {
+	if err := f.MapTask(task, "docker"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -495,9 +495,9 @@ func TestMapTaskVolumesNeverNest(t *testing.T) {
 				{Path: "/mnt/c/work/_inputs/1/b.txt", Content: "b"},
 			},
 			Outputs: []*tes.Output{
-				{Url: "file:///o/work", Path: "/mnt/c/work", Type: tes.FileType_DIRECTORY},
-				{Url: "file:///o/stdout.txt", Path: "/mnt/c/stdout.txt", Type: tes.FileType_FILE},
-				{Url: "file:///o/stderr.txt", Path: "/mnt/c/stderr.txt", Type: tes.FileType_FILE},
+				{Url: "file:///o/work", Path: "/mnt/c/work", Type: tes.FileType_DIRECTORY.Enum()},
+				{Url: "file:///o/stdout.txt", Path: "/mnt/c/stdout.txt", Type: tes.FileType_FILE.Enum()},
+				{Url: "file:///o/stderr.txt", Path: "/mnt/c/stderr.txt", Type: tes.FileType_FILE.Enum()},
 			},
 		},
 		"inputs consolidate above outputs": {
@@ -506,22 +506,22 @@ func TestMapTaskVolumesNeverNest(t *testing.T) {
 				{Path: "/data/ref/b.txt", Content: "b"},
 			},
 			Outputs: []*tes.Output{
-				{Url: "file:///o/x", Path: "/data/out/x", Type: tes.FileType_DIRECTORY},
-				{Url: "file:///o/y", Path: "/data/out/y", Type: tes.FileType_DIRECTORY},
+				{Url: "file:///o/x", Path: "/data/out/x", Type: tes.FileType_DIRECTORY.Enum()},
+				{Url: "file:///o/y", Path: "/data/out/y", Type: tes.FileType_DIRECTORY.Enum()},
 			},
 		},
 		"outputs first, wider output last": {
 			Outputs: []*tes.Output{
-				{Url: "file:///o/1", Path: "/w/a/1", Type: tes.FileType_DIRECTORY},
-				{Url: "file:///o/2", Path: "/w/b/2", Type: tes.FileType_DIRECTORY},
-				{Url: "file:///o/3", Path: "/w/c/3", Type: tes.FileType_DIRECTORY},
-				{Url: "file:///o/all", Path: "/w", Type: tes.FileType_DIRECTORY},
+				{Url: "file:///o/1", Path: "/w/a/1", Type: tes.FileType_DIRECTORY.Enum()},
+				{Url: "file:///o/2", Path: "/w/b/2", Type: tes.FileType_DIRECTORY.Enum()},
+				{Url: "file:///o/3", Path: "/w/c/3", Type: tes.FileType_DIRECTORY.Enum()},
+				{Url: "file:///o/all", Path: "/w", Type: tes.FileType_DIRECTORY.Enum()},
 			},
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := FileMapper{WorkDir: t.TempDir()}
-			if err := f.MapTask(task); err != nil {
+			if err := f.MapTask(task, "docker"); err != nil {
 				t.Fatal(err)
 			}
 			assertNoNestedVolumes(t, &f)
@@ -534,12 +534,12 @@ func TestMapTaskSiblingWithSamePrefixIsMounted(t *testing.T) {
 	f := FileMapper{WorkDir: t.TempDir()}
 	task := &tes.Task{
 		Outputs: []*tes.Output{
-			{Url: "file:///o/out", Path: "/out", Type: tes.FileType_DIRECTORY},
-			{Url: "file:///o/b.txt", Path: "/out2/b.txt", Type: tes.FileType_FILE},
+			{Url: "file:///o/out", Path: "/out", Type: tes.FileType_DIRECTORY.Enum()},
+			{Url: "file:///o/b.txt", Path: "/out2/b.txt", Type: tes.FileType_FILE.Enum()},
 		},
 	}
 
-	if err := f.MapTask(task); err != nil {
+	if err := f.MapTask(task, "docker"); err != nil {
 		t.Fatal(err)
 	}
 
