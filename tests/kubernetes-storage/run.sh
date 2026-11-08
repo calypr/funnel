@@ -45,7 +45,7 @@ k3d cluster create "$cluster" --image rancher/k3s:v1.31.5-k3s1 --wait \
 k3d kubeconfig get "$cluster" > "$KUBECONFIG"
 node="k3d-${cluster}-server-0"
 docker save "$FUNNEL_E2E_IMAGE" | docker exec -i "$node" ctr -n k8s.io images import -
-docker exec "$node" ctr -n k8s.io images list --quiet | grep -Fqx -- "docker.io/library/$FUNNEL_E2E_IMAGE"
+docker exec "$node" ctr -n k8s.io images list --quiet | grep -Fx -- "docker.io/library/$FUNNEL_E2E_IMAGE" >/dev/null
 test "$(kubectl get storageclass local-path -o jsonpath='{.provisioner}')" = rancher.io/local-path
 test "$(kubectl get storageclass local-path -o jsonpath='{.metadata.annotations.storageclass\.kubernetes\.io/is-default-class}')" = true
 kubectl apply -f tests/kubernetes-storage/native-storageclass.yaml
