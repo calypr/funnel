@@ -4,15 +4,20 @@ permissions:
   contents: read
 
 on:
-  # Run on push to main/master/develop (e.g. after PR is merged)
   push:
     branches:
       - develop
+  pull_request:
 
-# Cancel redundant jobs (if a new job is triggered for the same workflow and ref)
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+env:
+  NXF_VER: '26.10.5'
+  NF_GA4GH_VERSION: '1.5.0'
+  NF_CANARY_REF: c4a8d4232f3fd2cb2522519c646fb08d408036ba
+
 jobs:
   build:
     name: Build Nextflow-test binary
@@ -22,7 +27,11 @@ jobs:
     name: Nextflow workflow against local Funnel
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
+    - name: Check out repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
     - name: Download Funnel
       uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
       with:
@@ -33,48 +42,84 @@ jobs:
     - name: Start Funnel
       run: |
         chmod +x ./funnel
-        ./funnel server --LocalStorage.AllowedDirs $HOME run &
-    
+        mkdir -p "$RUNNER_TEMP/nextflow-canary"
+        ./funnel server --LocalStorage.AllowedDirs "$HOME" run >"$RUNNER_TEMP/nextflow-canary/funnel.log" 2>&1 &
+        echo "$!" >"$RUNNER_TEMP/nextflow-canary/funnel.pid"
+        for attempt in {1..30}; do
+          if curl --fail --silent --max-time 1 http://localhost:8000/healthz >/dev/null; then
+            exit 0
+          fi
+          if ! kill -0 "$(cat "$RUNNER_TEMP/nextflow-canary/funnel.pid")" 2>/dev/null; then
+            cat "$RUNNER_TEMP/nextflow-canary/funnel.log"
+            exit 1
+          fi
+          sleep 1
+        done
+        cat "$RUNNER_TEMP/nextflow-canary/funnel.log"
+        exit 1
+
     - name: Setup Java
       uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
       with:
         distribution: 'temurin'
-        java-version: '21'
+        java-version: '17'
 
     - name: Install Nextflow
       run: |
-        echo "Installing Nextflow: https://www.nextflow.io/docs/latest/install.html"
-
-        # Install Java 17
-        curl -s https://get.sdkman.io | bash
-        source "/home/runner/.sdkman/bin/sdkman-init.sh"
-        sdk install java 17.0.10-tem
-        java -version
-
-        # Install Nextflow
-        curl -s https://get.nextflow.io | bash
+        curl --fail --silent --show-error --location https://get.nextflow.io --output "$RUNNER_TEMP/install-nextflow"
+        bash "$RUNNER_TEMP/install-nextflow"
         chmod +x nextflow
-        mkdir -p $HOME/.local/bin/
-        mv nextflow $HOME/.local/bin/
-
-        # Ensure Nextflow is in PATH
-        export PATH=$HOME/.local/bin:$PATH
-        echo "PATH=$HOME/.local/bin:$PATH" >> $GITHUB_ENV
-
-        nextflow info
+        mkdir -p "$HOME/.local/bin"
+        mv nextflow "$HOME/.local/bin/"
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        "$HOME/.local/bin/nextflow" info
 
     - name: Install nf-canary and GA4GH-TES plugin
       run: |
-        git clone https://github.com/seqeralabs/nf-canary
-        cd nf-canary
-        cat <<EOF >> nextflow.config
-          plugins {
-            id 'nf-ga4gh'
-          }
-          process.executor = 'tes'
-          tes.endpoint = 'http://localhost:8000'
-        EOF
+        git init nf-canary
+        git -C nf-canary remote add origin https://github.com/seqeralabs/nf-canary
+        git -C nf-canary fetch --depth 1 origin "$NF_CANARY_REF"
+        git -C nf-canary checkout --detach FETCH_HEAD
+        cat <<EOF_CONFIG >> nf-canary/nextflow.config
+        plugins {
+          id 'nf-ga4gh@${NF_GA4GH_VERSION}'
+        }
+        process.executor = 'tes'
+        tes.endpoint = 'http://localhost:8000'
+        EOF_CONFIG
 
     - name: Run nf-canary tests
+      id: canary
       run: |
-        nextflow run nf-canary/main.nf
+        timeout --signal=TERM --kill-after=30s 8m \
+          nextflow -log "$RUNNER_TEMP/nextflow-canary/nextflow.log" \
+          run nf-canary/main.nf -ansi-log false \
+          -with-trace "$RUNNER_TEMP/nextflow-canary/trace.tsv"
+        python3 .github/scripts/check-nextflow-canary.py "$RUNNER_TEMP/nextflow-canary/trace.tsv"
+
+    - name: Collect diagnostics and stop Funnel
+      if: always()
+      env:
+        CANARY_OUTCOME: ${{ steps.canary.outcome }}
+      run: |
+        mkdir -p "$RUNNER_TEMP/nextflow-canary"
+        curl --fail --silent --show-error --max-time 10 \
+          'http://localhost:8000/v1/tasks?view=FULL&page_size=1000' \
+          >"$RUNNER_TEMP/nextflow-canary/tasks.json" || true
+        docker ps -a >"$RUNNER_TEMP/nextflow-canary/docker-containers.txt" 2>&1 || true
+        if [ -f "$RUNNER_TEMP/nextflow-canary/funnel.pid" ]; then
+          pid=$(cat "$RUNNER_TEMP/nextflow-canary/funnel.pid")
+          if [ "$CANARY_OUTCOME" != success ] && kill -0 "$pid" 2>/dev/null; then
+            kill -QUIT "$pid" || true
+            sleep 1
+          fi
+          kill -TERM "$pid" 2>/dev/null || true
+        fi
+
+    - name: Upload canary diagnostics
+      if: always()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: nextflow-local-canary-diagnostics
+        path: ${{ runner.temp }}/nextflow-canary
+        if-no-files-found: warn
