@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	tesclient "github.com/calypr/funnel/client/tes"
 	"github.com/calypr/funnel/tes"
 )
 
@@ -25,7 +26,7 @@ func TestRESTClientPreservesPrefixAndEscapesTaskID(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	c, err := tes.NewClient(server.URL+"/prefix/", tes.WithHTTPClient(server.Client()))
+	c, err := tesclient.NewClient(server.URL+"/prefix/", tesclient.WithHTTPClient(server.Client()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +52,7 @@ func TestRESTClientIgnoresProcessCredentials(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	c, err := tes.NewClient(server.URL)
+	c, err := tesclient.NewClient(server.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +72,7 @@ func TestRESTClientCreateDelegatesValidationToServer(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	c, err := tes.NewClient(server.URL + "/tes")
+	c, err := tesclient.NewClient(server.URL + "/tes")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +86,7 @@ func TestRESTClientCreateDelegatesValidationToServer(t *testing.T) {
 }
 
 func TestWaitForTaskHonorsCancellationBeforePolling(t *testing.T) {
-	c, err := tes.NewClient("https://unused.invalid")
+	c, err := tesclient.NewClient("https://unused.invalid")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +131,7 @@ func TestRESTClientPagingCancelAndServiceInfoUnderPrefix(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	c, err := tes.NewClient(server.URL + "/prefix")
+	c, err := tesclient.NewClient(server.URL + "/prefix")
 	if err != nil {
 		t.Fatal(err)
 	}

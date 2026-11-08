@@ -1,21 +1,21 @@
 package task
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 
-	"github.com/calypr/funnel/internal/cli/tesclient"
+	"google.golang.org/protobuf/encoding/protojson"
 
-	"context"
-
+	"github.com/calypr/funnel/internal/cli/tesenv"
 	"github.com/calypr/funnel/tes"
 )
 
 // Cancel runs the "task cancel" CLI command, which connects to the server,
 // calls CancelTask() on each ID, and writes output to the given writer.
 func Cancel(server string, ids []string, writer io.Writer) error {
-	cli, err := tesclient.New(server)
+	cli, err := tesenv.New(server)
 	if err != nil {
 		return err
 	}
@@ -40,7 +40,7 @@ func Cancel(server string, ids []string, writer io.Writer) error {
 			res = append(res, string(jsonBytes))
 		} else {
 			// Normal empty response
-			out := cli.Marshaler.Format(result.Response)
+			out := (protojson.MarshalOptions{Indent: "  "}).Format(result.Response)
 			res = append(res, out)
 		}
 	}

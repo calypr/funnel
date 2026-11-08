@@ -10,6 +10,14 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
+	"google.golang.org/grpc/test/bufconn"
+	"google.golang.org/protobuf/proto"
+
+	tesclient "github.com/calypr/funnel/client/tes"
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/internal/database/boltdb"
 	"github.com/calypr/funnel/internal/events"
@@ -17,12 +25,6 @@ import (
 	"github.com/calypr/funnel/internal/taskmodel"
 	"github.com/calypr/funnel/internal/tesrpc"
 	"github.com/calypr/funnel/tes"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/status"
-	"google.golang.org/grpc/test/bufconn"
-	"google.golang.org/protobuf/proto"
 )
 
 func TestListTasksLargeResponses(t *testing.T) {
@@ -147,7 +149,7 @@ func TestLargeListThroughConfiguredHTTPGateway(t *testing.T) {
 	f.Server.Tasks = &server.TaskService{Read: db, Config: f.Conf}
 	t.Cleanup(f.Cleanup)
 	f.StartServer()
-	client, err := tes.NewClient(f.Conf.Server.HTTPAddress())
+	client, err := tesclient.NewClient(f.Conf.Server.HTTPAddress())
 	if err != nil {
 		t.Fatal(err)
 	}

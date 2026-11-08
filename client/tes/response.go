@@ -7,9 +7,9 @@ import (
 	"net/http"
 )
 
-// CheckHTTPResponse does some basic error handling
+// checkHTTPResponse does some basic error handling
 // and reads the response body into a byte array
-func CheckHTTPResponse(resp *http.Response, err error) ([]byte, error) {
+func checkHTTPResponse(resp *http.Response, err error) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}

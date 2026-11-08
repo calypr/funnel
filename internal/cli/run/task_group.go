@@ -1,12 +1,14 @@
 package run
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"sync"
 
-	"context"
+	"google.golang.org/protobuf/encoding/protojson"
 
+	tesclient "github.com/calypr/funnel/client/tes"
 	"github.com/calypr/funnel/tes"
 )
 
@@ -14,7 +16,7 @@ type taskGroup struct {
 	wg        sync.WaitGroup
 	err       chan error
 	printTask bool
-	client    *tes.Client
+	client    *tesclient.Client
 }
 
 func (tg *taskGroup) runTask(t *tes.Task, wait bool, waitFor []string) {
@@ -51,7 +53,7 @@ func (tg *taskGroup) _run(task *tes.Task, wait bool, waitFor []string) error {
 
 	if tg.printTask {
 		// Marshal message to JSON
-		taskJSON := tg.client.Marshaler.Format(task)
+		taskJSON := (protojson.MarshalOptions{Indent: "  "}).Format(task)
 		_, err := fmt.Fprintln(os.Stdout, taskJSON)
 		if err != nil {
 			return fmt.Errorf("writing task output: %w", err)

@@ -4,9 +4,11 @@ import (
 	"os"
 	"testing"
 
-	"github.com/calypr/funnel/tes"
 	"github.com/stretchr/testify/assert"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/calypr/funnel/tes"
 )
 
 // protoSlicesEqual reports whether two slices of protobuf messages are equal
@@ -172,16 +174,16 @@ func TestParse(t *testing.T) {
 	}
 
 	if !assert.True(t, protoSlicesEqual(expected, result)) {
-		s, err := tes.MarshalToString(expected[0])
+		s, err := (protojson.MarshalOptions{Indent: "  "}).Marshal(expected[0])
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Log("Expected", s)
-		q, err := tes.MarshalToString(result[0])
+		t.Log("Expected", string(s))
+		q, err := (protojson.MarshalOptions{Indent: "  "}).Marshal(result[0])
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Log("Actual", q)
+		t.Log("Actual", string(q))
 		t.Fatal("unexpected results")
 	}
 }

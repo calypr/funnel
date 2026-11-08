@@ -16,7 +16,7 @@ def run(*args, cwd=ROOT):
 
 
 def main():
-    dependencies = run("go", "list", "-deps", "./tes").splitlines()
+    dependencies = run("go", "list", "-deps", "./client/tes").splitlines()
     forbidden = [name for name in dependencies if name.startswith((
         MODULE + "/internal/", MODULE + "/config", MODULE + "/logger",
         "google.golang.org/grpc", "github.com/grpc-ecosystem/", "k8s.io/",
@@ -24,6 +24,9 @@ def main():
     ))]
     if forbidden:
         raise RuntimeError("TES client imports server dependencies: " + ", ".join(forbidden))
+    model_dependencies = run("go", "list", "-deps", "./tes").splitlines()
+    if any(name == "net/http" or name.startswith(MODULE + "/client/") for name in model_dependencies):
+        raise RuntimeError("TES wire models import HTTP/client behavior")
     env = os.environ | {"GOWORK": "off"}
     with tempfile.TemporaryDirectory(prefix="funnel-public-api-") as directory:
         path = Path(directory)
@@ -39,6 +42,7 @@ import (
  "net/http/httptest"
  "testing"
  "github.com/calypr/funnel/tes"
+ tesclient "github.com/calypr/funnel/client/tes"
  "github.com/calypr/funnel/config"
  "github.com/calypr/funnel/logger"
  plugin "github.com/calypr/funnel/plugins/proto"
@@ -50,7 +54,7 @@ func TestExternalClient(t *testing.T) {
   if r.URL.Path!="/prefix/v1/tasks" {t.Errorf("path = %s",r.URL.Path)}
   if _,err:=io.WriteString(w,`{"id":"external-task"}`);err!=nil {t.Error(err)}
  }));defer server.Close()
- client,err:=tes.NewClient(server.URL+"/prefix",tes.WithHTTPClient(server.Client()));if err!=nil {t.Fatal(err)}
+ client,err:=tesclient.NewClient(server.URL+"/prefix",tesclient.WithHTTPClient(server.Client()));if err!=nil {t.Fatal(err)}
  response,err:=client.CreateTask(context.Background(),&tes.Task{Executors:[]*tes.Executor{{Image:"alpine",Command:[]string{"true"}}}})
  if err!=nil {t.Fatal(err)};if response.Id!="external-task" {t.Fatal(response)}
 }
@@ -76,7 +80,7 @@ func TestExternalPluginContracts(t *testing.T) {
                                 text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         if result.returncode == 0 or "use of internal package" not in result.stdout:
             raise RuntimeError("Expected Go's internal-package rejection, got:\n" + result.stdout)
-    print("Public API check passed: REST-only client dependencies, external client/plugin consumers, and enforced internal boundary.")
+    print("Public API check passed: HTTP-free wire models, REST-only client dependencies, external client/plugin consumers, and enforced internal boundary.")
 
 
 if __name__ == "__main__":

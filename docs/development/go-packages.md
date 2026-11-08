@@ -1,12 +1,18 @@
 # Go packages and the TES client
 
-Funnel's public Go API is the `github.com/calypr/funnel/tes` package. It contains
-TES wire models and a REST client. Server implementations are under `internal/`,
-where Go prevents external modules from importing them.
+Funnel separates its public Go API into two packages:
+
+- `github.com/calypr/funnel/tes`: shared generated TES models, enum conveniences,
+  and request filters. It has no HTTP client or server dependencies.
+- `github.com/calypr/funnel/client/tes`: TES REST operations, client configuration,
+  HTTP responses, and task polling.
+
+Server implementations are under `internal/`, where Go prevents external modules
+from importing them.
 
 ```go
-client, err := tes.NewClient("https://example.org/prefix",
-    tes.WithHTTPClient(&http.Client{Timeout: 30 * time.Second}))
+client, err := tesclient.NewClient("https://example.org/prefix",
+    tesclient.WithHTTPClient(&http.Client{Timeout: 30 * time.Second}))
 if err != nil {
     return err
 }
@@ -19,7 +25,9 @@ result, err := client.CreateTask(ctx, &tes.Task{
 })
 ```
 
-Import `context`, `net/http`, `time`, and `github.com/calypr/funnel/tes` as needed.
+Import `github.com/calypr/funnel/client/tes` as `tesclient` and
+`github.com/calypr/funnel/tes` for the models. Import `context`, `net/http`, and
+`time` as needed.
 The client preserves URL prefixes and accepts a caller-owned HTTP client for
 transports, timeouts, proxies, and testing. List responses return the next page
 token; callers choose when to fetch another page. Requests use the caller's
@@ -30,8 +38,19 @@ The library does not read `FUNNEL_SERVER_USER`, `FUNNEL_SERVER_PASSWORD`,
 `Password`, or `Token` explicitly. Bearer tokens take precedence over Basic
 credentials. Credentials require HTTPS except for loopback hosts; applications
 that deliberately permit plaintext credentials must pass
-`tes.WithInsecureCredentials()`. The same rule covers redirects. The CLI retains
-its environment-variable behavior through `internal/cli/tesclient`.
+`tesclient.WithInsecureCredentials()`. The same rule covers redirects. The CLI retains
+its environment-variable behavior through `internal/cli/tesenv`.
+
+The client and dashboard node requests share a focused `client/auth` credential
+transport policy. This policy covers plaintext restrictions and redirects; it
+does not read process environment variables. HTTP response parsing remains
+private to the TES client. The CLI owns output formatting, and callers that need
+model JSON serialization can use protobuf's `protojson` package directly.
+
+The former `tes.NewClient` API moves to `client/tes.NewClient`; its request and
+response types retain their `tes` imports. There is no forwarding client in the
+model package. The mutable `tes.Marshaler` global, `tes.MarshalToString` wrapper,
+and the client's formatting-only `Marshaler` field have been removed.
 
 ## Application structure
 

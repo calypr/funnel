@@ -3,6 +3,7 @@ package termdash
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -11,11 +12,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/calypr/funnel/internal/cli/tesclient"
+	"google.golang.org/protobuf/encoding/protojson"
 
+	"github.com/calypr/funnel/internal/cli/tesenv"
 	"github.com/calypr/funnel/internal/compute/scheduler"
 	"github.com/calypr/funnel/tes"
-	"google.golang.org/protobuf/encoding/protojson"
 )
 
 type taskClient interface {
@@ -81,7 +82,7 @@ func (ts *TaskSource) TaskWorkers() ([]taskWorker, error) {
 }
 
 func NewTaskSource(tesHTTPServerAddress string, pageSize int32) (*TaskSource, error) {
-	cli, err := tesclient.New(tesHTTPServerAddress)
+	cli, err := tesenv.New(tesHTTPServerAddress)
 	if err != nil {
 		return nil, err
 	}
@@ -121,17 +122,20 @@ func (ts *TaskSource) Nodes() ([]*scheduler.Node, error) {
 		if err != nil {
 			return nil, err
 		}
-		resp, err := tesclient.DoAuthenticatedRequest(ts.nodeClient, req, os.Getenv("FUNNEL_SERVER_USER"), os.Getenv("FUNNEL_SERVER_PASSWORD"))
+		resp, err := tesenv.DoAuthenticatedRequest(ts.nodeClient, req, os.Getenv("FUNNEL_SERVER_USER"), os.Getenv("FUNNEL_SERVER_PASSWORD"))
 		if err != nil {
 			return nil, fmt.Errorf("fetch scheduler nodes: %w", err)
 		}
+		body, readErr := io.ReadAll(resp.Body)
+		_ = resp.Body.Close() //nolint:errcheck // A consumed response is read-only cleanup.
 		if resp.StatusCode == http.StatusNotFound {
-			_, closeErr := tes.CheckHTTPResponse(resp, nil)
-			return nil, fmt.Errorf("scheduler node API is unavailable for this deployment: %w", closeErr)
+			return nil, fmt.Errorf("scheduler node API is unavailable for this deployment: HTTP %s", resp.Status)
 		}
-		body, err := tes.CheckHTTPResponse(resp, nil)
-		if err != nil {
-			return nil, fmt.Errorf("fetch scheduler nodes: %w", err)
+		if readErr != nil {
+			return nil, fmt.Errorf("read scheduler nodes: %w", readErr)
+		}
+		if resp.StatusCode/100 != 2 {
+			return nil, fmt.Errorf("fetch scheduler nodes: HTTP %s: %s", resp.Status, body)
 		}
 		page := &scheduler.ListNodesResponse{}
 		err = protojson.Unmarshal(body, page)

@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/calypr/funnel/internal/cli/tesclient"
+	"github.com/spf13/cobra"
 
+	"github.com/calypr/funnel/internal/cli/tesenv"
 	"github.com/calypr/funnel/internal/shellwords"
 	"github.com/calypr/funnel/tes"
-	"github.com/spf13/cobra"
 )
 
 // *********************************************************************
@@ -85,7 +85,7 @@ func Run(args []string) error {
 		return err
 	}
 
-	cli, err := tesclient.New(vals.server)
+	cli, err := tesenv.New(vals.server)
 	if err != nil {
 		return err
 	}

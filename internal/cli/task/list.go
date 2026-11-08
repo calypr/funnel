@@ -1,14 +1,14 @@
 package task
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"strings"
 
-	"github.com/calypr/funnel/internal/cli/tesclient"
+	"google.golang.org/protobuf/encoding/protojson"
 
-	"context"
-
+	"github.com/calypr/funnel/internal/cli/tesenv"
 	"github.com/calypr/funnel/tes"
 )
 
@@ -16,7 +16,7 @@ import (
 // calls ListTasks() and requests the given task view.
 // Output is written to the given writer.
 func List(server, taskView, pageToken, stateFilter string, tagsFilter []string, namePrefix string, pageSize int32, all bool, writer io.Writer) error {
-	cli, err := tesclient.New(server)
+	cli, err := tesenv.New(server)
 	if err != nil {
 		return err
 	}
@@ -61,12 +61,12 @@ func List(server, taskView, pageToken, stateFilter string, tagsFilter []string, 
 		}
 
 		if !all {
-			_, err = fmt.Fprintln(writer, cli.Marshaler.Format(resp))
+			_, err = fmt.Fprintln(writer, (protojson.MarshalOptions{Indent: "  "}).Format(resp))
 			return err
 		}
 
 		for _, task := range resp.Tasks {
-			data, err := cli.Marshaler.Marshal(task)
+			data, err := (protojson.MarshalOptions{Indent: "  "}).Marshal(task)
 			if err != nil {
 				return err
 			}

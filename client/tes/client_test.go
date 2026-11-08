@@ -1,13 +1,16 @@
 package tes
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
-	"context"
+	"google.golang.org/protobuf/encoding/protojson"
+
+	"github.com/calypr/funnel/tes"
 )
 
 func testServer(mux http.Handler) *httptest.Server {
@@ -36,8 +39,8 @@ func TestGetTask(t *testing.T) {
 	// Set up test server response
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/tasks/test-id", func(w http.ResponseWriter, r *http.Request) {
-		ta := Task{Id: "test-id"}
-		o, err := Marshaler.Marshal(&ta)
+		ta := tes.Task{Id: "test-id"}
+		o, err := (protojson.MarshalOptions{Indent: "  "}).Marshal(&ta)
 		if err != nil {
 			t.Errorf("marshal response: %v", err)
 			return
@@ -56,9 +59,9 @@ func TestGetTask(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	body, err := c.GetTask(context.Background(), &GetTaskRequest{
+	body, err := c.GetTask(context.Background(), &tes.GetTaskRequest{
 		Id:   "test-id",
-		View: View_MINIMAL.String(),
+		View: tes.View_MINIMAL.String(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -73,8 +76,8 @@ func TestGetTaskTrailingSlash(t *testing.T) {
 	// Set up test server response
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/tasks/test-id", func(w http.ResponseWriter, r *http.Request) {
-		ta := Task{Id: "test-id"}
-		o, err := Marshaler.Marshal(&ta)
+		ta := tes.Task{Id: "test-id"}
+		o, err := (protojson.MarshalOptions{Indent: "  "}).Marshal(&ta)
 		if err != nil {
 			t.Errorf("marshal response: %v", err)
 			return
@@ -93,9 +96,9 @@ func TestGetTaskTrailingSlash(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	body, err := c.GetTask(context.Background(), &GetTaskRequest{
+	body, err := c.GetTask(context.Background(), &tes.GetTaskRequest{
 		Id:   "test-id",
-		View: View_MINIMAL.String(),
+		View: tes.View_MINIMAL.String(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -123,9 +126,9 @@ func TestClientTimeout(t *testing.T) {
 	}
 	c.client.Timeout = 1 * time.Second
 
-	_, err = c.GetTask(context.Background(), &GetTaskRequest{
+	_, err = c.GetTask(context.Background(), &tes.GetTaskRequest{
 		Id:   "test-id",
-		View: View_MINIMAL.String(),
+		View: tes.View_MINIMAL.String(),
 	})
 	close(ch)
 	if err == nil {

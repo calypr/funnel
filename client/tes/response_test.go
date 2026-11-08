@@ -22,7 +22,7 @@ func TestCheckHTTPResponseErrors(t *testing.T) {
 	} {
 		t.Run(tc.want, func(t *testing.T) {
 			resp := &http.Response{StatusCode: tc.status, Body: io.NopCloser(strings.NewReader(tc.body))}
-			_, err := CheckHTTPResponse(resp, nil)
+			_, err := checkHTTPResponse(resp, nil)
 			if err == nil || err.Error() != tc.want {
 				t.Fatalf("got %v, want %q", err, tc.want)
 			}

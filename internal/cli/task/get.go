@@ -1,13 +1,13 @@
 package task
 
 import (
+	"context"
 	"fmt"
 	"io"
 
-	"github.com/calypr/funnel/internal/cli/tesclient"
+	"google.golang.org/protobuf/encoding/protojson"
 
-	"context"
-
+	"github.com/calypr/funnel/internal/cli/tesenv"
 	"github.com/calypr/funnel/tes"
 )
 
@@ -15,13 +15,13 @@ import (
 // calls GetTask for each ID, requesting the given task view, and writes
 // output to the given writer.
 func Get(server string, ids []string, taskView string, w io.Writer) error {
-	cli, err := tesclient.New(server)
+	cli, err := tesenv.New(server)
 	if err != nil {
 		return err
 	}
 
 	res := []string{}
-	marshaler := *cli.Marshaler
+	marshaler := protojson.MarshalOptions{Indent: "  "}
 	marshaler.EmitDefaultValues = true
 
 	taskValue, err := getTaskView(taskView)

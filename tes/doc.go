@@ -1,7 +1,4 @@
-// Package tes provides TES wire models and a context-aware REST client.
-// It is independent of Funnel's server and backend implementations.
-//
-// NewClient accepts an optional HTTP client through WithHTTPClient. Configure
-// authentication explicitly through Client.User, Client.Password, or Client.Token;
-// the package does not read process environment variables.
+// Package tes defines shared TES wire models, enum conveniences, and request
+// filters. The REST client lives in github.com/calypr/funnel/client/tes;
+// server implementations are private to Funnel.
 package tes

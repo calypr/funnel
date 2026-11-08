@@ -1,4 +1,4 @@
-package tesclient
+package tesenv
 
 import (
 	"io"

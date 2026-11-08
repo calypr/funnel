@@ -7,15 +7,16 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/calypr/funnel/tes"
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/calypr/funnel/tes"
 )
 
 // Base64Encode encodes a task as a base64 encoded string
 func Base64Encode(t *tes.Task) (string, error) {
-	data, err := tes.Marshaler.Marshal(t)
+	data, err := (protojson.MarshalOptions{Indent: "  "}).Marshal(t)
 	if err != nil {
 		return "", err
 	}

@@ -1,23 +1,24 @@
-// Package tesclient resolves CLI environment settings for the public TES client.
-package tesclient
+// Package tesenv resolves CLI environment settings for the public TES client.
+package tesenv
 
 import (
 	"net/http"
 	"os"
 
-	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/client/auth"
+	tesclient "github.com/calypr/funnel/client/tes"
 )
 
-func options() []tes.ClientOption {
+func options() []tesclient.ClientOption {
 	if os.Getenv("FUNNEL_ALLOW_INSECURE_CREDENTIALS") == "true" {
-		return []tes.ClientOption{tes.WithInsecureCredentials()}
+		return []tesclient.ClientOption{tesclient.WithInsecureCredentials()}
 	}
 	return nil
 }
 
 // New creates a CLI client using FUNNEL_SERVER_* credentials.
-func New(address string) (*tes.Client, error) {
-	c, err := tes.NewClient(address, options()...)
+func New(address string) (*tesclient.Client, error) {
+	c, err := tesclient.NewClient(address, options()...)
 	if err != nil {
 		return nil, err
 	}
@@ -29,5 +30,5 @@ func New(address string) (*tes.Client, error) {
 
 // DoAuthenticatedRequest applies the CLI's explicit insecure-credential opt-in.
 func DoAuthenticatedRequest(client *http.Client, req *http.Request, user, password string) (*http.Response, error) {
-	return tes.DoAuthenticatedRequest(client, req, user, password, options()...)
+	return (auth.Policy{AllowInsecure: os.Getenv("FUNNEL_ALLOW_INSECURE_CREDENTIALS") == "true"}).Do(client, req, user, password)
 }

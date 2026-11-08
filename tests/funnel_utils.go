@@ -16,11 +16,16 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/calypr/funnel/internal/cli/tesclient"
+	cerrdefs "github.com/containerd/errdefs"
+	docker "github.com/moby/moby/client"
+	"google.golang.org/grpc"
+	"k8s.io/client-go/kubernetes"
 
+	tesclient "github.com/calypr/funnel/client/tes"
 	"github.com/calypr/funnel/config"
 	runlib "github.com/calypr/funnel/internal/cli/run"
 	servercmd "github.com/calypr/funnel/internal/cli/server"
+	"github.com/calypr/funnel/internal/cli/tesenv"
 	funnelkubernetes "github.com/calypr/funnel/internal/compute/kubernetes"
 	"github.com/calypr/funnel/internal/compute/scheduler"
 	"github.com/calypr/funnel/internal/logger"
@@ -29,10 +34,6 @@ import (
 	"github.com/calypr/funnel/internal/taskmodel"
 	"github.com/calypr/funnel/internal/tesrpc"
 	"github.com/calypr/funnel/tes"
-	cerrdefs "github.com/containerd/errdefs"
-	docker "github.com/moby/moby/client"
-	"google.golang.org/grpc"
-	"k8s.io/client-go/kubernetes"
 )
 
 var log = logger.NewLogger("e2e", LogConfig())
@@ -45,7 +46,7 @@ func init() {
 type Funnel struct {
 	// Clients
 	RPC        tesrpc.TaskServiceClient
-	HTTP       *tes.Client
+	HTTP       *tesclient.Client
 	Docker     *docker.Client
 	Kubernetes *kubernetes.Clientset
 
@@ -68,7 +69,7 @@ type Funnel struct {
 // NewFunnel creates a new funnel test server with some test
 // configuration automatically set: random ports, temp work dir, etc.
 func NewFunnel(conf *config.Config) *Funnel {
-	cli, err := tesclient.New(conf.Server.HTTPAddress())
+	cli, err := tesenv.New(conf.Server.HTTPAddress())
 	if err != nil {
 		panic(err)
 	}

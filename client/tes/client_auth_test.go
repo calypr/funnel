@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/calypr/funnel/tes"
 )
 
 func TestBearerTransportPolicy(t *testing.T) {
@@ -46,7 +48,7 @@ func TestBearerTransportPolicy(t *testing.T) {
 				}
 				return &http.Response{StatusCode: code, Header: header, Body: io.NopCloser(strings.NewReader(`{}`)), Request: r}, nil
 			})
-			_, err = client.GetServiceInfo(context.Background(), &GetServiceInfoRequest{})
+			_, err = client.GetServiceInfo(context.Background(), &tes.GetServiceInfoRequest{})
 			if (err != nil) != tc.reject || requests != tc.wantRequests {
 				t.Fatalf("err = %v, requests = %d; want rejection %v, requests %d", err, requests, tc.reject, tc.wantRequests)
 			}

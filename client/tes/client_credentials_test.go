@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/calypr/funnel/tes"
 )
 
 type credentialTestTransport func(*http.Request) (*http.Response, error)
@@ -49,7 +51,7 @@ func TestCredentialTransportPolicy(t *testing.T) {
 				}
 				return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{}`)), Request: r}, nil
 			})
-			_, err = c.GetTask(context.Background(), &GetTaskRequest{Id: "test"})
+			_, err = c.GetTask(context.Background(), &tes.GetTaskRequest{Id: "test"})
 			if (err != nil) != tc.reject {
 				t.Fatalf("error=%v, want rejection %v", err, tc.reject)
 			}
@@ -73,7 +75,7 @@ func TestCredentialRedirectDowngrade(t *testing.T) {
 		sent++
 		return &http.Response{StatusCode: http.StatusFound, Header: http.Header{"Location": []string{"http://127.0.0.1:8000/"}}, Body: io.NopCloser(strings.NewReader("")), Request: r}, nil
 	})
-	_, err = c.GetTask(context.Background(), &GetTaskRequest{Id: "test"})
+	_, err = c.GetTask(context.Background(), &tes.GetTaskRequest{Id: "test"})
 	if err == nil || sent != 1 {
 		t.Fatalf("downgrade error=%v, requests sent=%v", err, sent)
 	}
