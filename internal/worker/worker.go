@@ -14,7 +14,7 @@ import (
 	"github.com/calypr/funnel/internal/compute/kubernetes/storageplan"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/storage"
-	"github.com/calypr/funnel/internal/version"
+	"github.com/calypr/funnel/version"
 )
 
 // DefaultWorker is the default task worker, which follows a basic,

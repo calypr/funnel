@@ -41,8 +41,9 @@ that deliberately permit plaintext credentials must pass
 `tesclient.WithInsecureCredentials()`. The same rule covers redirects. The CLI retains
 its environment-variable behavior through `internal/cli/tesenv`.
 
-The client and dashboard node requests share a focused `client/auth` credential
-transport policy. This policy covers plaintext restrictions and redirects; it
+The client and dashboard node requests share a focused `internal/httpauth` credential
+transport policy. It is a private helper with only standard-library dependencies.
+This policy covers plaintext restrictions and redirects; it
 does not read process environment variables. HTTP response parsing remains
 private to the TES client. The CLI owns output formatting, and callers that need
 model JSON serialization can use protobuf's `protojson` package directly.
@@ -51,6 +52,9 @@ The former `tes.NewClient` API moves to `client/tes.NewClient`; its request and
 response types use `api/tes` imports. There is no forwarding client in the
 model package. The mutable `tes.Marshaler` global, `tes.MarshalToString` wrapper,
 and the client's formatting-only `Marshaler` field have been removed.
+
+The root `version` package exposes build metadata without importing application
+implementation. Makefile and release builds populate it through linker flags.
 
 ## Application structure
 
@@ -72,10 +76,13 @@ and the client's formatting-only `Marshaler` field have been removed.
   source and npm commands remain in `webdash/`.
 
 The public `api/config` and `api/logger` packages contain generated schemas.
-`api/config` also contains Gob oneof registration required by external plugins.
+Gob oneof registration lives beside the net/rpc adapters in `api/plugin/rpc.go`;
+importing `api/config` does not register Gob types.
 Server address formatting lives in `internal/config`, alongside application
-configuration defaults and loading. `api/plugin` and `plugins/shared` contain the public
-plugin contracts. External Go consumers must update imports and rebuild plugins. Plugin configuration, TES messages,
+configuration defaults and loading. `api/plugin` contains the public plugin contract, handshake, and net/rpc and
+gRPC adapters. Host process discovery, launching, and logging stay in
+`internal/pluginmanager`. The former `plugins/shared` package has been removed;
+plugin implementations should import `api/plugin`. External Go consumers must update imports and rebuild plugins. Plugin configuration, TES messages,
 protobuf field numbers, service names, and JSON names remain compatible.
 Application implementation imports such as `funnel/server`, `funnel/worker`,
 and TES server helpers are no longer public Go APIs. External applications should
@@ -89,6 +96,7 @@ and service bindings from the same source. The schemas share the protobuf
 package `tes`; Go code uses separate public and internal packages. The REST
 schema lives at `api/tes/tes.swagger.json`. All seven protobuf sources and the
 Buf module, dependency lock, and generation configuration live under `api/`.
+The TES-specific converter lives in `api/tes/internal/openapi2proto`.
 `make proto` converts the upstream TES OpenAPI schema to protobuf, then runs
 `buf generate` from `api/`. It installs pinned local Go plugins;
 `api/buf.gen.yaml` controls messages, gRPC, gateway, and Swagger generation.

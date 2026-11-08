@@ -3,7 +3,7 @@ package version
 import (
 	"fmt"
 
-	"github.com/calypr/funnel/internal/version"
+	"github.com/calypr/funnel/version"
 	"github.com/spf13/cobra"
 )
 

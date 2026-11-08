@@ -1,4 +1,16 @@
-# Plugin task configuration
+# Authorization plugin SDK
+
+Import `github.com/calypr/funnel/api/plugin` as `plugin` for the generated
+messages, `Authorize` interface, handshake, and transport adapters. Both Funnel
+and external plugin implementations use this package.
+
+Implement `plugin.Authorize` and supply the implementation through
+`&plugin.AuthorizePlugin{Impl: impl}` for net/rpc or
+`&plugin.AuthorizeGRPCPlugin{Impl: impl}` for gRPC. Pass `plugin.Handshake` to
+HashiCorp go-plugin on both sides. Host executable discovery and process lifecycle
+management remain internal to Funnel.
+
+## Task configuration
 
 Plugins receive the complete server configuration in `PluginAction`. Return that
 configuration with the changes needed for the task. Local and Kubernetes backends

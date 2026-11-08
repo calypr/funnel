@@ -24,8 +24,7 @@ import (
 	"github.com/calypr/funnel/internal/pluginmanager"
 	"github.com/calypr/funnel/internal/taskmodel"
 	"github.com/calypr/funnel/internal/tesrpc"
-	"github.com/calypr/funnel/internal/version"
-	"github.com/calypr/funnel/plugins/shared"
+	"github.com/calypr/funnel/version"
 )
 
 // TaskService is a wrapper which handles common TES Task Service operations,
@@ -45,7 +44,7 @@ type TaskService struct {
 	Read          taskmodel.ReadOnlyServer
 	Log           *logger.Logger
 	Config        *config.Config
-	Plugin        shared.Authorize
+	Plugin        proto.Authorize
 	PluginManager *pluginmanager.Manager
 
 	// submitWG tracks in-flight compute backend submissions started by

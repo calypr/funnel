@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/calypr/funnel/client/auth"
 	tesclient "github.com/calypr/funnel/client/tes"
+	"github.com/calypr/funnel/internal/httpauth"
 )
 
 func options() []tesclient.ClientOption {
@@ -30,5 +30,5 @@ func New(address string) (*tesclient.Client, error) {
 
 // DoAuthenticatedRequest applies the CLI's explicit insecure-credential opt-in.
 func DoAuthenticatedRequest(client *http.Client, req *http.Request, user, password string) (*http.Response, error) {
-	return (auth.Policy{AllowInsecure: os.Getenv("FUNNEL_ALLOW_INSECURE_CREDENTIALS") == "true"}).Do(client, req, user, password)
+	return (httpauth.Policy{AllowInsecure: os.Getenv("FUNNEL_ALLOW_INSECURE_CREDENTIALS") == "true"}).Do(client, req, user, password)
 }

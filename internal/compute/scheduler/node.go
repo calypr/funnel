@@ -10,7 +10,7 @@ import (
 	"github.com/calypr/funnel/api/config"
 	"github.com/calypr/funnel/internal/directory"
 	"github.com/calypr/funnel/internal/logger"
-	"github.com/calypr/funnel/internal/version"
+	"github.com/calypr/funnel/version"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

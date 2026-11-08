@@ -1,5 +1,5 @@
-// Package auth enforces credential transport rules for outbound API requests.
-package auth
+// Package httpauth enforces credential transport rules for outbound API requests.
+package httpauth
 
 import (
 	"errors"

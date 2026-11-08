@@ -1,6 +1,6 @@
 syntax = "proto3";
 package proto;
-option go_package = "github.com/calypr/funnel/api/plugin;proto";
+option go_package = "github.com/calypr/funnel/api/plugin;plugin";
 import "config/config.proto";
 import "tes/tes.proto";
 

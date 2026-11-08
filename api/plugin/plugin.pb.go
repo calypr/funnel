@@ -4,7 +4,7 @@
 // 	protoc        (unknown)
 // source: plugin/plugin.proto
 
-package proto
+package plugin
 
 import (
 	config "github.com/calypr/funnel/api/config"
@@ -339,7 +339,7 @@ const file_plugin_plugin_proto_rawDesc = "" +
 	"\x06CANCEL\x10\x022;\n" +
 	"\tAuthorize\x12.\n" +
 	"\fPluginAction\x12\n" +
-	".proto.Job\x1a\x12.proto.JobResponseB+Z)github.com/calypr/funnel/api/plugin;protob\x06proto3"
+	".proto.Job\x1a\x12.proto.JobResponseB,Z*github.com/calypr/funnel/api/plugin;pluginb\x06proto3"
 
 var (
 	file_plugin_plugin_proto_rawDescOnce sync.Once

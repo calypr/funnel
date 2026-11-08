@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/calypr/funnel/api/tes"
-	"github.com/calypr/funnel/internal/version"
+	"github.com/calypr/funnel/version"
 )
 
 func TestServiceInfoReportsVersionAndOrganization(t *testing.T) {

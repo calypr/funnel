@@ -17,20 +17,29 @@ def run(*args, cwd=ROOT):
 
 def main():
     dependencies = run("go", "list", "-deps", "./client/tes").splitlines()
-    forbidden = [name for name in dependencies if name.startswith((
+    forbidden = [name for name in dependencies if name != MODULE + "/internal/httpauth" and name.startswith((
         MODULE + "/internal/", MODULE + "/api/config", MODULE + "/api/logger",
         "google.golang.org/grpc", "github.com/grpc-ecosystem/", "k8s.io/",
         "cloud.google.com/", "github.com/aws/",
     ))]
     if forbidden:
         raise RuntimeError("TES client imports server dependencies: " + ", ".join(forbidden))
+    httpauth_dependencies = run(
+        "go", "list", "-deps", "-f", "{{if not .Standard}}{{.ImportPath}}{{end}}",
+        "./internal/httpauth",
+    ).splitlines()
+    nonstandard = [name for name in httpauth_dependencies
+                   if name and name != MODULE + "/internal/httpauth"]
+    if nonstandard:
+        raise RuntimeError("HTTP credential policy must use only the standard library: "
+                           + ", ".join(nonstandard))
     model_dependencies = run("go", "list", "-deps", "./api/tes").splitlines()
     if any(name == "net/http" or name.startswith(MODULE + "/client/") for name in model_dependencies):
         raise RuntimeError("TES wire models import HTTP/client behavior")
     for schema_package in ("api/config", "api/logger"):
         dependencies = run("go", "list", "-deps", "./" + schema_package).splitlines()
         forbidden = [name for name in dependencies if name.startswith((
-            MODULE + "/internal/", "k8s.io/", "cloud.google.com/", "github.com/aws/",
+            MODULE + "/internal/", "encoding/gob", "k8s.io/", "cloud.google.com/", "github.com/aws/",
             "github.com/go-playground/validator", "github.com/goccy/go-yaml",
         ))]
         direct_imports = json.loads(run("go", "list", "-json", "./" + schema_package)).get("Imports", [])
@@ -58,7 +67,6 @@ import (
  "github.com/calypr/funnel/api/config"
  "github.com/calypr/funnel/api/logger"
  plugin "github.com/calypr/funnel/api/plugin"
- "github.com/calypr/funnel/plugins/shared"
  "google.golang.org/protobuf/proto"
  "google.golang.org/protobuf/types/known/structpb"
 )
@@ -75,7 +83,7 @@ type authorizer struct{}
 func (authorizer) PluginAction(_ map[string]string, _ map[string]*plugin.StringList, conf *config.Config, task *tes.Task, _ plugin.Type) (*plugin.JobResponse,error) {
  return &plugin.JobResponse{Config:conf,Task:task},nil
 }
-var _ shared.Authorize = authorizer{}
+var _ plugin.Authorize = authorizer{}
 func TestExternalPluginContracts(t *testing.T) {
  conf:=&config.Config{Logger:&logger.LoggerConfig{Level:"info"}}
  data,err:=proto.Marshal(conf);if err!=nil {t.Fatal(err)}

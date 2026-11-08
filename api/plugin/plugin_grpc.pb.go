@@ -4,7 +4,7 @@
 // - protoc             (unknown)
 // source: plugin/plugin.proto
 
-package proto
+package plugin
 
 import (
 	context "context"

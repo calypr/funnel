@@ -8,7 +8,7 @@ import (
 
 	cmdutil "github.com/calypr/funnel/internal/cli/util"
 	appconfig "github.com/calypr/funnel/internal/config"
-	"github.com/calypr/funnel/internal/version"
+	"github.com/calypr/funnel/version"
 )
 
 func NewCommand() *cobra.Command {

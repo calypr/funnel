@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/calypr/funnel/client/auth"
+	"github.com/calypr/funnel/internal/httpauth"
 )
 
 // NewClient returns a new HTTP client for accessing
@@ -60,7 +60,7 @@ type Client struct {
 
 // do applies authentication and transport policy, including redirects.
 func (c *Client) do(req *http.Request) (*http.Response, error) {
-	policy := auth.Policy{AllowInsecure: c.allowInsecureCredentials}
+	policy := httpauth.Policy{AllowInsecure: c.allowInsecureCredentials}
 	if c.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.Token)
 		return policy.Do(c.client, req, "", "")

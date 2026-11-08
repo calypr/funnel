@@ -7,7 +7,7 @@ import (
 	"runtime/debug"
 	"syscall"
 
-	"github.com/calypr/funnel/internal/version"
+	"github.com/calypr/funnel/version"
 )
 
 // getExitCode gets the exit status (i.e. exit code) from the result of an executed command.

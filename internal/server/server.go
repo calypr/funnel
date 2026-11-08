@@ -26,8 +26,8 @@ import (
 	"github.com/calypr/funnel/internal/logger"
 	"github.com/calypr/funnel/internal/taskmodel"
 	"github.com/calypr/funnel/internal/tesrpc"
-	"github.com/calypr/funnel/internal/version"
 	"github.com/calypr/funnel/internal/webdash"
+	"github.com/calypr/funnel/version"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"

@@ -17,22 +17,22 @@ export FUNNEL_VERSION
 export LAST_PR_NUMBER = 716
 
 VERSION_LDFLAGS=\
- -X "github.com/calypr/funnel/internal/version.BuildDate=$(shell date)" \
- -X "github.com/calypr/funnel/internal/version.GitCommit=$(git_commit)" \
- -X "github.com/calypr/funnel/internal/version.GitBranch=$(git_branch)" \
- -X "github.com/calypr/funnel/internal/version.GitUpstream=$(git_upstream)" \
- -X "github.com/calypr/funnel/internal/version.Version=$(FUNNEL_VERSION)"
+ -X "github.com/calypr/funnel/version.BuildDate=$(shell date)" \
+ -X "github.com/calypr/funnel/version.GitCommit=$(git_commit)" \
+ -X "github.com/calypr/funnel/version.GitBranch=$(git_branch)" \
+ -X "github.com/calypr/funnel/version.GitUpstream=$(git_upstream)" \
+ -X "github.com/calypr/funnel/version.Version=$(FUNNEL_VERSION)"
 
 export CGO_ENABLED=0
 
 # Build the code
 install:
-	@touch internal/version/version.go
+	@touch version/version.go
 	@go install -ldflags '$(VERSION_LDFLAGS)' .
 
 # Build the code
 build:
-	@touch internal/version/version.go
+	@touch version/version.go
 	@go build -ldflags '$(VERSION_LDFLAGS)' -buildvcs=false .
 
 # Build an unoptimized version of the code for use during debugging
@@ -43,8 +43,8 @@ debug:
 
 # Generate the protobuf/gRPC code using Buf
 proto: proto-depends
-	@go run ./tools/openapi2proto/main.go ./api/tes/task-execution-schemas/openapi/task_execution_service.openapi.yaml > api/tes/tes.proto
-	@go run ./tools/openapi2proto/main.go -service ./api/tes/task-execution-schemas/openapi/task_execution_service.openapi.yaml > api/internal/tesrpc/service.proto
+	@go run ./api/tes/internal/openapi2proto ./api/tes/task-execution-schemas/openapi/task_execution_service.openapi.yaml > api/tes/tes.proto
+	@go run ./api/tes/internal/openapi2proto -service ./api/tes/task-execution-schemas/openapi/task_execution_service.openapi.yaml > api/internal/tesrpc/service.proto
 	@cd api && PATH="$(shell go env GOPATH)/bin:$$PATH" buf generate
 	@mv api/internal/tesrpc/service.swagger.json api/tes/tes.swagger.json
 

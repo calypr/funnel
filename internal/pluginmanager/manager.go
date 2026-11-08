@@ -10,9 +10,9 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/calypr/funnel/plugins/shared"
+	pluginapi "github.com/calypr/funnel/api/plugin"
 
-	"github.com/hashicorp/go-plugin"
+	"github.com/hashicorp/go-hclog"
 	goplugin "github.com/hashicorp/go-plugin"
 )
 
@@ -36,13 +36,13 @@ func (m *Manager) LoadPlugin(path string) error {
 	}
 
 	for _, bpath := range binaries {
-		client := plugin.NewClient(&plugin.ClientConfig{
-			HandshakeConfig: shared.Handshake,
-			Plugins:         shared.PluginMap,
-			Logger:          shared.Logger,
+		client := goplugin.NewClient(&goplugin.ClientConfig{
+			HandshakeConfig: pluginapi.Handshake,
+			Plugins:         pluginapi.PluginMap,
+			Logger:          hclog.New(&hclog.LoggerOptions{Name: "plugin", Level: hclog.Trace}),
 			Cmd:             exec.Command(bpath),
-			AllowedProtocols: []plugin.Protocol{
-				plugin.ProtocolNetRPC, plugin.ProtocolGRPC}})
+			AllowedProtocols: []goplugin.Protocol{
+				goplugin.ProtocolNetRPC, goplugin.ProtocolGRPC}})
 
 		m.pluginClients = append(m.pluginClients, client)
 	}
@@ -50,7 +50,7 @@ func (m *Manager) LoadPlugin(path string) error {
 	return nil
 }
 
-func (m *Manager) Client(path string) (shared.Authorize, error) {
+func (m *Manager) Client(path string) (pluginapi.Authorize, error) {
 	if err := m.LoadPlugin(path); err != nil {
 		return nil, fmt.Errorf("failed to load plugins: %w", err)
 	}
@@ -73,9 +73,7 @@ func (m *Manager) Client(path string) (shared.Authorize, error) {
 		return nil, fmt.Errorf("failed to dispense plugin: %w", err)
 	}
 
-	// We should have an shared.Authorize function now! This feels like a normal interface
-	// implementation but is in fact over an RPC connection.
-	authorize := raw.(shared.Authorize)
+	authorize := raw.(pluginapi.Authorize)
 
 	return authorize, nil
 }

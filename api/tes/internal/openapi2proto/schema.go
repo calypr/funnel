@@ -1,12 +1,9 @@
 package main
 
 import (
-	"flag"
 	"fmt"
-	"log"
 	"sort"
 	"strings"
-	"text/template"
 
 	"github.com/getkin/kin-openapi/openapi3"
 )
@@ -276,20 +273,7 @@ func adjustListTasksResponseFields(fields []Field, taskType string) []Field {
 	return adjusted
 }
 
-func main() {
-	serviceOnly := flag.Bool("service", false, "Generate internal TES service bindings instead of public messages")
-	flag.Parse()
-
-	input := flag.Arg(0)
-
-	loader := openapi3.NewLoader()
-	loader.IsExternalRefsAllowed = true
-
-	doc, err := loader.LoadFromFile(input)
-	if err != nil {
-		log.Fatalf("Parsing Error: %s\n", err)
-	}
-
+func parseSchema(doc *openapi3.T) ([]Message, []Enum, []ServicePath) {
 	messages := []Message{}
 	enums := []Enum{}
 	services := []ServicePath{}
@@ -416,86 +400,5 @@ func main() {
 
 	cleanSchema(messages, enums, services)
 
-	source, err := renderProto(messages, enums, services)
-	if *serviceOnly {
-		source, err = renderServiceProto(services)
-	}
-	if err != nil {
-		log.Fatalf("Template Error: %s\n", err)
-	}
-	fmt.Print(source)
-}
-
-func renderProto(messages []Message, enums []Enum, services []ServicePath) (string, error) {
-	tmpl, err := template.New("proto").Parse(`
-syntax = "proto3";
-
-option go_package = "github.com/calypr/funnel/api/tes";
-
-package tes;
-
-
-{{range $i, $enum := .enums}}
-enum {{$enum.Name}} { {{range $j, $value := $enum.Values}}
-	{{$value}} = {{$j}};{{end}}
-}
-{{end}}
-{{range $i, $message := .messages}}
-message {{$message.Name}} { {{range $j, $field := $message.Fields}}
-	{{if $field.Repeated}}repeated {{else if $field.Optional}}optional {{end}}{{$field.Type}} {{$field.Name}} = {{$field.ID}};{{end}}
-}
-{{end}}
-
-
-
-`)
-	if err != nil {
-		return "", err
-	}
-
-	var source strings.Builder
-	err = tmpl.Execute(&source, map[string]interface{}{"messages": messages, "enums": enums, "services": services})
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(source.String()) + "\n", nil
-}
-
-func renderServiceProto(services []ServicePath) (string, error) {
-	tmpl, err := template.New("service").Parse(`syntax = "proto3";
-package tes;
-option go_package = "github.com/calypr/funnel/internal/tesrpc";
-import "tes/tes.proto";
-import "google/api/annotations.proto";
-
-service TaskService {
-{{range $i, $path := .services}}
-    rpc {{$path.Name}}({{$path.InputType}}) returns ({{$path.OutputType}}) {
-      option (google.api.http) = {
-        {{$path.Mode}}: "{{$path.Path}}"
-		additional_bindings {
-			{{$path.Mode}}: "/v1{{$path.Path}}"
-			{{- if eq $path.Mode "post"}}
-			body: "*"{{end}}
-		}
-		additional_bindings {
-			{{$path.Mode}}: "/ga4gh/tes/v1{{$path.Path}}"
-			{{- if eq $path.Mode "post"}}
-			body: "*"{{end}}
-		}
-		{{- if eq $path.Mode "post"}}
-		body: "*"{{end}}
-      };
-    }
-{{end}}
-}
-`)
-	if err != nil {
-		return "", err
-	}
-	var source strings.Builder
-	if err := tmpl.Execute(&source, map[string]interface{}{"services": services}); err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(source.String()) + "\n", nil
+	return messages, enums, services
 }
