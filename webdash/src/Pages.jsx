@@ -269,15 +269,16 @@ function NodeList() {
   const activeNodes = (nodes ?? []).filter(node => node.state === 'ALIVE');
   const fields = [
     { key: 'cpus', label: 'CPU', unit: 'cores' },
-    { key: 'ramGb', label: 'RAM', unit: 'GB' },
-    { key: 'diskGb', label: 'Disk', unit: 'GB' },
+    { key: 'ram_gb', legacyKey: 'ramGb', label: 'RAM', unit: 'GB' },
+    { key: 'disk_gb', legacyKey: 'diskGb', label: 'Disk', unit: 'GB' },
   ];
-  const resourceTotal = (kind, field, unit) => {
-    if (activeNodes.some(node => !node[kind] || (node[kind][field] != null &&
-      (typeof node[kind][field] !== 'number' || !Number.isFinite(node[kind][field]) || node[kind][field] < 0)))) {
+  const resourceTotal = (kind, field, legacyField, unit) => {
+    const values = activeNodes.map(node => node[kind] && (node[kind][field] ?? node[kind][legacyField]));
+    if (values.some((value, index) => !activeNodes[index][kind] || (value != null &&
+      (typeof value !== 'number' || !Number.isFinite(value) || value < 0)))) {
       return 'Unavailable';
     }
-    const total = activeNodes.reduce((sum, node) => sum + (node[kind][field] ?? 0), 0);
+    const total = values.reduce((sum, value) => sum + (value ?? 0), 0);
     return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(total)} ${unit}`;
   };
 
@@ -296,11 +297,11 @@ function NodeList() {
           <Table aria-label="Resources on active nodes" size="small">
             <TableHead><TableRow><TableCell>Resource</TableCell><TableCell>Available</TableCell><TableCell>Total</TableCell></TableRow></TableHead>
             <TableBody>
-              {fields.map(({ key, label, unit }) => (
+              {fields.map(({ key, legacyKey, label, unit }) => (
                 <TableRow key={key}>
                   <TableCell>{label}</TableCell>
-                  <TableCell>{resourceTotal('available', key, unit)}</TableCell>
-                  <TableCell>{resourceTotal('resources', key, unit)}</TableCell>
+                  <TableCell>{resourceTotal('available', key, legacyKey, unit)}</TableCell>
+                  <TableCell>{resourceTotal('resources', key, legacyKey, unit)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
