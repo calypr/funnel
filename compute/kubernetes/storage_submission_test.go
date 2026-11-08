@@ -81,7 +81,7 @@ func nativeResource(t *testing.T, manifest string) *structpb.Struct {
 func bindingConfig(t *testing.T, storageConfig *config.KubernetesStorage) *config.Config {
 	t.Helper()
 	conf := config.DefaultConfig()
-	workerTemplate, err := os.ReadFile("../../config/kubernetes/worker-job.yaml")
+	workerTemplate, err := os.ReadFile("testdata/worker-job.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}

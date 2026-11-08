@@ -2,6 +2,7 @@ package resources
 
 import (
 	"context"
+	_ "embed"
 	"testing"
 
 	"github.com/calypr/funnel/config"
@@ -16,6 +17,9 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 )
+
+//go:embed testdata/serviceaccount.yaml
+var serviceAccountTemplateFixture string
 
 const (
 	namespace     = "test-namespace"
@@ -463,10 +467,10 @@ func TestCreateServiceAccount(t *testing.T) {
 	}
 }
 
-func TestBundledServiceAccountDisablesTokenMount(t *testing.T) {
+func TestServiceAccountTemplateDisablesTokenMount(t *testing.T) {
 	conf := config.DefaultConfig()
 	conf.Kubernetes.JobsNamespace = jobsNamespace
-	conf.Kubernetes.ServiceAccountTemplate = string(config.MustAsset("config/kubernetes/serviceaccount.yaml"))
+	conf.Kubernetes.ServiceAccountTemplate = serviceAccountTemplateFixture
 	client := fake.NewSimpleClientset()
 	role := "arn:fixture\ncontinued"
 	if err := CreateServiceAccount(t.Context(), &tes.Task{Id: testTaskID, Tags: map[string]string{"_FUNNEL_WORKER_ROLE_ARN": role}}, conf, client, l, nil); err != nil {
@@ -477,7 +481,7 @@ func TestBundledServiceAccountDisablesTokenMount(t *testing.T) {
 		t.Fatal(err)
 	}
 	if sa.AutomountServiceAccountToken == nil || *sa.AutomountServiceAccountToken {
-		t.Fatal("bundled account does not disable API token automount")
+		t.Fatal("service account template does not disable API token automount")
 	}
 	if sa.Annotations["eks.amazonaws.com/role-arn"] != role || len(sa.ImagePullSecrets) != 0 {
 		t.Error("role annotation did not remain a scalar")

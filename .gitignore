@@ -16,11 +16,9 @@
 /webdash/style.css
 /website/public
 bower_components
-deployments/kubernetes/**/*.json
-deployments/kubernetes/**/funnel
 dist/
 docker/funnel
-/docs/
+/docs/internal/
 funnel-work-dir
 node_modules
 storage/_test_download
@@ -34,3 +32,5 @@ website/resources
 /gen3-gitops-ci
 
 /reviews/security-2026-10-31/
+
+/website/.hugo_build.lock

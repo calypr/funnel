@@ -1,0 +1,21 @@
+{{- $destination := .Destination -}}
+{{- $url := urls.Parse $destination -}}
+{{- if and (not $url.IsAbs) $url.Path (not (strings.HasPrefix $url.Path "/")) -}}
+  {{- $source := path.Clean (path.Join (path.Dir .Page.File.Path) $url.Path) -}}
+  {{- $resolved := "" -}}
+  {{- if strings.HasPrefix $source "website/static/" -}}
+    {{- $resolved = strings.TrimPrefix "website/static/" $source | relURL -}}
+  {{- else if strings.HasSuffix $url.Path ".md" -}}
+    {{- with .Page.GetPage $url.Path -}}
+      {{- $resolved = .RelPermalink -}}
+    {{- else -}}
+      {{- errorf "Unresolved Markdown link %q in %s" $destination .Page.File.Path -}}
+    {{- end -}}
+  {{- end -}}
+  {{- with $resolved -}}
+    {{- $destination = . -}}
+    {{- with $url.RawQuery }}{{ $destination = printf "%s?%s" $destination . }}{{ end -}}
+    {{- with $url.Fragment }}{{ $destination = printf "%s#%s" $destination . }}{{ end -}}
+  {{- end -}}
+{{- end -}}
+{{- return $destination -}}

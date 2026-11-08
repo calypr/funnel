@@ -4,7 +4,6 @@
 [![Godoc][godoc-badge]][godoc]
 [![GitHub Release][release-badge]][release]
 [![Docker][docker-badge]][docker]
-[![Helm][helm-badge]][helm]
 
 [tests-badge]: https://github.com/calypr/funnel/actions/workflows/tests.yaml/badge.svg
 [tests]: https://github.com/calypr/funnel/actions/workflows/tests.yaml
@@ -24,8 +23,6 @@
 [docker-badge]: https://img.shields.io/badge/Docker%20Repo-Quay.io-blue?logo=docker
 [docker]: https://quay.io/repository/ohsu-comp-bio/funnel?tab=tags&tag=latest
 
-[helm-badge]: https://img.shields.io/badge/Helm-0F1689?logo=helm&logoColor=fff
-[helm]: https://github.com/calypr/helm-charts
 
 <a title="Funnel Homepage" href="https://calypr.org/tools/funnel/">
   <img title="Funnel Logo" src="https://github.com/user-attachments/assets/f51cf06b-d802-4e20-bde1-bcd1fc5657e6" />
@@ -38,3 +35,7 @@ Funnel is an implementation of the [GA4GH Task Execution Schemas](https://github
 Funnel provides an API server, multiple storage backends (local FS, S3, Google Bucket, etc.), multiple compute backends (local, HTCondor, Google Cloud, etc.), and a web dashboard.
 
 https://calypr.org/tools/funnel/
+
+Deployment provisioning, manifests, service definitions, upgrades, and infrastructure operations are maintained by operators. This repository provides the Funnel application, container images, and configuration documentation; it does not provide maintained deployment automation.
+
+Documentation source lives in [`docs/`](docs/). Hugo templates, site configuration, and downloadable assets live in `website/`. Run `make website` to generate the site and search index in `build/website/`, or `make website-dev` to preview it locally. `docs/internal/` is reserved for local design notes and is excluded from the published site.

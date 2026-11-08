@@ -75,6 +75,13 @@ lint-depends:
 lint:
 	@golangci-lint run
 
+.PHONY: deadcode deadcode-update
+deadcode:
+	@python3 .github/scripts/check-deadcode.py
+
+deadcode-update:
+	@python3 .github/scripts/check-deadcode.py --update-baseline
+
 # Run all tests
 test:
 	@go test $(TESTS)
@@ -223,8 +230,9 @@ hugo-deps:
 
 # Build the website
 website: hugo-deps
+	@python3 .github/scripts/check-docs.py
 	@hugo --source ./website --minify
-	@npx -y pagefind@1.4.0 --site docs
+	@npx -y pagefind@1.4.0 --site build/website
 
 # Serve the Funnel website on http://localhost:1313
 website-dev: website
