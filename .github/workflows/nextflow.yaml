@@ -66,11 +66,9 @@ jobs:
 
     - name: Install Nextflow
       run: |
-        curl --fail --silent --show-error --location https://get.nextflow.io --output "$RUNNER_TEMP/install-nextflow"
-        bash "$RUNNER_TEMP/install-nextflow"
-        chmod +x nextflow
         mkdir -p "$HOME/.local/bin"
-        mv nextflow "$HOME/.local/bin/"
+        curl --fail --silent --show-error --location https://get.nextflow.io --output "$HOME/.local/bin/nextflow"
+        chmod +x "$HOME/.local/bin/nextflow"
         echo "$HOME/.local/bin" >> "$GITHUB_PATH"
         "$HOME/.local/bin/nextflow" info
 
