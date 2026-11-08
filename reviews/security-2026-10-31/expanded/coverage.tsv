@@ -1,5 +1,0 @@
-area	owner	boundary	prior_ids	status	evidence
-cloud_hpc	cloud_hpc_control_inventory	task specification to provider job authority	S01,S19,P07	source_review_completed_runtime_path_not_retained	SESSION-NOTES.md; compute/hpc_backend.go; worker/file_mapper.go
-event_brokers	broker_control_inventory	broker producer to internal event writer	S05,S06,S09,P08	source_review_completed_default_policy_checked	checks/kafka_config_test.go.txt; events/kafka.go; events/pubsub.go
-storage_publication	foreground	worker file policy and outbound request scope	S03,S04,P05,P06,P10	new_bounded_observations_P11_P12	checks/permission_test.go.txt; checks/google_context_test.go.txt
-browser_cli	client_browser_control_inventory	user input to credential-bearing client and operator display	S09,S13,S15	source_review_completed_terminal_verification_not_retained	SESSION-NOTES.md; cmd/termdash/view.go; tes/client.go; webdash/src

@@ -1,4 +1,0 @@
-named: changed=True; output='password=[REDACTED]'
-presign: changed=False; output='https://example.invalid/object?X-Amz-Credential=synthetic-id&X-Amz-Signature=synthetic-signature'
-envyaml: changed=False; output='- name: PASSWORD\n  value: synthetic-secret'
-userinfo: changed=False; output='ftp://user:synthetic-secret@example.invalid/file'

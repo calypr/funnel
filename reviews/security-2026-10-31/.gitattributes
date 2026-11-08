@@ -1,3 +1,0 @@
-# Preserve captured output and unified-diff context exactly.
-evidence/* -whitespace
-remediation/s15.patch -whitespace

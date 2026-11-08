@@ -1,2 +1,0 @@
-unrelated_prefix_job_removed=true
-external_idle_shared_sa_removed=true

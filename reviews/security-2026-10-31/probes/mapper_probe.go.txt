@@ -1,3 +1,0 @@
-package main
-import("fmt";"os";"github.com/calypr/funnel/worker";"github.com/calypr/funnel/tes")
-func main(){ m:=worker.NewFileMapper("/tmp/funnel-audit-storage/taskA");t:=&tes.Task{Executors:[]*tes.Executor{{Image:"alpine",Command:[]string{"true"}}},Inputs:[]*tes.Input{{Path:"/../taskA-sibling/secret",Content:"synthetic attacker write"}}};fmt.Printf("validation=%v\n",tes.Validate(t));e:=m.MapTask(t);fmt.Printf("map_error=%v\n",e);b,e:=os.ReadFile("/tmp/funnel-audit-storage/taskA-sibling/secret");fmt.Printf("sibling_contents=%q error=%v\n",b,e)}
