@@ -288,13 +288,11 @@ func TestGetTaskView(t *testing.T) {
 
 }
 
-// TODO this is a bit hacky for now because we're reusing the same
-//
-//	server + DB for all the e2e tests, so ListTasks gets the
-//	results of all of those. It works for the moment, but
-//	should probably run against a clean environment.
 func TestListTaskView(t *testing.T) {
 	tests.SetLogOutput(log, t)
+	fun := tests.NewFunnel(tests.DefaultConfig())
+	fun.StartServer()
+	t.Cleanup(fun.Cleanup)
 	var tasks []*tes.Task
 	var task *tes.Task
 	var err error
@@ -308,7 +306,12 @@ func TestListTaskView(t *testing.T) {
   `)
 	fun.Wait(id)
 
-	time.Sleep(500 * time.Millisecond)
+	if _, err := fun.Server.Events.WriteEvent(t.Context(), events.NewTaskCreated(&tes.Task{
+		Id: "ffffffff-ffff-1fff-8fff-ffffffffffff", Name: "unrelated-task",
+		State: tes.State_COMPLETE, CreationTime: "2000-01-01T00:00:00Z",
+	})); err != nil {
+		t.Fatal(err)
+	}
 
 	tasks = fun.ListView(tes.View_MINIMAL)
 	task = tasks[0]
