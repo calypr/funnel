@@ -2,6 +2,7 @@ package events
 
 import (
 	"context"
+	"errors"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -9,6 +10,8 @@ import (
 
 	"github.com/calypr/funnel/util/ring"
 	"golang.org/x/time/rate"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // Global counters for tracking log event drops (for debugging/metrics)
@@ -172,9 +175,7 @@ func LogTail(ctx context.Context, taskID string, attempt, index uint32, size int
 		case Type_EXECUTOR_STDERR:
 			e = NewStderr(taskID, attempt, index, s)
 		}
-		flushctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		return out.WriteEvent(flushctx, e)
+		return writeLogTailEvent(out, e)
 	}
 
 	wg.Add(1)
@@ -263,9 +264,7 @@ func StreamLogTail(ctx context.Context, taskID string, attempt, index uint32, si
 		defer wg.Done()
 
 		for e := range eventch {
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-			err := out.WriteEvent(ctx, e)
-			cancel()
+			err := writeLogTailEvent(out, e)
 
 			if err == nil {
 				switch e.Type {
@@ -327,4 +326,26 @@ func (l *logTailWriter) Write(p []byte) (n int, err error) {
 	case <-l.done:
 	}
 	return len(p), nil
+}
+
+// Log events replace the stored tail, so retrying a snapshot is idempotent.
+func writeLogTailEvent(out Writer, event *Event) error {
+	var err error
+	for range 3 {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		err = out.WriteEvent(ctx, event)
+		cancel()
+		if err == nil {
+			return nil
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			continue
+		}
+		switch status.Code(err) {
+		case codes.DeadlineExceeded, codes.Unavailable, codes.ResourceExhausted:
+		default:
+			return err
+		}
+	}
+	return err
 }
