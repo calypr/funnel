@@ -3,16 +3,17 @@ package debug
 import (
 	"encoding/json"
 
-	"github.com/calypr/funnel/config"
-	cmdutil "github.com/calypr/funnel/internal/cli/util"
-	"github.com/calypr/funnel/internal/version"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/encoding/protojson"
+
+	cmdutil "github.com/calypr/funnel/internal/cli/util"
+	appconfig "github.com/calypr/funnel/internal/config"
+	"github.com/calypr/funnel/internal/version"
 )
 
 func NewCommand() *cobra.Command {
 	var file string
-	flags := config.EmptyConfig()
+	flags := appconfig.EmptyConfig()
 	cmd := &cobra.Command{
 		Use: "debug", Short: "Print version and redacted configuration for troubleshooting",
 		Long: "Print version and local configuration with known sensitive fields redacted. This does not query a running server. Review the output before sharing it.",
@@ -22,7 +23,7 @@ func NewCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			data, err := (protojson.MarshalOptions{UseProtoNames: true, EmitUnpopulated: true}).Marshal(c.Safe())
+			data, err := (protojson.MarshalOptions{UseProtoNames: true, EmitUnpopulated: true}).Marshal(appconfig.Safe(c))
 			if err != nil {
 				return err
 			}

@@ -6,14 +6,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/tes"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
+
+	appconfig "github.com/calypr/funnel/internal/config"
+	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/tes"
 )
 
 func TestExecutorImagePullPolicy(t *testing.T) {
@@ -33,7 +34,7 @@ func TestExecutorImagePullPolicy(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
-			conf := config.DefaultConfig()
+			conf := appconfig.DefaultConfig()
 			worker := DefaultWorker{
 				Executor: Executor{
 					Template:      executorTemplateFixture,
@@ -93,7 +94,7 @@ func TestExecutorServiceAccountSelection(t *testing.T) {
 		{"explicit account", "configured-account", "configured-template", "configured-account"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			worker := DefaultWorker{Executor: Executor{Namespace: "test", JobsNamespace: "test", ServiceAccount: tc.configured, ServiceAccountTemplate: tc.template, Resources: config.DefaultConfig().Kubernetes.Resources}, EventWriter: events.Noop{}}
+			worker := DefaultWorker{Executor: Executor{Namespace: "test", JobsNamespace: "test", ServiceAccount: tc.configured, ServiceAccountTemplate: tc.template, Resources: appconfig.DefaultConfig().Kubernetes.Resources}, EventWriter: events.Noop{}}
 			command, err := worker.newKubernetesCommand(t.Context(), events.NewTaskWriter("task-1", 0, events.Noop{}), &tes.Task{Id: "task-1"}, &tes.Executor{}, 0, Command{}, &tes.Resources{CpuCores: 1, RamGb: 1, DiskGb: 1})
 			if err != nil {
 				t.Fatal(err)

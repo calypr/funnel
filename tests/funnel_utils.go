@@ -28,6 +28,7 @@ import (
 	"github.com/calypr/funnel/internal/cli/tesenv"
 	funnelkubernetes "github.com/calypr/funnel/internal/compute/kubernetes"
 	"github.com/calypr/funnel/internal/compute/scheduler"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/logger"
 	"github.com/calypr/funnel/internal/rpcclient"
 	"github.com/calypr/funnel/internal/server"
@@ -440,7 +441,7 @@ func (f *Funnel) StartServerInDocker(containerName, imageName string, extraArgs 
 	if err != nil {
 		panic(fmt.Errorf("resolve test server config path: %w", err))
 	}
-	err = config.ToYamlFile(f.Conf, configPath)
+	err = appconfig.ToYamlFile(f.Conf, configPath)
 	if err != nil {
 		panic(fmt.Errorf("write test server config: %w", err))
 	}

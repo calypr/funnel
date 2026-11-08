@@ -8,13 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/internal/compute/kubernetes/storageplan"
-	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/logger"
-	"github.com/calypr/funnel/internal/storage"
-	"github.com/calypr/funnel/internal/taskmodel"
-	logconfig "github.com/calypr/funnel/logger"
-	"github.com/calypr/funnel/tes"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	batchv1 "k8s.io/api/batch/v1"
@@ -25,13 +18,20 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
+
+	"github.com/calypr/funnel/internal/compute/kubernetes/storageplan"
+	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/internal/logger"
+	"github.com/calypr/funnel/internal/storage"
+	"github.com/calypr/funnel/internal/taskmodel"
+	"github.com/calypr/funnel/tes"
 )
 
 func TestLifecycleCancelRacingPVCreate(t *testing.T) {
 	ctx := context.Background()
 	client := bindingClient()
 	conf := bindingConfig(t, createdStorage(t, true))
-	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("lifecycle", logconfig.DefaultConfig())}
+	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("lifecycle", logger.DefaultConfig())}
 	var raced bool
 	client.PrependReactor("create", "persistentvolumes", func(action k8stesting.Action) (bool, runtime.Object, error) {
 		pv := action.(k8stesting.CreateAction).GetObject().(*corev1.PersistentVolume)
@@ -95,7 +95,7 @@ func TestLifecycleMissingSnapshotFailsClosed(t *testing.T) {
 	executor := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: job.Name + "-0", Namespace: "tasks"}}
 	client := fake.NewSimpleClientset(job, pv, executor)
 	retainFinalizedJobsOnDelete(client, "tasks", nil)
-	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("lifecycle", logconfig.DefaultConfig())}
+	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("lifecycle", logger.DefaultConfig())}
 	if err := backend.Cancel(ctx, job.Name); err == nil {
 		t.Fatal("cleanup without an annotation or worker snapshot should fail closed")
 	}
@@ -128,7 +128,7 @@ func TestLifecycleMissingSnapshotRejectedDeleteStillRemovesExecutor(t *testing.T
 		}
 		return false, nil, nil
 	})
-	backend := &Backend{client: client, conf: bindingConfig(t, nil), event: &noopEventWriter{}, log: logger.NewLogger("lifecycle", logconfig.DefaultConfig())}
+	backend := &Backend{client: client, conf: bindingConfig(t, nil), event: &noopEventWriter{}, log: logger.NewLogger("lifecycle", logger.DefaultConfig())}
 	if err := backend.Cancel(ctx, job.Name); err == nil {
 		t.Fatal("cleanup without a trustworthy snapshot should report its recovery failure")
 	}
@@ -150,7 +150,7 @@ func TestLifecycleCancelDeliveredBeforeCreateDoesNotSubmit(t *testing.T) {
 		client:   client,
 		conf:     conf,
 		event:    &noopEventWriter{},
-		log:      logger.NewLogger("lifecycle", logconfig.DefaultConfig()),
+		log:      logger.NewLogger("lifecycle", logger.DefaultConfig()),
 		database: &mockDatabase{tasks: map[string]*tes.Task{taskID: {Id: taskID, State: tes.State_CANCELED}}},
 	}
 	if err := backend.WriteEvent(ctx, events.NewState(taskID, tes.Canceled)); err != nil {
@@ -179,7 +179,7 @@ func TestLifecycleTaskLookupFailurePreventsSubmission(t *testing.T) {
 		client:   client,
 		conf:     conf,
 		event:    &noopEventWriter{},
-		log:      logger.NewLogger("lifecycle", logconfig.DefaultConfig()),
+		log:      logger.NewLogger("lifecycle", logger.DefaultConfig()),
 		database: lifecycleErrorDatabase{err: errors.New("permission denied")},
 	}
 	taskID := "lookup-failure"
@@ -217,7 +217,7 @@ func TestLifecycleCancelDuringSubmitCleansResourcesWithoutSystemError(t *testing
 		pvcCreations++
 		return false, nil, nil
 	})
-	backend := &Backend{client: client, conf: conf, event: eventsWritten, database: database, log: logger.NewLogger("lifecycle", logconfig.DefaultConfig())}
+	backend := &Backend{client: client, conf: conf, event: eventsWritten, database: database, log: logger.NewLogger("lifecycle", logger.DefaultConfig())}
 
 	if err := backend.Submit(ctx, task, conf); err != nil {
 		t.Fatalf("Submit returned an error after cancellation: %v", err)
@@ -258,7 +258,7 @@ func TestLifecycleCancelAfterResourceCreationCleansJob(t *testing.T) {
 		task.State = tes.State_CANCELED
 		return false, nil, nil
 	})
-	backend := &Backend{client: client, conf: conf, event: eventsWritten, database: &mockDatabase{tasks: map[string]*tes.Task{taskID: task}}, log: logger.NewLogger("lifecycle", logconfig.DefaultConfig())}
+	backend := &Backend{client: client, conf: conf, event: eventsWritten, database: &mockDatabase{tasks: map[string]*tes.Task{taskID: task}}, log: logger.NewLogger("lifecycle", logger.DefaultConfig())}
 	if err := backend.Submit(ctx, task, conf); err != nil {
 		t.Fatalf("Submit returned an error after cancellation: %v", err)
 	}
@@ -281,7 +281,7 @@ func TestLifecyclePostSubmitLookupFailureDefersToReconcile(t *testing.T) {
 	task := &tes.Task{Id: "post-submit-read-failure", State: tes.State_QUEUED}
 	database := &lifecycleSequencedDatabase{task: task, failAt: 2}
 	eventsWritten := &capturingEventWriter{}
-	backend := &Backend{client: client, conf: conf, event: eventsWritten, database: database, log: logger.NewLogger("lifecycle", logconfig.DefaultConfig())}
+	backend := &Backend{client: client, conf: conf, event: eventsWritten, database: database, log: logger.NewLogger("lifecycle", logger.DefaultConfig())}
 	if err := backend.Submit(ctx, task, conf); err != nil {
 		t.Fatalf("Submit should defer reconciliation after a post-create lookup failure: %v", err)
 	}
@@ -306,7 +306,7 @@ func TestLifecycleStorageSnapshotRecoversFromWorkerEnv(t *testing.T) {
 	ctx := context.Background()
 	client := bindingClient()
 	conf := bindingConfig(t, createdStorage(t, true))
-	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("lifecycle", logconfig.DefaultConfig())}
+	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("lifecycle", logger.DefaultConfig())}
 	taskID := "recover-snapshot"
 	if err := backend.Submit(ctx, &tes.Task{Id: taskID}, conf); err != nil {
 		t.Fatal(err)
@@ -398,7 +398,7 @@ func TestLifecycleCancelRecoversOwnershipFromLegacyOverlappingRoutes(t *testing.
 			}}
 			client := fake.NewSimpleClientset(job, ownedPV, operatorPV)
 			retainFinalizedJobsOnDelete(client, "tasks", nil)
-			backend := &Backend{client: client, conf: bindingConfig(t, createdStorage(t, true)), event: &noopEventWriter{}, log: logger.NewLogger("lifecycle", logconfig.DefaultConfig())}
+			backend := &Backend{client: client, conf: bindingConfig(t, createdStorage(t, true)), event: &noopEventWriter{}, log: logger.NewLogger("lifecycle", logger.DefaultConfig())}
 
 			if err := backend.Cancel(ctx, taskID); err != nil {
 				t.Fatalf("Cancel did not recover ownership from the old plan: %v", err)
@@ -430,7 +430,7 @@ func TestLifecycleConflictingWorkerSnapshotsFailClosed(t *testing.T) {
 	ctx := context.Background()
 	client := bindingClient()
 	conf := bindingConfig(t, createdStorage(t, true))
-	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("lifecycle", logconfig.DefaultConfig())}
+	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("lifecycle", logger.DefaultConfig())}
 	taskID := "conflicting-snapshot"
 	if err := backend.Submit(ctx, &tes.Task{Id: taskID}, conf); err != nil {
 		t.Fatal(err)
@@ -470,7 +470,7 @@ func TestLifecycleCanceledJobRetriesRejectedDelete(t *testing.T) {
 	taskID := "retry-canceled-delete"
 	task := &tes.Task{Id: taskID, State: tes.State_QUEUED}
 	database := &mockDatabase{tasks: map[string]*tes.Task{taskID: task}}
-	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, database: database, log: logger.NewLogger("lifecycle", logconfig.DefaultConfig())}
+	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, database: database, log: logger.NewLogger("lifecycle", logger.DefaultConfig())}
 	if err := backend.Submit(ctx, task, conf); err != nil {
 		t.Fatal(err)
 	}
@@ -607,7 +607,7 @@ func TestReconcileStateTransitionNotSystemError(t *testing.T) {
 		client:   client,
 		conf:     conf,
 		event:    event,
-		log:      logger.NewLogger("lifecycle", logconfig.DefaultConfig()),
+		log:      logger.NewLogger("lifecycle", logger.DefaultConfig()),
 		database: &multiStateDatabase{task: &tes.Task{Id: taskID, State: tes.State_RUNNING}},
 	}
 

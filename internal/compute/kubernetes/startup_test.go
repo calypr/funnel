@@ -10,13 +10,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/internal/logger"
-	logconfig "github.com/calypr/funnel/logger"
-	"github.com/calypr/funnel/tes"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+
+	appconfig "github.com/calypr/funnel/internal/config"
+	"github.com/calypr/funnel/internal/logger"
+	"github.com/calypr/funnel/tes"
 )
 
 type startupTaskDatabase struct {
@@ -42,7 +42,7 @@ func startupBackend(t *testing.T, handler http.HandlerFunc) (*Backend, context.C
 	if err != nil {
 		t.Fatal(err)
 	}
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.Namespace = "test"
 	conf.Kubernetes.JobsNamespace = "test"
 	conf.Kubernetes.ReconcileRate = durationpb.New(5 * time.Millisecond)
@@ -50,7 +50,7 @@ func startupBackend(t *testing.T, handler http.HandlerFunc) (*Backend, context.C
 		client: client, conf: conf,
 		database: &startupTaskDatabase{listed: make(chan struct{}, 1)},
 		event:    &noopEventWriter{},
-		log:      logger.NewLogger("startup-test", logconfig.DefaultConfig()),
+		log:      logger.NewLogger("startup-test", logger.DefaultConfig()),
 	}, ctx, cancel
 }
 

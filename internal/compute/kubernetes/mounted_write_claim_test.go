@@ -5,13 +5,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/internal/logger"
-	logconfig "github.com/calypr/funnel/logger"
-	"github.com/calypr/funnel/tes"
 	"google.golang.org/protobuf/types/known/structpb"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/internal/logger"
+	"github.com/calypr/funnel/tes"
 )
 
 func TestMountedWriteClaimAccessAtSubmission(t *testing.T) {
@@ -69,7 +69,7 @@ func TestMountedWriteClaimAccessAtSubmission(t *testing.T) {
 					Endpoint: "https://s3.example.org", Bucket: "references", Key: "key", Secret: "secret",
 					MountedRead: &config.S3MountedRead{Volume: "references"},
 				})
-				backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logconfig.DefaultConfig())}
+				backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logger.DefaultConfig())}
 				client.ClearActions()
 				err := backend.Submit(ctx, &tes.Task{Id: "write-access"}, conf)
 				if tc.wantError {

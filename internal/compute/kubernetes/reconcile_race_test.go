@@ -4,18 +4,18 @@ import (
 	"context"
 	"testing"
 
-	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/logger"
-	"github.com/calypr/funnel/internal/taskmodel"
-	logconfig "github.com/calypr/funnel/logger"
-	"github.com/calypr/funnel/tes"
 	batchv1 "k8s.io/api/batch/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
+
+	appconfig "github.com/calypr/funnel/internal/config"
+	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/internal/logger"
+	"github.com/calypr/funnel/internal/taskmodel"
+	"github.com/calypr/funnel/tes"
 )
 
 const reconcileTestNamespace = "worker-jobs"
@@ -73,14 +73,14 @@ func (w *reconcileStateEvents) hasSystemError() bool {
 }
 
 func newReconcileTestBackend(client kubernetes.Interface, database taskmodel.ReadOnlyServer, writer events.Writer) *Backend {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.Namespace = reconcileTestNamespace
 	conf.Kubernetes.JobsNamespace = reconcileTestNamespace
 	return &Backend{
 		client:   client,
 		event:    writer,
 		database: database,
-		log:      logger.NewLogger("reconcile-race-test", logconfig.DefaultConfig()),
+		log:      logger.NewLogger("reconcile-race-test", logger.DefaultConfig()),
 		conf:     conf,
 	}
 }

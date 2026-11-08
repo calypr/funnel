@@ -12,6 +12,8 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/structpb"
+
+	schema "github.com/calypr/funnel/config"
 )
 
 func TestKubernetesStorageConfigRoundTrip(t *testing.T) {
@@ -82,26 +84,26 @@ GenericS3:
 		"kind":       "PersistentVolume",
 		"metadata":   map[string]any{"name": "pv-{{.TaskId}}"},
 	})
-	want := &Config{
-		GenericS3: []*GenericS3Storage{{
+	want := &schema.Config{
+		GenericS3: []*schema.GenericS3Storage{{
 			Endpoint: "https://s3.example.test",
 			Key:      "access",
 			Secret:   "secret",
 			Bucket:   "bucket",
-			MountedWrite: &S3MountedWrite{
+			MountedWrite: &schema.S3MountedWrite{
 				Volume:    "task-data",
-				MountView: &S3MountedWrite_SubPath{SubPath: "results"},
+				MountView: &schema.S3MountedWrite_SubPath{SubPath: "results"},
 				Prefix:    "results/",
 				Timeout:   durationpb.New(90 * time.Second),
 			},
-			MountedRead: &S3MountedRead{
+			MountedRead: &schema.S3MountedRead{
 				Volume:    "task-data",
-				MountView: &S3MountedRead_SubPath{SubPath: ""},
+				MountView: &schema.S3MountedRead_SubPath{SubPath: ""},
 				Prefix:    "prefix/",
 			},
 		}},
-		Kubernetes: &Kubernetes{
-			Storage: &KubernetesStorage{
+		Kubernetes: &schema.Kubernetes{
+			Storage: &schema.KubernetesStorage{
 				WorkspaceVolume:           "workspace",
 				WorkerContainer:           "funnel-worker",
 				ExecutorContainer:         "funnel-executor",
@@ -148,16 +150,16 @@ func TestKubernetesStorageGobRoundTrip(t *testing.T) {
 		"nested":  map[string]any{"message": "nested string"},
 		"values":  []any{"string", float64(4), true, nil, []any{"nested list"}},
 	})
-	want := &Config{
-		GenericS3: []*GenericS3Storage{{
-			MountedRead: &S3MountedRead{Volume: "task-data"},
-			MountedWrite: &S3MountedWrite{
+	want := &schema.Config{
+		GenericS3: []*schema.GenericS3Storage{{
+			MountedRead: &schema.S3MountedRead{Volume: "task-data"},
+			MountedWrite: &schema.S3MountedWrite{
 				Volume:    "task-data",
-				MountView: &S3MountedWrite_SubPath{SubPath: ""},
+				MountView: &schema.S3MountedWrite_SubPath{SubPath: ""},
 			},
 		}},
-		Kubernetes: &Kubernetes{
-			Storage: &KubernetesStorage{
+		Kubernetes: &schema.Kubernetes{
+			Storage: &schema.KubernetesStorage{
 				Volumes: []*structpb.Struct{volume},
 			},
 		},
@@ -168,7 +170,7 @@ func TestKubernetesStorageGobRoundTrip(t *testing.T) {
 		t.Fatal("encode config over gob:", err)
 	}
 
-	var got Config
+	var got schema.Config
 	if err := gob.NewDecoder(&encoded).Decode(&got); err != nil {
 		t.Fatal("decode config over gob:", err)
 	}
@@ -181,13 +183,13 @@ func TestKubernetesStorageGobRoundTrip(t *testing.T) {
 	if got.GenericS3[0].MountedWrite.GetSubPath() != "" {
 		t.Fatal("present empty write SubPath did not survive gob round-trip")
 	}
-	if _, present := got.GenericS3[0].MountedWrite.GetMountView().(*S3MountedWrite_SubPath); !present {
+	if _, present := got.GenericS3[0].MountedWrite.GetMountView().(*schema.S3MountedWrite_SubPath); !present {
 		t.Fatal("empty write SubPath lost oneof presence during gob round-trip")
 	}
 }
 
 func TestKubernetesSchemaFieldCompatibility(t *testing.T) {
-	kubernetes := (&Kubernetes{}).ProtoReflect().Descriptor()
+	kubernetes := (&schema.Kubernetes{}).ProtoReflect().Descriptor()
 	for name, number := range map[protoreflect.Name]protoreflect.FieldNumber{
 		"ForbiddenPathPrefixes": 20,
 		"WorkerImage":           24,
@@ -212,7 +214,7 @@ func TestKubernetesSchemaFieldCompatibility(t *testing.T) {
 		}
 	}
 
-	configDescriptor := (&Config{}).ProtoReflect().Descriptor()
+	configDescriptor := (&schema.Config{}).ProtoReflect().Descriptor()
 	if configDescriptor.Fields().ByName("MountedInputs") != nil {
 		t.Fatal("Config.MountedInputs must be removed")
 	}
@@ -220,7 +222,7 @@ func TestKubernetesSchemaFieldCompatibility(t *testing.T) {
 		t.Fatal("Config.MountedInputs field 34 must be reserved")
 	}
 
-	storageDescriptor := (&KubernetesStorage{}).ProtoReflect().Descriptor()
+	storageDescriptor := (&schema.KubernetesStorage{}).ProtoReflect().Descriptor()
 	for name, number := range map[protoreflect.Name]protoreflect.FieldNumber{
 		"WorkspaceVolume":           1,
 		"WorkerContainer":           3,
@@ -251,7 +253,7 @@ func TestKubernetesSchemaFieldCompatibility(t *testing.T) {
 		}
 	}
 
-	readFields := (&S3MountedRead{}).ProtoReflect().Descriptor().Fields()
+	readFields := (&schema.S3MountedRead{}).ProtoReflect().Descriptor().Fields()
 	for name, number := range map[protoreflect.Name]protoreflect.FieldNumber{
 		"Prefix":  2,
 		"Volume":  3,
@@ -262,7 +264,7 @@ func TestKubernetesSchemaFieldCompatibility(t *testing.T) {
 			t.Fatalf("S3MountedRead.%s field = %v, want %d", name, field, number)
 		}
 	}
-	writeFields := (&S3MountedWrite{}).ProtoReflect().Descriptor().Fields()
+	writeFields := (&schema.S3MountedWrite{}).ProtoReflect().Descriptor().Fields()
 	for name, number := range map[protoreflect.Name]protoreflect.FieldNumber{
 		"Prefix":  2,
 		"Timeout": 3,
@@ -275,8 +277,8 @@ func TestKubernetesSchemaFieldCompatibility(t *testing.T) {
 		}
 	}
 	for _, message := range []protoreflect.MessageDescriptor{
-		(&S3MountedRead{}).ProtoReflect().Descriptor(),
-		(&S3MountedWrite{}).ProtoReflect().Descriptor(),
+		(&schema.S3MountedRead{}).ProtoReflect().Descriptor(),
+		(&schema.S3MountedWrite{}).ProtoReflect().Descriptor(),
 	} {
 		if !message.ReservedRanges().Has(1) || !message.ReservedNames().Has("WorkerMount") {
 			t.Errorf("%s must reserve WorkerMount field 1", message.Name())

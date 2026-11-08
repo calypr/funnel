@@ -4,16 +4,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/internal/logger"
-	logconfig "github.com/calypr/funnel/logger"
-	"github.com/calypr/funnel/tes"
 	"github.com/stretchr/testify/assert"
+
+	appconfig "github.com/calypr/funnel/internal/config"
+	"github.com/calypr/funnel/internal/logger"
+	"github.com/calypr/funnel/tes"
 )
 
 func createBackend(p map[string]string) *Backend {
-	conf := config.DefaultConfig()
-	log := logger.NewLogger("test", logconfig.DefaultConfig())
+	conf := appconfig.DefaultConfig()
+	log := logger.NewLogger("test", logger.DefaultConfig())
 	b := &Backend{
 		conf:              conf,
 		log:               log,

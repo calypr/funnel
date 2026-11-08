@@ -27,6 +27,16 @@ def main():
     model_dependencies = run("go", "list", "-deps", "./tes").splitlines()
     if any(name == "net/http" or name.startswith(MODULE + "/client/") for name in model_dependencies):
         raise RuntimeError("TES wire models import HTTP/client behavior")
+    for schema_package in ("config", "logger"):
+        dependencies = run("go", "list", "-deps", "./" + schema_package).splitlines()
+        forbidden = [name for name in dependencies if name.startswith((
+            MODULE + "/internal/", "k8s.io/", "cloud.google.com/", "github.com/aws/",
+            "github.com/go-playground/validator", "github.com/goccy/go-yaml",
+        ))]
+        direct_imports = json.loads(run("go", "list", "-json", "./" + schema_package)).get("Imports", [])
+        forbidden += [name for name in direct_imports if name in {"os", "embed", "io/fs"}]
+        if forbidden:
+            raise RuntimeError(schema_package + " schemas import application behavior: " + ", ".join(forbidden))
     env = os.environ | {"GOWORK": "off"}
     with tempfile.TemporaryDirectory(prefix="funnel-public-api-") as directory:
         path = Path(directory)
@@ -37,6 +47,8 @@ def main():
         path.joinpath("public_test.go").write_text('''package consumer_test
 import (
  "context"
+ "bytes"
+ "encoding/gob"
  "io"
  "net/http"
  "net/http/httptest"
@@ -48,6 +60,7 @@ import (
  plugin "github.com/calypr/funnel/plugins/proto"
  "github.com/calypr/funnel/plugins/shared"
  "google.golang.org/protobuf/proto"
+ "google.golang.org/protobuf/types/known/structpb"
 )
 func TestExternalClient(t *testing.T) {
  server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
@@ -70,6 +83,24 @@ func TestExternalPluginContracts(t *testing.T) {
  if !proto.Equal(conf,decoded) {t.Fatal("plugin configuration changed during serialization")}
  _ = plugin.Type_CREATE
 }
+func TestExternalPluginGobContract(t *testing.T) {
+ volume,err:=structpb.NewStruct(map[string]any{"name":"data","nested":map[string]any{"value":"x"},"values":[]any{nil,true,float64(2),"x"}})
+ if err!=nil {t.Fatal(err)}
+ job:=&plugin.Job{Config:&config.Config{
+  Logger:&logger.LoggerConfig{Level:"info"},
+  GenericS3:[]*config.GenericS3Storage{{
+   MountedRead:&config.S3MountedRead{Volume:"data",MountView:&config.S3MountedRead_SubPath{SubPath:"input"}},
+   MountedWrite:&config.S3MountedWrite{Volume:"data",MountView:&config.S3MountedWrite_SubPath{SubPath:""}},
+  }},
+  Kubernetes:&config.Kubernetes{Storage:&config.KubernetesStorage{Volumes:[]*structpb.Struct{volume}}},
+ },Task:&tes.Task{Id:"plugin-task"}}
+ var buffer bytes.Buffer
+ if err:=gob.NewEncoder(&buffer).Encode(job);err!=nil {t.Fatal(err)}
+ decoded:=&plugin.Job{}
+ if err:=gob.NewDecoder(&buffer).Decode(decoded);err!=nil {t.Fatal(err)}
+ if !proto.Equal(job,decoded) {t.Fatal("plugin Gob codec changed values or oneof presence")}
+}
+
 ''')
         subprocess.run(["go", "mod", "tidy"], cwd=path, env=env, check=True)
         subprocess.run(["go", "test", "-count=1", "./..."], cwd=path, env=env, check=True)
@@ -80,7 +111,7 @@ func TestExternalPluginContracts(t *testing.T) {
                                 text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         if result.returncode == 0 or "use of internal package" not in result.stdout:
             raise RuntimeError("Expected Go's internal-package rejection, got:\n" + result.stdout)
-    print("Public API check passed: HTTP-free wire models, REST-only client dependencies, external client/plugin consumers, and enforced internal boundary.")
+    print("Public API check passed: HTTP-free wire models, schema-only config/logger dependencies, external client/plugin protobuf/Gob consumers, and enforced internal boundary.")
 
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/tes"
 )
@@ -32,7 +32,7 @@ func TestDockerCancellationStopsContainer(t *testing.T) {
 	defer cancel()
 	builder := &events.TaskBuilder{Task: &tes.Task{}}
 	event := events.NewExecutorWriter("test", 0, 0, builder)
-	conf := config.DefaultConfig().Worker
+	conf := appconfig.DefaultConfig().Worker
 	command := &DockerCommand{Name: name, DriverCommand: "docker", PullCommand: "image inspect {{.Image}}", RunCommand: conf.Container.RunCommand, StopCommand: conf.Container.StopCommand, RemoveContainer: true, Event: event, Command: Command{Image: "alpine:latest", ShellCommand: []string{"sleep", "60"}}}
 	step := &stepWorker{Conf: conf, Command: command, Event: event}
 	done := make(chan error, 1)

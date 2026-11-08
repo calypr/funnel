@@ -8,11 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/internal/compute/kubernetes/storageplan"
-	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/logger"
-	logconfig "github.com/calypr/funnel/logger"
-	"github.com/calypr/funnel/tes"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -21,6 +16,11 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+
+	"github.com/calypr/funnel/internal/compute/kubernetes/storageplan"
+	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/internal/logger"
+	"github.com/calypr/funnel/tes"
 )
 
 func TestNativeStoragePermissionsLive(t *testing.T) {
@@ -148,7 +148,7 @@ spec:
           image: alpine:3.21
           command: ["true"]
 `
-			backend := &Backend{client: client, conf: conf, event: events.Noop{}, log: logger.NewLogger("storage-permissions-live", logconfig.DefaultConfig())}
+			backend := &Backend{client: client, conf: conf, event: events.Noop{}, log: logger.NewLogger("storage-permissions-live", logger.DefaultConfig())}
 			submitErr := backend.Submit(ctx, &tes.Task{Id: taskID}, conf)
 			if tc.deniedVerb != "" {
 				if submitErr == nil || !strings.Contains(submitErr.Error(), tc.deniedVerb) || !strings.Contains(submitErr.Error(), "persistentvolumes") {

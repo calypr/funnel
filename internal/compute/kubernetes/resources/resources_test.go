@@ -5,10 +5,6 @@ import (
 	_ "embed"
 	"testing"
 
-	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/internal/logger"
-	logconfig "github.com/calypr/funnel/logger"
-	"github.com/calypr/funnel/tes"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -17,6 +13,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
+
+	appconfig "github.com/calypr/funnel/internal/config"
+	"github.com/calypr/funnel/internal/logger"
+	"github.com/calypr/funnel/tes"
 )
 
 //go:embed testdata/serviceaccount.yaml
@@ -112,11 +112,11 @@ spec:
       storage: 10Mi
   volumeName: funnel-worker-pv-{{.TaskId}}`
 
-var l = logger.NewLogger("test", logconfig.DefaultConfig())
+var l = logger.NewLogger("test", logger.DefaultConfig())
 var ctx = context.Background()
 
 func TestCreateConfigMap(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.JobsNamespace = jobsNamespace
 	conf.Kubernetes.ConfigMapTemplate = `apiVersion: v1
 kind: ConfigMap
@@ -203,7 +203,7 @@ func TestCreateJob(t *testing.T) {
 		},
 	}
 
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.JobsNamespace = jobsNamespace
 	conf.Kubernetes.WorkerTemplate = minimalWorkerTemplate
 	_, err := CreateJob(ctx, task, conf, fake.NewSimpleClientset(), l, nil)
@@ -219,7 +219,7 @@ func TestCreateJobDoesNotApplyExecutorGPUCountToWorkerJob(t *testing.T) {
 			BackendParameters: map[string]string{"gpu_count": "2"},
 		},
 	}
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.JobsNamespace = jobsNamespace
 	conf.Kubernetes.WorkerImage = "funnel:test"
 	conf.Kubernetes.WorkerTemplate = minimalWorkerTemplate
@@ -238,7 +238,7 @@ func TestCreateJobDoesNotApplyExecutorGPUCountToWorkerJob(t *testing.T) {
 func TestDeleteJob(t *testing.T) {
 	fakeClient := fake.NewSimpleClientset()
 
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.JobsNamespace = jobsNamespace
 
 	// Create a test Job in the same namespace DeleteJob will use.
@@ -266,7 +266,7 @@ func TestDeleteJob(t *testing.T) {
 }
 
 func TestCreatePV(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.JobsNamespace = jobsNamespace
 	conf.Kubernetes.PVTemplate = minimalPVTemplate
 	err := CreatePV(ctx, testTaskID, 0, conf, fake.NewSimpleClientset(), l)
@@ -307,7 +307,7 @@ func TestDeletePV(t *testing.T) {
 }
 
 func TestCreatePVC(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.JobsNamespace = jobsNamespace
 	conf.Kubernetes.PVCTemplate = minimalPVCTemplate
 	err := CreatePVC(ctx, testTaskID, 0, conf, fake.NewSimpleClientset(), l, nil)
@@ -349,7 +349,7 @@ func TestCreateJobWithNoResources(t *testing.T) {
 		// Intentionally omit Resources to test default handling
 	}
 
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.JobsNamespace = jobsNamespace
 	conf.Kubernetes.WorkerTemplate = minimalWorkerTemplate
 	_, err := CreateJob(ctx, task, conf, fake.NewSimpleClientset(), l, nil)
@@ -406,7 +406,7 @@ func TestDeleteRaceNotFound(t *testing.T) {
 			return true, nil, apierrors.NewNotFound(schema.GroupResource{Group: "batch", Resource: "jobs"}, name)
 		})
 
-		conf := config.DefaultConfig()
+		conf := appconfig.DefaultConfig()
 		conf.Kubernetes.JobsNamespace = jobsNamespace
 		if err := DeleteExecutorJobs(context.Background(), conf, testTaskID, fakeClient, l); err != nil {
 			t.Errorf("DeleteExecutorJobs should ignore NotFound on Delete, got: %v", err)
@@ -459,7 +459,7 @@ func TestCreateServiceAccount(t *testing.T) {
 		Id: testTaskID,
 	}
 
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.JobsNamespace = jobsNamespace
 	conf.Kubernetes.ServiceAccountTemplate = minimalServiceAccountTemplate
 	err := CreateServiceAccount(ctx, task, conf, fake.NewSimpleClientset(), l, nil)
@@ -469,7 +469,7 @@ func TestCreateServiceAccount(t *testing.T) {
 }
 
 func TestServiceAccountTemplateDisablesTokenMount(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.JobsNamespace = jobsNamespace
 	conf.Kubernetes.ServiceAccountTemplate = serviceAccountTemplateFixture
 	client := fake.NewSimpleClientset()
@@ -577,7 +577,7 @@ func TestCreateRole(t *testing.T) {
 		Id: testTaskID,
 	}
 
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.JobsNamespace = jobsNamespace
 	conf.Kubernetes.RoleTemplate = minimalRoleTemplate
 	err := CreateRole(ctx, task, conf, fake.NewSimpleClientset(), l, nil)
@@ -611,7 +611,7 @@ func TestCreateRoleBinding(t *testing.T) {
 		Id: testTaskID,
 	}
 
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.JobsNamespace = jobsNamespace
 	conf.Kubernetes.RoleBindingTemplate = minimalRoleBindingTemplate
 	err := CreateRoleBinding(ctx, task, conf, fake.NewSimpleClientset(), l, nil)

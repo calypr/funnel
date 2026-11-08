@@ -34,7 +34,7 @@ type Mux struct {
 func NewMux(conf *config.Config) (*Mux, error) {
 	mux := &Mux{}
 
-	if conf.LocalStorage.Valid() {
+	if LocalConfigured(conf.LocalStorage) {
 		local, err := NewLocal(conf.LocalStorage)
 		if err != nil {
 			return mux, fmt.Errorf("failed to configure local storage backend: %s", err)
@@ -42,7 +42,7 @@ func NewMux(conf *config.Config) (*Mux, error) {
 		mux.Backends = append(mux.Backends, local)
 	}
 
-	if conf.AmazonS3.Valid() {
+	if AmazonS3Configured(conf.AmazonS3) {
 		s3, err := NewAmazonS3(conf.AmazonS3)
 		if err != nil {
 			return mux, fmt.Errorf("failed to configure Amazon S3 storage backend: %s", err)
@@ -50,7 +50,7 @@ func NewMux(conf *config.Config) (*Mux, error) {
 		mux.Backends = append(mux.Backends, s3)
 	}
 
-	if conf.GoogleStorage.Valid() {
+	if GoogleConfigured(conf.GoogleStorage) {
 		gs, nerr := NewGoogleCloud(conf.GoogleStorage)
 		if nerr != nil {
 			return mux, fmt.Errorf("failed to configure Google Storage backend: %s", nerr)
@@ -58,7 +58,7 @@ func NewMux(conf *config.Config) (*Mux, error) {
 		mux.Backends = append(mux.Backends, gs)
 	}
 
-	if conf.Swift.Valid() {
+	if SwiftConfigured(conf.Swift) {
 		s, err := NewSwiftRetrier(conf.Swift)
 		if err != nil {
 			return mux, fmt.Errorf("failed to config Swift storage backend: %s", err)
@@ -67,7 +67,7 @@ func NewMux(conf *config.Config) (*Mux, error) {
 	}
 
 	for _, c := range conf.GenericS3 {
-		if c.Valid() {
+		if GenericS3Configured(c) {
 			s, err := NewGenericS3(c)
 			if err != nil {
 				return mux, fmt.Errorf("failed to config generic S3 storage backend: %s", err)
@@ -76,7 +76,7 @@ func NewMux(conf *config.Config) (*Mux, error) {
 		}
 	}
 
-	if conf.HTTPStorage.Valid() {
+	if HTTPConfigured(conf.HTTPStorage) {
 		http, err := NewHTTP(conf.HTTPStorage)
 		if err != nil {
 			return mux, fmt.Errorf("failed to config http storage backend: %s", err)
@@ -84,7 +84,7 @@ func NewMux(conf *config.Config) (*Mux, error) {
 		mux.Backends = append(mux.Backends, http)
 	}
 
-	if conf.FTPStorage != nil && conf.FTPStorage.Valid() {
+	if conf.FTPStorage != nil && FTPConfigured(conf.FTPStorage) {
 		ftp, err := NewFTP(conf.FTPStorage)
 		if err != nil {
 			return mux, fmt.Errorf("failed to config ftp storage backend: %s", err)

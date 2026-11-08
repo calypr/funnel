@@ -7,13 +7,15 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/internal/logger"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
+
+	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
+	"github.com/calypr/funnel/internal/logger"
 )
 
 // CreateConfigMap creates a per-task ConfigMap by rendering ConfigMapTemplate.
@@ -36,7 +38,7 @@ func CreateConfigMap(ctx context.Context, taskId string, conf *config.Config, cl
 		return fmt.Errorf("parsing ConfigMapTemplate: %v", err)
 	}
 
-	configBytes, err := config.ToYaml(conf)
+	configBytes, err := appconfig.ToYaml(conf)
 	if err != nil {
 		return fmt.Errorf("marshaling config to YAML: %v", err)
 	}

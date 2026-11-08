@@ -5,13 +5,13 @@ import (
 	"log"
 	"time"
 
+	bolt "go.etcd.io/bbolt"
+
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/internal/compute/scheduler"
 	"github.com/calypr/funnel/internal/directory"
 	"github.com/calypr/funnel/internal/logger"
-	logconfig "github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/tes"
-	bolt "go.etcd.io/bbolt"
 )
 
 // TODO these should probably be unexported names
@@ -81,7 +81,7 @@ func NewBoltDB(conf *config.BoltDB) (*BoltDB, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &BoltDB{db: db, log: logger.NewLogger("BoltDB", logconfig.DefaultConfig())}, nil
+	return &BoltDB{db: db, log: logger.NewLogger("BoltDB", logger.DefaultConfig())}, nil
 }
 
 // Init creates the required BoltDB buckets

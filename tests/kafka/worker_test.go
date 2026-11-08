@@ -9,12 +9,11 @@ import (
 	workerCmd "github.com/calypr/funnel/internal/cli/worker"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
-	logconfig "github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/tes"
 	"github.com/calypr/funnel/tests"
 )
 
-var log = logger.NewLogger("kafka-worker-test", logconfig.DefaultConfig())
+var log = logger.NewLogger("kafka-worker-test", logger.DefaultConfig())
 var fun *tests.Funnel
 var conf *config.Config
 

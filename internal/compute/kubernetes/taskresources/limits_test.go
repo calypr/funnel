@@ -1,8 +1,9 @@
-package config
+package taskresources
 
 import (
 	"testing"
 
+	schema "github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/tes"
 )
 
@@ -67,8 +68,8 @@ func TestParseMemory(t *testing.T) {
 }
 
 func TestApplyDefaultResources(t *testing.T) {
-	k8s := &KubernetesResources{
-		Defaults: &ResourceDefaults{
+	k8s := &schema.KubernetesResources{
+		Defaults: &schema.ResourceDefaults{
 			Cpus:   "2",
 			RamGb:  "4Gi",
 			DiskGb: "100Gi",
@@ -77,8 +78,8 @@ func TestApplyDefaultResources(t *testing.T) {
 
 	t.Run("millicore and mebibyte defaults", func(t *testing.T) {
 		task := &tes.Resources{}
-		k8sMilli := &KubernetesResources{
-			Defaults: &ResourceDefaults{
+		k8sMilli := &schema.KubernetesResources{
+			Defaults: &schema.ResourceDefaults{
 				Cpus:   "500m",
 				RamGb:  "512Mi",
 				DiskGb: "1Gi",
@@ -118,13 +119,13 @@ func TestApplyDefaultResources(t *testing.T) {
 }
 
 func TestApplyDefaultsAndLimits(t *testing.T) {
-	k8s := &KubernetesResources{
-		Defaults: &ResourceDefaults{
+	k8s := &schema.KubernetesResources{
+		Defaults: &schema.ResourceDefaults{
 			Cpus:   "2",
 			RamGb:  "4Gi",
 			DiskGb: "100Gi",
 		},
-		Limits: &ResourceLimits{
+		Limits: &schema.ResourceLimits{
 			Cpus:   "4",
 			RamGb:  "8Gi",
 			DiskGb: "200Gi",
@@ -133,7 +134,7 @@ func TestApplyDefaultsAndLimits(t *testing.T) {
 
 	t.Run("applies defaults and respects limits", func(t *testing.T) {
 		task := &tes.Resources{}
-		got, err := ValidateResources(task, k8s)
+		got, err := Validate(task, k8s)
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}
@@ -150,7 +151,7 @@ func TestApplyDefaultsAndLimits(t *testing.T) {
 
 	t.Run("returns error when cpu exceeds limit", func(t *testing.T) {
 		task := &tes.Resources{CpuCores: 10}
-		_, err := ValidateResources(task, k8s)
+		_, err := Validate(task, k8s)
 		if err == nil {
 			t.Error("expected error for cpu exceeding limit")
 		}
@@ -158,7 +159,7 @@ func TestApplyDefaultsAndLimits(t *testing.T) {
 
 	t.Run("returns error when ram exceeds limit", func(t *testing.T) {
 		task := &tes.Resources{RamGb: 16}
-		_, err := ValidateResources(task, k8s)
+		_, err := Validate(task, k8s)
 		if err == nil {
 			t.Error("expected error for ram exceeding limit")
 		}
@@ -166,7 +167,7 @@ func TestApplyDefaultsAndLimits(t *testing.T) {
 
 	t.Run("returns error when disk exceeds limit", func(t *testing.T) {
 		task := &tes.Resources{DiskGb: 300}
-		_, err := ValidateResources(task, k8s)
+		_, err := Validate(task, k8s)
 		if err == nil {
 			t.Error("expected error for disk exceeding limit")
 		}
@@ -174,7 +175,7 @@ func TestApplyDefaultsAndLimits(t *testing.T) {
 
 	t.Run("allows values at limit", func(t *testing.T) {
 		task := &tes.Resources{CpuCores: 4, RamGb: 8, DiskGb: 200}
-		got, err := ValidateResources(task, k8s)
+		got, err := Validate(task, k8s)
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}
@@ -184,15 +185,15 @@ func TestApplyDefaultsAndLimits(t *testing.T) {
 	})
 
 	t.Run("no limits configured allows any value", func(t *testing.T) {
-		k8sNoLimits := &KubernetesResources{
-			Defaults: &ResourceDefaults{
+		k8sNoLimits := &schema.KubernetesResources{
+			Defaults: &schema.ResourceDefaults{
 				Cpus:   "2",
 				RamGb:  "4Gi",
 				DiskGb: "100Gi",
 			},
 		}
 		task := &tes.Resources{CpuCores: 100, RamGb: 1000, DiskGb: 1000}
-		got, err := ValidateResources(task, k8sNoLimits)
+		got, err := Validate(task, k8sNoLimits)
 		if err != nil {
 			t.Errorf("unexpected error when no limits: %v", err)
 		}

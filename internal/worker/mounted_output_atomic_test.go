@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/storage"
 	"github.com/calypr/funnel/internal/taskmodel"
@@ -169,7 +170,7 @@ func TestMountedOutputWriterProcessHelper(t *testing.T) {
 	if os.Getenv("FUNNEL_MOUNTED_WRITER_HELPER") == "" {
 		return
 	}
-	conf := config.EmptyConfig()
+	conf := appconfig.EmptyConfig()
 	conf.AmazonS3.Disabled = true
 	conf.GoogleStorage.Disabled = true
 	conf.GenericS3 = []*config.GenericS3Storage{{

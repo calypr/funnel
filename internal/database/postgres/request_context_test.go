@@ -5,12 +5,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/server"
 )
 
 func TestRequestContextRetainsUser(t *testing.T) {
-	db := &Postgres{conf: config.DefaultConfig().Postgres}
+	db := &Postgres{conf: appconfig.DefaultConfig().Postgres}
 	user := &server.UserInfo{Username: "alice"}
 	parent, cancel := context.WithCancel(context.WithValue(t.Context(), server.UserInfoKey, user))
 	defer cancel()

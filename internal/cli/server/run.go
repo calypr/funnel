@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/calypr/funnel/internal/pluginmanager"
-
 	"github.com/calypr/funnel/config"
 	cmdutil "github.com/calypr/funnel/internal/cli/util"
 	"github.com/calypr/funnel/internal/compute/aws_batch"
@@ -19,6 +17,7 @@ import (
 	"github.com/calypr/funnel/internal/compute/pbs"
 	"github.com/calypr/funnel/internal/compute/scheduler"
 	"github.com/calypr/funnel/internal/compute/slurm"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/database/badger"
 	"github.com/calypr/funnel/internal/database/boltdb"
 	"github.com/calypr/funnel/internal/database/datastore"
@@ -28,6 +27,7 @@ import (
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
 	"github.com/calypr/funnel/internal/metrics"
+	"github.com/calypr/funnel/internal/pluginmanager"
 	"github.com/calypr/funnel/internal/server"
 	"github.com/calypr/funnel/internal/taskmodel"
 )
@@ -296,7 +296,7 @@ func NewServer(ctx context.Context, conf *config.Config, log *logger.Logger) (*S
 			BasicAuth:        conf.Server.BasicAuth,
 			OidcAuth:         conf.Server.OidcAuth,
 			DisableHTTPCache: conf.Server.DisableHTTPCache,
-			MaxResponseBytes: conf.Server.ResponseBytes(),
+			MaxResponseBytes: appconfig.ResponseBytes(conf.Server),
 			TaskAccess:       conf.Server.TaskAccess,
 			Log:              log,
 			Tasks: &server.TaskService{

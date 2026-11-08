@@ -13,12 +13,14 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/types/known/durationpb"
+
 	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/retry"
 	"github.com/calypr/funnel/internal/storage"
 	"github.com/calypr/funnel/tes"
-	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 func workerMountedOutputMux(t *testing.T, root string, timeout time.Duration, handler http.Handler) (*storage.Mux, *httptest.Server) {
@@ -26,7 +28,7 @@ func workerMountedOutputMux(t *testing.T, root string, timeout time.Duration, ha
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 
-	conf := config.EmptyConfig()
+	conf := appconfig.EmptyConfig()
 	conf.AmazonS3.Disabled = true
 	conf.GoogleStorage.Disabled = true
 	conf.GenericS3 = []*config.GenericS3Storage{{
@@ -95,7 +97,7 @@ func TestDefaultWorkerWaitsForMountedOutputHeadBeforeCompletionAndCleanup(t *tes
 		}
 		task := &tes.Task{Id: "task", State: tes.Queued, Outputs: []*tes.Output{{Url: "s3://bucket/outputs/result.txt", Path: "/outputs/result.txt", Type: tes.File.Enum()}}}
 		writer := &publicationEvents{}
-		conf := config.EmptyConfig().Worker
+		conf := appconfig.EmptyConfig().Worker
 		conf.WorkDir = base
 		conf.PollingRate = durationpb.New(time.Hour)
 		conf.MaxParallelTransfers = 1
@@ -203,7 +205,7 @@ func TestDefaultWorkerWaitsForMountedOutputHeadBeforeCompletionAndCleanup(t *tes
 		}
 		task := &tes.Task{Id: "task", State: tes.Queued, Outputs: []*tes.Output{{Url: "s3://bucket/outputs/result.txt", Path: "/outputs/result.txt", Type: tes.File.Enum()}}}
 		writer := &publicationEvents{}
-		conf := config.EmptyConfig().Worker
+		conf := appconfig.EmptyConfig().Worker
 		conf.WorkDir = base
 		conf.PollingRate = durationpb.New(time.Hour)
 		conf.MaxParallelTransfers = 1

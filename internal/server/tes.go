@@ -8,22 +8,24 @@ import (
 	"sync"
 	"time"
 
-	"github.com/calypr/funnel/internal/pluginmanager"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
+	googleproto "google.golang.org/protobuf/proto"
 
 	"github.com/calypr/funnel/config"
+	taskresources "github.com/calypr/funnel/internal/compute/kubernetes/taskresources"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
+	"github.com/calypr/funnel/internal/pluginmanager"
 	"github.com/calypr/funnel/internal/taskmodel"
 	"github.com/calypr/funnel/internal/tesrpc"
 	"github.com/calypr/funnel/internal/version"
 	"github.com/calypr/funnel/plugins/proto"
 	"github.com/calypr/funnel/plugins/shared"
 	"github.com/calypr/funnel/tes"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/status"
-	googleproto "google.golang.org/protobuf/proto"
 )
 
 // TaskService is a wrapper which handles common TES Task Service operations,
@@ -187,7 +189,7 @@ func (ts *TaskService) CreateTask(ctx context.Context, task *tes.Task) (*tes.Cre
 	ctx = context.WithValue(ctx, "Config", ts.Config)
 
 	if ts.Config.Compute == "kubernetes" {
-		task.Resources, err = config.ValidateResources(task.Resources, ts.Config.Kubernetes.Resources)
+		task.Resources, err = taskresources.Validate(task.Resources, ts.Config.Kubernetes.Resources)
 		if err != nil {
 			return nil, status.Errorf(codes.InvalidArgument, "invalid resources: %v", err)
 		}
@@ -440,5 +442,5 @@ func (ts *TaskService) responseBytes() int {
 	if ts.Config == nil {
 		return taskmodel.DefaultResponseBytes
 	}
-	return ts.Config.Server.ResponseBytes()
+	return appconfig.ResponseBytes(ts.Config.Server)
 }

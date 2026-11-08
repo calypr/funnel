@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 )
 
 type mountedAPI struct {
@@ -52,7 +53,7 @@ func mountedFixture(t *testing.T) (*GenericS3, *mountedAPI, string) {
 		}
 	}))
 	t.Cleanup(server.Close)
-	conf := config.EmptyConfig()
+	conf := appconfig.EmptyConfig()
 	conf.AmazonS3.Disabled = true
 	conf.GoogleStorage.Disabled = true
 	conf.GenericS3 = []*config.GenericS3Storage{{Endpoint: server.URL, Bucket: "bucket", Key: "key", Secret: "secret", Region: "us-east-1"}}

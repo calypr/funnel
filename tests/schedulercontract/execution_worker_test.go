@@ -11,13 +11,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/config"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/durationpb"
+
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/storage"
 	"github.com/calypr/funnel/internal/worker"
 	"github.com/calypr/funnel/tes"
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 func testConcurrentExecutionWorkers(t *testing.T, open storeFactory) {
@@ -35,7 +36,7 @@ func testConcurrentExecutionWorkers(t *testing.T, open storeFactory) {
 	var wg sync.WaitGroup
 	errs := make(chan error, 2)
 	for i := 0; i < 2; i++ {
-		conf := config.DefaultConfig().Worker
+		conf := appconfig.DefaultConfig().Worker
 		conf.WorkDir = t.TempDir()
 		conf.PollingRate = durationpb.New(20 * time.Millisecond)
 		conf.Container.DriverCommand = driver
@@ -91,7 +92,7 @@ func testLostExecutionResponse(t *testing.T, open storeFactory) {
 	claimer := db.(events.ExecutionClaimer)
 	lost := errors.New("injected lost response after execution claim committed")
 	w := &worker.DefaultWorker{
-		Conf:        config.DefaultConfig().Worker,
+		Conf:        appconfig.DefaultConfig().Worker,
 		TaskReader:  &executionSnapshotReader{db: db, id: task.Id},
 		EventWriter: db,
 		ExecutionClaimer: executionClaimCall(func(ctx context.Context, id string) (bool, error) {

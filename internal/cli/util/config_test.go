@@ -6,24 +6,26 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/tests/configtest"
 	"google.golang.org/protobuf/types/known/durationpb"
+
+	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
+	"github.com/calypr/funnel/tests/configtest"
 )
 
 func TestHTTPStorageTimeoutDefaultsAndOverrides(t *testing.T) {
-	defaults, err := MergeConfigFileWithFlags("", config.EmptyConfig())
+	defaults, err := MergeConfigFileWithFlags("", appconfig.EmptyConfig())
 	if err != nil || !defaults.HTTPStorage.Timeout.GetDisabled() {
 		t.Fatalf("expected disabled default timeout, got %v, %v", defaults.HTTPStorage.Timeout, err)
 	}
-	fileConfig := config.EmptyConfig()
+	fileConfig := appconfig.EmptyConfig()
 	fileConfig.HTTPStorage.Timeout.TimeoutOption = &config.TimeoutConfig_Duration{Duration: durationpb.New(3 * time.Minute)}
 	file := configtest.WriteFile(t, fileConfig, "config.yaml")
-	merged, err := MergeConfigFileWithFlags(file, config.EmptyConfig())
+	merged, err := MergeConfigFileWithFlags(file, appconfig.EmptyConfig())
 	if err != nil || merged.HTTPStorage.Timeout.GetDuration().AsDuration() != 3*time.Minute {
 		t.Fatalf("expected configured timeout, got %v, %v", merged.HTTPStorage.Timeout, err)
 	}
-	flags := config.EmptyConfig()
+	flags := appconfig.EmptyConfig()
 	flags.HTTPStorage.Timeout.TimeoutOption = &config.TimeoutConfig_Duration{Duration: durationpb.New(4 * time.Minute)}
 	merged, err = MergeConfigFileWithFlags(file, flags)
 	if err != nil || merged.HTTPStorage.Timeout.GetDuration().AsDuration() != 4*time.Minute {
@@ -32,7 +34,7 @@ func TestHTTPStorageTimeoutDefaultsAndOverrides(t *testing.T) {
 }
 
 func TestMergeConfigFileWithFlags(t *testing.T) {
-	fileConfig := config.DefaultConfig()
+	fileConfig := appconfig.DefaultConfig()
 	flagConf := &config.Config{
 		Server: &config.Server{
 			HostName: "test",
@@ -88,10 +90,10 @@ func TestMergeConfigRejectsTildeWorkDir(t *testing.T) {
 	for _, source := range []string{"file", "flag"} {
 		for _, workDir := range []string{"~", "~/work", "~other/work", "./work", "/tmp/work"} {
 			t.Run(source+"/"+workDir, func(t *testing.T) {
-				flags := config.EmptyConfig()
+				flags := appconfig.EmptyConfig()
 				file := ""
 				if source == "file" {
-					conf := config.EmptyConfig()
+					conf := appconfig.EmptyConfig()
 					conf.Worker.WorkDir = workDir
 					file = configtest.WriteFile(t, conf, "config.yaml")
 				} else {
@@ -111,11 +113,11 @@ func TestMergeConfigRejectsTildeWorkDir(t *testing.T) {
 }
 
 func TestMergeConfigFileReplacesForbiddenPathPrefixes(t *testing.T) {
-	fileConfig := config.DefaultConfig()
+	fileConfig := appconfig.DefaultConfig()
 	fileConfig.Kubernetes.ForbiddenPathPrefixes = []string{"/secret"}
 	tmp := configtest.WriteFile(t, fileConfig, "testconfig.yaml")
 
-	result, err := MergeConfigFileWithFlags(tmp, config.EmptyConfig())
+	result, err := MergeConfigFileWithFlags(tmp, appconfig.EmptyConfig())
 	if err != nil {
 		t.Fatal("unexpected error", err)
 	}

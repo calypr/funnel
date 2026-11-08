@@ -9,14 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/internal/compute/kubernetes/storageplan"
-	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/logger"
-	"github.com/calypr/funnel/internal/storage"
-	logconfig "github.com/calypr/funnel/logger"
-	plugin "github.com/calypr/funnel/plugins/proto"
-	"github.com/calypr/funnel/tes"
 	googleproto "google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 	batchv1 "k8s.io/api/batch/v1"
@@ -28,6 +20,15 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 	"sigs.k8s.io/yaml"
+
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/internal/compute/kubernetes/storageplan"
+	appconfig "github.com/calypr/funnel/internal/config"
+	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/internal/logger"
+	"github.com/calypr/funnel/internal/storage"
+	plugin "github.com/calypr/funnel/plugins/proto"
+	"github.com/calypr/funnel/tes"
 )
 
 const boundClaimTemplate = `metadata:
@@ -81,7 +82,7 @@ func nativeResource(t *testing.T, manifest string) *structpb.Struct {
 
 func bindingConfig(t *testing.T, storageConfig *config.KubernetesStorage) *config.Config {
 	t.Helper()
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	workerTemplate, err := os.ReadFile("testdata/worker-job.yaml")
 	if err != nil {
 		t.Fatal(err)
@@ -177,7 +178,7 @@ func TestNativeStorageSubmitAndCleanup(t *testing.T) {
 				t.Fatal(err)
 			}
 			client.ClearActions()
-			backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logconfig.DefaultConfig())}
+			backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logger.DefaultConfig())}
 			task := &tes.Task{Id: "task-a", Inputs: []*tes.Input{{Path: "/inputs/a", Url: "https://example.org/a"}}}
 			if err := backend.Submit(ctx, task, conf); err != nil {
 				t.Fatal(err)
@@ -250,7 +251,7 @@ func TestStoragePlanSurvivesConfigurationChange(t *testing.T) {
 	ctx := context.Background()
 	client := bindingClient()
 	conf := bindingConfig(t, createdStorage(t, true))
-	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logconfig.DefaultConfig())}
+	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logger.DefaultConfig())}
 	if err := backend.Submit(ctx, &tes.Task{Id: "snapshot"}, conf); err != nil {
 		t.Fatal(err)
 	}
@@ -271,7 +272,7 @@ func TestStorageSubmissionFailureCleansOwnedPV(t *testing.T) {
 		return true, nil, errors.New("quota exceeded")
 	})
 	conf := bindingConfig(t, createdStorage(t, true))
-	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logconfig.DefaultConfig())}
+	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logger.DefaultConfig())}
 	if err := backend.Submit(ctx, &tes.Task{Id: "failure"}, conf); err == nil || !strings.Contains(err.Error(), "quota exceeded") {
 		t.Fatalf("expected claim creation error, got %v", err)
 	}
@@ -293,7 +294,7 @@ func TestStorageSubmissionPreservesCreationAndRollbackErrors(t *testing.T) {
 	})
 	retainFinalizedJobsOnDelete(client, "tasks", nil)
 	conf := bindingConfig(t, createdStorage(t, true))
-	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logconfig.DefaultConfig())}
+	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logger.DefaultConfig())}
 	err := backend.Submit(ctx, &tes.Task{Id: "rollback-failure"}, conf)
 	if !errors.Is(err, creationErr) || !errors.Is(err, rollbackErr) {
 		t.Fatalf("submission must retain both creation and cleanup failures: %v", err)
@@ -312,7 +313,7 @@ func TestStoragePluginOverridesAreTaskLocal(t *testing.T) {
 	client := bindingClient()
 	conf := bindingConfig(t, existingStorage(t, "default-claim"))
 	conf.Plugins = &config.Plugins{}
-	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logconfig.DefaultConfig())}
+	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logger.DefaultConfig())}
 	for _, id := range []string{"alice", "bob"} {
 		if _, err := client.CoreV1().PersistentVolumeClaims("tasks").Create(ctx, &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: id + "-claim", Namespace: "tasks"}, Spec: corev1.PersistentVolumeClaimSpec{AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany}}}, metav1.CreateOptions{}); err != nil {
 			t.Fatal(err)
@@ -346,7 +347,7 @@ func TestCompletePluginConfigClearsWorkerNodeSelector(t *testing.T) {
 	conf.Kubernetes.NodeSelector = map[string]string{"pool": "deployment"}
 	complete := googleproto.Clone(conf).(*config.Config)
 	complete.Kubernetes.NodeSelector = nil
-	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logconfig.DefaultConfig())}
+	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logger.DefaultConfig())}
 	taskCtx := context.WithValue(ctx, "pluginResponse", &plugin.JobResponse{Config: complete})
 	if err := backend.WriteEvent(taskCtx, events.NewTaskCreated(&tes.Task{Id: "clear-selector"})); err != nil {
 		t.Fatal(err)
@@ -367,7 +368,7 @@ func TestInvalidStorageFailsBeforeCreatingResources(t *testing.T) {
 	client := bindingClient()
 	conf := bindingConfig(t, existingStorage(t, "shared"))
 	conf.Kubernetes.Storage.WorkspaceVolume = "missing"
-	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logconfig.DefaultConfig())}
+	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logger.DefaultConfig())}
 	if err := backend.Submit(context.Background(), &tes.Task{Id: "invalid"}, conf); err == nil {
 		t.Fatal("invalid storage succeeded")
 	}
@@ -398,7 +399,7 @@ readOnly: true`)}
 				t.Fatal(err)
 			}
 			client.ClearActions()
-			backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logconfig.DefaultConfig())}
+			backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logger.DefaultConfig())}
 			err := backend.Submit(ctx, &tes.Task{Id: "input-binding"}, conf)
 			if volumeName == "missing" {
 				if err == nil || !strings.Contains(err.Error(), "unknown") {
@@ -441,7 +442,7 @@ func TestStorageCleanupRetriesAfterPVDeleteFailure(t *testing.T) {
 			conf := bindingConfig(t, createdStorage(t, true))
 			taskID := "retry-" + tc.name
 			database := &mockReadOnlyServer{tasks: []*tes.Task{{Id: taskID, State: tes.State_QUEUED}}}
-			backend := &Backend{client: client, conf: conf, database: database, event: &noopEventWriter{}, log: logger.NewLogger("test", logconfig.DefaultConfig())}
+			backend := &Backend{client: client, conf: conf, database: database, event: &noopEventWriter{}, log: logger.NewLogger("test", logger.DefaultConfig())}
 			if err := backend.Submit(ctx, &tes.Task{Id: taskID}, conf); err != nil {
 				t.Fatal(err)
 			}
@@ -537,7 +538,7 @@ func TestStorageCleanupRetainsFinalizerAfterJobDeleteFailure(t *testing.T) {
 	ctx := context.Background()
 	client := bindingClient()
 	conf := bindingConfig(t, createdStorage(t, true))
-	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logconfig.DefaultConfig())}
+	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logger.DefaultConfig())}
 	if err := backend.Submit(ctx, &tes.Task{Id: "retry-job"}, conf); err != nil {
 		t.Fatal(err)
 	}
@@ -568,7 +569,7 @@ func TestStorageOrphanCleanupUsesFinalizedJobAfterConfigChange(t *testing.T) {
 	ctx := context.Background()
 	client := bindingClient()
 	conf := bindingConfig(t, createdStorage(t, true))
-	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logconfig.DefaultConfig())}
+	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logger.DefaultConfig())}
 	if err := backend.Submit(ctx, &tes.Task{Id: "orphan"}, conf); err != nil {
 		t.Fatal(err)
 	}
@@ -600,7 +601,7 @@ func TestCleanOrphanedResourcesFindsNonFinalizedWorkerJobs(t *testing.T) {
 			const taskID = "dynamic-claim-task"
 			client := bindingClient()
 			conf := bindingConfig(t, createdStorage(t, false))
-			backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logconfig.DefaultConfig())}
+			backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logger.DefaultConfig())}
 			if err := backend.Submit(ctx, &tes.Task{Id: taskID}, conf); err != nil {
 				t.Fatal(err)
 			}
@@ -671,7 +672,7 @@ func TestCleanOrphanedResourcesFindsNonFinalizedWorkerJobs(t *testing.T) {
 func TestStorageNamespaceOverrideRejectedBeforeCreation(t *testing.T) {
 	client := bindingClient()
 	conf := bindingConfig(t, existingStorage(t, "shared"))
-	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logconfig.DefaultConfig())}
+	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logger.DefaultConfig())}
 	override := bindingConfig(t, existingStorage(t, "shared"))
 	override.Kubernetes.JobsNamespace = "another-namespace"
 	if err := backend.Submit(context.Background(), &tes.Task{Id: "namespace"}, override); err == nil || !strings.Contains(err.Error(), "JobsNamespace") {
@@ -687,7 +688,7 @@ func TestStorageSinglePodWorkspaceRejected(t *testing.T) {
 	storageConfig := createdStorage(t, false)
 	storageConfig.VolumeClaimTemplates[0] = nativeResource(t, strings.ReplaceAll(boundClaimTemplate, "ReadWriteMany", "ReadWriteOncePod"))
 	conf := bindingConfig(t, storageConfig)
-	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logconfig.DefaultConfig())}
+	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logger.DefaultConfig())}
 	if err := backend.Submit(context.Background(), &tes.Task{Id: "single-pod"}, conf); err == nil {
 		t.Fatal("single-pod workspace cannot serve worker and executor")
 	}

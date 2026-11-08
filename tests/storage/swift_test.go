@@ -6,18 +6,19 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ncw/swift/v2"
+
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/storage"
 	"github.com/calypr/funnel/internal/worker"
 	"github.com/calypr/funnel/tes"
 	"github.com/calypr/funnel/tests"
-	"github.com/ncw/swift/v2"
 )
 
 func TestSwiftStorage(t *testing.T) {
 	tests.SetLogOutput(log, t)
 
-	if !conf.Swift.Valid() {
+	if !storage.SwiftConfigured(conf.Swift) {
 		t.Skipf("Skipping swift e2e tests...")
 	}
 

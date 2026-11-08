@@ -7,15 +7,17 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/internal/compute/kubernetes/storageplan"
-	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/storage"
-	"github.com/calypr/funnel/tes"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/internal/compute/kubernetes/storageplan"
+	appconfig "github.com/calypr/funnel/internal/config"
+	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/internal/storage"
+	"github.com/calypr/funnel/tes"
 )
 
 func TestTESRequestStagesIdenticallyAcrossStorageBindings(t *testing.T) {
@@ -34,7 +36,7 @@ func TestTESRequestStagesIdenticallyAcrossStorageBindings(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(mountRoot, "genome.fa"), []byte(">chr1\nACGT\n"), 0600); err != nil {
 				t.Fatal(err)
 			}
-			conf := config.DefaultConfig()
+			conf := appconfig.DefaultConfig()
 			conf.Kubernetes.JobsNamespace = "tasks"
 			conf.Worker.WorkDir = t.TempDir()
 			conf.Kubernetes.Storage = &config.KubernetesStorage{}

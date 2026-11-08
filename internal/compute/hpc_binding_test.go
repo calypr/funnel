@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/taskmodel"
 	"github.com/calypr/funnel/tes"
@@ -35,7 +35,7 @@ func hpcCancelRecorder(t *testing.T) (string, string) {
 }
 
 func TestHPCCancelRejectsTaskMetadataAsAuthority(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Worker.WorkDir = t.TempDir()
 	conf.HPCStateDir = filepath.Join(t.TempDir(), "controller")
 	conf.LocalStorage.Disabled = true
@@ -51,7 +51,7 @@ func TestHPCCancelRejectsTaskMetadataAsAuthority(t *testing.T) {
 }
 
 func TestHPCCancelUsesPersistedSubmissionBinding(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Worker.WorkDir = t.TempDir()
 	conf.HPCStateDir = filepath.Join(t.TempDir(), "controller")
 	conf.LocalStorage.Disabled = true
@@ -82,7 +82,7 @@ func TestHPCCancelUsesPersistedSubmissionBinding(t *testing.T) {
 func TestHPCBindingsRejectTaskAccessibleState(t *testing.T) {
 	for _, location := range []string{"workdir", "storage", "missing"} {
 		t.Run(location, func(t *testing.T) {
-			conf := config.DefaultConfig()
+			conf := appconfig.DefaultConfig()
 			conf.Worker.WorkDir = t.TempDir()
 			conf.HPCStateDir = filepath.Join(t.TempDir(), "controller")
 			conf.LocalStorage.Disabled = true

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 )
 
 // A real loopback endpoint records any credentials disclosed during login.
@@ -95,7 +96,7 @@ func TestFTPCredentialsReachOnlySelectedOrigin(t *testing.T) {
 				}
 			}
 			if name == "anonymous" {
-				conf = config.DefaultConfig().FTPStorage
+				conf = appconfig.DefaultConfig().FTPStorage
 				want = "USER anonymous|PASS anonymous"
 			}
 			client, err := connect(target, conf)

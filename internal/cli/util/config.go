@@ -5,8 +5,10 @@ import (
 	"strings"
 
 	"dario.cat/mergo"
-	"github.com/calypr/funnel/config"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 )
 
 // MergeConfigFileWithFlags is a util used by server commands that use flags to set
@@ -14,12 +16,12 @@ import (
 // This function ensures that the config gets set up properly. Flag values override values in
 // the provided config file.
 func MergeConfigFileWithFlags(file string, flagConf *config.Config) (*config.Config, error) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 
 	// Only parse file if it exists
 	if file != "" {
-		fileConf := config.EmptyConfig()
-		err := config.ParseFile(file, fileConf)
+		fileConf := appconfig.EmptyConfig()
+		err := appconfig.ParseFile(file, fileConf)
 		if err != nil {
 			return conf, err
 		}
@@ -36,7 +38,7 @@ func MergeConfigFileWithFlags(file string, flagConf *config.Config) (*config.Con
 	}
 
 	// Merge defaults into file config (file values take priority, including false values)
-	defaults := config.DefaultConfig()
+	defaults := appconfig.DefaultConfig()
 	err := mergo.Merge(conf, defaults, mergo.WithoutDereference)
 	if err != nil {
 		return conf, err

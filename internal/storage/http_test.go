@@ -12,8 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/config"
 	"google.golang.org/protobuf/types/known/durationpb"
+
+	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 )
 
 func TestHTTP(t *testing.T) {
@@ -106,7 +108,7 @@ func TestHTTPTransferTimeouts(t *testing.T) {
 		timeout   *config.TimeoutConfig
 		wantError bool
 	}{
-		{"default", config.DefaultConfig().HTTPStorage.Timeout, false},
+		{"default", appconfig.DefaultConfig().HTTPStorage.Timeout, false},
 		{"explicit total deadline", &config.TimeoutConfig{TimeoutOption: &config.TimeoutConfig_Duration{Duration: durationpb.New(75 * time.Millisecond)}}, true},
 	} {
 		for _, method := range []string{"GET", "PUT"} {
@@ -145,7 +147,7 @@ func TestHTTPUploadCancellation(t *testing.T) {
 		<-r.Context().Done()
 	}))
 	defer server.Close()
-	store, err := NewHTTP(config.DefaultConfig().HTTPStorage)
+	store, err := NewHTTP(appconfig.DefaultConfig().HTTPStorage)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +165,7 @@ func TestHTTPDelayedResponseHeaders(t *testing.T) {
 		writeTestResponse(t, w, []byte("complete"))
 	}))
 	defer server.Close()
-	store, err := NewHTTP(config.DefaultConfig().HTTPStorage)
+	store, err := NewHTTP(appconfig.DefaultConfig().HTTPStorage)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +185,7 @@ func TestHTTPResponseHeaderTimeout(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
-	store, err := NewHTTP(config.DefaultConfig().HTTPStorage)
+	store, err := NewHTTP(appconfig.DefaultConfig().HTTPStorage)
 	if err != nil {
 		t.Fatal(err)
 	}

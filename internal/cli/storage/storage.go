@@ -7,17 +7,17 @@ import (
 	"io"
 	"os"
 
+	"github.com/spf13/cobra"
+	"google.golang.org/protobuf/encoding/protojson"
+
 	"github.com/calypr/funnel/config"
 	cmdutil "github.com/calypr/funnel/internal/cli/util"
 	"github.com/calypr/funnel/internal/logger"
 	"github.com/calypr/funnel/internal/storage"
-	logconfig "github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/tes"
-	"github.com/spf13/cobra"
-	"google.golang.org/protobuf/encoding/protojson"
 )
 
-var log = logger.NewLogger("storage", logconfig.DefaultConfig())
+var log = logger.NewLogger("storage", logger.DefaultConfig())
 
 func newStorage(conf *config.Config) (storage.Storage, error) {
 	store, err := storage.NewMux(conf)

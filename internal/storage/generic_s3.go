@@ -18,9 +18,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/internal/logger"
-	logconfig "github.com/calypr/funnel/logger"
 )
 
 // GenericS3 provides access to an S3 object store.
@@ -203,7 +203,7 @@ func (s3b *GenericS3) Stat(ctx context.Context, url string) (*Object, error) {
 		}
 		return obj, err
 	}
-	logger := logger.NewLogger("GenericS3", logconfig.DefaultConfig())
+	logger := logger.NewLogger("GenericS3", logger.DefaultConfig())
 	u, err := s3b.parse(url)
 	if err != nil {
 		return nil, err
@@ -305,7 +305,7 @@ func (s3b *GenericS3) Get(ctx context.Context, url, path string) (*Object, error
 		}
 		return obj, err
 	}
-	logger := logger.NewLogger("GenericS3", logconfig.DefaultConfig())
+	logger := logger.NewLogger("GenericS3", logger.DefaultConfig())
 	logger.Debug("genericS3: Get called", "path", path)
 
 	obj, err := s3b.Stat(ctx, url)
@@ -351,7 +351,7 @@ func (s3b *GenericS3) Get(ctx context.Context, url, path string) (*Object, error
 
 // download streams an object to a local file, staged atomically.
 func (s3b *GenericS3) download(ctx context.Context, bucket, objectPath, filePath string) error {
-	logger := logger.NewLogger("GenericS3", logconfig.DefaultConfig())
+	logger := logger.NewLogger("GenericS3", logger.DefaultConfig())
 
 	logger.Debug("genericS3: downloading object", "bucket", bucket, "objectPath", objectPath, "filePath", filePath)
 	// Step 1: Get the object stream
@@ -462,7 +462,7 @@ func (s3b *GenericS3) Put(ctx context.Context, url, path string) (*Object, error
 // size (reported from the local file, without inspecting remote state) and
 // the ETag from the upload response.
 func (s3b *GenericS3) upload(ctx context.Context, bucket, key, filePath string) (int64, string, error) {
-	logger := logger.NewLogger("GenericS3", logconfig.DefaultConfig())
+	logger := logger.NewLogger("GenericS3", logger.DefaultConfig())
 
 	f, err := os.Open(filePath)
 	if err != nil {

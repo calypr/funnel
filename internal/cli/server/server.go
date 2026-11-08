@@ -6,11 +6,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/internal/cli/lifecycle"
 	cmdutil "github.com/calypr/funnel/internal/cli/util"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/logger"
-	"github.com/spf13/cobra"
 )
 
 // NewCommand returns the node command
@@ -31,7 +33,7 @@ func newCommandHooks() (*cobra.Command, *hooks) {
 	var (
 		configFile string
 		conf       *config.Config
-		flagConf   *config.Config = config.EmptyConfig()
+		flagConf   *config.Config = appconfig.EmptyConfig()
 	)
 
 	cmd := &cobra.Command{

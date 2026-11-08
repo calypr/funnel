@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/logger"
 	"github.com/calypr/funnel/tests/configtest"
 )
@@ -15,7 +16,7 @@ func TestPersistentPreRun(t *testing.T) {
 	serverAddress := host + ":" + rpcport
 	backend := "test-backend"
 
-	fileConf := config.DefaultConfig()
+	fileConf := appconfig.DefaultConfig()
 	tmp := configtest.WriteFile(t, fileConf, "testconfig.yaml")
 
 	c, h := newCommandHooks()

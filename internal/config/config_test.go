@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	schema "github.com/calypr/funnel/config"
 )
 
 func TestNodeResourceConfigParsing(t *testing.T) {
@@ -14,7 +16,7 @@ Node:
     RamGb: 2.5
     DiskGb: 50.0
 `
-	conf := Config{}
+	conf := schema.Config{}
 	err := Parse([]byte(yaml), &conf)
 	if err != nil {
 		t.Fatal(err)
@@ -49,7 +51,7 @@ Node:
     RamGb: 2.5
     DiskGb: 50.0
 `
-	conf = &Config{}
+	conf = &schema.Config{}
 	err = Parse([]byte(yaml), conf)
 	if err == nil {
 		t.Error("expected error")

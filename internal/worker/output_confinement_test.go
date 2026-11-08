@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/storage"
 	"github.com/calypr/funnel/tes"
@@ -31,7 +31,7 @@ func TestProcessOutputsRejectsOutsideWorkspaceSymlink(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer endpoint.Close()
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	store, err := storage.NewHTTP(conf.HTTPStorage)
 	if err != nil {
 		t.Fatal(err)
@@ -87,7 +87,7 @@ func TestProcessOutputsSourceReplacementCannotChangePublishedBytes(t *testing.T)
 	}
 	store := &replacedOutputStore{source: mapper.Outputs[0].Path, outside: outside}
 	run := &helper{}
-	(&DefaultWorker{Conf: config.DefaultConfig().Worker, Store: store}).processOutputs(t.Context(), events.NewTaskWriter(task.Id, 0, events.Noop{}), mapper, run)
+	(&DefaultWorker{Conf: appconfig.DefaultConfig().Worker, Store: store}).processOutputs(t.Context(), events.NewTaskWriter(task.Id, 0, events.Noop{}), mapper, run)
 	if run.syserr != nil {
 		t.Fatal(run.syserr)
 	}
@@ -114,7 +114,7 @@ func TestProcessOutputsPreservesConfinedLinksAndScratch(t *testing.T) {
 				t.Fatal(err)
 			}
 			base := mapper.WorkDir
-			conf := config.DefaultConfig().Worker
+			conf := appconfig.DefaultConfig().Worker
 			conf.MaxParallelTransfers = 1
 			if kind == "scratch" {
 				mapper.ScratchDir = t.TempDir()

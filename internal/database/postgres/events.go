@@ -9,13 +9,12 @@ import (
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
 	"github.com/calypr/funnel/internal/server"
-	logconfig "github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/tes"
 )
 
 // WriteEvent creates an event for the server to handle.
 func (db *Postgres) WriteEvent(ctx context.Context, req *events.Event) error {
-	logger := logger.NewLogger("postgres", logconfig.DefaultConfig())
+	logger := logger.NewLogger("postgres", logger.DefaultConfig())
 
 	ctx, cancel := context.WithTimeout(ctx, db.conf.GetTimeout().GetDuration().AsDuration())
 	defer cancel()

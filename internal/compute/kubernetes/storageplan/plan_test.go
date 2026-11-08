@@ -7,15 +7,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/internal/storage"
-	"github.com/calypr/funnel/tes"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/structpb"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
+
+	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
+	"github.com/calypr/funnel/internal/storage"
+	"github.com/calypr/funnel/tes"
 )
 
 func object(values map[string]interface{}) *structpb.Struct {
@@ -40,7 +42,7 @@ func nativeYAML(t *testing.T, raw string) *structpb.Struct {
 }
 
 func existingConfig() *config.Config {
-	c := config.DefaultConfig()
+	c := appconfig.DefaultConfig()
 	c.Kubernetes.JobsNamespace = "jobs"
 	c.Worker.WorkDir = "/work"
 	c.Kubernetes.Storage = &config.KubernetesStorage{
@@ -884,7 +886,7 @@ func TestInvalidSnapshot(t *testing.T) {
 }
 
 func TestLegacyResolveAndDottedTaskID(t *testing.T) {
-	if p, err := Resolve(&tes.Task{Id: "task-123"}, config.DefaultConfig()); err != nil || p != nil {
+	if p, err := Resolve(&tes.Task{Id: "task-123"}, appconfig.DefaultConfig()); err != nil || p != nil {
 		t.Fatalf("legacy config produced a plan: %+v %v", p, err)
 	}
 	if _, err := Resolve(&tes.Task{Id: "task.123"}, existingConfig()); err != nil {

@@ -7,10 +7,9 @@ import (
 	"testing"
 	"testing/synctest"
 
-	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
-	logconfig "github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/tes"
 )
 
@@ -49,7 +48,7 @@ func (*submissionTestStore) Close() {}
 func TestSubmissionTimeoutRecordsTaskFailure(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		store := &submissionTestStore{}
-		svc := &TaskService{Config: config.DefaultConfig(), Compute: timeoutBackend{}, Event: store, Log: logger.NewLogger("test", logconfig.DefaultConfig())}
+		svc := &TaskService{Config: appconfig.DefaultConfig(), Compute: timeoutBackend{}, Event: store, Log: logger.NewLogger("test", logger.DefaultConfig())}
 		task := &tes.Task{Executors: []*tes.Executor{{Image: "alpine", Command: []string{"true"}}}}
 		response, err := svc.CreateTask(context.Background(), task)
 		if err != nil || response.Id == "" {

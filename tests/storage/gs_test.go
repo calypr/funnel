@@ -7,20 +7,21 @@ import (
 	"strings"
 	"testing"
 
+	"golang.org/x/oauth2/google"
+	"google.golang.org/api/option"
+	gs "google.golang.org/api/storage/v1"
+
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/storage"
 	"github.com/calypr/funnel/internal/worker"
 	"github.com/calypr/funnel/tes"
 	"github.com/calypr/funnel/tests"
-	"golang.org/x/oauth2/google"
-	"google.golang.org/api/option"
-	gs "google.golang.org/api/storage/v1"
 )
 
 func TestGoogleStorage(t *testing.T) {
 	tests.SetLogOutput(log, t)
 
-	if !conf.GoogleStorage.Valid() {
+	if !storage.GoogleConfigured(conf.GoogleStorage) {
 		t.Skipf("Skipping google storage e2e tests...")
 	}
 

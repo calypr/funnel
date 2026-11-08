@@ -11,10 +11,11 @@ import (
 	"testing"
 
 	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 )
 
 func mountedConfig(endpoint, bucket string) *config.Config {
-	c := config.EmptyConfig()
+	c := appconfig.EmptyConfig()
 	c.AmazonS3.Disabled = true
 	c.GoogleStorage.Disabled = true
 	c.GenericS3 = []*config.GenericS3Storage{{Endpoint: endpoint, Bucket: bucket, Key: "key", Secret: "secret", Region: "us-east-1", MountedRead: &config.S3MountedRead{Volume: "reference", Prefix: "ref"}}}

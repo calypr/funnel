@@ -9,12 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/internal/compute/kubernetes/storageplan"
-	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/logger"
-	logconfig "github.com/calypr/funnel/logger"
-	"github.com/calypr/funnel/tes"
 	"google.golang.org/protobuf/types/known/structpb"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -24,6 +18,13 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/internal/compute/kubernetes/storageplan"
+	appconfig "github.com/calypr/funnel/internal/config"
+	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/internal/logger"
+	"github.com/calypr/funnel/tes"
 )
 
 // TestNativeStorageLive verifies shared filesystem mounts and Kubernetes GC.
@@ -65,7 +66,7 @@ func TestNativeStorageLive(t *testing.T) {
 					logLiveStorageFailure(t, client, ns)
 				}
 			}()
-			conf := config.DefaultConfig()
+			conf := appconfig.DefaultConfig()
 			conf.Worker.WorkDir = "/work"
 			conf.Kubernetes.Namespace, conf.Kubernetes.JobsNamespace = ns, ns
 			conf.Kubernetes.DisableReconciler = true
@@ -97,7 +98,7 @@ persistentVolumeClaim:
 				storageConfig.VolumeClaimTemplates = nil
 			}
 			conf.Kubernetes.Storage = storageConfig
-			backend := &Backend{client: client, conf: conf, event: events.Noop{}, log: logger.NewLogger("storage-live", logconfig.DefaultConfig())}
+			backend := &Backend{client: client, conf: conf, event: events.Noop{}, log: logger.NewLogger("storage-live", logger.DefaultConfig())}
 			task := &tes.Task{Id: fmt.Sprintf("task-%d", time.Now().UnixNano())}
 			if err := backend.Submit(ctx, task, conf); err != nil {
 				t.Fatalf("submitting worker: %v", err)

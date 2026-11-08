@@ -6,15 +6,17 @@ import (
 
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
+
+	schema "github.com/calypr/funnel/config"
 )
 
 // Safe returns a copy of the config with sensitive fields redacted
-func (c *Config) Safe() *Config {
+func Safe(c *schema.Config) *schema.Config {
 	if c == nil {
 		return nil
 	}
 
-	safe := proto.Clone(c).(*Config)
+	safe := proto.Clone(c).(*schema.Config)
 
 	// Database credentials
 	if safe.MongoDB != nil {
@@ -137,7 +139,7 @@ func (c *Config) Safe() *Config {
 			c.StopCommand = redact(c.StopCommand)
 		}
 	}
-	for _, h := range []*HPCBackend{safe.HTCondor, safe.Slurm, safe.PBS} {
+	for _, h := range []*schema.HPCBackend{safe.HTCondor, safe.Slurm, safe.PBS} {
 		if h != nil {
 			h.Template = redact(h.Template)
 		}

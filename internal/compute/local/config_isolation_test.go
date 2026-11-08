@@ -5,17 +5,17 @@ import (
 	"testing"
 
 	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
-	logconfig "github.com/calypr/funnel/logger"
 	plugin "github.com/calypr/funnel/plugins/proto"
 )
 
 func TestPluginCredentialsDoNotChangeSharedBackendConfiguration(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Plugins = &config.Plugins{Path: "test-plugin"}
 	conf.RPCClient.Credential = &config.BasicCredential{User: "worker", Password: "deployment-secret"}
-	backend, err := NewBackend(context.Background(), conf, logger.NewLogger("test", logconfig.DefaultConfig()))
+	backend, err := NewBackend(context.Background(), conf, logger.NewLogger("test", logger.DefaultConfig()))
 	if err != nil {
 		t.Fatal(err)
 	}

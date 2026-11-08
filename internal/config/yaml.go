@@ -9,10 +9,12 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/goccy/go-yaml"
 	"google.golang.org/protobuf/encoding/protojson"
+
+	schema "github.com/calypr/funnel/config"
 )
 
 // ToYaml formats the configuration into YAML and returns the bytes.
-func ToYaml(c *Config) ([]byte, error) {
+func ToYaml(c *schema.Config) ([]byte, error) {
 	jsonBytes, err := protojson.Marshal(c)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal proto to JSON: %w", err)
@@ -23,7 +25,7 @@ func ToYaml(c *Config) ([]byte, error) {
 }
 
 // ToYamlFile writes the configuration to a YAML file.
-func ToYamlFile(c *Config, path string) error {
+func ToYamlFile(c *schema.Config, path string) error {
 	b, err := ToYaml(c)
 	if err != nil {
 		return err
@@ -32,7 +34,7 @@ func ToYamlFile(c *Config, path string) error {
 }
 
 // Parse parses a YAML doc into the given Config instance.
-func Parse(raw []byte, conf *Config) error {
+func Parse(raw []byte, conf *schema.Config) error {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return nil
 	}
@@ -54,7 +56,7 @@ func Parse(raw []byte, conf *Config) error {
 
 // ParseFile parses a Funnel config file, which is formatted in YAML,
 // and returns a Config struct.
-func ParseFile(relpath string, conf *Config) error {
+func ParseFile(relpath string, conf *schema.Config) error {
 	if relpath == "" {
 		return nil
 	}

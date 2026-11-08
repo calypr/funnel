@@ -4,11 +4,10 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/internal/compute/scheduler"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
-	logconfig "github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/tes"
 )
 
@@ -96,8 +95,8 @@ func TestEmptyNodeUsageMigrationRepairsIdleResidue(t *testing.T) {
 		t.Fatalf("active reservation changed during migration: %v", activeAfter)
 	}
 	s := &scheduler.Scheduler{
-		Conf:           config.DefaultConfig().Scheduler,
-		Log:            logger.NewLogger("reservation-repair-test", logconfig.DefaultConfig()),
+		Conf:           appconfig.DefaultConfig().Scheduler,
+		Log:            logger.NewLogger("reservation-repair-test", logger.DefaultConfig()),
 		Nodes:          db,
 		Queue:          db,
 		AtomicAssigner: db,

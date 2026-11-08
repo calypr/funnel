@@ -7,12 +7,12 @@ import (
 
 	batch "cloud.google.com/go/batch/apiv1"
 	"cloud.google.com/go/batch/apiv1/batchpb"
+	"github.com/googleapis/gax-go/v2"
+
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
-	logconfig "github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/tes"
-	"github.com/googleapis/gax-go/v2"
 )
 
 // Test helper function: extractGCSPath
@@ -206,7 +206,7 @@ func TestDetectPathCollisions(t *testing.T) {
 
 // Test Submit with multiple inputs and outputs
 func TestSubmit_MultipleInputsOutputs(t *testing.T) {
-	log := logger.NewLogger("test", logconfig.DefaultConfig())
+	log := logger.NewLogger("test", logger.DefaultConfig())
 	conf := &config.GCPBatch{
 		Project:  "test-project",
 		Location: "us-west1",
@@ -271,7 +271,7 @@ func TestSubmit_MultipleInputsOutputs(t *testing.T) {
 
 // Test Submit with multiple executors
 func TestSubmit_MultipleExecutors(t *testing.T) {
-	log := logger.NewLogger("test", logconfig.DefaultConfig())
+	log := logger.NewLogger("test", logger.DefaultConfig())
 	conf := &config.GCPBatch{
 		Project:  "test-project",
 		Location: "us-west1",
@@ -340,7 +340,7 @@ func TestSubmit_MultipleExecutors(t *testing.T) {
 
 // Test Submit with empty/missing fields
 func TestSubmit_EmptyFields(t *testing.T) {
-	log := logger.NewLogger("test", logconfig.DefaultConfig())
+	log := logger.NewLogger("test", logger.DefaultConfig())
 	conf := &config.GCPBatch{
 		Project:  "test-project",
 		Location: "us-west1",
@@ -388,7 +388,7 @@ func TestSubmit_EmptyFields(t *testing.T) {
 
 // Test Submit with no inputs/outputs
 func TestSubmit_NoInputsOutputs(t *testing.T) {
-	log := logger.NewLogger("test", logconfig.DefaultConfig())
+	log := logger.NewLogger("test", logger.DefaultConfig())
 	conf := &config.GCPBatch{
 		Project:  "test-project",
 		Location: "us-west1",
@@ -438,7 +438,7 @@ func TestSubmit_NoInputsOutputs(t *testing.T) {
 }
 
 func TestSubmit_GPUParameters(t *testing.T) {
-	log := logger.NewLogger("test", logconfig.DefaultConfig())
+	log := logger.NewLogger("test", logger.DefaultConfig())
 	var capturedReq *batchpb.CreateJobRequest
 	backend := &Backend{
 		client: &mockClient{
@@ -503,7 +503,7 @@ func TestSubmit_GPUParameters(t *testing.T) {
 }
 
 func TestSubmit_GPUParametersDefaultDriversAndValidation(t *testing.T) {
-	log := logger.NewLogger("test", logconfig.DefaultConfig())
+	log := logger.NewLogger("test", logger.DefaultConfig())
 	validGPUParams := map[string]string{"gpu_type": "nvidia-tesla-t4", "gpu_count": "1"}
 	var capturedReq *batchpb.CreateJobRequest
 	backend := &Backend{
@@ -530,7 +530,7 @@ func TestSubmit_GPUParametersDefaultDriversAndValidation(t *testing.T) {
 }
 
 func TestBackendParameterSupport_GPUValidation(t *testing.T) {
-	log := logger.NewLogger("test", logconfig.DefaultConfig())
+	log := logger.NewLogger("test", logger.DefaultConfig())
 	backend := &Backend{
 		client: &mockClient{},
 		conf:   &config.GCPBatch{Project: "test-project", Location: "us-west1"},
@@ -600,7 +600,7 @@ func TestBackendParameterKeys(t *testing.T) {
 
 // Test Submit with executor Workdir sets --workdir docker option
 func TestSubmit_ExecutorWorkdir(t *testing.T) {
-	log := logger.NewLogger("test", logconfig.DefaultConfig())
+	log := logger.NewLogger("test", logger.DefaultConfig())
 	conf := &config.GCPBatch{
 		Project:  "test-project",
 		Location: "us-west1",
@@ -686,7 +686,7 @@ func (n *noopEventWriter) Close() {}
 
 // Test command construction with proper shell quoting
 func TestSubmit_CommandConstruction(t *testing.T) {
-	log := logger.NewLogger("test", logconfig.DefaultConfig())
+	log := logger.NewLogger("test", logger.DefaultConfig())
 
 	var capturedReq *batchpb.CreateJobRequest
 	mockClient := &mockClient{

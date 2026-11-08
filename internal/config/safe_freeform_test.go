@@ -6,6 +6,8 @@ import (
 
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/structpb"
+
+	schema "github.com/calypr/funnel/config"
 )
 
 func TestSafeRedactsFreeFormConfiguration(t *testing.T) {
@@ -13,18 +15,18 @@ func TestSafeRedactsFreeFormConfiguration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := &Config{
-		AWSBatch: &AWSBatch{AWSConfig: &AWSConfig{Endpoint: "https://user:batch-secret@batch.example/path-secret?token=query-secret#fragment-secret"}},
-		AmazonS3: &AmazonS3Storage{SSE: &SSE{CustomerKeyFile: "keyfile-secret"}},
-		Node:     &Node{Metadata: map[string]string{"arbitrary": "node-secret"}},
-		Worker: &Worker{DriverCommand: "driver-secret", Container: &ContainerConfig{
+	c := &schema.Config{
+		AWSBatch: &schema.AWSBatch{AWSConfig: &schema.AWSConfig{Endpoint: "https://user:batch-secret@batch.example/path-secret?token=query-secret#fragment-secret"}},
+		AmazonS3: &schema.AmazonS3Storage{SSE: &schema.SSE{CustomerKeyFile: "keyfile-secret"}},
+		Node:     &schema.Node{Metadata: map[string]string{"arbitrary": "node-secret"}},
+		Worker: &schema.Worker{DriverCommand: "driver-secret", Container: &schema.ContainerConfig{
 			Env: map[string]string{"ARBITRARY": "environment-secret"}, Tags: map[string]string{"tag": "tag-secret"},
 			Command: []string{"command-secret"}, RunCommand: "run-secret", PullCommand: "pull-secret", StopCommand: "stop-secret",
 		}},
-		Slurm:      &HPCBackend{Template: "slurm-secret"},
-		Kubernetes: &Kubernetes{WorkerTemplate: "template-secret", NodeSelector: map[string]string{"key": "selector-secret"}, Tolerations: []*Toleration{{Value: "toleration-secret"}}, Storage: &KubernetesStorage{Volumes: []*structpb.Struct{volume}}},
+		Slurm:      &schema.HPCBackend{Template: "slurm-secret"},
+		Kubernetes: &schema.Kubernetes{WorkerTemplate: "template-secret", NodeSelector: map[string]string{"key": "selector-secret"}, Tolerations: []*schema.Toleration{{Value: "toleration-secret"}}, Storage: &schema.KubernetesStorage{Volumes: []*structpb.Struct{volume}}},
 	}
-	safe := c.Safe()
+	safe := Safe(c)
 	data, err := protojson.Marshal(safe)
 	if err != nil {
 		t.Fatal(err)

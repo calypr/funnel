@@ -15,11 +15,12 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/types/known/durationpb"
+
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/internal/compute/scheduler"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/logger"
-	logconfig "github.com/calypr/funnel/logger"
-	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 const (
@@ -35,7 +36,7 @@ func TestSchedulerProcessHelper(t *testing.T) {
 	}
 	settings := dbSettingsFromEnv(t)
 	conf := processConfig(t, settings)
-	log := logger.NewLogger("scheduler-process-helper", logconfig.DefaultConfig())
+	log := logger.NewLogger("scheduler-process-helper", logger.DefaultConfig())
 
 	switch mode {
 	case "server":
@@ -83,7 +84,7 @@ func processConfig(t *testing.T, settings dbSettings) *config.Config {
 }
 
 func baseProcessConfig(settings dbSettings) *config.Config {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Database = settings.backend
 	if settings.backend == "postgres" {
 		conf.Postgres.Host = settings.host

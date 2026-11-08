@@ -5,16 +5,16 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/internal/logger"
-	logconfig "github.com/calypr/funnel/logger"
-	"github.com/calypr/funnel/tes"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
+
+	appconfig "github.com/calypr/funnel/internal/config"
+	"github.com/calypr/funnel/internal/logger"
+	"github.com/calypr/funnel/tes"
 )
 
 func TestReconcileMissingWorkerJob(t *testing.T) {
@@ -96,14 +96,14 @@ func TestReconcileMissingWorkerJob(t *testing.T) {
 				return false, nil, nil
 			})
 
-			conf := config.DefaultConfig()
+			conf := appconfig.DefaultConfig()
 			conf.Kubernetes.Namespace = namespace
 			conf.Kubernetes.JobsNamespace = namespace
 			backend := &Backend{
 				client:   client,
 				event:    event,
 				database: database,
-				log:      logger.NewLogger("reconcile-test", logconfig.DefaultConfig()),
+				log:      logger.NewLogger("reconcile-test", logger.DefaultConfig()),
 				conf:     conf,
 			}
 

@@ -4,12 +4,12 @@ import (
 	"net"
 	"testing"
 
-	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 )
 
 func TestRandomPortConfigReturnsDistinctAvailablePorts(t *testing.T) {
 	for i := 0; i < 20; i++ {
-		conf := RandomPortConfig(config.DefaultConfig())
+		conf := RandomPortConfig(appconfig.DefaultConfig())
 		if conf.Server.HTTPPort == conf.Server.RPCPort {
 			t.Fatalf("HTTP and RPC ports are the same: %s", conf.Server.HTTPPort)
 		}

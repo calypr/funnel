@@ -7,14 +7,15 @@ import (
 	"os/exec"
 	"testing"
 
-	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/internal/compute/kubernetes/resources"
-	"github.com/calypr/funnel/internal/logger"
-	logconfig "github.com/calypr/funnel/logger"
-	"github.com/calypr/funnel/tes"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
+
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/internal/compute/kubernetes/resources"
+	appconfig "github.com/calypr/funnel/internal/config"
+	"github.com/calypr/funnel/internal/logger"
+	"github.com/calypr/funnel/tes"
 )
 
 // Constants shared across unit tests that use fake Kubernetes clients.
@@ -24,7 +25,7 @@ const (
 	unitTestTaskID = "test-task-id"
 )
 
-var unitTestLog = logger.NewLogger("unit-test", logconfig.DefaultConfig())
+var unitTestLog = logger.NewLogger("unit-test", logger.DefaultConfig())
 
 // fakeClientWithFunnelPod returns a fake Kubernetes client pre-populated with a
 // funnel server pod so that CreateJob's pod-image-discovery does not panic.
@@ -51,7 +52,7 @@ func fakeClientWithFunnelPod(ns string) *fake.Clientset {
 // baseJobConfig returns a DefaultConfig with Namespace and JobsNamespace set,
 // and WorkerTemplate replaced by the supplied template string.
 func baseJobConfig(workerTemplate string) *config.Config {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.Namespace = unitTestNS
 	conf.Kubernetes.JobsNamespace = unitTestJobsNS
 	conf.Kubernetes.WorkerTemplate = workerTemplate
@@ -294,7 +295,7 @@ data:
 
 // Tests for CreateConfigMap: template-driven ConfigMap creation, error handling.
 func TestCreateConfigMap_WithValidTemplate(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.JobsNamespace = unitTestJobsNS
 	conf.Kubernetes.ConfigMapTemplate = validConfigMapTemplate
 
@@ -314,7 +315,7 @@ func TestCreateConfigMap_WithValidTemplate(t *testing.T) {
 }
 
 func TestCreateConfigMap_InvalidTemplateSyntax(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.JobsNamespace = unitTestJobsNS
 	conf.Kubernetes.ConfigMapTemplate = `{{.Unclosed`
 
@@ -325,7 +326,7 @@ func TestCreateConfigMap_InvalidTemplateSyntax(t *testing.T) {
 }
 
 func TestCreateConfigMap_TemplateProducesWrongKind(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.JobsNamespace = unitTestJobsNS
 	// Template yields a Pod — CreateConfigMap must reject it.
 	conf.Kubernetes.ConfigMapTemplate = `apiVersion: v1
@@ -378,7 +379,7 @@ spec:
 
 // Tests for CreatePV: GenericS3 is optional; S3 fields are passed when present.
 func TestCreatePV_WithoutGenericS3DoesNotPanic(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.JobsNamespace = unitTestJobsNS
 	conf.Kubernetes.PVTemplate = pvTemplateHostPath
 
@@ -394,7 +395,7 @@ func TestCreatePV_WithoutGenericS3DoesNotPanic(t *testing.T) {
 }
 
 func TestCreatePV_WithGenericS3FieldsArePassed(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.JobsNamespace = unitTestJobsNS
 	conf.Kubernetes.PVTemplate = pvTemplateS3
 	conf.GenericS3 = []*config.GenericS3Storage{
@@ -428,7 +429,7 @@ spec:
 
 // Tests for CreatePVC: GenericS3 is optional.
 func TestCreatePVC_WithoutGenericS3DoesNotPanic(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.JobsNamespace = unitTestJobsNS
 	conf.Kubernetes.PVCTemplate = pvcTemplateHostPath
 

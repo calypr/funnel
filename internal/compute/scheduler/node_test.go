@@ -7,15 +7,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/config"
 	"github.com/stretchr/testify/mock"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/durationpb"
+
+	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 )
 
 // Test calling stopping a node by canceling its context
 func TestStopNode(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Node.UpdateRate = durationpb.New(time.Millisecond * 2)
 	n := newTestNode(conf, t)
 
@@ -36,7 +38,7 @@ func TestStopNode(t *testing.T) {
 }
 
 func TestNodeShutdownSyncHasDeadline(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Node.UpdateRate = durationpb.New(time.Hour)
 	n := newTestNode(conf, t)
 	client := new(MockClient)
@@ -92,7 +94,7 @@ func TestNodeShutdownSyncHasDeadline(t *testing.T) {
 }
 
 func TestNodeSyncCancelsBlockedPutNode(t *testing.T) {
-	n := newTestNode(config.DefaultConfig(), t)
+	n := newTestNode(appconfig.DefaultConfig(), t)
 	client := new(MockClient)
 	n.client = client
 	client.On("GetNode", mock.Anything, mock.Anything).Return(&Node{}, nil)
@@ -131,7 +133,7 @@ func TestNodeSyncCancelsBlockedPutNode(t *testing.T) {
 }
 
 func TestDrainPublishesBeforeNextUpdate(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Node.UpdateRate = durationpb.New(time.Hour)
 	n := newTestNode(conf, t)
 
@@ -228,7 +230,7 @@ func TestDrainPublishesBeforeNextUpdate(t *testing.T) {
 // Mainly exercising a panic bug caused by an unhandled
 // error from client.GetNode().
 func TestGetNodeFail(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Node.UpdateRate = durationpb.New(time.Millisecond * 2)
 	n := newTestNode(conf, t)
 
@@ -241,7 +243,7 @@ func TestGetNodeFail(t *testing.T) {
 
 // Test the flow of a node completing a task then timing out
 func TestNodeTimeout(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Node.Timeout = &config.TimeoutConfig{
 		TimeoutOption: &config.TimeoutConfig_Duration{
 			Duration: durationpb.New(time.Millisecond),
@@ -275,7 +277,7 @@ func TestNodeTimeout(t *testing.T) {
 
 // Test that a node does nothing where there are no assigned tasks.
 func TestNoTasks(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Node.UpdateRate = durationpb.New(time.Millisecond * 2)
 	n := newTestNode(conf, t)
 
@@ -305,7 +307,7 @@ func TestNoTasks(t *testing.T) {
 
 // Test that a worker gets created for each task.
 func TestNodeWorkerCreated(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Node.UpdateRate = durationpb.New(time.Millisecond * 2)
 	n := newTestNode(conf, t)
 
@@ -328,7 +330,7 @@ func TestNodeWorkerCreated(t *testing.T) {
 // Test that a finished task is not immediately re-run.
 // Tests a bugfix.
 func TestFinishedTaskNotRerun(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Node.UpdateRate = durationpb.New(time.Millisecond * 2)
 	n := newTestNode(conf, t)
 
@@ -360,7 +362,7 @@ func TestFinishedTaskNotRerun(t *testing.T) {
 
 // Test that tasks are removed from the node's runset when they finish.
 func TestFinishedTaskRunsetCount(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Node.UpdateRate = durationpb.New(time.Millisecond * 2)
 	n := newTestNode(conf, t)
 

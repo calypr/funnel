@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/calypr/funnel/config"
-	ex "github.com/calypr/funnel/examples"
 	"github.com/spf13/cobra"
+
+	ex "github.com/calypr/funnel/examples"
+	appconfig "github.com/calypr/funnel/internal/config"
 )
 
 // Cmd represents the examples command
@@ -24,7 +25,7 @@ var Cmd = &cobra.Command{
 			byShortName[n] = v
 		}
 
-		confEx := config.Examples()
+		confEx := appconfig.Examples()
 		for n, v := range confEx {
 			byShortName[n] = v
 		}

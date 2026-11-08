@@ -8,10 +8,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/internal/cli/lifecycle"
 	cmdutil "github.com/calypr/funnel/internal/cli/util"
 	k8sbackend "github.com/calypr/funnel/internal/compute/kubernetes"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/database/badger"
 	"github.com/calypr/funnel/internal/database/boltdb"
 	"github.com/calypr/funnel/internal/database/datastore"
@@ -21,7 +24,6 @@ import (
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
 	"github.com/calypr/funnel/internal/taskmodel"
-	"github.com/spf13/cobra"
 )
 
 // Cmd is the root "funnel kubernetes" command.
@@ -37,7 +39,7 @@ func init() {
 func cleanupCmd() *cobra.Command {
 	var (
 		configFile string
-		flagConf   = config.EmptyConfig()
+		flagConf   = appconfig.EmptyConfig()
 	)
 
 	cmd := &cobra.Command{

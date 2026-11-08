@@ -15,14 +15,16 @@ import (
 	"time"
 	"unicode"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/directory"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
 	"github.com/calypr/funnel/internal/taskmodel"
 	"github.com/calypr/funnel/tes"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // HPCBackend represents an HPCBackend such as HtCondor, Slurm, Grid Engine, etc.
@@ -360,7 +362,7 @@ func (b *HPCBackend) setupTemplatedHPCSubmit(ctx context.Context, task *tes.Task
 	if ctx.Value("Config") != nil {
 		conf := ctx.Value("Config").(*config.Config)
 		configFile := filepath.Join(workdir, "config.yaml")
-		err = config.ToYamlFile(conf, configFile)
+		err = appconfig.ToYamlFile(conf, configFile)
 		if err != nil {
 			return "", err
 		}

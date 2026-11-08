@@ -5,15 +5,15 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/internal/logger"
-	logconfig "github.com/calypr/funnel/logger"
-	"github.com/calypr/funnel/tes"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
+
+	appconfig "github.com/calypr/funnel/internal/config"
+	"github.com/calypr/funnel/internal/logger"
+	"github.com/calypr/funnel/tes"
 )
 
 const workerImageTemplate = `apiVersion: batch/v1
@@ -31,7 +31,7 @@ spec:
 `
 
 func TestCreateJobUsesConfiguredWorkerImageWithoutListingPods(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.Namespace = namespace
 	conf.Kubernetes.JobsNamespace = jobsNamespace
 	conf.Kubernetes.WorkerTemplate = workerImageTemplate
@@ -44,7 +44,7 @@ func TestCreateJobUsesConfiguredWorkerImageWithoutListingPods(t *testing.T) {
 		return true, nil, fmt.Errorf("unexpected pod list")
 	})
 
-	job, err := CreateJob(context.Background(), &tes.Task{Id: testTaskID}, conf, client, logger.NewLogger("test", logconfig.DefaultConfig()), nil)
+	job, err := CreateJob(context.Background(), &tes.Task{Id: testTaskID}, conf, client, logger.NewLogger("test", logger.DefaultConfig()), nil)
 	if err != nil {
 		t.Fatalf("CreateJob: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestCreateJobUsesConfiguredWorkerImageWithoutListingPods(t *testing.T) {
 }
 
 func TestCreateJobDiscoversWorkerImageWhenUnset(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.Namespace = namespace
 	conf.Kubernetes.JobsNamespace = jobsNamespace
 	conf.Kubernetes.WorkerTemplate = workerImageTemplate
@@ -71,7 +71,7 @@ func TestCreateJobDiscoversWorkerImageWhenUnset(t *testing.T) {
 		Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "funnel", Image: "funnel-server:v1"}}},
 	})
 
-	job, err := CreateJob(context.Background(), &tes.Task{Id: testTaskID}, conf, client, logger.NewLogger("test", logconfig.DefaultConfig()), nil)
+	job, err := CreateJob(context.Background(), &tes.Task{Id: testTaskID}, conf, client, logger.NewLogger("test", logger.DefaultConfig()), nil)
 	if err != nil {
 		t.Fatalf("CreateJob: %v", err)
 	}

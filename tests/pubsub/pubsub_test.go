@@ -2,22 +2,20 @@ package pubsub
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 	"time"
-
-	"errors"
 
 	"github.com/calypr/funnel/config"
 	workerCmd "github.com/calypr/funnel/internal/cli/worker"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
-	logconfig "github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/tes"
 	"github.com/calypr/funnel/tests"
 )
 
-var log = logger.NewLogger("pubsub-worker-test", logconfig.DefaultConfig())
+var log = logger.NewLogger("pubsub-worker-test", logger.DefaultConfig())
 var fun *tests.Funnel
 var conf *config.Config
 

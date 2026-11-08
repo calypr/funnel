@@ -11,10 +11,9 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
-	logconfig "github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/tes"
 )
 
@@ -32,7 +31,7 @@ var docker = DockerCommand{
 	PullCommand:     "pull {{.Image}}",
 	RemoveContainer: true,
 	Event: events.NewExecutorWriter("123", 1, 1, &events.Logger{
-		Log: logger.NewLogger("test", logconfig.DefaultConfig()),
+		Log: logger.NewLogger("test", logger.DefaultConfig()),
 	}),
 }
 
@@ -112,7 +111,7 @@ func TestDockerNeedsTmpfs(t *testing.T) {
 }
 
 func TestDefaultDockerRunCommandTmpfs(t *testing.T) {
-	runCommand := config.DefaultConfig().Worker.Container.RunCommand
+	runCommand := appconfig.DefaultConfig().Worker.Container.RunCommand
 	tmpl, err := template.New("run-command").Parse(runCommand)
 	if err != nil {
 		t.Fatal("parsing default run command:", err)
@@ -138,7 +137,7 @@ func TestDefaultDockerRunCommandTmpfs(t *testing.T) {
 }
 
 func TestDefaultDockerRunCommandResourceLimits(t *testing.T) {
-	tmpl, err := template.New("run-command").Parse(config.DefaultConfig().Worker.Container.RunCommand)
+	tmpl, err := template.New("run-command").Parse(appconfig.DefaultConfig().Worker.Container.RunCommand)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,11 +177,11 @@ func TestDefaultDockerRunCommandResourceLimits(t *testing.T) {
 }
 
 func TestDockerResourceLimitConfig(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	if conf.Worker.Container.EnforceResources {
 		t.Fatal("resource enforcement must be disabled by default")
 	}
-	if err := config.Parse([]byte("Worker:\n  Container:\n    EnforceResources: true\n"), conf); err != nil {
+	if err := appconfig.Parse([]byte("Worker:\n  Container:\n    EnforceResources: true\n"), conf); err != nil {
 		t.Fatal(err)
 	}
 	if !conf.Worker.Container.EnforceResources {

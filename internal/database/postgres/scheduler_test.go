@@ -3,13 +3,13 @@ package postgres
 import (
 	"testing"
 
-	"github.com/calypr/funnel/config"
+	"github.com/testcontainers/testcontainers-go"
+
 	"github.com/calypr/funnel/internal/compute/scheduler"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
-	logconfig "github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/tes"
-	"github.com/testcontainers/testcontainers-go"
 )
 
 func TestPostgresStaleHeartbeatPreservesReservationAndRejectsCorruptNodeRow(t *testing.T) {
@@ -42,8 +42,8 @@ func TestPostgresStaleHeartbeatPreservesReservationAndRejectsCorruptNodeRow(t *t
 	}
 
 	s := &scheduler.Scheduler{
-		Conf:           config.DefaultConfig().Scheduler,
-		Log:            logger.NewLogger("test", logconfig.DefaultConfig()),
+		Conf:           appconfig.DefaultConfig().Scheduler,
+		Log:            logger.NewLogger("test", logger.DefaultConfig()),
 		Nodes:          db,
 		Queue:          db,
 		AtomicAssigner: db,

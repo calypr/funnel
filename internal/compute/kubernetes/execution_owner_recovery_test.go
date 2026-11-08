@@ -6,12 +6,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/internal/database/boltdb"
-	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/logger"
-	logconfig "github.com/calypr/funnel/logger"
-	"github.com/calypr/funnel/tes"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -20,6 +14,12 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
+
+	appconfig "github.com/calypr/funnel/internal/config"
+	"github.com/calypr/funnel/internal/database/boltdb"
+	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/internal/logger"
+	"github.com/calypr/funnel/tes"
 )
 
 const (
@@ -45,7 +45,7 @@ func newUnclaimedExecutionOwnerRecoveryFixture(t *testing.T, state tes.State, jo
 func newExecutionOwnerRecoveryFixtureWithClaim(t *testing.T, claimed bool, state tes.State, owner *events.ExecutionOwner, jobStatus batchv1.JobStatus, pod *corev1.Pod) *executionOwnerRecoveryFixture {
 	t.Helper()
 	ctx := context.Background()
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.Namespace = executionOwnerTestNamespace
 	conf.Kubernetes.JobsNamespace = executionOwnerTestNamespace
 	conf.BoltDB.Path = filepath.Join(t.TempDir(), "tasks.db")
@@ -93,7 +93,7 @@ func newExecutionOwnerRecoveryFixtureWithClaim(t *testing.T, claimed bool, state
 		client:   client,
 		event:    db,
 		database: db,
-		log:      logger.NewLogger("execution-owner-recovery-test", logconfig.DefaultConfig()),
+		log:      logger.NewLogger("execution-owner-recovery-test", logger.DefaultConfig()),
 		conf:     conf,
 	}
 	return &executionOwnerRecoveryFixture{backend: backend, db: db, client: client, job: job}
@@ -450,7 +450,7 @@ func TestReconcileRetainsResourcesWhenOwnerDeathStateWriteFails(t *testing.T) {
 
 func TestReconcileDefersMalformedExecutionOwner(t *testing.T) {
 	owner := &events.ExecutionOwner{Namespace: executionOwnerTestNamespace, PodName: "owner-pod", PodUid: "owner-pod-uid"}
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.Namespace = executionOwnerTestNamespace
 	conf.Kubernetes.JobsNamespace = executionOwnerTestNamespace
 	task := &tes.Task{
@@ -467,7 +467,7 @@ func TestReconcileDefersMalformedExecutionOwner(t *testing.T) {
 		client:   client,
 		event:    writer,
 		database: &mockReadOnlyServer{tasks: []*tes.Task{task}},
-		log:      logger.NewLogger("execution-owner-recovery-test", logconfig.DefaultConfig()),
+		log:      logger.NewLogger("execution-owner-recovery-test", logger.DefaultConfig()),
 		conf:     conf,
 	}
 	backend.reconcileJob(context.Background(), job, true)

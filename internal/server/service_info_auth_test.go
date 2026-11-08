@@ -9,9 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/internal/tesrpc"
-	"github.com/calypr/funnel/tes"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -19,6 +16,11 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
+
+	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
+	"github.com/calypr/funnel/internal/tesrpc"
+	"github.com/calypr/funnel/tes"
 )
 
 func TestServiceInfoAlwaysPublic(t *testing.T) {
@@ -35,7 +37,7 @@ func TestServiceInfoAlwaysPublic(t *testing.T) {
 			auth.log = log
 			listener := bufconn.Listen(1024 * 1024)
 			rpc := grpc.NewServer(grpc.UnaryInterceptor(auth.Interceptor))
-			tesrpc.RegisterTaskServiceServer(rpc, &TaskService{Name: "public-service", Config: config.DefaultConfig()})
+			tesrpc.RegisterTaskServiceServer(rpc, &TaskService{Name: "public-service", Config: appconfig.DefaultConfig()})
 			done := make(chan struct{})
 			go func() {
 				defer close(done)

@@ -9,18 +9,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/internal/database/boltdb"
-	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/logger"
-	logconfig "github.com/calypr/funnel/logger"
-	"github.com/calypr/funnel/tes"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+
+	appconfig "github.com/calypr/funnel/internal/config"
+	"github.com/calypr/funnel/internal/database/boltdb"
+	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/internal/logger"
+	"github.com/calypr/funnel/tes"
 )
 
 type failOnceStateWriter struct {
@@ -63,7 +63,7 @@ func TestReconcileFailureRecoveryLive(t *testing.T) {
 			t.Errorf("deleting namespace: %v", err)
 		}
 	})
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.Namespace, conf.Kubernetes.JobsNamespace = ns, ns
 	conf.Kubernetes.ConfigMapTemplate, conf.Kubernetes.ServiceAccountTemplate, conf.Kubernetes.RoleTemplate, conf.Kubernetes.RoleBindingTemplate = "", "", "", ""
 	conf.BoltDB.Path = filepath.Join(t.TempDir(), "tasks.db")
@@ -92,7 +92,7 @@ func TestReconcileFailureRecoveryLive(t *testing.T) {
 		t.Fatal(err)
 	}
 	writer := &failOnceStateWriter{Writer: db}
-	backend := &Backend{client: client, conf: conf, event: writer, database: db, log: logger.NewLogger("reconcile-live", logconfig.DefaultConfig())}
+	backend := &Backend{client: client, conf: conf, event: writer, database: db, log: logger.NewLogger("reconcile-live", logger.DefaultConfig())}
 	for {
 		if count, _ := backend.hasJobFailedCreateEvent(ctx, task.Id); count > 0 {
 			break

@@ -6,16 +6,18 @@ import (
 
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
+
+	schema "github.com/calypr/funnel/config"
 )
 
 func TestSafeRedactsCredentialContainers(t *testing.T) {
-	c := &Config{
-		MongoDB: &MongoDB{Addrs: []string{"mongodb://user:fixture-mongo@db.example/tasks", "db.example:27017"}},
-		Worker:  &Worker{Container: &ContainerConfig{Env: map[string]string{"TOKEN": "fixture-env"}}},
-		Swift:   &SwiftStorage{AuthURL: "https://user:fixture-swift@swift.example/auth?key=fixture-query"},
+	c := &schema.Config{
+		MongoDB: &schema.MongoDB{Addrs: []string{"mongodb://user:fixture-mongo@db.example/tasks", "db.example:27017"}},
+		Worker:  &schema.Worker{Container: &schema.ContainerConfig{Env: map[string]string{"TOKEN": "fixture-env"}}},
+		Swift:   &schema.SwiftStorage{AuthURL: "https://user:fixture-swift@swift.example/auth?key=fixture-query"},
 	}
 	before := proto.Clone(c)
-	safe := c.Safe()
+	safe := Safe(c)
 	body, err := protojson.Marshal(safe)
 	if err != nil {
 		t.Fatal(err)
@@ -37,16 +39,16 @@ var redacted = redact("example")
 
 // TestSafeNilConfig verifies that Safe() on a nil config returns nil.
 func TestSafeNilConfig(t *testing.T) {
-	var c *Config
-	if c.Safe() != nil {
+	var c *schema.Config
+	if Safe(c) != nil {
 		t.Fatal("expected nil for nil config")
 	}
 }
 
 // TestSafeEmptyConfig verifies that Safe() on an empty config does not panic.
 func TestSafeEmptyConfig(t *testing.T) {
-	c := &Config{}
-	safe := c.Safe()
+	c := &schema.Config{}
+	safe := Safe(c)
 	if safe == nil {
 		t.Fatal("expected non-nil safe config")
 	}
@@ -55,26 +57,26 @@ func TestSafeEmptyConfig(t *testing.T) {
 // TestSafeDoesNotMutateOriginal verifies that Safe() returns a copy and
 // does not modify any fields on the original config.
 func TestSafeDoesNotMutateOriginal(t *testing.T) {
-	c := &Config{
-		MongoDB: &MongoDB{Password: "mongopass"},
-		Postgres: &Postgres{
+	c := &schema.Config{
+		MongoDB: &schema.MongoDB{Password: "mongopass"},
+		Postgres: &schema.Postgres{
 			User: "pguser", Password: "pgpass",
 			AdminUser: "pgadmin", AdminPassword: "pgadminpass",
 		},
-		AWSBatch: &AWSBatch{
-			AWSConfig: &AWSConfig{Key: "batchkey", Secret: "batchsecret"},
+		AWSBatch: &schema.AWSBatch{
+			AWSConfig: &schema.AWSConfig{Key: "batchkey", Secret: "batchsecret"},
 		},
-		Swift:      &SwiftStorage{Password: "swiftpass"},
-		FTPStorage: &FTPStorage{Password: "ftppass"},
-		Server: &Server{
-			BasicAuth: []*BasicCredential{{User: "user", Password: "basicpass"}},
-			OidcAuth:  &OidcAuth{ClientSecret: "oidcsecret"},
+		Swift:      &schema.SwiftStorage{Password: "swiftpass"},
+		FTPStorage: &schema.FTPStorage{Password: "ftppass"},
+		Server: &schema.Server{
+			BasicAuth: []*schema.BasicCredential{{User: "user", Password: "basicpass"}},
+			OidcAuth:  &schema.OidcAuth{ClientSecret: "oidcsecret"},
 		},
-		RPCClient: &RPCClient{Credential: &BasicCredential{Password: "rpcpass"}},
-		Plugins:   &Plugins{Params: map[string]string{"key": "pluginparam"}},
+		RPCClient: &schema.RPCClient{Credential: &schema.BasicCredential{Password: "rpcpass"}},
+		Plugins:   &schema.Plugins{Params: map[string]string{"key": "pluginparam"}},
 	}
 
-	_ = c.Safe()
+	_ = Safe(c)
 
 	if c.MongoDB.Password != "mongopass" {
 		t.Error("original MongoDB.Password was mutated")
@@ -107,13 +109,13 @@ func TestSafeDoesNotMutateOriginal(t *testing.T) {
 
 // TestSafeMongoDBRedaction verifies MongoDB password redaction.
 func TestSafeMongoDBRedaction(t *testing.T) {
-	c := &Config{
-		MongoDB: &MongoDB{
+	c := &schema.Config{
+		MongoDB: &schema.MongoDB{
 			Username: "mongouser",
 			Password: "supersecret",
 		},
 	}
-	safe := c.Safe()
+	safe := Safe(c)
 
 	if safe.MongoDB.Password != redacted {
 		t.Errorf("expected MongoDB.Password to be redacted, got %q", safe.MongoDB.Password)
@@ -126,8 +128,8 @@ func TestSafeMongoDBRedaction(t *testing.T) {
 
 // TestSafeMongoDBEmptyPassword verifies that an empty MongoDB password stays empty.
 func TestSafeMongoDBEmptyPassword(t *testing.T) {
-	c := &Config{MongoDB: &MongoDB{Password: ""}}
-	safe := c.Safe()
+	c := &schema.Config{MongoDB: &schema.MongoDB{Password: ""}}
+	safe := Safe(c)
 	if safe.MongoDB.Password != "" {
 		t.Errorf("expected empty MongoDB.Password to stay empty, got %q", safe.MongoDB.Password)
 	}
@@ -135,8 +137,8 @@ func TestSafeMongoDBEmptyPassword(t *testing.T) {
 
 // TestSafePostgresRedaction verifies all four Postgres credential fields.
 func TestSafePostgresRedaction(t *testing.T) {
-	c := &Config{
-		Postgres: &Postgres{
+	c := &schema.Config{
+		Postgres: &schema.Postgres{
 			Host:          "pghost",
 			User:          "pguser",
 			Password:      "pgpass",
@@ -144,7 +146,7 @@ func TestSafePostgresRedaction(t *testing.T) {
 			AdminPassword: "pgadminpass",
 		},
 	}
-	safe := c.Safe()
+	safe := Safe(c)
 
 	for field, got := range map[string]string{
 		"User":          safe.Postgres.User,
@@ -163,10 +165,10 @@ func TestSafePostgresRedaction(t *testing.T) {
 
 // TestSafePostgresEmptyCredentials verifies that empty Postgres credentials stay empty.
 func TestSafePostgresEmptyCredentials(t *testing.T) {
-	c := &Config{
-		Postgres: &Postgres{User: "", Password: "", AdminUser: "", AdminPassword: ""},
+	c := &schema.Config{
+		Postgres: &schema.Postgres{User: "", Password: "", AdminUser: "", AdminPassword: ""},
 	}
-	safe := c.Safe()
+	safe := Safe(c)
 	if safe.Postgres.User != "" || safe.Postgres.Password != "" ||
 		safe.Postgres.AdminUser != "" || safe.Postgres.AdminPassword != "" {
 		t.Error("expected empty Postgres credentials to stay empty")
@@ -175,17 +177,17 @@ func TestSafePostgresEmptyCredentials(t *testing.T) {
 
 // TestSafeAWSBatchRedaction verifies AWSBatch Key and Secret redaction.
 func TestSafeAWSBatchRedaction(t *testing.T) {
-	c := &Config{
-		AWSBatch: &AWSBatch{
+	c := &schema.Config{
+		AWSBatch: &schema.AWSBatch{
 			JobDefinition: "my-job-def",
-			AWSConfig: &AWSConfig{
+			AWSConfig: &schema.AWSConfig{
 				Key:    "AKIAIOSFODNN7EXAMPLE",
 				Secret: "wJalrXUtnFEMI/K7MDENG",
 				Region: "us-east-1",
 			},
 		},
 	}
-	safe := c.Safe()
+	safe := Safe(c)
 
 	if safe.AWSBatch.AWSConfig.Key != redacted {
 		t.Errorf("expected AWSBatch.AWSConfig.Key to be redacted, got %q", safe.AWSBatch.AWSConfig.Key)
@@ -203,8 +205,8 @@ func TestSafeAWSBatchRedaction(t *testing.T) {
 
 // TestSafeAWSBatchNilAWSConfig verifies no panic when AWSBatch.AWSConfig is nil.
 func TestSafeAWSBatchNilAWSConfig(t *testing.T) {
-	c := &Config{AWSBatch: &AWSBatch{JobDefinition: "jd"}}
-	safe := c.Safe()
+	c := &schema.Config{AWSBatch: &schema.AWSBatch{JobDefinition: "jd"}}
+	safe := Safe(c)
 	if safe.AWSBatch.AWSConfig != nil {
 		t.Errorf("expected AWSBatch.AWSConfig to remain nil")
 	}
@@ -212,16 +214,16 @@ func TestSafeAWSBatchNilAWSConfig(t *testing.T) {
 
 // TestSafeDynamoDBRedaction verifies DynamoDB Key and Secret redaction.
 func TestSafeDynamoDBRedaction(t *testing.T) {
-	c := &Config{
-		DynamoDB: &DynamoDB{
+	c := &schema.Config{
+		DynamoDB: &schema.DynamoDB{
 			TableBasename: "funnel",
-			AWSConfig: &AWSConfig{
+			AWSConfig: &schema.AWSConfig{
 				Key:    "dynamo-key",
 				Secret: "dynamo-secret",
 			},
 		},
 	}
-	safe := c.Safe()
+	safe := Safe(c)
 
 	if safe.DynamoDB.AWSConfig.Key != redacted {
 		t.Errorf("expected DynamoDB.AWSConfig.Key to be redacted, got %q", safe.DynamoDB.AWSConfig.Key)
@@ -233,15 +235,15 @@ func TestSafeDynamoDBRedaction(t *testing.T) {
 
 // TestSafeAmazonS3Redaction verifies AmazonS3 Key and Secret redaction.
 func TestSafeAmazonS3Redaction(t *testing.T) {
-	c := &Config{
-		AmazonS3: &AmazonS3Storage{
-			AWSConfig: &AWSConfig{
+	c := &schema.Config{
+		AmazonS3: &schema.AmazonS3Storage{
+			AWSConfig: &schema.AWSConfig{
 				Key:    "s3-key",
 				Secret: "s3-secret",
 			},
 		},
 	}
-	safe := c.Safe()
+	safe := Safe(c)
 
 	if safe.AmazonS3.AWSConfig.Key != redacted {
 		t.Errorf("expected AmazonS3.AWSConfig.Key to be redacted, got %q", safe.AmazonS3.AWSConfig.Key)
@@ -253,13 +255,13 @@ func TestSafeAmazonS3Redaction(t *testing.T) {
 
 // TestSafeGenericS3Redaction verifies GenericS3 Key and Secret redaction across multiple entries.
 func TestSafeGenericS3Redaction(t *testing.T) {
-	c := &Config{
-		GenericS3: []*GenericS3Storage{
+	c := &schema.Config{
+		GenericS3: []*schema.GenericS3Storage{
 			{Endpoint: "https://s3.example.com", Key: "gs3-key", Secret: "gs3-secret"},
 			{Endpoint: "https://s3-2.example.com", Key: "gs3-key2", Secret: "gs3-secret2"},
 		},
 	}
-	safe := c.Safe()
+	safe := Safe(c)
 
 	if safe.GenericS3[0].Key != redacted {
 		t.Errorf("expected GenericS3[0].Key to be redacted, got %q", safe.GenericS3[0].Key)
@@ -280,13 +282,13 @@ func TestSafeGenericS3Redaction(t *testing.T) {
 
 // TestSafePubSubRedaction verifies PubSub CredentialsFile redaction.
 func TestSafePubSubRedaction(t *testing.T) {
-	c := &Config{
-		PubSub: &PubSub{
+	c := &schema.Config{
+		PubSub: &schema.PubSub{
 			Topic:           "my-topic",
 			CredentialsFile: "/path/to/creds.json",
 		},
 	}
-	safe := c.Safe()
+	safe := Safe(c)
 
 	if safe.PubSub.CredentialsFile != redacted {
 		t.Errorf("expected PubSub.CredentialsFile to be redacted, got %q", safe.PubSub.CredentialsFile)
@@ -298,13 +300,13 @@ func TestSafePubSubRedaction(t *testing.T) {
 
 // TestSafeDatastoreRedaction verifies Datastore CredentialsFile redaction.
 func TestSafeDatastoreRedaction(t *testing.T) {
-	c := &Config{
-		Datastore: &Datastore{
+	c := &schema.Config{
+		Datastore: &schema.Datastore{
 			Project:         "my-project",
 			CredentialsFile: "/path/to/creds.json",
 		},
 	}
-	safe := c.Safe()
+	safe := Safe(c)
 
 	if safe.Datastore.CredentialsFile != redacted {
 		t.Errorf("expected Datastore.CredentialsFile to be redacted, got %q", safe.Datastore.CredentialsFile)
@@ -316,12 +318,12 @@ func TestSafeDatastoreRedaction(t *testing.T) {
 
 // TestSafeGoogleStorageRedaction verifies GoogleStorage CredentialsFile redaction.
 func TestSafeGoogleStorageRedaction(t *testing.T) {
-	c := &Config{
-		GoogleStorage: &GoogleCloudStorage{
+	c := &schema.Config{
+		GoogleStorage: &schema.GoogleCloudStorage{
 			CredentialsFile: "/path/to/creds.json",
 		},
 	}
-	safe := c.Safe()
+	safe := Safe(c)
 
 	if safe.GoogleStorage.CredentialsFile != redacted {
 		t.Errorf("expected GoogleStorage.CredentialsFile to be redacted, got %q", safe.GoogleStorage.CredentialsFile)
@@ -331,15 +333,15 @@ func TestSafeGoogleStorageRedaction(t *testing.T) {
 // TestSafeServerBasicAuthRedaction verifies Server BasicAuth password redaction
 // across multiple entries.
 func TestSafeServerBasicAuthRedaction(t *testing.T) {
-	c := &Config{
-		Server: &Server{
-			BasicAuth: []*BasicCredential{
+	c := &schema.Config{
+		Server: &schema.Server{
+			BasicAuth: []*schema.BasicCredential{
 				{User: "alice", Password: "alicepass"},
 				{User: "bob", Password: "bobpass"},
 			},
 		},
 	}
-	safe := c.Safe()
+	safe := Safe(c)
 
 	if safe.Server.BasicAuth[0].Password != redacted {
 		t.Errorf("expected Server.BasicAuth[0].Password to be redacted, got %q", safe.Server.BasicAuth[0].Password)
@@ -354,15 +356,15 @@ func TestSafeServerBasicAuthRedaction(t *testing.T) {
 
 // TestSafeServerOidcAuthRedaction verifies OidcAuth ClientSecret redaction.
 func TestSafeServerOidcAuthRedaction(t *testing.T) {
-	c := &Config{
-		Server: &Server{
-			OidcAuth: &OidcAuth{
+	c := &schema.Config{
+		Server: &schema.Server{
+			OidcAuth: &schema.OidcAuth{
 				ClientId:     "my-client-id",
 				ClientSecret: "my-client-secret",
 			},
 		},
 	}
-	safe := c.Safe()
+	safe := Safe(c)
 
 	if safe.Server.OidcAuth.ClientSecret != redacted {
 		t.Errorf("expected Server.OidcAuth.ClientSecret to be redacted, got %q", safe.Server.OidcAuth.ClientSecret)
@@ -374,13 +376,13 @@ func TestSafeServerOidcAuthRedaction(t *testing.T) {
 
 // TestSafeRPCClientRedaction verifies RPCClient credential password redaction.
 func TestSafeRPCClientRedaction(t *testing.T) {
-	c := &Config{
-		RPCClient: &RPCClient{
+	c := &schema.Config{
+		RPCClient: &schema.RPCClient{
 			ServerAddress: "funnel:9090",
-			Credential:    &BasicCredential{User: "rpcuser", Password: "rpcpass"},
+			Credential:    &schema.BasicCredential{User: "rpcuser", Password: "rpcpass"},
 		},
 	}
-	safe := c.Safe()
+	safe := Safe(c)
 
 	if safe.RPCClient.Credential.Password != redacted {
 		t.Errorf("expected RPCClient.Credential.Password to be redacted, got %q", safe.RPCClient.Credential.Password)
@@ -392,8 +394,8 @@ func TestSafeRPCClientRedaction(t *testing.T) {
 
 // TestSafeRPCClientNilCredential verifies no panic when RPCClient.Credential is nil.
 func TestSafeRPCClientNilCredential(t *testing.T) {
-	c := &Config{RPCClient: &RPCClient{ServerAddress: "funnel:9090"}}
-	safe := c.Safe()
+	c := &schema.Config{RPCClient: &schema.RPCClient{ServerAddress: "funnel:9090"}}
+	safe := Safe(c)
 	if safe.RPCClient.Credential != nil {
 		t.Error("expected RPCClient.Credential to remain nil")
 	}
@@ -401,13 +403,13 @@ func TestSafeRPCClientNilCredential(t *testing.T) {
 
 // TestSafeSwiftRedaction verifies Swift password redaction.
 func TestSafeSwiftRedaction(t *testing.T) {
-	c := &Config{
-		Swift: &SwiftStorage{
+	c := &schema.Config{
+		Swift: &schema.SwiftStorage{
 			UserName: "swiftuser",
 			Password: "swiftpass",
 		},
 	}
-	safe := c.Safe()
+	safe := Safe(c)
 
 	if safe.Swift.Password != redacted {
 		t.Errorf("expected Swift.Password to be redacted, got %q", safe.Swift.Password)
@@ -419,13 +421,13 @@ func TestSafeSwiftRedaction(t *testing.T) {
 
 // TestSafeFTPStorageRedaction verifies FTPStorage password redaction.
 func TestSafeFTPStorageRedaction(t *testing.T) {
-	c := &Config{
-		FTPStorage: &FTPStorage{
+	c := &schema.Config{
+		FTPStorage: &schema.FTPStorage{
 			User:     "ftpuser",
 			Password: "ftppass",
 		},
 	}
-	safe := c.Safe()
+	safe := Safe(c)
 
 	if safe.FTPStorage.Password != redacted {
 		t.Errorf("expected FTPStorage.Password to be redacted, got %q", safe.FTPStorage.Password)
@@ -437,8 +439,8 @@ func TestSafeFTPStorageRedaction(t *testing.T) {
 
 // TestSafeNilPlugins verifies that a nil Plugins field does not panic.
 func TestSafeNilPlugins(t *testing.T) {
-	c := &Config{}
-	safe := c.Safe()
+	c := &schema.Config{}
+	safe := Safe(c)
 	if safe.Plugins != nil {
 		t.Error("expected Plugins to remain nil")
 	}
@@ -446,8 +448,8 @@ func TestSafeNilPlugins(t *testing.T) {
 
 // TestSafePluginsParamsRedaction verifies that all Plugins.Params values are redacted.
 func TestSafePluginsParamsRedaction(t *testing.T) {
-	c := &Config{
-		Plugins: &Plugins{
+	c := &schema.Config{
+		Plugins: &schema.Plugins{
 			Path: "/path/to/plugin",
 			Params: map[string]string{
 				"api_key": "secretkey",
@@ -456,7 +458,7 @@ func TestSafePluginsParamsRedaction(t *testing.T) {
 			},
 		},
 	}
-	safe := c.Safe()
+	safe := Safe(c)
 
 	if safe.Plugins.Params["api_key"] != redacted {
 		t.Errorf("expected Plugins.Params[api_key] to be redacted, got %q", safe.Plugins.Params["api_key"])

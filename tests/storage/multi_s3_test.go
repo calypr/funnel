@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/calypr/funnel/internal/events"
+	storageconfig "github.com/calypr/funnel/internal/storage"
 	"github.com/calypr/funnel/internal/worker"
 	"github.com/calypr/funnel/tes"
 	"github.com/calypr/funnel/tests"
@@ -16,7 +17,7 @@ func TestMultiS3Storage(t *testing.T) {
 	tests.SetLogOutput(log, t)
 
 	if len(conf.GenericS3) == 2 {
-		if !conf.GenericS3[0].Valid() && !conf.GenericS3[1].Valid() {
+		if !storageconfig.GenericS3Configured(conf.GenericS3[0]) && !storageconfig.GenericS3Configured(conf.GenericS3[1]) {
 			t.Skipf("Skipping generic s3 e2e tests...")
 		}
 	} else {

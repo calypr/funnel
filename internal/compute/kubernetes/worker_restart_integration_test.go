@@ -11,14 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/internal/compute/kubernetes/resources"
-	"github.com/calypr/funnel/internal/database/boltdb"
-	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/logger"
-	"github.com/calypr/funnel/internal/tesrpc"
-	logconfig "github.com/calypr/funnel/logger"
-	"github.com/calypr/funnel/tes"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -29,6 +21,15 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/internal/compute/kubernetes/resources"
+	appconfig "github.com/calypr/funnel/internal/config"
+	"github.com/calypr/funnel/internal/database/boltdb"
+	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/internal/logger"
+	"github.com/calypr/funnel/internal/tesrpc"
+	"github.com/calypr/funnel/tes"
 )
 
 type lostOwnerClaimRPC struct {
@@ -207,7 +208,7 @@ func runWorkerRestartRecoveryLive(t *testing.T, client kubernetes.Interface, ima
 		}
 	})
 
-	serverConfig := config.DefaultConfig()
+	serverConfig := appconfig.DefaultConfig()
 	serverConfig.BoltDB.Path = filepath.Join(t.TempDir(), "tasks.db")
 	serverConfig.Kubernetes.Namespace = ns
 	serverConfig.Kubernetes.JobsNamespace = ns
@@ -257,12 +258,12 @@ func runWorkerRestartRecoveryLive(t *testing.T, client kubernetes.Interface, ima
 		}
 	}()
 
-	workerConfig := config.EmptyConfig()
+	workerConfig := appconfig.EmptyConfig()
 	workerConfig.Compute = "kubernetes"
 	workerConfig.Database = "rpc"
 	workerConfig.RPCClient.ServerAddress = fmt.Sprintf("host.k3d.internal:%d", listener.Addr().(*net.TCPAddr).Port)
 	workerConfig.Worker.WorkDir = "/tmp/funnel-worker-restart"
-	configData, err := config.ToYaml(workerConfig)
+	configData, err := appconfig.ToYaml(workerConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +279,7 @@ func runWorkerRestartRecoveryLive(t *testing.T, client kubernetes.Interface, ima
 		serverConfig.Kubernetes.WorkerTemplate = liveRestartSidecarWorkerTemplate
 	}
 	serverConfig.Kubernetes.WorkerImage = image
-	job, err := resources.CreateJob(ctx, task, serverConfig, client, logger.NewLogger("worker-restart-live", logconfig.DefaultConfig()), nil)
+	job, err := resources.CreateJob(ctx, task, serverConfig, client, logger.NewLogger("worker-restart-live", logger.DefaultConfig()), nil)
 	if err != nil {
 		t.Fatalf("creating worker job: %v", err)
 	}
@@ -369,7 +370,7 @@ func runWorkerRestartRecoveryLive(t *testing.T, client kubernetes.Interface, ima
 		conf:     serverConfig,
 		event:    db,
 		database: db,
-		log:      logger.NewLogger("worker-restart-live", logconfig.DefaultConfig()),
+		log:      logger.NewLogger("worker-restart-live", logger.DefaultConfig()),
 	}
 	backend.reconcileOnce(ctx, false)
 	got, err = db.GetTask(ctx, &tes.GetTaskRequest{Id: taskID, View: tes.View_FULL.String()})
@@ -399,7 +400,7 @@ func runWorkerSidecarRetryRecoveryLive(t *testing.T, ctx context.Context, client
 		conf:     conf,
 		event:    db,
 		database: db,
-		log:      logger.NewLogger("worker-sidecar-recovery-live", logconfig.DefaultConfig()),
+		log:      logger.NewLogger("worker-sidecar-recovery-live", logger.DefaultConfig()),
 	}
 	firstPod, err := waitForWorkerExitWithRunningSidecar(ctx, client, namespace, taskID, "")
 	if err != nil {

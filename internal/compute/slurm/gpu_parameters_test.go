@@ -5,12 +5,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/tes"
 )
 
 func TestNativeGPUParameters(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	if !strings.Contains(conf.Slurm.Template, "worker run --Compute slurm --taskID") {
 		t.Fatal("Slurm worker command omits backend identity")
 	}

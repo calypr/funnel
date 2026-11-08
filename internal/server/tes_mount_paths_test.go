@@ -6,14 +6,15 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/logger"
-	logconfig "github.com/calypr/funnel/logger"
-	"github.com/calypr/funnel/plugins/proto"
-	"github.com/calypr/funnel/tes"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
+	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/internal/logger"
+	"github.com/calypr/funnel/plugins/proto"
+	"github.com/calypr/funnel/tes"
 )
 
 type mountPathEventWriter struct {
@@ -40,11 +41,11 @@ func (*mountPathComputer) CheckBackendParameterSupport(*tes.Task) error { return
 func (*mountPathComputer) Close()                                       {}
 
 func TestCreateTaskRejectsKubernetesRootStreamBeforePersistence(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Compute = "k8s"
 	writer := &mountPathEventWriter{}
 	computer := &mountPathComputer{}
-	log := logger.NewLogger("mount-validation-test", logconfig.DefaultConfig())
+	log := logger.NewLogger("mount-validation-test", logger.DefaultConfig())
 	log.Discard()
 	service := &TaskService{Config: conf, Event: writer, Compute: computer, Log: log}
 
@@ -63,11 +64,11 @@ func TestCreateTaskRejectsKubernetesRootStreamBeforePersistence(t *testing.T) {
 }
 
 func TestCreateTaskLeavesIndependentGCPMountPolicyAlone(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Compute = "gcp-batch"
 	writer := &mountPathEventWriter{}
 	computer := &mountPathComputer{}
-	log := logger.NewLogger("mount-validation-test", logconfig.DefaultConfig())
+	log := logger.NewLogger("mount-validation-test", logger.DefaultConfig())
 	log.Discard()
 	service := &TaskService{Config: conf, Event: writer, Compute: computer, Log: log}
 
@@ -87,7 +88,7 @@ func TestCreateTaskLeavesIndependentGCPMountPolicyAlone(t *testing.T) {
 }
 
 func TestMountExecutorBackendUsesPluginComputeSelection(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Compute = "local"
 	service := &TaskService{Config: conf}
 

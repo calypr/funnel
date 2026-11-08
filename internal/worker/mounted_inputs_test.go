@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/storage"
 	"github.com/calypr/funnel/tes"
@@ -27,7 +28,7 @@ func TestDownloadMountedInputDirectory(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "a%20b.txt"), []byte("literal percent key"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	conf := config.EmptyConfig()
+	conf := appconfig.EmptyConfig()
 	conf.GenericS3 = []*config.GenericS3Storage{{Endpoint: "http://s3.invalid", Bucket: "bucket", Key: "key", Secret: "secret"}}
 	store, err := storage.NewWorkerMux(conf, []storage.S3ReadMount{{Endpoint: "http://s3.invalid", Bucket: "bucket", Prefix: "ref", Root: root}})
 	if err != nil {

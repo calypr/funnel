@@ -410,7 +410,7 @@ Kubernetes:
   # references a per-task ConfigMap name (e.g. funnel-worker-config-{{.TaskId}}).
   # Available template variables: {{.TaskId}}, {{.Namespace}}, {{.Config}}
   # where {{.Config}} is the full funnel worker config serialized to YAML.
-  # See config/kubernetes/worker-configmap.yaml for a reference template.
+  # See internal/config/kubernetes/worker-configmap.yaml for a reference template.
   ConfigMapTemplate: ""
 
   # Resource Requests/Limits for Executor Jobs

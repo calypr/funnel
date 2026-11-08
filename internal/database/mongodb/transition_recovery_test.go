@@ -4,15 +4,15 @@ import (
 	"context"
 	"testing"
 
-	"github.com/calypr/funnel/config"
+	"go.mongodb.org/mongo-driver/v2/bson"
+
 	"github.com/calypr/funnel/internal/compute/scheduler"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
 	"github.com/calypr/funnel/internal/server"
-	logconfig "github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/tes"
 	"github.com/calypr/funnel/tests/mongotest"
-	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 func TestPersistedLegacyTrapCanBeCanceledOrCleaned(t *testing.T) {
@@ -62,9 +62,9 @@ func TestPersistedLegacyTrapCanBeCanceledOrCleaned(t *testing.T) {
 				assertMongoLegacyReservation(t, ctx, db, id, node.Id, 1, 1, 1, 1)
 
 				if target == tes.State_CANCELED {
-					log := logger.NewLogger("legacy-transition", logconfig.DefaultConfig())
+					log := logger.NewLogger("legacy-transition", logger.DefaultConfig())
 					log.Discard()
-					service := &server.TaskService{Read: db, Event: db, Compute: events.Backend{}, Config: config.DefaultConfig(), Log: log}
+					service := &server.TaskService{Read: db, Event: db, Compute: events.Backend{}, Config: appconfig.DefaultConfig(), Log: log}
 					if _, err := service.CancelTask(ctx, &tes.CancelTaskRequest{Id: id}); err != nil {
 						t.Fatalf("CancelTask from persisted %s: %v", legacy, err)
 					}

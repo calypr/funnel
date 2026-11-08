@@ -3,11 +3,11 @@ package batch
 import (
 	"fmt"
 
-	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/internal/cli/util"
-	"github.com/calypr/funnel/internal/logger"
-	logconfig "github.com/calypr/funnel/logger"
 	"github.com/spf13/cobra"
+
+	"github.com/calypr/funnel/internal/cli/util"
+	appconfig "github.com/calypr/funnel/internal/config"
+	"github.com/calypr/funnel/internal/logger"
 )
 
 func init() {
@@ -35,7 +35,7 @@ var createCmd = &cobra.Command{
 	Use:   "create-all-resources",
 	Short: "Create a compute environment, job queue and job definition in a specified region",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		log := logger.NewLogger("batch-create-all-resources", logconfig.DefaultConfig())
+		log := logger.NewLogger("batch-create-all-resources", logger.DefaultConfig())
 
 		if conf.Region == "" {
 			return fmt.Errorf("error must provide a region")
@@ -44,8 +44,8 @@ var createCmd = &cobra.Command{
 		conf.Funnel.DynamoDB.AWSConfig.Region = conf.Region
 
 		if funnelConfigFile != "" {
-			funnelConf := config.EmptyConfig()
-			if err := config.ParseFile(funnelConfigFile, funnelConf); err != nil {
+			funnelConf := appconfig.EmptyConfig()
+			if err := appconfig.ParseFile(funnelConfigFile, funnelConf); err != nil {
 				return fmt.Errorf("parsing funnel config %s: %w", funnelConfigFile, err)
 			}
 			conf.Funnel = funnelConf

@@ -3,8 +3,10 @@ package batch
 import (
 	"time"
 
-	"github.com/calypr/funnel/config"
 	"google.golang.org/protobuf/types/known/durationpb"
+
+	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 )
 
 // Config represents configuration of the AWS proxy, including
@@ -93,7 +95,7 @@ type JobRoleConfig struct {
 // DefaultConfig returns default configuration of for AWS Batch resource creation.
 func DefaultConfig() *Config {
 	c := &Config{
-		Funnel:    config.DefaultConfig(),
+		Funnel:    appconfig.DefaultConfig(),
 		AWSConfig: &config.AWSConfig{},
 		ComputeEnv: &ComputeEnvConfig{
 			Name:          "funnel-compute-environment",

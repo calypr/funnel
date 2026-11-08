@@ -5,18 +5,18 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/internal/compute/kubernetes/storageplan"
-	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/logger"
-	logconfig "github.com/calypr/funnel/logger"
-	"github.com/calypr/funnel/tes"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes/fake"
+
+	"github.com/calypr/funnel/internal/compute/kubernetes/storageplan"
+	appconfig "github.com/calypr/funnel/internal/config"
+	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/internal/logger"
+	"github.com/calypr/funnel/tes"
 )
 
 func TestCreateJobGivesWorkerRetriesDistinctPodIdentities(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.Namespace = namespace
 	conf.Kubernetes.JobsNamespace = jobsNamespace
 	conf.Kubernetes.WorkerImage = "funnel:test"
@@ -26,7 +26,7 @@ func TestCreateJobGivesWorkerRetriesDistinctPodIdentities(t *testing.T) {
         - name: USER_VARIABLE
           value: preserved
 `
-	job, err := CreateJob(context.Background(), &tes.Task{Id: testTaskID}, conf, fake.NewSimpleClientset(), logger.NewLogger("test", logconfig.DefaultConfig()), nil)
+	job, err := CreateJob(context.Background(), &tes.Task{Id: testTaskID}, conf, fake.NewSimpleClientset(), logger.NewLogger("test", logger.DefaultConfig()), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,12 +79,12 @@ spec:
 `
 
 func TestCreateJobUsesValidatedTemplateWorkerContainerAnnotation(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.Namespace = namespace
 	conf.Kubernetes.JobsNamespace = jobsNamespace
 	conf.Kubernetes.WorkerImage = "funnel:test"
 	conf.Kubernetes.WorkerTemplate = workerAndSidecarTemplate
-	job, err := CreateJob(context.Background(), &tes.Task{Id: testTaskID}, conf, fake.NewSimpleClientset(), logger.NewLogger("test", logconfig.DefaultConfig()), nil)
+	job, err := CreateJob(context.Background(), &tes.Task{Id: testTaskID}, conf, fake.NewSimpleClientset(), logger.NewLogger("test", logger.DefaultConfig()), nil)
 	if err != nil {
 		t.Fatalf("CreateJob: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestCreateJobUsesValidatedTemplateWorkerContainerAnnotation(t *testing.T) {
 }
 
 func TestCreateJobPlanOverridesTemplateWorkerContainerAnnotation(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.Namespace = namespace
 	conf.Kubernetes.JobsNamespace = jobsNamespace
 	conf.Kubernetes.WorkerImage = "funnel:test"
@@ -111,7 +111,7 @@ func TestCreateJobPlanOverridesTemplateWorkerContainerAnnotation(t *testing.T) {
 			VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: testTaskID + "-workspace"}},
 		}},
 	}
-	job, err := CreateJob(context.Background(), &tes.Task{Id: testTaskID}, conf, fake.NewSimpleClientset(), logger.NewLogger("test", logconfig.DefaultConfig()), plan)
+	job, err := CreateJob(context.Background(), &tes.Task{Id: testTaskID}, conf, fake.NewSimpleClientset(), logger.NewLogger("test", logger.DefaultConfig()), plan)
 	if err != nil {
 		t.Fatalf("CreateJob: %v", err)
 	}
@@ -121,23 +121,23 @@ func TestCreateJobPlanOverridesTemplateWorkerContainerAnnotation(t *testing.T) {
 }
 
 func TestCreateJobRejectsUnknownTemplateWorkerContainerAnnotation(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.Namespace = namespace
 	conf.Kubernetes.JobsNamespace = jobsNamespace
 	conf.Kubernetes.WorkerImage = "funnel:test"
 	conf.Kubernetes.WorkerTemplate = strings.Replace(workerAndSidecarTemplate, ": worker", ": missing", 1)
-	if _, err := CreateJob(context.Background(), &tes.Task{Id: testTaskID}, conf, fake.NewSimpleClientset(), logger.NewLogger("test", logconfig.DefaultConfig()), nil); err == nil {
+	if _, err := CreateJob(context.Background(), &tes.Task{Id: testTaskID}, conf, fake.NewSimpleClientset(), logger.NewLogger("test", logger.DefaultConfig()), nil); err == nil {
 		t.Fatal("CreateJob accepted a worker-container annotation that names no container")
 	}
 }
 
 func TestCreateJobLeavesUnknownMultiContainerWorkerUnannotated(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.Namespace = namespace
 	conf.Kubernetes.JobsNamespace = jobsNamespace
 	conf.Kubernetes.WorkerImage = "funnel:test"
 	conf.Kubernetes.WorkerTemplate = strings.Replace(workerAndSidecarTemplate, "      annotations:\n        funnel.calypr.org/worker-container: worker\n", "", 1)
-	job, err := CreateJob(context.Background(), &tes.Task{Id: testTaskID}, conf, fake.NewSimpleClientset(), logger.NewLogger("test", logconfig.DefaultConfig()), nil)
+	job, err := CreateJob(context.Background(), &tes.Task{Id: testTaskID}, conf, fake.NewSimpleClientset(), logger.NewLogger("test", logger.DefaultConfig()), nil)
 	if err != nil {
 		t.Fatalf("CreateJob: %v", err)
 	}

@@ -8,18 +8,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/internal/database/boltdb"
-	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/logger"
-	"github.com/calypr/funnel/internal/server"
-	logconfig "github.com/calypr/funnel/logger"
-	"github.com/calypr/funnel/tes"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+
+	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
+	"github.com/calypr/funnel/internal/database/boltdb"
+	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/internal/logger"
+	"github.com/calypr/funnel/internal/server"
+	"github.com/calypr/funnel/tes"
 )
 
 func TestServerRejectsCrossOwnerEventsAndClaims(t *testing.T) {
@@ -46,9 +47,9 @@ func TestServerRejectsCrossOwnerEventsAndClaims(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	log := logger.NewLogger("auth-integration", logconfig.DefaultConfig())
+	log := logger.NewLogger("auth-integration", logger.DefaultConfig())
 	log.Discard()
-	srv := &server.Server{RPCAddress: address, HTTPPort: "0", Log: log, Tasks: &server.TaskService{Read: db, Log: log, Config: config.DefaultConfig()}, Events: &events.Service{Writer: db, Claimer: db}, TaskAccess: server.AccessOwner, BasicAuth: []*config.BasicCredential{{User: "alice", Password: "synthetic"}, {User: "bob", Password: "synthetic"}}}
+	srv := &server.Server{RPCAddress: address, HTTPPort: "0", Log: log, Tasks: &server.TaskService{Read: db, Log: log, Config: appconfig.DefaultConfig()}, Events: &events.Service{Writer: db, Claimer: db}, TaskAccess: server.AccessOwner, BasicAuth: []*config.BasicCredential{{User: "alice", Password: "synthetic"}, {User: "bob", Password: "synthetic"}}}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- srv.Serve(ctx) }()

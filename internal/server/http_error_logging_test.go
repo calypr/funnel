@@ -7,13 +7,12 @@ import (
 	"testing"
 
 	"github.com/calypr/funnel/internal/logger"
-	logconfig "github.com/calypr/funnel/logger"
 )
 
 func TestHTTPErrorLogOmitsRequestAndErrorPayloads(t *testing.T) {
 	const secret = "HTTP_ERROR_PAYLOAD_SENTINEL"
 	var output bytes.Buffer
-	log := logger.NewLogger("http-error-test", logconfig.DefaultConfig())
+	log := logger.NewLogger("http-error-test", logger.DefaultConfig())
 	log.SetOutput(&output)
 	server := &Server{Log: log}
 	response := httptest.NewRecorder()

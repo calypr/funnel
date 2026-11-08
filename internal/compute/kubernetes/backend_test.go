@@ -10,12 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/logger"
-	"github.com/calypr/funnel/internal/taskmodel"
-	logconfig "github.com/calypr/funnel/logger"
-	"github.com/calypr/funnel/tes"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	batchv1 "k8s.io/api/batch/v1"
@@ -24,6 +18,13 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
+
+	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
+	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/internal/logger"
+	"github.com/calypr/funnel/internal/taskmodel"
+	"github.com/calypr/funnel/tes"
 )
 
 // mockDatabase implements tes.ReadOnlyServer for testing CleanOrphanedResources.
@@ -188,7 +189,7 @@ func TestCheckBackendParameterSupportValidatesGPUOptions(t *testing.T) {
 		})
 	}
 
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.NodeSelector = map[string]string{"accelerator": "admin-model"}
 	backend.conf = conf
 	conflictingTask := &tes.Task{Resources: &tes.Resources{BackendParameters: map[string]string{
@@ -217,7 +218,7 @@ func TestTaskSubmission(t *testing.T) {
 	fakeClient := fake.NewSimpleClientset()
 
 	// Create a mock configuration
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.Namespace = "test-namespace"
 	conf.Kubernetes.JobsNamespace = "test-namespace"
 	conf.Kubernetes.WorkerTemplate = `
@@ -243,7 +244,7 @@ spec:
 	applyKubernetesTemplates(conf)
 
 	// Create a logger
-	log := logger.NewLogger("test", logconfig.DefaultConfig())
+	log := logger.NewLogger("test", logger.DefaultConfig())
 
 	backend := &Backend{
 		client:   fakeClient,
@@ -342,7 +343,7 @@ func TestSubmit_AppliesNodeSelectorAndTolerationsToWorkerJob(t *testing.T) {
 		t.Fatalf("failed to create fake funnel pod: %v", err)
 	}
 
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Compute = "kubernetes"
 	conf.Kubernetes.Namespace = "test-namespace"
 	conf.Kubernetes.JobsNamespace = "test-namespace"
@@ -393,7 +394,7 @@ spec:
         command: ["echo", "ok"]
 `
 
-	log := logger.NewLogger("test", logconfig.DefaultConfig())
+	log := logger.NewLogger("test", logger.DefaultConfig())
 	backend := &Backend{
 		client: fakeClient,
 		log:    log,
@@ -498,14 +499,14 @@ func TestCancel_SAInUse(t *testing.T) {
 		return true, &corev1.PodList{Items: []corev1.Pod{*pod}}, nil
 	})
 
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.Namespace = ns
 	conf.Kubernetes.JobsNamespace = ns
 	conf.Kubernetes.WorkerTemplate = "placeholder"
 
 	backend := &Backend{
 		client: fakeClient,
-		log:    logger.NewLogger("test", logconfig.DefaultConfig()),
+		log:    logger.NewLogger("test", logger.DefaultConfig()),
 		conf:   conf,
 		event:  &noopEventWriter{},
 	}
@@ -753,11 +754,11 @@ func TestHasJobFailedCreateEvent(t *testing.T) {
 				return true, &corev1.EventList{Items: filtered}, nil
 			})
 
-			conf := config.DefaultConfig()
+			conf := appconfig.DefaultConfig()
 			conf.Kubernetes.JobsNamespace = ns
 			b := &Backend{
 				client: fakeClient,
-				log:    logger.NewLogger("test", logconfig.DefaultConfig()),
+				log:    logger.NewLogger("test", logger.DefaultConfig()),
 				conf:   conf,
 			}
 
@@ -931,14 +932,14 @@ func TestReconcile_ZeroStatusFailedCreate(t *testing.T) {
 	}
 	evWriter := &capturingEventWriter{}
 
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.JobsNamespace = ns
 
 	b := &Backend{
 		client:   fakeClient,
 		event:    evWriter,
 		database: db,
-		log:      logger.NewLogger("test", logconfig.DefaultConfig()),
+		log:      logger.NewLogger("test", logger.DefaultConfig()),
 		conf:     conf,
 	}
 
@@ -963,7 +964,7 @@ func TestWriteSystemErrorPublishesDiagnosticWithTerminalState(t *testing.T) {
 		database: &mockReadOnlyServer{tasks: []*tes.Task{
 			{Id: taskID, State: tes.Queued},
 		}},
-		log: logger.NewLogger("test", logconfig.DefaultConfig()),
+		log: logger.NewLogger("test", logger.DefaultConfig()),
 	}
 
 	backend.writeSystemError(context.Background(), taskID, map[string]string{"error": "storage is read-only"}, "storage validation failed")
@@ -1127,11 +1128,11 @@ func TestFetchPodWarningEvents(t *testing.T) {
 				return true, &corev1.EventList{Items: filtered}, nil
 			})
 
-			conf := config.DefaultConfig()
+			conf := appconfig.DefaultConfig()
 			conf.Kubernetes.JobsNamespace = ns
 			b := &Backend{
 				client: fakeClient,
-				log:    logger.NewLogger("test", logconfig.DefaultConfig()),
+				log:    logger.NewLogger("test", logger.DefaultConfig()),
 				conf:   conf,
 			}
 
@@ -1206,13 +1207,13 @@ func TestCleanOrphanedResources_ExecutorJobs(t *testing.T) {
 		},
 	}
 
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.Namespace = ns
 	conf.Kubernetes.JobsNamespace = ns
 
 	backend := &Backend{
 		client:   fakeClient,
-		log:      logger.NewLogger("test", logconfig.DefaultConfig()),
+		log:      logger.NewLogger("test", logger.DefaultConfig()),
 		conf:     conf,
 		event:    &noopEventWriter{},
 		database: db,
@@ -1250,13 +1251,13 @@ func TestCleanOrphanedResources_ExecutorJobs_ActiveTask(t *testing.T) {
 		},
 	}
 
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.Namespace = ns
 	conf.Kubernetes.JobsNamespace = ns
 
 	backend := &Backend{
 		client:   fakeClient,
-		log:      logger.NewLogger("test", logconfig.DefaultConfig()),
+		log:      logger.NewLogger("test", logger.DefaultConfig()),
 		conf:     conf,
 		event:    &noopEventWriter{},
 		database: db,

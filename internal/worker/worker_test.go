@@ -12,11 +12,13 @@ import (
 	"testing/synctest"
 	"time"
 
+	"google.golang.org/protobuf/types/known/durationpb"
+
 	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/storage"
 	"github.com/calypr/funnel/tes"
-	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 type pollingTaskReader struct {
@@ -237,7 +239,7 @@ func TestWorkerRemainsInitializingDuringInputDownload(t *testing.T) {
 	dir := t.TempDir()
 	orderPath := filepath.Join(dir, "order")
 	t.Setenv("TASK_ORDER_FILE", orderPath)
-	conf := config.DefaultConfig().Worker
+	conf := appconfig.DefaultConfig().Worker
 	conf.WorkDir = dir
 	conf.PollingRate = durationpb.New(time.Hour)
 	conf.Container.DriverCommand = writeWorkerTestDriver(t)
@@ -290,7 +292,7 @@ func TestWorkerMarksRunningOnceBeforeFirstExecutorDispatch(t *testing.T) {
 	dir := t.TempDir()
 	orderPath := filepath.Join(dir, "order")
 	t.Setenv("TASK_ORDER_FILE", orderPath)
-	conf := config.DefaultConfig().Worker
+	conf := appconfig.DefaultConfig().Worker
 	conf.WorkDir = dir
 	conf.PollingRate = durationpb.New(time.Hour)
 	conf.Container.DriverCommand = writeWorkerTestDriver(t)
@@ -332,7 +334,7 @@ func TestWorkerDoesNotMarkRunningWhenExecutorLogPreparationFails(t *testing.T) {
 	dir := t.TempDir()
 	orderPath := filepath.Join(dir, "order")
 	t.Setenv("TASK_ORDER_FILE", orderPath)
-	conf := config.DefaultConfig().Worker
+	conf := appconfig.DefaultConfig().Worker
 	conf.WorkDir = dir
 	conf.PollingRate = durationpb.New(time.Hour)
 	conf.Container.DriverCommand = writeWorkerTestDriver(t)
@@ -372,7 +374,7 @@ func TestClaimedWorkerMarksRunningAtFirstExecutorDispatch(t *testing.T) {
 	dir := t.TempDir()
 	orderPath := filepath.Join(dir, "order")
 	t.Setenv("TASK_ORDER_FILE", orderPath)
-	conf := config.DefaultConfig().Worker
+	conf := appconfig.DefaultConfig().Worker
 	conf.WorkDir = dir
 	conf.PollingRate = durationpb.New(time.Hour)
 	conf.Container.DriverCommand = writeWorkerTestDriver(t)
@@ -403,7 +405,7 @@ func TestClaimedWorkerMarksRunningAtFirstExecutorDispatch(t *testing.T) {
 
 func TestWorkerDoesNotMarkRunningWithoutExecutors(t *testing.T) {
 	dir := t.TempDir()
-	conf := config.DefaultConfig().Worker
+	conf := appconfig.DefaultConfig().Worker
 	conf.WorkDir = dir
 	conf.PollingRate = durationpb.New(time.Hour)
 	writer := &startupEventWriter{}
@@ -424,7 +426,7 @@ func TestWorkerDoesNotLaunchWhenRunningStateWriteFails(t *testing.T) {
 	dir := t.TempDir()
 	orderPath := filepath.Join(dir, "order")
 	t.Setenv("TASK_ORDER_FILE", orderPath)
-	conf := config.DefaultConfig().Worker
+	conf := appconfig.DefaultConfig().Worker
 	conf.WorkDir = dir
 	conf.PollingRate = durationpb.New(time.Hour)
 	conf.Container.DriverCommand = writeWorkerTestDriver(t)
@@ -475,7 +477,7 @@ func TestWorkerRunsOnlyTasksInStartupStates(t *testing.T) {
 			}
 			t.Setenv("TASK_RUN_MARKER", marker)
 
-			conf := config.DefaultConfig().Worker
+			conf := appconfig.DefaultConfig().Worker
 			conf.WorkDir = dir
 			conf.PollingRate = durationpb.New(time.Hour)
 			conf.Container.DriverCommand = driver
@@ -550,7 +552,7 @@ func TestWorkerClaimFailureHasNoSideEffects(t *testing.T) {
 			}
 			t.Setenv("TASK_RUN_MARKER", marker)
 
-			conf := config.DefaultConfig().Worker
+			conf := appconfig.DefaultConfig().Worker
 			conf.WorkDir = workDir
 			conf.PollingRate = durationpb.New(time.Hour)
 			conf.Container.DriverCommand = driver

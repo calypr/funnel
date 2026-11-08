@@ -5,15 +5,15 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/logger"
-	logconfig "github.com/calypr/funnel/logger"
-	"github.com/calypr/funnel/tes"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
+
+	appconfig "github.com/calypr/funnel/internal/config"
+	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/internal/logger"
+	"github.com/calypr/funnel/tes"
 )
 
 type failureRetryWriter struct {
@@ -38,7 +38,7 @@ func (w *failureRetryWriter) WriteEvent(_ context.Context, e *events.Event) erro
 func TestWriteSystemErrorRetriesFailedDiagnostic(t *testing.T) {
 	task := &tes.Task{Id: "task-1", State: tes.Queued}
 	writer := &failureRetryWriter{task: task, failLog: true}
-	b := &Backend{event: writer, database: &mockReadOnlyServer{tasks: []*tes.Task{task}}, log: logger.NewLogger("test", logconfig.DefaultConfig())}
+	b := &Backend{event: writer, database: &mockReadOnlyServer{tasks: []*tes.Task{task}}, log: logger.NewLogger("test", logger.DefaultConfig())}
 	if b.writeSystemError(context.Background(), task.Id, nil, "failed to start") {
 		t.Fatal("failure reporting succeeded without its diagnostic")
 	}
@@ -58,12 +58,12 @@ func TestReconcileRetainsJobUntilFailureRecorded(t *testing.T) {
 	job := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: id, Namespace: ns}, Status: batchv1.JobStatus{Active: 1}}
 	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod", Namespace: ns, Labels: map[string]string{"job-name": id}}, Status: corev1.PodStatus{ContainerStatuses: []corev1.ContainerStatus{{Name: "worker", State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{Reason: "CreateContainerConfigError", Message: "invalid config"}}}}}}
 	client := fake.NewSimpleClientset(job, pod)
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.JobsNamespace = ns
 	conf.Kubernetes.Namespace = ns
 	task := &tes.Task{Id: id, State: tes.State_QUEUED}
 	writer := &failureRetryWriter{task: task, fail: true}
-	b := &Backend{client: client, event: writer, database: &mockReadOnlyServer{tasks: []*tes.Task{task}}, log: logger.NewLogger("test", logconfig.DefaultConfig()), conf: conf}
+	b := &Backend{client: client, event: writer, database: &mockReadOnlyServer{tasks: []*tes.Task{task}}, log: logger.NewLogger("test", logger.DefaultConfig()), conf: conf}
 	b.reconcileJob(context.Background(), job, false)
 	for _, a := range client.Actions() {
 		if a.GetVerb() == "delete" && a.GetResource().Resource == "jobs" {
@@ -91,12 +91,12 @@ func TestBacklogRetainsFailedJobUntilFailureRecorded(t *testing.T) {
 		Status:     batchv1.JobStatus{Failed: 1, Conditions: []batchv1.JobCondition{{Type: batchv1.JobFailed, Status: corev1.ConditionTrue}}},
 	}
 	client := fake.NewSimpleClientset(job)
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.JobsNamespace = ns
 	conf.Kubernetes.Namespace = ns
 	task := &tes.Task{Id: id, State: tes.Queued}
 	writer := &failureRetryWriter{task: task, fail: true}
-	b := &Backend{client: client, event: writer, database: &mockReadOnlyServer{tasks: []*tes.Task{task}}, log: logger.NewLogger("test", logconfig.DefaultConfig()), conf: conf}
+	b := &Backend{client: client, event: writer, database: &mockReadOnlyServer{tasks: []*tes.Task{task}}, log: logger.NewLogger("test", logger.DefaultConfig()), conf: conf}
 	b.cleanBacklog(context.Background(), false)
 	for _, action := range client.Actions() {
 		if action.GetVerb() == "delete" && action.GetResource().Resource == "jobs" {

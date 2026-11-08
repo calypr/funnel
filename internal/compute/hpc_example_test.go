@@ -5,13 +5,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/tes"
 )
 
 func TestExampleHPCTemplatesRenderWorkerCommand(t *testing.T) {
-	conf := config.EmptyConfig()
-	if err := config.Parse([]byte(config.Examples()["default-config"]), conf); err != nil {
+	conf := appconfig.EmptyConfig()
+	if err := appconfig.Parse([]byte(appconfig.Examples()["default-config"]), conf); err != nil {
 		t.Fatal(err)
 	}
 	conf.Worker.WorkDir = t.TempDir()

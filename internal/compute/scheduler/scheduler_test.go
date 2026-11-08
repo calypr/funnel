@@ -6,14 +6,14 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/logger"
-	logconfig "github.com/calypr/funnel/logger"
-	"github.com/calypr/funnel/tes"
 	"github.com/stretchr/testify/mock"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	appconfig "github.com/calypr/funnel/internal/config"
+	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/internal/logger"
+	"github.com/calypr/funnel/tes"
 )
 
 // queueStub returns a fixed set of tasks on every ReadQueue call.
@@ -63,7 +63,7 @@ func (s *MockSchedulerServiceServer) SetNodeState(_ context.Context, node *Node)
 }
 
 func newTestScheduler(nodes []*Node, queue TaskQueue, event events.Writer) *Scheduler {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	nodesServer := new(MockSchedulerServiceServer)
 	nodesServer.On("ListNodes", mock.Anything, mock.Anything).
 		Return(&ListNodesResponse{Nodes: nodes}, nil)
@@ -87,7 +87,7 @@ func newTestScheduler(nodes []*Node, queue TaskQueue, event events.Writer) *Sche
 		})
 	return &Scheduler{
 		Conf:  conf.Scheduler,
-		Log:   logger.NewLogger("test-scheduler", logconfig.DefaultConfig()),
+		Log:   logger.NewLogger("test-scheduler", logger.DefaultConfig()),
 		Nodes: nodesServer,
 		Queue: queue,
 		Event: event,

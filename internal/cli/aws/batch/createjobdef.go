@@ -3,11 +3,12 @@ package batch
 import (
 	"fmt"
 
+	"github.com/spf13/cobra"
+
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/internal/cli/util"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/logger"
-	logconfig "github.com/calypr/funnel/logger"
-	"github.com/spf13/cobra"
 )
 
 var force = false
@@ -29,7 +30,7 @@ var jobDefCmd = &cobra.Command{
 	Use:   "create-job-def",
 	Short: "Revise a job definition",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		log := logger.NewLogger("batch-create-job-def", logconfig.DefaultConfig())
+		log := logger.NewLogger("batch-create-job-def", logger.DefaultConfig())
 
 		if conf.Region == "" {
 			return fmt.Errorf("error must provide a region")
@@ -39,7 +40,7 @@ var jobDefCmd = &cobra.Command{
 
 		if funnelConfigFile != "" {
 			funnelConf := &config.Config{}
-			if err := config.ParseFile(funnelConfigFile, funnelConf); err != nil {
+			if err := appconfig.ParseFile(funnelConfigFile, funnelConf); err != nil {
 				return fmt.Errorf("parsing funnel config %s: %w", funnelConfigFile, err)
 			}
 			conf.Funnel = funnelConf

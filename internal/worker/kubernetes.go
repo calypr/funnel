@@ -11,12 +11,6 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/calypr/funnel/config"
-	k8sbackend "github.com/calypr/funnel/internal/compute/kubernetes"
-	"github.com/calypr/funnel/internal/compute/kubernetes/storageplan"
-	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/logger"
-	"github.com/calypr/funnel/tes"
 	v1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -27,6 +21,13 @@ import (
 	batchv1 "k8s.io/client-go/kubernetes/typed/batch/v1"
 	"k8s.io/client-go/rest"
 	"mvdan.cc/sh/v3/syntax"
+
+	k8sbackend "github.com/calypr/funnel/internal/compute/kubernetes"
+	"github.com/calypr/funnel/internal/compute/kubernetes/storageplan"
+	taskresources "github.com/calypr/funnel/internal/compute/kubernetes/taskresources"
+	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/internal/logger"
+	"github.com/calypr/funnel/tes"
 )
 
 // KubernetesCommand is responsible for configuring and running a task in a Kubernetes cluster.
@@ -718,7 +719,7 @@ func (r *DefaultWorker) newKubernetesCommand(ctx context.Context, event *events.
 		return nil, fmt.Errorf("invalid GPU backend parameters: %w", parseErr)
 	}
 
-	resources, err := config.ValidateResources(resources, r.Executor.Resources)
+	resources, err := taskresources.Validate(resources, r.Executor.Resources)
 	if err != nil {
 		return nil, err
 	}
@@ -726,7 +727,7 @@ func (r *DefaultWorker) newKubernetesCommand(ctx context.Context, event *events.
 	// Store the effective resources back to the task
 	task.Resources = resources
 
-	resourceLimits := config.GetResourceLimits(r.Executor.Resources)
+	resourceLimits := taskresources.Limits(r.Executor.Resources)
 	serviceAccount := r.Executor.ServiceAccount
 	if serviceAccount == "" {
 		serviceAccount = fmt.Sprintf("funnel-sa-%s", r.Executor.Namespace)

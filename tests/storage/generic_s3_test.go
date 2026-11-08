@@ -10,14 +10,15 @@ import (
 	awscfg "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/wait"
+
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/storage"
 	"github.com/calypr/funnel/internal/worker"
 	"github.com/calypr/funnel/tes"
 	"github.com/calypr/funnel/tests"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 const (
@@ -82,7 +83,7 @@ func TestGenericS3Storage(t *testing.T) {
 		t.Cleanup(func() { conf.GenericS3 = nil })
 	}
 
-	if !conf.GenericS3[0].Valid() {
+	if !storage.GenericS3Configured(conf.GenericS3[0]) {
 		t.Skipf("Skipping generic s3 e2e tests...")
 	}
 

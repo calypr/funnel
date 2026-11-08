@@ -1,41 +1,43 @@
-package config
+package taskresources
 
 import (
 	"fmt"
 	"math"
 
-	"github.com/calypr/funnel/tes"
 	"k8s.io/apimachinery/pkg/api/resource"
+
+	schema "github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/tes"
 )
 
-type ResourceValidationError struct {
+type ValidationError struct {
 	Field     string
 	Requested float64
 	Limit     float64
 }
 
-func (e *ResourceValidationError) Error() string {
+func (e *ValidationError) Error() string {
 	return fmt.Sprintf("requested %s %.2f exceeds limit %.2f", e.Field, e.Requested, e.Limit)
 }
 
-func ValidateResources(res *tes.Resources, k8s *KubernetesResources) (*tes.Resources, error) {
+func Validate(res *tes.Resources, k8s *schema.KubernetesResources) (*tes.Resources, error) {
 	res = applyDefaults(res, k8s)
-	limits := GetResourceLimits(k8s)
+	limits := Limits(k8s)
 
 	if limits.CpuCores > 0 && res.CpuCores > limits.CpuCores {
-		return nil, &ResourceValidationError{Field: "cpu_cores", Requested: float64(res.CpuCores), Limit: float64(limits.CpuCores)}
+		return nil, &ValidationError{Field: "cpu_cores", Requested: float64(res.CpuCores), Limit: float64(limits.CpuCores)}
 	}
 	if limits.RamGb > 0 && res.RamGb > limits.RamGb {
-		return nil, &ResourceValidationError{Field: "ram_gb", Requested: res.RamGb, Limit: limits.RamGb}
+		return nil, &ValidationError{Field: "ram_gb", Requested: res.RamGb, Limit: limits.RamGb}
 	}
 	if limits.DiskGb > 0 && res.DiskGb > limits.DiskGb {
-		return nil, &ResourceValidationError{Field: "disk_gb", Requested: res.DiskGb, Limit: limits.DiskGb}
+		return nil, &ValidationError{Field: "disk_gb", Requested: res.DiskGb, Limit: limits.DiskGb}
 	}
 
 	return res, nil
 }
 
-func GetResourceLimits(k8s *KubernetesResources) *tes.Resources {
+func Limits(k8s *schema.KubernetesResources) *tes.Resources {
 	res := &tes.Resources{}
 	if k8s == nil || k8s.Limits == nil {
 		return res
@@ -57,7 +59,7 @@ func GetResourceLimits(k8s *KubernetesResources) *tes.Resources {
 	return res
 }
 
-func applyDefaults(res *tes.Resources, k8s *KubernetesResources) *tes.Resources {
+func applyDefaults(res *tes.Resources, k8s *schema.KubernetesResources) *tes.Resources {
 	if res == nil {
 		res = &tes.Resources{}
 	}

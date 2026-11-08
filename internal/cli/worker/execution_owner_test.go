@@ -6,10 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
-	logconfig "github.com/calypr/funnel/logger"
 )
 
 func TestNewWorkerReadsKubernetesPodIdentity(t *testing.T) {
@@ -27,12 +26,12 @@ func TestNewWorkerReadsKubernetesPodIdentity(t *testing.T) {
 			t.Setenv(events.OwnerNamespaceEnv, tc.namespace)
 			t.Setenv(events.OwnerNameEnv, tc.pod)
 			t.Setenv(events.OwnerUIDEnv, tc.uid)
-			conf := config.DefaultConfig()
+			conf := appconfig.DefaultConfig()
 			conf.Compute = tc.compute
 			conf.Worker.WorkDir = t.TempDir()
 			conf.EventWriters = nil
 			opts := &Options{TaskBase64: base64.StdEncoding.EncodeToString([]byte(`{"id":"owner-test","executors":[{"image":"alpine","command":["true"]}]}`))}
-			w, err := NewWorker(context.Background(), conf, logger.NewLogger("test", logconfig.DefaultConfig()), opts)
+			w, err := NewWorker(context.Background(), conf, logger.NewLogger("test", logger.DefaultConfig()), opts)
 			if tc.wantError {
 				if err == nil || !strings.Contains(err.Error(), "worker identity") {
 					t.Fatalf("NewWorker error=%v, want identity validation failure", err)

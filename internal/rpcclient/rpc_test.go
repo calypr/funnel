@@ -7,12 +7,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/config"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 	"google.golang.org/protobuf/types/known/wrapperspb"
+
+	appconfig "github.com/calypr/funnel/internal/config"
 )
 
 func TestExponentialBackoff(t *testing.T) {
@@ -64,7 +65,7 @@ func TestDialRetriesUnavailableButNotPermissionDenied(t *testing.T) {
 	}()
 	defer grpcServer.Stop()
 
-	conf := config.DefaultConfig().RPCClient
+	conf := appconfig.DefaultConfig().RPCClient
 	conf.ServerAddress = "passthrough:///retry-test"
 	conf.MaxRetries = 2
 

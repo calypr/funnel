@@ -4,10 +4,11 @@ package storageplan
 import (
 	"fmt"
 
-	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/internal/storage"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/validation"
+
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/internal/storage"
 )
 
 func hasS3MountedReads(backends []*config.GenericS3Storage) bool {
@@ -34,7 +35,7 @@ func resolveS3ReadMounts(backends []*config.GenericS3Storage, mountsByVolume map
 		if backend == nil || backend.MountedRead == nil {
 			continue
 		}
-		if !backend.Valid() {
+		if !storage.GenericS3Configured(backend) {
 			return nil, fmt.Errorf("S3 mounted read backend %q is disabled or invalid", backend.Bucket)
 		}
 		if backend.Bucket == "" {
@@ -71,7 +72,7 @@ func resolveS3WriteMounts(backends []*config.GenericS3Storage, mountsByVolume ma
 		if backend == nil || backend.MountedWrite == nil {
 			continue
 		}
-		if !backend.Valid() {
+		if !storage.GenericS3Configured(backend) {
 			return nil, fmt.Errorf("S3 mounted write backend %q is disabled or invalid", backend.Bucket)
 		}
 		if backend.Bucket == "" {
@@ -119,7 +120,7 @@ func resolveS3WriteMounts(backends []*config.GenericS3Storage, mountsByVolume ma
 func matchingS3Backends(backends []*config.GenericS3Storage, backend *config.GenericS3Storage) int {
 	matches := 0
 	for _, candidate := range backends {
-		if candidate != nil && candidate.Valid() && candidate.Endpoint == backend.Endpoint && candidate.Bucket == backend.Bucket {
+		if candidate != nil && storage.GenericS3Configured(candidate) && candidate.Endpoint == backend.Endpoint && candidate.Bucket == backend.Bucket {
 			matches++
 		}
 	}

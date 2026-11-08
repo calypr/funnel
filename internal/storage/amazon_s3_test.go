@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 )
 
 func TestAmazonS3Transfers(t *testing.T) {
@@ -130,8 +131,8 @@ func TestAmazonS3RejectsConflictingEncryptionModes(t *testing.T) {
 }
 
 func TestAmazonS3ManagedEncryptionConfig(t *testing.T) {
-	conf := config.EmptyConfig()
-	if err := config.Parse([]byte("AmazonS3:\n  SSE:\n    S3Managed: true\n"), conf); err != nil {
+	conf := appconfig.EmptyConfig()
+	if err := appconfig.Parse([]byte("AmazonS3:\n  SSE:\n    S3Managed: true\n"), conf); err != nil {
 		t.Fatal(err)
 	}
 	if !conf.AmazonS3.SSE.S3Managed {

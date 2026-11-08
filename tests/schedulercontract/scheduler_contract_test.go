@@ -14,17 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/internal/compute/scheduler"
-	"github.com/calypr/funnel/internal/database/boltdb"
-	"github.com/calypr/funnel/internal/database/mongodb"
-	"github.com/calypr/funnel/internal/database/postgres"
-	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/logger"
-	"github.com/calypr/funnel/internal/server"
-	logconfig "github.com/calypr/funnel/logger"
-	"github.com/calypr/funnel/tes"
-	"github.com/calypr/funnel/tests/mongotest"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/jackc/pgx/v5"
 	"github.com/testcontainers/testcontainers-go"
@@ -32,6 +21,18 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/durationpb"
+
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/internal/compute/scheduler"
+	appconfig "github.com/calypr/funnel/internal/config"
+	"github.com/calypr/funnel/internal/database/boltdb"
+	"github.com/calypr/funnel/internal/database/mongodb"
+	"github.com/calypr/funnel/internal/database/postgres"
+	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/internal/logger"
+	"github.com/calypr/funnel/internal/server"
+	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/tests/mongotest"
 )
 
 // store is the backend-neutral surface used by scheduler contract cases.
@@ -69,7 +70,7 @@ func TestSchedulerContract(t *testing.T) {
 			var nextDatabase int
 			runContract(t, func(t *testing.T) store {
 				nextDatabase++
-				conf := config.DefaultConfig().MongoDB
+				conf := appconfig.DefaultConfig().MongoDB
 				conf.Addrs = []string{uri}
 				conf.Database = fmt.Sprintf("scheduler_contract_%d", nextDatabase)
 				db, err := mongodb.NewMongoDB(conf)
@@ -583,8 +584,8 @@ func createNode(t *testing.T, db store, ctx context.Context, id string, cpus uin
 
 func newScheduler(nodes scheduler.SchedulerServiceServer, queue scheduler.TaskQueue, assigner scheduler.AtomicTaskAssigner, writer events.Writer) *scheduler.Scheduler {
 	return &scheduler.Scheduler{
-		Conf:           config.DefaultConfig().Scheduler,
-		Log:            logger.NewLogger("scheduler-contract", logconfig.DefaultConfig()),
+		Conf:           appconfig.DefaultConfig().Scheduler,
+		Log:            logger.NewLogger("scheduler-contract", logger.DefaultConfig()),
 		Nodes:          nodes,
 		Queue:          queue,
 		AtomicAssigner: assigner,

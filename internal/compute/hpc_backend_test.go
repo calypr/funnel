@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/tes"
 )
 
@@ -17,7 +17,7 @@ func TestSetupTemplatedHPCSubmit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Worker.WorkDir = tmp
 
 	task := &tes.Task{
@@ -94,7 +94,7 @@ funnel worker run --taskID test-taskid
 
 func TestHPCBackendParametersAreSanitizedAndRendered(t *testing.T) {
 	tmp := t.TempDir()
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Worker.WorkDir = tmp
 
 	b := HPCBackend{Conf: conf, Name: "test", Template: `{{index .BackendParameters "gres"}} {{index .BackendParameters "partition"}} {{index .BackendParameters "unknown"}}`}
@@ -172,7 +172,7 @@ func TestHPCBackendParameterValidation(t *testing.T) {
 
 func TestHPCBackendSubmitRejectsControlCharactersBeforeRenderOrCommand(t *testing.T) {
 	tmp := t.TempDir()
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Worker.WorkDir = tmp
 	marker := filepath.Join(tmp, "submit-called")
 	submitCmd := filepath.Join(tmp, "submit.sh")

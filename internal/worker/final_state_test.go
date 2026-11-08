@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/database/boltdb"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/storage"
@@ -37,7 +37,7 @@ func TestWorkerReportsFinalStateWriteFailure(t *testing.T) {
 	if err := os.WriteFile(driver, []byte("#!/bin/sh\nexit 0\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Worker.WorkDir = dir
 	conf.Worker.Container.DriverCommand = driver
 	conf.Worker.Container.PullCommand = "pull"
@@ -77,7 +77,7 @@ func TestWorkerPreservesExecutorErrorWhenFinalStateWriteFails(t *testing.T) {
 	if err := os.WriteFile(driver, []byte("#!/bin/sh\nexit 7\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Worker.WorkDir = dir
 	conf.Worker.Container.DriverCommand = driver
 	conf.Worker.Container.PullCommand = "pull"

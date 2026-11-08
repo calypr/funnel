@@ -6,12 +6,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/calypr/funnel/logger"
 	durationpb "google.golang.org/protobuf/types/known/durationpb"
+
+	schema "github.com/calypr/funnel/config"
+	logging "github.com/calypr/funnel/internal/logger"
 )
 
 // DefaultConfig returns configuration with simple defaults.
-func DefaultConfig() *Config {
+func DefaultConfig() *schema.Config {
 	cwd, err := os.Getwd()
 	if err != nil {
 		panic(err)
@@ -26,7 +28,7 @@ func DefaultConfig() *Config {
 		allowedDirs = append(allowedDirs, os.Getenv("TMPDIR"))
 	}
 
-	server := &Server{
+	server := &schema.Server{
 		HostName:         "localhost",
 		HTTPPort:         "8000",
 		RPCPort:          "9090",
@@ -35,52 +37,52 @@ func DefaultConfig() *Config {
 		TaskAccess:       "All",
 	}
 
-	c := &Config{
+	c := &schema.Config{
 		Compute:      "local",
 		Database:     "boltdb",
 		EventWriters: []string{"log"},
 		// funnel components
 		Server: server,
-		RPCClient: &RPCClient{
+		RPCClient: &schema.RPCClient{
 			ServerAddress: server.RPCAddress(),
-			Timeout: &TimeoutConfig{
-				TimeoutOption: &TimeoutConfig_Duration{
+			Timeout: &schema.TimeoutConfig{
+				TimeoutOption: &schema.TimeoutConfig_Duration{
 					Duration: durationpb.New(time.Second * 60),
 				},
 			},
 			MaxRetries: 10,
-			Credential: &BasicCredential{},
+			Credential: &schema.BasicCredential{},
 		},
-		Scheduler: &Scheduler{
+		Scheduler: &schema.Scheduler{
 			ScheduleRate:  durationpb.New(time.Second),
 			ScheduleChunk: 10,
-			NodePingTimeout: &TimeoutConfig{
-				TimeoutOption: &TimeoutConfig_Duration{
+			NodePingTimeout: &schema.TimeoutConfig{
+				TimeoutOption: &schema.TimeoutConfig_Duration{
 					Duration: durationpb.New(time.Minute),
 				},
 			},
-			NodeInitTimeout: &TimeoutConfig{
-				TimeoutOption: &TimeoutConfig_Duration{
+			NodeInitTimeout: &schema.TimeoutConfig{
+				TimeoutOption: &schema.TimeoutConfig_Duration{
 					Duration: durationpb.New(time.Minute * 5),
 				},
 			},
-			NodeDeadTimeout: &TimeoutConfig{
-				TimeoutOption: &TimeoutConfig_Duration{
+			NodeDeadTimeout: &schema.TimeoutConfig{
+				TimeoutOption: &schema.TimeoutConfig_Duration{
 					Duration: durationpb.New(time.Minute * 5),
 				},
 			},
 		},
-		Node: &Node{
-			Timeout: &TimeoutConfig{
-				TimeoutOption: &TimeoutConfig_Disabled{
+		Node: &schema.Node{
+			Timeout: &schema.TimeoutConfig{
+				TimeoutOption: &schema.TimeoutConfig_Disabled{
 					Disabled: true,
 				},
 			},
 			UpdateRate: durationpb.New(time.Second * 5),
 			Metadata:   map[string]string{},
-			Resources:  &Resources{},
+			Resources:  &schema.Resources{},
 		},
-		Worker: &Worker{
+		Worker: &schema.Worker{
 			WorkDir:              workDir,
 			PollingRate:          durationpb.New(time.Second * 5),
 			LogUpdateRate:        durationpb.New(time.Second * 5),
@@ -88,7 +90,7 @@ func DefaultConfig() *Config {
 			MaxParallelTransfers: 10,
 			// `docker run` command flags
 			// https://docs.docker.com/reference/cli/docker/container/run/
-			Container: &ContainerConfig{
+			Container: &schema.ContainerConfig{
 				DriverCommand: "docker",
 				RunCommand: "run -i --read-only " +
 					"{{.GPUArgs}} " +
@@ -120,85 +122,85 @@ func DefaultConfig() *Config {
 			},
 		},
 		Plugins: nil,
-		Logger:  logger.DefaultConfig(),
+		Logger:  logging.DefaultConfig(),
 		// databases / event handlers
-		BoltDB: &BoltDB{
+		BoltDB: &schema.BoltDB{
 			Path: path.Join(workDir, "funnel.db"),
 		},
-		Badger: &Badger{
+		Badger: &schema.Badger{
 			Path: path.Join(workDir, "funnel.badger.db"),
 		},
-		DynamoDB: &DynamoDB{
+		DynamoDB: &schema.DynamoDB{
 			TableBasename: "funnel",
-			AWSConfig:     &AWSConfig{},
+			AWSConfig:     &schema.AWSConfig{},
 		},
-		MongoDB: &MongoDB{
+		MongoDB: &schema.MongoDB{
 			Addrs: []string{"localhost"},
-			Timeout: &TimeoutConfig{
-				TimeoutOption: &TimeoutConfig_Duration{
+			Timeout: &schema.TimeoutConfig{
+				TimeoutOption: &schema.TimeoutConfig_Duration{
 					Duration: durationpb.New(time.Minute * 5),
 				},
 			},
 			Database: "funnel",
 		},
-		Postgres: &Postgres{
+		Postgres: &schema.Postgres{
 			Host:          "localhost:5432",
 			Database:      "funnel",
 			User:          "funnel",
 			Password:      "example",
 			AdminUser:     "postgres",
 			AdminPassword: "example",
-			Timeout: &TimeoutConfig{
-				TimeoutOption: &TimeoutConfig_Duration{
+			Timeout: &schema.TimeoutConfig{
+				TimeoutOption: &schema.TimeoutConfig_Duration{
 					Duration: durationpb.New(time.Second * 30),
 				},
 			},
 		},
 		// event writers
-		Kafka: &Kafka{
+		Kafka: &schema.Kafka{
 			Topic: "funnel",
 		},
 		// storage
-		LocalStorage: &LocalStorage{
+		LocalStorage: &schema.LocalStorage{
 			AllowedDirs: allowedDirs,
 		},
-		HTTPStorage: &HTTPStorage{
-			Timeout: &TimeoutConfig{
-				TimeoutOption: &TimeoutConfig_Disabled{Disabled: true},
+		HTTPStorage: &schema.HTTPStorage{
+			Timeout: &schema.TimeoutConfig{
+				TimeoutOption: &schema.TimeoutConfig_Disabled{Disabled: true},
 			},
 		},
-		FTPStorage: &FTPStorage{
-			Timeout: &TimeoutConfig{
-				TimeoutOption: &TimeoutConfig_Duration{
+		FTPStorage: &schema.FTPStorage{
+			Timeout: &schema.TimeoutConfig{
+				TimeoutOption: &schema.TimeoutConfig_Duration{
 					Duration: durationpb.New(time.Second * 10),
 				},
 			},
 			User:     "anonymous",
 			Password: "anonymous",
 		},
-		AmazonS3: &AmazonS3Storage{
-			SSE: &SSE{},
-			AWSConfig: &AWSConfig{
+		AmazonS3: &schema.AmazonS3Storage{
+			SSE: &schema.SSE{},
+			AWSConfig: &schema.AWSConfig{
 				MaxRetries: 10,
 			},
 		},
-		Swift: &SwiftStorage{
+		Swift: &schema.SwiftStorage{
 			MaxRetries:     20,
 			ChunkSizeBytes: int64(500 * 1000 * 1000),
 		},
-		HTCondor:   &HPCBackend{},
-		Slurm:      &HPCBackend{},
-		PBS:        &HPCBackend{},
-		GridEngine: &GridEngine{},
-		AWSBatch:   &AWSBatch{AWSConfig: &AWSConfig{}},
-		GCPBatch:   &GCPBatch{},
-		Kubernetes: &Kubernetes{
+		HTCondor:   &schema.HPCBackend{},
+		Slurm:      &schema.HPCBackend{},
+		PBS:        &schema.HPCBackend{},
+		GridEngine: &schema.GridEngine{},
+		AWSBatch:   &schema.AWSBatch{AWSConfig: &schema.AWSConfig{}},
+		GCPBatch:   &schema.GCPBatch{},
+		Kubernetes: &schema.Kubernetes{
 			ForbiddenPathPrefixes: []string{"/dev", "/proc", "/sys", "/run", "/var/run"},
 		},
-		GoogleStorage: &GoogleCloudStorage{},
-		PubSub:        &PubSub{},
-		Datastore:     &Datastore{},
-		GenericS3:     []*GenericS3Storage{},
+		GoogleStorage: &schema.GoogleCloudStorage{},
+		PubSub:        &schema.PubSub{},
+		Datastore:     &schema.Datastore{},
+		GenericS3:     []*schema.GenericS3Storage{},
 	}
 
 	// compute

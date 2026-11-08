@@ -19,6 +19,7 @@ import (
 
 	tesclient "github.com/calypr/funnel/client/tes"
 	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/database/boltdb"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/server"
@@ -66,7 +67,7 @@ func TestListTasksLargeResponses(t *testing.T) {
 			}
 			listener := bufconn.Listen(1024 * 1024)
 			rpc := grpc.NewServer(grpc.MaxSendMsgSize(8*1024*1024), grpc.UnaryInterceptor(server.NewAuthentication(nil, nil, server.AccessAll).Interceptor))
-			serviceConf := config.DefaultConfig()
+			serviceConf := appconfig.DefaultConfig()
 			tesrpc.RegisterTaskServiceServer(rpc, &server.TaskService{Read: db, Config: serviceConf})
 			serveDone := make(chan error, 1)
 			go func() { serveDone <- rpc.Serve(listener) }()
@@ -145,7 +146,7 @@ func TestLargeListThroughConfiguredHTTPGateway(t *testing.T) {
 	}
 	f := newServerTestFunnel(t, freeTCPPort(t, "127.0.0.1"), freeTCPPort(t, ""))
 	f.Conf.Server.MaxResponseBytes = 8 * 1024 * 1024
-	f.Server.MaxResponseBytes = f.Conf.Server.ResponseBytes()
+	f.Server.MaxResponseBytes = appconfig.ResponseBytes(f.Conf.Server)
 	f.Server.Tasks = &server.TaskService{Read: db, Config: f.Conf}
 	t.Cleanup(f.Cleanup)
 	f.StartServer()

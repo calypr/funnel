@@ -9,15 +9,17 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/durationpb"
+
 	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/database/boltdb"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/storage"
 	"github.com/calypr/funnel/internal/taskmodel"
 	"github.com/calypr/funnel/internal/worker"
 	"github.com/calypr/funnel/tes"
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 func TestExecutionAdmissionDockerIntegration(t *testing.T) {
@@ -44,7 +46,7 @@ func TestExecutionAdmissionDockerIntegration(t *testing.T) {
 	errs := make(chan error, 2)
 	var workers sync.WaitGroup
 	for i := 0; i < 2; i++ {
-		conf := config.DefaultConfig().Worker
+		conf := appconfig.DefaultConfig().Worker
 		conf.WorkDir = t.TempDir()
 		conf.PollingRate = durationpb.New(20 * time.Millisecond)
 		// Avoid Docker name collisions as a second admission mechanism. The durable

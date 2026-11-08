@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
 	funnelworker "github.com/calypr/funnel/internal/worker"
@@ -26,7 +27,7 @@ func TestPersistentPreRun(t *testing.T) {
 	}
 	workDir := path.Join(cwd, "funnel-work-dir")
 
-	fileConf := config.DefaultConfig()
+	fileConf := appconfig.DefaultConfig()
 	tmp := configtest.WriteFile(t, fileConf, "testconfig.yaml")
 
 	c, h := newCommandHooks()

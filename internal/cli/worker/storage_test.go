@@ -9,16 +9,17 @@ import (
 	"strings"
 	"testing"
 
+	"google.golang.org/protobuf/encoding/protojson"
+
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/internal/compute/kubernetes/storageplan"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/logger"
-	logconfig "github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/tes"
-	"google.golang.org/protobuf/encoding/protojson"
 )
 
 func TestWorkerUsesSubmittedStorageSnapshot(t *testing.T) {
-	submitted := config.DefaultConfig()
+	submitted := appconfig.DefaultConfig()
 	submitted.Kubernetes.JobsNamespace = "submitted-tasks"
 	submitted.Worker.WorkDir = "/submitted-work"
 	mount := t.TempDir()
@@ -43,7 +44,7 @@ func TestWorkerUsesSubmittedStorageSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv(storageplan.Env, snapshot)
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Compute = "kubernetes"
 	conf.EventWriters = nil
 	conf.GoogleStorage.Disabled = true
@@ -53,7 +54,7 @@ func TestWorkerUsesSubmittedStorageSnapshot(t *testing.T) {
 	conf.Kubernetes.Storage = &config.KubernetesStorage{}
 	conf.GenericS3 = []*config.GenericS3Storage{{Endpoint: "http://s3.invalid", Bucket: "bucket", Key: "new-key", Secret: "new-secret", MountedRead: &config.S3MountedRead{Prefix: "wrong", Volume: "unknown-static-mount"}}}
 	opts := &Options{TaskBase64: base64.StdEncoding.EncodeToString([]byte(`{"id":"snapshot-test","executors":[{"image":"alpine:3.21","command":["true"]}]}`))}
-	w, err := NewWorker(context.Background(), conf, logger.NewLogger("test", logconfig.DefaultConfig()), opts)
+	w, err := NewWorker(context.Background(), conf, logger.NewLogger("test", logger.DefaultConfig()), opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,12 +82,12 @@ func TestWorkerRejectsMountedReadWithoutSubmittedPlan(t *testing.T) {
 	t.Setenv(storageplan.Env, "")
 	for _, compute := range []string{"local", "kubernetes"} {
 		t.Run(compute, func(t *testing.T) {
-			conf := config.DefaultConfig()
+			conf := appconfig.DefaultConfig()
 			conf.Compute = compute
 			conf.EventWriters = nil
 			conf.GenericS3 = []*config.GenericS3Storage{{MountedRead: &config.S3MountedRead{Volume: "reference"}}}
 			opts := &Options{TaskBase64: base64.StdEncoding.EncodeToString([]byte(`{"id":"task","executors":[{"image":"alpine","command":["true"]}]}`))}
-			_, err := NewWorker(context.Background(), conf, logger.NewLogger("test", logconfig.DefaultConfig()), opts)
+			_, err := NewWorker(context.Background(), conf, logger.NewLogger("test", logger.DefaultConfig()), opts)
 			if err == nil || !strings.Contains(err.Error(), "requires a submitted Kubernetes storage plan") {
 				t.Fatalf("unresolved mounted read accepted: %v", err)
 			}
@@ -95,7 +96,7 @@ func TestWorkerRejectsMountedReadWithoutSubmittedPlan(t *testing.T) {
 }
 
 func TestWorkerEmptySnapshotDoesNotActivateStaticMountedRead(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Compute = "kubernetes"
 	conf.EventWriters = nil
 	conf.AmazonS3.Disabled = true
@@ -113,7 +114,7 @@ func TestWorkerEmptySnapshotDoesNotActivateStaticMountedRead(t *testing.T) {
 	t.Setenv(storageplan.Env, snapshot)
 	conf.GenericS3 = []*config.GenericS3Storage{{Endpoint: "http://s3.invalid", Bucket: "bucket", Key: "key", Secret: "secret", MountedRead: &config.S3MountedRead{Volume: "missing"}, MountedWrite: &config.S3MountedWrite{Volume: "missing-output"}}}
 	opts := &Options{TaskBase64: base64.StdEncoding.EncodeToString([]byte(`{"id":"snapshot-test","executors":[{"image":"alpine","command":["true"]}]}`))}
-	w, err := NewWorker(context.Background(), conf, logger.NewLogger("test", logconfig.DefaultConfig()), opts)
+	w, err := NewWorker(context.Background(), conf, logger.NewLogger("test", logger.DefaultConfig()), opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,12 +128,12 @@ func TestWorkerRejectsMountedWriteWithoutSubmittedPlan(t *testing.T) {
 	t.Setenv(storageplan.Env, "")
 	for _, compute := range []string{"local", "kubernetes"} {
 		t.Run(compute, func(t *testing.T) {
-			conf := config.DefaultConfig()
+			conf := appconfig.DefaultConfig()
 			conf.Compute = compute
 			conf.EventWriters = nil
 			conf.GenericS3 = []*config.GenericS3Storage{{MountedWrite: &config.S3MountedWrite{Volume: "outputs"}}}
 			opts := &Options{TaskBase64: base64.StdEncoding.EncodeToString([]byte(`{"id":"task","executors":[{"image":"alpine","command":["true"]}]}`))}
-			_, err := NewWorker(context.Background(), conf, logger.NewLogger("test", logconfig.DefaultConfig()), opts)
+			_, err := NewWorker(context.Background(), conf, logger.NewLogger("test", logger.DefaultConfig()), opts)
 			if err == nil || !strings.Contains(err.Error(), "requires a submitted Kubernetes storage plan") {
 				t.Fatalf("unresolved mounted write accepted: %v", err)
 			}

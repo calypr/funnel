@@ -9,14 +9,14 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/batch"
 	"github.com/aws/aws-sdk-go-v2/service/batch/types"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
 	"github.com/calypr/funnel/internal/taskmodel"
-	logconfig "github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/tes"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // mockClient implements the client interface for testing.
@@ -57,7 +57,7 @@ func (n *noopEventWriter) WriteEvent(ctx context.Context, ev *events.Event) erro
 func (n *noopEventWriter) Close() {}
 
 func TestCreateJobc(t *testing.T) {
-	log := logger.NewLogger("test", logconfig.DefaultConfig())
+	log := logger.NewLogger("test", logger.DefaultConfig())
 
 	var capturedReq *batch.SubmitJobInput
 	mockClient := &mockClient{
@@ -274,7 +274,7 @@ func TestNewBackendPreservesRetryAttempts(t *testing.T) {
 				AWSConfig:         &config.AWSConfig{Region: "us-east-1", DisableAutoCredentialLoad: true, MaxRetries: test.maxRetries},
 				DisableReconciler: true,
 			}
-			backend, err := NewBackend(t.Context(), conf, nil, &noopEventWriter{}, logger.NewLogger("test", logconfig.DefaultConfig()))
+			backend, err := NewBackend(t.Context(), conf, nil, &noopEventWriter{}, logger.NewLogger("test", logger.DefaultConfig()))
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -4,14 +4,14 @@ import (
 	"context"
 	"testing"
 
-	"github.com/calypr/funnel/config"
+	bolt "go.etcd.io/bbolt"
+
 	"github.com/calypr/funnel/internal/compute/scheduler"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
 	"github.com/calypr/funnel/internal/server"
-	logconfig "github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/tes"
-	bolt "go.etcd.io/bbolt"
 )
 
 func TestPersistedLegacyTrapCanBeCanceledOrCleaned(t *testing.T) {
@@ -45,11 +45,11 @@ func TestPersistedLegacyTrapCanBeCanceledOrCleaned(t *testing.T) {
 				assertBoltLegacyReservation(t, db, ctx, id, node.Id, 3, 7, 19, 1)
 
 				if target == tes.State_CANCELED {
-					log := logger.NewLogger("legacy-transition", logconfig.DefaultConfig())
+					log := logger.NewLogger("legacy-transition", logger.DefaultConfig())
 					log.Discard()
 					service := &server.TaskService{
 						Read: db, Event: db, Compute: events.Backend{},
-						Config: config.DefaultConfig(), Log: log,
+						Config: appconfig.DefaultConfig(), Log: log,
 					}
 					if _, err := service.CancelTask(ctx, &tes.CancelTaskRequest{Id: id}); err != nil {
 						t.Fatalf("CancelTask from persisted %s: %v", legacy, err)

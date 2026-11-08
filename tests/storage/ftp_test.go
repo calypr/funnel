@@ -28,7 +28,7 @@ func TestFTPStorage(t *testing.T) {
 		}
 	}()
 
-	if !conf.FTPStorage.Valid() {
+	if !storage.FTPConfigured(conf.FTPStorage) {
 		t.Skipf("Skipping FTP storage e2e tests...")
 	}
 
@@ -220,7 +220,7 @@ func TestFTPStorageConfigAuth(t *testing.T) {
 
 	conf := tests.DefaultConfig()
 
-	if !conf.FTPStorage.Valid() {
+	if !storage.FTPConfigured(conf.FTPStorage) {
 		t.Skipf("Skipping FTP storage e2e tests...")
 	}
 

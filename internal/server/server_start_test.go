@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/calypr/funnel/internal/logger"
-	logconfig "github.com/calypr/funnel/logger"
 )
 
 func TestServeReturnsHTTPBindErrorAndReleasesRPCListener(t *testing.T) {
@@ -100,7 +99,7 @@ func TestServeCancellationWaitsForBothListenersToStop(t *testing.T) {
 }
 
 func newTestServer(rpcAddress, httpPort string) *Server {
-	log := logger.NewLogger("server-test", logconfig.DefaultConfig())
+	log := logger.NewLogger("server-test", logger.DefaultConfig())
 	log.Discard()
 	return &Server{
 		RPCAddress: rpcAddress,

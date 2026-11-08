@@ -63,12 +63,18 @@ and the client's formatting-only `Marshaler` field have been removed.
   projections, log mutation, and server pagination policy.
 - `internal/tesrpc`: generated gRPC and HTTP gateway service bindings.
 - `internal/pluginmanager`: application plugin loading.
-- `internal/logger`: runtime logging and server interceptors.
+- `internal/config`: application defaults, YAML loading/writing, templates and
+  examples, redaction, and response-limit resolution.
+- `internal/logger`: runtime logging, logging defaults, and server interceptors.
+- `internal/storage`: storage enablement and credential/environment selection.
+- `internal/compute/kubernetes/taskresources`: Kubernetes task defaults and limits.
 - `internal/webdash`: Go dashboard serving and embedded build output. Frontend
   source and npm commands remain in `webdash/`.
 
-The `config`, logger schemas/defaults, `plugins/proto`, and `plugins/shared` remain
-public for existing plugin integrations. Plugin configuration, TES messages,
+The public `config` and `logger` packages retain generated schemas at their
+existing import paths for plugin compatibility. `config` also retains pure
+server-address helpers and Gob oneof registration required by external plugins.
+`plugins/proto` and `plugins/shared` retain the public plugin contracts. Plugin configuration, TES messages,
 protobuf field numbers, service names, and JSON names remain compatible.
 Application implementation imports such as `funnel/server`, `funnel/worker`,
 and TES server helpers are no longer public Go APIs. External applications should
@@ -91,3 +97,11 @@ external imports of server implementations. CI runs this check on pull requests.
 This remains one Go module. The client compiles without server, cloud, database,
 Kubernetes, gRPC, or gateway packages, but independent client dependency versions
 and releases would require a separate module.
+
+Configuration type imports remain `github.com/calypr/funnel/config` and
+`github.com/calypr/funnel/logger`. Application helpers such as `DefaultConfig`,
+`ParseFile`, `ToYamlFile`, and `Safe` are private to Funnel. Plugins should use
+the configuration supplied by the host and protobuf serialization directly.
+The public schemas have no dependency on YAML loaders, validators, Kubernetes,
+or application internals. CI checks this and exercises plugin protobuf and Gob
+serialization from a separate module.

@@ -7,13 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/internal/compute/kubernetes/storageplan"
-	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/logger"
-	logconfig "github.com/calypr/funnel/logger"
-	plugin "github.com/calypr/funnel/plugins/proto"
-	"github.com/calypr/funnel/tes"
 	authorizationv1 "k8s.io/api/authorization/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -24,6 +17,13 @@ import (
 	"k8s.io/client-go/rest"
 	fakerest "k8s.io/client-go/rest/fake"
 	k8stesting "k8s.io/client-go/testing"
+
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/internal/compute/kubernetes/storageplan"
+	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/internal/logger"
+	plugin "github.com/calypr/funnel/plugins/proto"
+	"github.com/calypr/funnel/tes"
 )
 
 func respondToPVPermissionReviews(client *fake.Clientset, respond func(*authorizationv1.SelfSubjectAccessReview) (*authorizationv1.SelfSubjectAccessReview, error)) {
@@ -113,7 +113,7 @@ func TestNativePVPermissionDenialsLeaveNoWorkloadResources(t *testing.T) {
 				return response, nil
 			})
 			conf := bindingConfig(t, createdStorage(t, true))
-			backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logconfig.DefaultConfig())}
+			backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logger.DefaultConfig())}
 			taskID := tc.taskID
 			err := backend.Submit(context.Background(), &tes.Task{Id: taskID}, conf)
 			if err == nil {
@@ -159,7 +159,7 @@ func TestNativePVPermissionsUseResolvedNames(t *testing.T) {
 		return response, nil
 	})
 	conf := bindingConfig(t, multiPVStorage(t))
-	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logconfig.DefaultConfig())}
+	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logger.DefaultConfig())}
 	if err := backend.Submit(context.Background(), &tes.Task{Id: "multi"}, conf); err != nil {
 		t.Fatalf("name-limited permissions should allow the resolved PVs even with an evaluation error: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestNativePVPermissionsUseResolvedNames(t *testing.T) {
 func TestNativePVPermissionsAreCheckedOnEverySubmission(t *testing.T) {
 	client := bindingClient()
 	conf := bindingConfig(t, createdStorage(t, true))
-	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logconfig.DefaultConfig())}
+	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logger.DefaultConfig())}
 	ctx := context.Background()
 	task := &tes.Task{Id: "repeat"}
 	if err := backend.Submit(ctx, task, conf); err != nil {
@@ -217,7 +217,7 @@ func TestNativePVPermissionPreflightUsesPluginResolvedPlan(t *testing.T) {
 	})
 	conf := bindingConfig(t, nil)
 	conf.Plugins = &config.Plugins{}
-	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logconfig.DefaultConfig())}
+	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logger.DefaultConfig())}
 	effectiveConfig := bindingConfig(t, createdStorage(t, true))
 	effectiveConfig.Plugins = conf.Plugins
 	ctx := context.WithValue(context.Background(), "pluginResponse", &plugin.JobResponse{Config: effectiveConfig})
@@ -255,7 +255,7 @@ func TestNoPersistentVolumePlansSkipPermissionReviews(t *testing.T) {
 				}
 			}
 			conf := bindingConfig(t, tc.storage)
-			backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logconfig.DefaultConfig())}
+			backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logger.DefaultConfig())}
 			if err := backend.Submit(context.Background(), &tes.Task{Id: "no-pv"}, conf); err != nil {
 				t.Fatalf("submit without task-owned PV: %v", err)
 			}

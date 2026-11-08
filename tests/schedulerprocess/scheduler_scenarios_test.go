@@ -11,14 +11,16 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/types/known/durationpb"
+
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/internal/compute/scheduler"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/rpcclient"
 	"github.com/calypr/funnel/internal/server"
 	"github.com/calypr/funnel/internal/tesrpc"
 	"github.com/calypr/funnel/tes"
-	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 func TestSchedulerProcesses(t *testing.T) {
@@ -304,7 +306,7 @@ func seedNode(t *testing.T, store schedulerStore, id string, cpus uint32) {
 
 func submitTask(t *testing.T, port, id, markers string, hold bool) (string, error) {
 	t.Helper()
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.RPCClient.ServerAddress = net.JoinHostPort("127.0.0.1", port)
 	conf.RPCClient.Timeout = &config.TimeoutConfig{TimeoutOption: &config.TimeoutConfig_Duration{Duration: durationpb.New(10 * time.Second)}}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)

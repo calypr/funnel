@@ -6,13 +6,14 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/calypr/funnel/config"
+	"github.com/spf13/cobra"
+
 	"github.com/calypr/funnel/internal/cli/lifecycle"
 	"github.com/calypr/funnel/internal/cli/node"
 	"github.com/calypr/funnel/internal/cli/server"
+	appconfig "github.com/calypr/funnel/internal/config"
 	gce "github.com/calypr/funnel/internal/gceconfig"
 	"github.com/calypr/funnel/internal/logger"
-	"github.com/spf13/cobra"
 )
 
 // Cmd represents the 'funnel gce" CLI command set.
@@ -31,7 +32,7 @@ var runCmd = &cobra.Command{
 		ctx = lifecycle.SignalContext(ctx, time.Second*5, syscall.SIGINT, syscall.SIGTERM)
 		defer cancel()
 
-		conf := config.DefaultConfig()
+		conf := appconfig.DefaultConfig()
 
 		// Check that this is a GCE VM environment.
 		// If not, fail.

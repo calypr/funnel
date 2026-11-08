@@ -11,14 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/internal/database/boltdb"
-	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/logger"
-	"github.com/calypr/funnel/internal/taskmodel"
-	"github.com/calypr/funnel/internal/tesrpc"
-	logconfig "github.com/calypr/funnel/logger"
-	"github.com/calypr/funnel/tes"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -28,6 +20,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+
+	appconfig "github.com/calypr/funnel/internal/config"
+	"github.com/calypr/funnel/internal/database/boltdb"
+	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/internal/logger"
+	"github.com/calypr/funnel/internal/taskmodel"
+	"github.com/calypr/funnel/internal/tesrpc"
+	"github.com/calypr/funnel/tes"
 )
 
 type rejectCompletionRPC struct {
@@ -101,7 +101,7 @@ func TestWorkerFinalStateFailureRecoveryLive(t *testing.T) {
 			t.Errorf("deleting namespace: %v", err)
 		}
 	})
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.BoltDB.Path = filepath.Join(t.TempDir(), "tasks.db")
 	conf.Kubernetes.Namespace, conf.Kubernetes.JobsNamespace = ns, ns
 	conf.Kubernetes.ConfigMapTemplate, conf.Kubernetes.ServiceAccountTemplate, conf.Kubernetes.RoleTemplate, conf.Kubernetes.RoleBindingTemplate = "", "", "", ""
@@ -135,13 +135,13 @@ func TestWorkerFinalStateFailureRecoveryLive(t *testing.T) {
 		}
 	}()
 	port := listener.Addr().(*net.TCPAddr).Port
-	workerConfig := config.EmptyConfig()
+	workerConfig := appconfig.EmptyConfig()
 	workerConfig.RPCClient.ServerAddress = fmt.Sprintf("host.k3d.internal:%d", port)
 	workerConfig.Worker.WorkDir = "/tmp/funnel-work"
 	workerConfig.Worker.Container.DriverCommand = "/bin/true"
 	workerConfig.Worker.Container.PullCommand = "pull"
 	workerConfig.Worker.Container.RunCommand = "run {{.Image}} {{.Command}}"
-	configData, err := config.ToYaml(workerConfig)
+	configData, err := appconfig.ToYaml(workerConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +200,7 @@ func TestWorkerFinalStateFailureRecoveryLive(t *testing.T) {
 	if got.State != tes.Running {
 		t.Fatalf("after rejected final write state=%s, want RUNNING", got.State)
 	}
-	backend := &Backend{client: client, conf: conf, event: db, database: db, log: logger.NewLogger("final-state-live", logconfig.DefaultConfig())}
+	backend := &Backend{client: client, conf: conf, event: db, database: db, log: logger.NewLogger("final-state-live", logger.DefaultConfig())}
 	backend.reconcileOnce(ctx, false)
 	got, err = db.GetTask(ctx, &tes.GetTaskRequest{Id: task.Id, View: tes.View_FULL.String()})
 	if err != nil {

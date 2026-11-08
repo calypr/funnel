@@ -9,6 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/internal/awsclient"
 	"github.com/calypr/funnel/internal/events"
@@ -21,7 +22,7 @@ import (
 func TestAmazonS3Storage(t *testing.T) {
 	tests.SetLogOutput(log, t)
 
-	if !conf.AmazonS3.Valid() {
+	if !storage.AmazonS3Configured(conf.AmazonS3) {
 		t.Skipf("Skipping amazon s3 e2e tests...")
 	}
 

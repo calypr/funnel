@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/storage"
 	"github.com/calypr/funnel/tes"
@@ -30,7 +30,7 @@ func TestWorkerContainerTagsRespectOptInAndRemainLiteral(t *testing.T) {
 			if err := os.WriteFile(driver, []byte(script), 0700); err != nil {
 				t.Fatal(err)
 			}
-			conf := config.DefaultConfig().Worker
+			conf := appconfig.DefaultConfig().Worker
 			conf.WorkDir = filepath.Join(dir, "work")
 			conf.Container.DriverCommand = driver
 			conf.Container.EnableTags = enabled

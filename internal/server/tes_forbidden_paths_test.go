@@ -4,11 +4,11 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 )
 
 func TestForbiddenPathPrefixesAreKubernetesOnly(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	service := &TaskService{Config: conf}
 
 	conf.Compute = "local"

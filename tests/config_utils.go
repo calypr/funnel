@@ -13,10 +13,12 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/types/known/durationpb"
+
 	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/logger"
 	logconfig "github.com/calypr/funnel/logger"
-	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 var configFile string
@@ -29,7 +31,7 @@ func ParseConfig() {
 // DefaultConfig returns a default configuration useful for testing,
 // including temp storage dirs, random ports, S3 + minio config, etc.
 func DefaultConfig() *config.Config {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.AmazonS3.Disabled = true
 	conf.GoogleStorage.Disabled = true
 	conf.Swift.Disabled = true
@@ -37,7 +39,7 @@ func DefaultConfig() *config.Config {
 
 	// Get config from test command line flag, if present.
 	if configFile != "" {
-		err := config.ParseFile(configFile, conf)
+		err := appconfig.ParseFile(configFile, conf)
 		if err != nil {
 			panic(err)
 		}
@@ -170,7 +172,7 @@ func TestingWriter(t *testing.T) io.Writer {
 
 // LogConfig returns logger configuration useful for tests, which has a text indent.
 func LogConfig() *logconfig.LoggerConfig {
-	conf := logconfig.DefaultConfig()
+	conf := logger.DefaultConfig()
 	conf.TextFormat.ForceColors = true
 	conf.TextFormat.Indent = "        "
 	return conf

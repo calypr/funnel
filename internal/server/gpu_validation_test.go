@@ -4,14 +4,14 @@ import (
 	"context"
 	"testing"
 
-	"github.com/calypr/funnel/config"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
 	"github.com/calypr/funnel/internal/taskmodel"
-	logconfig "github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/tes"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 type gpuTestComputer struct{ mountPathComputer }
@@ -35,9 +35,9 @@ func TestCreateTaskRejectsInvalidBackendParametersBeforePersistence(t *testing.T
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			writer, computer := &mountPathEventWriter{}, &gpuTestComputer{}
-			log := logger.NewLogger("gpu-validation", logconfig.DefaultConfig())
+			log := logger.NewLogger("gpu-validation", logger.DefaultConfig())
 			log.Discard()
-			service := &TaskService{Config: config.DefaultConfig(), Event: writer, Compute: computer, Log: log}
+			service := &TaskService{Config: appconfig.DefaultConfig(), Event: writer, Compute: computer, Log: log}
 			_, err := service.CreateTask(context.Background(), &tes.Task{Resources: &tes.Resources{BackendParameters: tc.params, BackendParametersStrict: true}, Executors: []*tes.Executor{{Image: "alpine", Command: []string{"true"}}}})
 			if status.Code(err) != codes.InvalidArgument {
 				t.Fatalf("error=%v", err)

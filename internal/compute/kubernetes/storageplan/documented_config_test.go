@@ -7,9 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/tes"
 	"google.golang.org/protobuf/proto"
+
+	appconfig "github.com/calypr/funnel/internal/config"
+	"github.com/calypr/funnel/tes"
 )
 
 func TestDocumentedNativeStorageConfigurations(t *testing.T) {
@@ -27,11 +28,11 @@ func TestDocumentedNativeStorageConfigurations(t *testing.T) {
 			}
 			checked++
 			t.Run(fmt.Sprintf("%s/example-%d", file, i+1), func(t *testing.T) {
-				parsed := config.EmptyConfig()
-				if err := config.Parse(raw, parsed); err != nil {
+				parsed := appconfig.EmptyConfig()
+				if err := appconfig.Parse(raw, parsed); err != nil {
 					t.Fatal(err)
 				}
-				conf := config.DefaultConfig()
+				conf := appconfig.DefaultConfig()
 				proto.Merge(conf, parsed)
 				plan, err := Resolve(&tes.Task{Id: "docs-task", Resources: &tes.Resources{DiskGb: 20}}, conf)
 				if err != nil {

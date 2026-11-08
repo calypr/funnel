@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 )
 
 func loadTestData(name string) []byte {
@@ -45,7 +45,7 @@ func TestGetMetadata(t *testing.T) {
 	defer ts.Close()
 
 	var cerr error
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	meta, err := LoadMetadataFromURL("http://localhost:20002")
 	if err != nil {
 		t.Fatal(err)

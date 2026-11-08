@@ -6,7 +6,6 @@ import (
 
 	"github.com/calypr/funnel/internal/logger"
 	"github.com/calypr/funnel/internal/taskmodel"
-	logconfig "github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/tes"
 )
 
@@ -21,7 +20,7 @@ type TaskBuilder struct {
 func (tb *TaskBuilder) WriteEvent(ctx context.Context, ev *Event) error {
 	tb.mu.Lock()
 	defer tb.mu.Unlock()
-	logger := logger.NewLogger("TaskBuilder", logconfig.DefaultConfig())
+	logger := logger.NewLogger("TaskBuilder", logger.DefaultConfig())
 	t := tb.Task
 	t.Id = ev.Id
 	attempt := int(ev.Attempt)

@@ -8,14 +8,16 @@ import (
 	"strings"
 	"testing"
 
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
+
 	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
 	pluginproto "github.com/calypr/funnel/plugins/proto"
 	"github.com/calypr/funnel/tes"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/status"
 )
 
 func TestDebugInterceptorLogsOnlyMethodAndStatus(t *testing.T) {
@@ -89,7 +91,7 @@ func TestCreateTaskPluginLogOmitsPayloadAndPreservesTask(t *testing.T) {
 		configSecret  = "PLUGIN_CONFIG_SENTINEL"
 	)
 	log, output := serverCaptureLogger(t)
-	pluginConfig := config.DefaultConfig()
+	pluginConfig := appconfig.DefaultConfig()
 	pluginConfig.Database = configSecret
 	pluginTask := &tes.Task{
 		Id: "plugin-task",

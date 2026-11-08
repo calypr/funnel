@@ -4,15 +4,15 @@ import (
 	"context"
 	"testing"
 
-	"github.com/calypr/funnel/internal/logger"
-	logconfig "github.com/calypr/funnel/logger"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/calypr/funnel/internal/logger"
 )
 
 func TestRPCPanicReturnsInternal(t *testing.T) {
-	interceptor := newDebugInterceptor(logger.NewLogger("panic-test", logconfig.DefaultConfig()))
+	interceptor := newDebugInterceptor(logger.NewLogger("panic-test", logger.DefaultConfig()))
 	var err error
 	var escaped any
 	func() {

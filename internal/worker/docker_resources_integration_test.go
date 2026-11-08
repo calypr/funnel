@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/tes"
 )
@@ -33,7 +33,7 @@ func TestDockerResourceLimitsIntegration(t *testing.T) {
 				}
 			})
 
-			conf := config.DefaultConfig().Worker
+			conf := appconfig.DefaultConfig().Worker
 			conf.Container.EnforceResources = enabled
 			conf.Container.PullCommand = "image inspect {{.Image}}"
 			conf.Container.RunCommand = strings.Replace(conf.Container.RunCommand, "{{if .RemoveContainer}}--rm{{end}}", "", 1)

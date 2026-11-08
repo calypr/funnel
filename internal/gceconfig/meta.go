@@ -8,7 +8,9 @@ import (
 	"strings"
 
 	"dario.cat/mergo"
+
 	"github.com/calypr/funnel/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 )
 
 // WithMetadataConfig loads config from a GCE VM environment, in particular
@@ -22,7 +24,7 @@ func WithMetadataConfig(conf *config.Config, meta *Metadata) (*config.Config, er
 		mconf := &config.Config{}
 		var err error
 		b := []byte(meta.Instance.Attributes.FunnelConfig)
-		err = config.Parse(b, mconf)
+		err = appconfig.Parse(b, mconf)
 		if err != nil {
 			return conf, err
 		}

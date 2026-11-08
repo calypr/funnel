@@ -14,12 +14,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/config"
+	docker "github.com/moby/moby/client"
+
 	servercmd "github.com/calypr/funnel/internal/cli/server"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/logger"
 	"github.com/calypr/funnel/internal/server"
-	logconfig "github.com/calypr/funnel/logger"
-	docker "github.com/moby/moby/client"
 )
 
 func TestWaitForDockerDestroy(t *testing.T) {
@@ -153,7 +153,7 @@ func TestPollForServerStartClosesHTTPResponseBody(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Server.HostName = serverURL.Hostname()
 	conf.Server.HTTPPort = serverURL.Port()
 	f := &Funnel{Conf: conf}
@@ -232,7 +232,7 @@ func TestStartServerReturnsHTTPBindErrorImmediately(t *testing.T) {
 
 func newServerTestFunnel(t *testing.T, rpcPort, httpPort string) *Funnel {
 	t.Helper()
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	conf.Server.HostName = "127.0.0.1"
 	conf.Server.RPCPort = rpcPort
 	conf.Server.HTTPPort = httpPort
@@ -240,7 +240,7 @@ func newServerTestFunnel(t *testing.T, rpcPort, httpPort string) *Funnel {
 	conf.LocalStorage.AllowedDirs = []string{t.TempDir()}
 	conf.Worker.WorkDir = t.TempDir()
 
-	log := logger.NewLogger("server-lifecycle-test", logconfig.DefaultConfig())
+	log := logger.NewLogger("server-lifecycle-test", logger.DefaultConfig())
 	log.Discard()
 	apiServer := &server.Server{
 		RPCAddress: conf.Server.RPCAddress(),

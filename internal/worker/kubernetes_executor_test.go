@@ -14,10 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/internal/compute/kubernetes/storageplan"
-	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/tes"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -27,6 +23,11 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/rest"
 	k8stesting "k8s.io/client-go/testing"
+
+	"github.com/calypr/funnel/internal/compute/kubernetes/storageplan"
+	appconfig "github.com/calypr/funnel/internal/config"
+	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/tes"
 )
 
 func TestWaitForPodFinishWaitsForNamedExecutor(t *testing.T) {
@@ -275,7 +276,7 @@ func TestRunAppliesGPUCountOnlyToExecutorContainer(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			conf := config.DefaultConfig()
+			conf := appconfig.DefaultConfig()
 			const jobsNamespace = "test-jobs"
 			worker := DefaultWorker{
 				Executor: Executor{
@@ -409,7 +410,7 @@ func TestRunRejectsConflictingGPUOptionsBeforeSubmittingJob(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			conf := config.DefaultConfig()
+			conf := appconfig.DefaultConfig()
 			const jobsNamespace = "test-jobs"
 			worker := DefaultWorker{
 				Executor: Executor{
@@ -447,7 +448,7 @@ func TestRunRejectsConflictingGPUOptionsBeforeSubmittingJob(t *testing.T) {
 }
 
 func TestNewKubernetesCommandRejectsInvalidGPUCount(t *testing.T) {
-	conf := config.DefaultConfig()
+	conf := appconfig.DefaultConfig()
 	worker := DefaultWorker{
 		Executor:    Executor{Resources: conf.Kubernetes.Resources},
 		EventWriter: events.Noop{},
