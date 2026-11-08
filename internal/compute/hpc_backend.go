@@ -1,0 +1,407 @@
+package compute
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"os"
+	"os/exec"
+	"path"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+	"text/template"
+	"time"
+	"unicode"
+
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/internal/directory"
+	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/internal/logger"
+	"github.com/calypr/funnel/internal/taskmodel"
+	"github.com/calypr/funnel/tes"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+)
+
+// HPCBackend represents an HPCBackend such as HtCondor, Slurm, Grid Engine, etc.
+type HPCBackend struct {
+	Name      string
+	SubmitCmd string
+	CancelCmd string
+	Template  string
+	Conf      *config.Config
+	Event     events.Writer
+	Database  taskmodel.ReadOnlyServer
+	// ExtractID is responsible for extracting the task id from the response
+	// returned by the SubmitCmd.
+	ExtractID func(string) string
+	// MapStates takes a list of backend specific ids and calls out to the backend
+	// via (squeue, qstat, condor_q, etc) to get that tasks current state. These states
+	// are mapped to TES states along with an optional reason for this mapping.
+	// The Reconcile function can then use the response to update the task states
+	// and system logs to report errors reported by the backend.
+	MapStates     func([]string) ([]*HPCTaskState, error)
+	ReconcileRate time.Duration
+	Log           *logger.Logger
+	events.Backend
+	backendParameters map[string]*regexp.Regexp
+}
+
+// ConfigureBackendParameters compiles the administrator-defined allowlist.
+func (b *HPCBackend) ConfigureBackendParameters(patterns map[string]string) error {
+	constraints := make(map[string]*regexp.Regexp, len(patterns))
+	for key, pattern := range patterns {
+		canonicalKey := strings.ToLower(key)
+		if canonicalKey == "" {
+			return fmt.Errorf("backend parameter keys cannot be empty")
+		}
+		if _, exists := constraints[canonicalKey]; exists {
+			return fmt.Errorf("backend parameter keys must be unique ignoring case: %q", key)
+		}
+		compiled, err := regexp.Compile("^(?:" + pattern + ")$")
+		if err != nil {
+			return fmt.Errorf("invalid pattern for backend parameter %q: %w", key, err)
+		}
+		constraints[canonicalKey] = compiled
+	}
+	b.backendParameters = constraints
+	return nil
+}
+
+// BackendParameterKeys reports the administrator-configured template keys.
+func (b *HPCBackend) BackendParameterKeys() []string {
+	keys := make([]string, 0, len(b.backendParameters))
+	for key := range b.backendParameters {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func (b *HPCBackend) validatedBackendParameters(task *tes.Task) (map[string]string, error) {
+	resources := task.GetResources()
+	parameters := resources.GetBackendParameters()
+	if len(parameters) == 0 {
+		return nil, nil
+	}
+
+	validated := make(map[string]string, len(parameters))
+	for key, value := range parameters {
+		canonicalKey := strings.ToLower(key)
+		pattern, allowed := b.backendParameters[canonicalKey]
+		if !allowed {
+			if resources.GetBackendParametersStrict() {
+				return nil, status.Errorf(codes.InvalidArgument, "backend parameters not supported: %s", key)
+			}
+			continue
+		}
+		if strings.ContainsFunc(value, unicode.IsControl) {
+			return nil, status.Errorf(codes.InvalidArgument, "backend parameter %q contains a control character", key)
+		}
+		if !pattern.MatchString(value) {
+			return nil, status.Errorf(codes.InvalidArgument, "invalid value for backend parameter %q", key)
+		}
+		if _, duplicate := validated[canonicalKey]; duplicate {
+			return nil, status.Errorf(codes.InvalidArgument, "backend parameter keys must be unique ignoring case: %q", key)
+		}
+		validated[canonicalKey] = value
+	}
+	return validated, nil
+}
+
+// CheckBackendParameterSupport validates parameters before task persistence.
+func (b *HPCBackend) CheckBackendParameterSupport(task *tes.Task) error {
+	_, err := b.validatedBackendParameters(task)
+	return err
+}
+
+// WriteEvent writes an event to the compute backend.
+// Currently, only TASK_CREATED is handled, which calls Submit.
+func (b *HPCBackend) WriteEvent(ctx context.Context, ev *events.Event) error {
+	switch ev.Type {
+	case events.Type_TASK_CREATED:
+		return b.Submit(ctx, ev.GetTask())
+
+	case events.Type_TASK_STATE:
+		if ev.GetState() == tes.State_CANCELED {
+			return b.Cancel(ctx, ev.Id)
+		}
+	}
+	return nil
+}
+
+func (b *HPCBackend) Close() {}
+
+// Submit submits a task via "qsub", "condor_submit", "sbatch", etc.
+func (b *HPCBackend) Submit(ctx context.Context, task *tes.Task) error {
+	if _, err := b.validatedBackendParameters(task); err != nil {
+		return err
+	}
+	if _, err := b.bindingDirectory(task.Id); err != nil {
+		return err
+	}
+	submitPath, err := b.setupTemplatedHPCSubmit(ctx, task)
+	if err != nil {
+		return err
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd := exec.Command(b.SubmitCmd, submitPath)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err = cmd.Run()
+	if err != nil {
+		if werr := b.Event.WriteEvent(ctx, events.NewState(task.Id, tes.SystemError)); werr != nil {
+			b.Log.Error("writing SystemError event", "taskID", task.Id, "error", werr)
+		}
+		if werr := b.Event.WriteEvent(
+			ctx,
+			events.NewSystemLog(
+				task.Id, 0, 0, "error",
+				"error submitting task to "+b.Name,
+				map[string]string{"error": err.Error(), "stderr": stderr.String(), "stdout": stdout.String()},
+			),
+		); werr != nil {
+			b.Log.Error("writing submit-failure log event", "taskID", task.Id, "error", werr)
+		}
+		return err
+	}
+
+	backendID := strings.TrimSpace(b.ExtractID(stdout.String()))
+	if err := b.saveJobBinding(task.Id, backendID); err != nil {
+		return fmt.Errorf("persist trusted scheduler binding: %w", err)
+	}
+
+	return b.Event.WriteEvent(
+		ctx,
+		events.NewMetadata(task.Id, 0, map[string]string{fmt.Sprintf("%s_id", b.Name): backendID}),
+	)
+}
+
+// Cancel cancels a task via "qdel", "condor_rm", "scancel", etc.
+func (b *HPCBackend) Cancel(ctx context.Context, taskID string) error {
+	_, err := b.Database.GetTask(
+		ctx, &tes.GetTaskRequest{Id: taskID, View: tes.View_BASIC.String()},
+	)
+	if err != nil {
+		return err
+	}
+
+	backendID, err := b.loadJobBinding(taskID)
+	if err != nil {
+		return err
+	}
+
+	cmd := exec.Command(b.CancelCmd, backendID)
+	return cmd.Run()
+}
+
+// Reconcile loops through tasks and checks the status from Funnel's database
+// against the status reported by the backend (slurm, htcondor, grid engine, etc).
+// This allows the backend to report system error's that prevented the worker
+// process from running.
+//
+// Currently this handles a narrow set of cases:
+//
+// |---------------------|-----------------|--------------------|
+// |    Funnel State     |  Backend State  |  Reconciled State  |
+// |---------------------|-----------------|--------------------|
+// |        QUEUED       |     FAILED      |    SYSTEM_ERROR    |
+// |        QUEUED       | QUEUED/PENDING* |    SYSTEM_ERROR    |
+// |  INITIALIZING       |     FAILED      |    SYSTEM_ERROR    |
+// |       RUNNING       |     FAILED      |    SYSTEM_ERROR    |
+//
+// In this context a "FAILED" state is being used as a generic term that captures
+// one or more terminal states for the backend.
+//
+// *QUEUED/PENDING: this captures the case where the scheduler has a task that is
+// stuck in the queued state because the resource request that can never be fulfilled.
+func (b *HPCBackend) Reconcile(ctx context.Context) {
+	ticker := time.NewTicker(b.ReconcileRate)
+
+ReconcileLoop:
+	for {
+		select {
+		case <-ctx.Done():
+			return
+
+		case <-ticker.C:
+			pageToken := ""
+			states := []tes.State{tes.Queued, tes.Initializing, tes.Running}
+			for _, s := range states {
+				for {
+					lresp, err := b.Database.ListTasks(ctx, &tes.ListTasksRequest{
+						View:      tes.View_BASIC.String(),
+						State:     s,
+						PageSize:  100,
+						PageToken: pageToken,
+					})
+					if err != nil {
+						b.Log.Error("Calling ListTasks", err)
+						continue ReconcileLoop
+					}
+					pageToken = lresp.NextPageToken
+
+					tmap := make(map[string]*tes.Task)
+					ids := []string{}
+					for _, t := range lresp.Tasks {
+						bid, bindingErr := b.loadJobBinding(t.Id)
+						if bindingErr != nil {
+							b.Log.Warn("skipping task without trusted scheduler binding", "taskID", t.Id)
+							continue
+						}
+						if bid != "" {
+							tmap[bid] = t
+							ids = append(ids, bid)
+						}
+					}
+
+					if len(ids) == 0 {
+						if pageToken == "" {
+							break
+						}
+						continue
+					}
+
+					bmap, err := b.MapStates(ids)
+					if err != nil {
+						b.Log.Error("Calling MapStates", err)
+						continue ReconcileLoop
+					}
+					for _, t := range bmap {
+						// lookup task by backend specific ID
+						task := tmap[t.ID]
+						if task == nil {
+							continue
+						}
+
+						if t.TESState == tes.SystemError {
+							if werr := b.Event.WriteEvent(ctx, events.NewState(task.Id, tes.SystemError)); werr != nil {
+								b.Log.Error("writing SystemError event", "taskID", task.Id, "error", werr)
+							}
+							if werr := b.Event.WriteEvent(
+								ctx,
+								events.NewSystemLog(
+									task.Id, 0, 0, "error",
+									b.Name+" reports system error for task",
+									map[string]string{
+										"error":           t.Reason,
+										b.Name + "_id":    t.ID,
+										b.Name + "_state": t.State,
+									},
+								),
+							); werr != nil {
+								b.Log.Error("writing system-error log event", "taskID", task.Id, "error", werr)
+							}
+							if t.Remove {
+								err := exec.Command(b.CancelCmd, t.ID).Run()
+								if err != nil {
+									b.Log.Error("canceling failed HPC task", "taskID", task.Id, "backendID", t.ID, "error", err)
+								}
+							}
+						}
+					}
+
+					// continue to next page from ListTasks or break
+					if pageToken == "" {
+						break
+					}
+					time.Sleep(time.Millisecond * 100)
+				}
+			}
+		}
+	}
+}
+
+// setupTemplatedHPCSubmit sets up a task submission in a HPC environment with
+// a shared file system. It generates a submission file based on a template for
+// schedulers such as SLURM, HTCondor, SGE, PBS/Torque, etc.
+func (b *HPCBackend) setupTemplatedHPCSubmit(ctx context.Context, task *tes.Task) (string, error) {
+	backendParameters, err := b.validatedBackendParameters(task)
+	if err != nil {
+		return "", err
+	}
+
+	// TODO document that these working dirs need manual cleanup
+	workdir := path.Join(b.Conf.Worker.WorkDir, task.Id)
+	workdir, err = filepath.Abs(workdir)
+	if err != nil {
+		return "", fmt.Errorf("resolve task working directory: %w", err)
+	}
+	err = directory.EnsureDir(workdir)
+	if err != nil {
+		return "", err
+	}
+
+	submitName := fmt.Sprintf("%s.submit", b.Name)
+
+	submitPath := path.Join(workdir, submitName)
+	submitTpl, err := template.New(submitName).Parse(b.Template)
+	if err != nil {
+		return "", err
+	}
+
+	res := task.GetResources()
+	if res == nil {
+		res = &tes.Resources{}
+	}
+
+	var zone string
+	zones := res.GetZones()
+	if zones != nil {
+		zone = zones[0]
+	}
+
+	var args string
+	if ctx.Value("Config") != nil {
+		conf := ctx.Value("Config").(*config.Config)
+		configFile := filepath.Join(workdir, "config.yaml")
+		err = config.ToYamlFile(conf, configFile)
+		if err != nil {
+			return "", err
+		}
+		args = fmt.Sprintf("--config %v", configFile)
+	}
+	f, err := os.Create(submitPath)
+	if err != nil {
+		return "", err
+	}
+
+	err = submitTpl.Execute(f, map[string]interface{}{
+		"TaskId":            task.Id,
+		"WorkDir":           workdir,
+		"Cpus":              res.GetCpuCores(),
+		"RamGb":             res.GetRamGb(),
+		"DiskGb":            res.GetDiskGb(),
+		"Zone":              zone,
+		"Args":              args,
+		"BackendParameters": backendParameters,
+	})
+	if err != nil {
+		closeErr := f.Close()
+		if closeErr != nil {
+			return "", fmt.Errorf("write submit file: %v; close submit file: %w", err, closeErr)
+		}
+		return "", err
+	}
+	err = f.Close()
+	if err != nil {
+		return "", fmt.Errorf("close submit file: %w", err)
+	}
+
+	return submitPath, nil
+}
+
+// HPCTaskState is a structure used by Reconcile to represent the state of a task in Funnel
+// and the HPC backend.
+type HPCTaskState struct {
+	ID       string
+	TESState tes.State
+	State    string
+	Reason   string
+	Remove   bool
+}

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	taskCmd "github.com/calypr/funnel/cmd/task"
+	taskCmd "github.com/calypr/funnel/internal/cli/task"
 	"github.com/calypr/funnel/tests"
 )
 

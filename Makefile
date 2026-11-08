@@ -17,22 +17,22 @@ export FUNNEL_VERSION
 export LAST_PR_NUMBER = 716
 
 VERSION_LDFLAGS=\
- -X "github.com/calypr/funnel/version.BuildDate=$(shell date)" \
- -X "github.com/calypr/funnel/version.GitCommit=$(git_commit)" \
- -X "github.com/calypr/funnel/version.GitBranch=$(git_branch)" \
- -X "github.com/calypr/funnel/version.GitUpstream=$(git_upstream)" \
- -X "github.com/calypr/funnel/version.Version=$(FUNNEL_VERSION)"
+ -X "github.com/calypr/funnel/internal/version.BuildDate=$(shell date)" \
+ -X "github.com/calypr/funnel/internal/version.GitCommit=$(git_commit)" \
+ -X "github.com/calypr/funnel/internal/version.GitBranch=$(git_branch)" \
+ -X "github.com/calypr/funnel/internal/version.GitUpstream=$(git_upstream)" \
+ -X "github.com/calypr/funnel/internal/version.Version=$(FUNNEL_VERSION)"
 
 export CGO_ENABLED=0
 
 # Build the code
 install:
-	@touch version/version.go
+	@touch internal/version/version.go
 	@go install -ldflags '$(VERSION_LDFLAGS)' .
 
 # Build the code
 build:
-	@touch version/version.go
+	@touch internal/version/version.go
 	@go build -ldflags '$(VERSION_LDFLAGS)' -buildvcs=false .
 
 # Build an unoptimized version of the code for use during debugging
@@ -44,13 +44,19 @@ debug:
 # Generate the protobuf/gRPC code using Buf
 proto: proto-depends
 	@go run ./tools/openapi2proto/main.go ./tes/task-execution-schemas/openapi/task_execution_service.openapi.yaml > tes/tes.proto
-	@buf generate
+	@go run ./tools/openapi2proto/main.go -service ./tes/task-execution-schemas/openapi/task_execution_service.openapi.yaml > internal/tesrpc/service.proto
+	@buf generate --template buf.gen.go.yaml
+	@mv internal/tesrpc/service.swagger.json tes/tes.swagger.json
 
 # Initialize the TES schema submodule and install Buf.
 # `proto` depends on this target so generation also works from a fresh clone.
 proto-depends:
 	@git submodule update --init --recursive tes/task-execution-schemas
 	@go install github.com/bufbuild/buf/cmd/buf@v1.28.1
+	@go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.12
+	@go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.3.0
+	@go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@v2.26.3
+	@go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2@v2.26.3
 
 # Lint Protobuf files
 proto-lint:
@@ -187,7 +193,7 @@ start-ftp:
 test-ftp:
 	@go test -v ./tests/storage -run TestFTPStorage -funnel-config `pwd`/tests/ftp.config.yml
 
-# Build the web dashboard (assets in webdash/build are embedded into the
+# Build the web dashboard (assets in internal/webdash/build are embedded into the
 # binary via go:embed)
 webdash:
 	@cd webdash && npm run build
@@ -212,8 +218,8 @@ release-dep:
 
 # Generate mocks for testing.
 gen-mocks: gen-mocks-deps
-	@mockery -dir compute/scheduler -name Client -inpkg -output compute/scheduler
-	@mockery -dir compute/scheduler -name SchedulerServiceServer -inpkg -output compute/scheduler
+	@mockery --dir internal/compute/scheduler --name Client --inpackage --output internal/compute/scheduler
+	@mockery --dir internal/compute/scheduler --name SchedulerServiceServer --inpackage --output internal/compute/scheduler
 
 gen-mocks-deps:
 	@go install github.com/vektra/mockery/v2@v2.20.0

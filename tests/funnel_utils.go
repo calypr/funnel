@@ -16,14 +16,18 @@ import (
 	"text/template"
 	"time"
 
-	runlib "github.com/calypr/funnel/cmd/run"
-	servercmd "github.com/calypr/funnel/cmd/server"
-	funnelkubernetes "github.com/calypr/funnel/compute/kubernetes"
-	"github.com/calypr/funnel/compute/scheduler"
+	"github.com/calypr/funnel/internal/cli/tesclient"
+
 	"github.com/calypr/funnel/config"
+	runlib "github.com/calypr/funnel/internal/cli/run"
+	servercmd "github.com/calypr/funnel/internal/cli/server"
+	funnelkubernetes "github.com/calypr/funnel/internal/compute/kubernetes"
+	"github.com/calypr/funnel/internal/compute/scheduler"
+	"github.com/calypr/funnel/internal/logger"
 	"github.com/calypr/funnel/internal/rpcclient"
-	"github.com/calypr/funnel/logger"
-	"github.com/calypr/funnel/server"
+	"github.com/calypr/funnel/internal/server"
+	"github.com/calypr/funnel/internal/taskmodel"
+	"github.com/calypr/funnel/internal/tesrpc"
 	"github.com/calypr/funnel/tes"
 	cerrdefs "github.com/containerd/errdefs"
 	docker "github.com/moby/moby/client"
@@ -40,7 +44,7 @@ func init() {
 // Funnel provides a test server and RPC/HTTP clients
 type Funnel struct {
 	// Clients
-	RPC        tes.TaskServiceClient
+	RPC        tesrpc.TaskServiceClient
 	HTTP       *tes.Client
 	Docker     *docker.Client
 	Kubernetes *kubernetes.Clientset
@@ -64,7 +68,7 @@ type Funnel struct {
 // NewFunnel creates a new funnel test server with some test
 // configuration automatically set: random ports, temp work dir, etc.
 func NewFunnel(conf *config.Config) *Funnel {
-	cli, err := tes.NewClient(conf.Server.HTTPAddress())
+	cli, err := tesclient.New(conf.Server.HTTPAddress())
 	if err != nil {
 		panic(err)
 	}
@@ -107,7 +111,7 @@ func (f *Funnel) addRPCClient() {
 	if err != nil {
 		panic(err)
 	}
-	f.RPC = tes.NewTaskServiceClient(conn)
+	f.RPC = tesrpc.NewTaskServiceClient(conn)
 	f.conn = conn
 }
 
@@ -525,7 +529,7 @@ func (f *Funnel) CleanupTestServerContainer(containerName string) {
 // HelloWorld is a simple, valid task that is easy to reuse in tests.
 func HelloWorld() *tes.Task {
 	return &tes.Task{
-		Id: tes.GenerateID(),
+		Id: taskmodel.GenerateID(),
 		Executors: []*tes.Executor{
 			{
 				Image:   "alpine",

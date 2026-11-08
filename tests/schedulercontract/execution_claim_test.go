@@ -7,8 +7,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/calypr/funnel/events"
-	"github.com/calypr/funnel/server"
+	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/internal/server"
+	"github.com/calypr/funnel/internal/taskmodel"
 	"github.com/calypr/funnel/tes"
 )
 
@@ -146,7 +147,7 @@ func runExecutionClaimContracts(t *testing.T, open storeFactory) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if acquired, err := claimer.ClaimExecution(stranger, task.Id, nil); acquired || !errors.Is(err, tes.ErrNotPermitted) {
+		if acquired, err := claimer.ClaimExecution(stranger, task.Id, nil); acquired || !errors.Is(err, taskmodel.ErrNotPermitted) {
 			t.Fatalf("unauthorized claim = %v, %v", acquired, err)
 		}
 		if state := getTask(t, db, ctx, task.Id).State; state != tes.Queued {

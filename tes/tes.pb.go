@@ -7,7 +7,6 @@
 package tes
 
 import (
-	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -2114,7 +2113,7 @@ var File_tes_tes_proto protoreflect.FileDescriptor
 
 const file_tes_tes_proto_rawDesc = "" +
 	"\n" +
-	"\rtes/tes.proto\x12\x03tes\x1a\x1cgoogle/api/annotations.proto\"#\n" +
+	"\rtes/tes.proto\x12\x03tes\"#\n" +
 	"\x11CancelTaskRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"\xa9\x02\n" +
 	"\rExecutorBasic\x12\x18\n" +
@@ -2346,15 +2345,7 @@ const file_tes_tes_proto_rawDesc = "" +
 	"\x04view\x12\v\n" +
 	"\aMINIMAL\x10\x00\x12\t\n" +
 	"\x05BASIC\x10\x01\x12\b\n" +
-	"\x04FULL\x10\x022\x85\x05\n" +
-	"\vTaskService\x12l\n" +
-	"\aGetTask\x12\x13.tes.GetTaskRequest\x1a\t.tes.Task\"A\x82\xd3\xe4\x93\x02;Z\x10\x12\x0e/v1/tasks/{id}Z\x1a\x12\x18/ga4gh/tes/v1/tasks/{id}\x12\v/tasks/{id}\x12\x9e\x01\n" +
-	"\n" +
-	"CancelTask\x12\x16.tes.CancelTaskRequest\x1a\x17.tes.CancelTaskResponse\"_\x82\xd3\xe4\x93\x02Y:\x01*Z\x1a:\x01*\"\x15/v1/tasks/{id}:cancelZ$:\x01*\"\x1f/ga4gh/tes/v1/tasks/{id}:cancel\"\x12/tasks/{id}:cancel\x12\x87\x01\n" +
-	"\x0eGetServiceInfo\x12\x1a.tes.GetServiceInfoRequest\x1a\x10.tes.ServiceInfo\"G\x82\xd3\xe4\x93\x02AZ\x12\x12\x10/v1/service-infoZ\x1c\x12\x1a/ga4gh/tes/v1/service-info\x12\r/service-info\x12n\n" +
-	"\tListTasks\x12\x15.tes.ListTasksRequest\x1a\x16.tes.ListTasksResponse\"2\x82\xd3\xe4\x93\x02,Z\v\x12\t/v1/tasksZ\x15\x12\x13/ga4gh/tes/v1/tasks\x12\x06/tasks\x12m\n" +
-	"\n" +
-	"CreateTask\x12\t.tes.Task\x1a\x17.tes.CreateTaskResponse\";\x82\xd3\xe4\x93\x025:\x01*Z\x0e:\x01*\"\t/v1/tasksZ\x18:\x01*\"\x13/ga4gh/tes/v1/tasks\"\x06/tasksB\x1eZ\x1cgithub.com/calypr/funnel/tesb\x06proto3"
+	"\x04FULL\x10\x02B\x1eZ\x1cgithub.com/calypr/funnel/tesb\x06proto3"
 
 var (
 	file_tes_tes_proto_rawDescOnce sync.Once
@@ -2448,18 +2439,8 @@ var file_tes_tes_proto_depIdxs = []int32{
 	17, // 36: tes.TaskLog.logs:type_name -> tes.ExecutorLog
 	35, // 37: tes.TaskLog.metadata:type_name -> tes.TaskLog.MetadataEntry
 	21, // 38: tes.TaskLog.outputs:type_name -> tes.OutputFileLog
-	6,  // 39: tes.TaskService.GetTask:input_type -> tes.GetTaskRequest
-	3,  // 40: tes.TaskService.CancelTask:input_type -> tes.CancelTaskRequest
-	5,  // 41: tes.TaskService.GetServiceInfo:input_type -> tes.GetServiceInfoRequest
-	8,  // 42: tes.TaskService.ListTasks:input_type -> tes.ListTasksRequest
-	25, // 43: tes.TaskService.CreateTask:input_type -> tes.Task
-	25, // 44: tes.TaskService.GetTask:output_type -> tes.Task
-	14, // 45: tes.TaskService.CancelTask:output_type -> tes.CancelTaskResponse
-	23, // 46: tes.TaskService.GetServiceInfo:output_type -> tes.ServiceInfo
-	19, // 47: tes.TaskService.ListTasks:output_type -> tes.ListTasksResponse
-	15, // 48: tes.TaskService.CreateTask:output_type -> tes.CreateTaskResponse
-	44, // [44:49] is the sub-list for method output_type
-	39, // [39:44] is the sub-list for method input_type
+	39, // [39:39] is the sub-list for method output_type
+	39, // [39:39] is the sub-list for method input_type
 	39, // [39:39] is the sub-list for extension type_name
 	39, // [39:39] is the sub-list for extension extendee
 	0,  // [0:39] is the sub-list for field type_name
@@ -2479,7 +2460,7 @@ func file_tes_tes_proto_init() {
 			NumEnums:      3,
 			NumMessages:   33,
 			NumExtensions: 0,
-			NumServices:   1,
+			NumServices:   0,
 		},
 		GoTypes:           file_tes_tes_proto_goTypes,
 		DependencyIndexes: file_tes_tes_proto_depIdxs,

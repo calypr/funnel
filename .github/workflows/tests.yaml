@@ -15,6 +15,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  public-api:
+    name: Public TES client and plugin contracts
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: go.mod
+    - run: python3 .github/scripts/check-public-api.py
+
   go-vulnerabilities:
     name: Go vulnerability scan
     runs-on: ubuntu-latest
@@ -43,9 +53,9 @@ jobs:
       with:
         go-version-file: go.mod
     - name: Compile storage permission test as runner
-      run: go test -c ./storage -o "$RUNNER_TEMP/storage-permissions.test"
+      run: go test -c ./internal/storage -o "$RUNNER_TEMP/storage-permissions.test"
     - name: Run storage tests with separate executor identities
-      working-directory: storage
+      working-directory: internal/storage
       run: sudo env FUNNEL_TEST_LOCAL_OWNERSHIP=1 "$RUNNER_TEMP/storage-permissions.test" -test.count=1 -test.v -test.timeout=2m
 
   docker-resource-integration:
@@ -63,7 +73,7 @@ jobs:
     - name: Test Docker worker resource limits, cancellation, and execution admission
       env:
         FUNNEL_TEST_DOCKER_INTEGRATION: "1"
-      run: go test -v ./worker -run '^(TestDockerResourceLimitsIntegration|TestDockerCancellationStopsContainer|TestDockerCancellationWithSlowCleanup|TestExecutionAdmissionDockerIntegration)$' -count=1 -timeout=3m
+      run: go test -v ./internal/worker -run '^(TestDockerResourceLimitsIntegration|TestDockerCancellationStopsContainer|TestDockerCancellationWithSlowCleanup|TestExecutionAdmissionDockerIntegration)$' -count=1 -timeout=3m
     - name: Test output contracts through BoltDB and Docker
       env:
         FUNNEL_TEST_DOCKER_INTEGRATION: "1"
@@ -201,15 +211,16 @@ jobs:
   # Preserve the required status context until the stack's ruleset migration.
   required-go-tests:
     name: unitTest
-    needs: [unitTest, scheduler-tests, scheduler-process-tests, local-storage-permissions, go-vulnerabilities]
+    needs: [unitTest, scheduler-tests, scheduler-process-tests, local-storage-permissions, go-vulnerabilities, public-api]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Report test result for existing required-check rules
         env:
+          PUBLIC_API_RESULT: ${{ needs.public-api.result }}
           CHECK_RESULT: ${{ needs.unitTest.result }}
           SCHEDULER_RESULT: ${{ needs.scheduler-tests.result }}
           PROCESS_RESULT: ${{ needs.scheduler-process-tests.result }}
           STORAGE_RESULT: ${{ needs.local-storage-permissions.result }}
           VULNERABILITY_RESULT: ${{ needs.go-vulnerabilities.result }}
-        run: test "$CHECK_RESULT" = success && test "$SCHEDULER_RESULT" = success && test "$PROCESS_RESULT" = success && test "$STORAGE_RESULT" = success && test "$VULNERABILITY_RESULT" = success
+        run: test "$PUBLIC_API_RESULT" = success && test "$CHECK_RESULT" = success && test "$SCHEDULER_RESULT" = success && test "$PROCESS_RESULT" = success && test "$STORAGE_RESULT" = success && test "$VULNERABILITY_RESULT" = success

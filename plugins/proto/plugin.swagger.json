@@ -172,6 +172,9 @@
         "Postgres": {
           "$ref": "#/definitions/configPostgres"
         },
+        "EventFile": {
+          "type": "string"
+        },
         "HTCondor": {
           "$ref": "#/definitions/configHPCBackend",
           "title": "Compute"
@@ -193,6 +196,10 @@
         },
         "GCPBatch": {
           "$ref": "#/definitions/configGCPBatch"
+        },
+        "HPCStateDir": {
+          "type": "string",
+          "description": "Private persistent controller directory, outside task data and local storage roots."
         },
         "LocalStorage": {
           "$ref": "#/definitions/configLocalStorage",
@@ -276,7 +283,10 @@
           "type": "object",
           "additionalProperties": {
             "type": "string"
-          },
+          }
+        },
+        "EnforceResources": {
+          "type": "boolean",
           "title": "Note: io.Reader and io.Writer (Stdin, Stdout, Stderr) are omitted as they are not serializable in Protobuf"
         }
       },
@@ -320,6 +330,10 @@
         },
         "Password": {
           "type": "string"
+        },
+        "Endpoint": {
+          "type": "string",
+          "description": "Trusted FTP origin for configured credentials, e.g. ftp://storage.example:21."
         }
       },
       "description": "FTPStorage configures the FTP storage backend."
@@ -422,6 +436,12 @@
         },
         "TemplateFile": {
           "type": "string"
+        },
+        "BackendParameters": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
         }
       },
       "description": "HPCBackend describes the configuration for an HPC scheduler backend."
@@ -856,6 +876,9 @@
         },
         "KMSKey": {
           "type": "string"
+        },
+        "S3Managed": {
+          "type": "boolean"
         }
       }
     },
@@ -911,6 +934,10 @@
         },
         "TaskAccess": {
           "type": "string"
+        },
+        "MaxResponseBytes": {
+          "type": "integer",
+          "format": "int64"
         }
       },
       "description": "Server describes configuration for the server."

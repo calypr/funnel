@@ -26,7 +26,7 @@ esac
 version=${MOUNTPOINT_VERSION:-1.24.0}
 curl -fsSL "https://s3.amazonaws.com/mountpoint-s3-release/$version/$package_arch/mount-s3-$version-$package_arch.deb" -o "$scratch/mount-s3.deb"
 cd "$repo"
-CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go test -c ./storage -o "$scratch/storage.test"
+CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go test -c ./internal/storage -o "$scratch/storage.test"
 
 network=$(docker network create "funnel-mountpoint-$(basename "$scratch")")
 minio=$(docker run -d --network "$network" --network-alias minio \

@@ -1,0 +1,641 @@
+package resources
+
+import (
+	"context"
+	_ "embed"
+	"testing"
+
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/internal/logger"
+	logconfig "github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/tes"
+	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
+)
+
+//go:embed testdata/serviceaccount.yaml
+var serviceAccountTemplateFixture string
+
+const (
+	namespace     = "test-namespace"
+	jobsNamespace = "test-jobs-namespace"
+	testTaskID    = "test-task-id"
+)
+
+// minimalWorkerTemplate is a valid Job template that avoids the pod-image lookup.
+const minimalWorkerTemplate = `apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{.TaskId}}
+  namespace: {{.JobsNamespace}}
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: worker
+        image: alpine`
+
+const minimalServiceAccountTemplate = `apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: funnel-worker-sa-{{.Namespace}}-{{.TaskId}}
+  namespace: {{.Namespace}}
+  labels:
+    app: funnel
+    taskId: {{.TaskId}}`
+
+const minimalRoleTemplate = `apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: funnel-worker-sa-{{.Namespace}}-{{.TaskId}}-role
+  namespace: {{.Namespace}}
+  labels:
+    app: funnel
+    taskId: {{.TaskId}}
+rules: []`
+
+const minimalRoleBindingTemplate = `apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: funnel-worker-sa-{{.Namespace}}-{{.TaskId}}-binding
+  namespace: {{.Namespace}}
+  labels:
+    app: funnel
+    taskId: {{.TaskId}}
+subjects:
+- kind: ServiceAccount
+  name: funnel-worker-sa-{{.Namespace}}-{{.TaskId}}
+  namespace: {{.Namespace}}
+roleRef:
+  kind: Role
+  name: funnel-worker-sa-{{.Namespace}}-{{.TaskId}}-role
+  apiGroup: rbac.authorization.k8s.io`
+
+const minimalPVTemplate = `apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: funnel-worker-pv-{{.TaskId}}
+  labels:
+    app: funnel
+    taskId: {{.TaskId}}
+spec:
+  storageClassName: ""
+  capacity:
+    storage: 10Mi
+  accessModes:
+  - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: /tmp/funnel-{{.TaskId}}`
+
+const minimalPVCTemplate = `apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: funnel-worker-pvc-{{.TaskId}}
+  namespace: {{.Namespace}}
+  labels:
+    app: funnel
+    taskId: {{.TaskId}}
+spec:
+  storageClassName: ""
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Mi
+  volumeName: funnel-worker-pv-{{.TaskId}}`
+
+var l = logger.NewLogger("test", logconfig.DefaultConfig())
+var ctx = context.Background()
+
+func TestCreateConfigMap(t *testing.T) {
+	conf := config.DefaultConfig()
+	conf.Kubernetes.JobsNamespace = jobsNamespace
+	conf.Kubernetes.ConfigMapTemplate = `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: funnel-worker-config-{{ .TaskId }}
+  namespace: {{ .Namespace }}
+  labels:
+    app: funnel
+data:
+  funnel-worker.yaml: |
+    placeholder`
+
+	err := CreateConfigMap(ctx, testTaskID, conf, fake.NewSimpleClientset(), l, nil)
+	if err != nil {
+		t.Errorf("CreateConfigMap failed: %v", err)
+	}
+}
+
+func TestDeleteConfigMap(t *testing.T) {
+	cmName := "funnel-worker-config-" + testTaskID
+
+	t.Run("labeled", func(t *testing.T) {
+		fakeClient := fake.NewSimpleClientset()
+
+		cm := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      cmName,
+				Namespace: namespace,
+				Labels: map[string]string{
+					"app":    "funnel",
+					"taskId": testTaskID,
+				},
+			},
+		}
+		_, err := fakeClient.CoreV1().ConfigMaps(namespace).Create(context.Background(), cm, metav1.CreateOptions{})
+		if err != nil {
+			t.Fatalf("Failed to create labeled ConfigMap: %v", err)
+		}
+
+		err = DeleteConfigMap(context.Background(), testTaskID, namespace, fakeClient, l)
+		if err != nil {
+			t.Errorf("DeleteConfigMap failed: %v", err)
+		}
+
+		_, err = fakeClient.CoreV1().ConfigMaps(namespace).Get(context.Background(), cmName, metav1.GetOptions{})
+		if err == nil {
+			t.Error("labeled ConfigMap was not deleted")
+		}
+	})
+
+	t.Run("unlabeled", func(t *testing.T) {
+		fakeClient := fake.NewSimpleClientset()
+
+		cm := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      cmName,
+				Namespace: namespace,
+			},
+		}
+		_, err := fakeClient.CoreV1().ConfigMaps(namespace).Create(context.Background(), cm, metav1.CreateOptions{})
+		if err != nil {
+			t.Fatalf("Failed to create unlabeled ConfigMap: %v", err)
+		}
+
+		err = DeleteConfigMap(context.Background(), testTaskID, namespace, fakeClient, l)
+		if err != nil {
+			t.Errorf("DeleteConfigMap failed: %v", err)
+		}
+
+		_, err = fakeClient.CoreV1().ConfigMaps(namespace).Get(context.Background(), cmName, metav1.GetOptions{})
+		if err == nil {
+			t.Error("unlabeled ConfigMap was not deleted")
+		}
+	})
+}
+
+func TestCreateJob(t *testing.T) {
+	task := &tes.Task{
+		Id: testTaskID,
+		Resources: &tes.Resources{
+			CpuCores: 1,
+			RamGb:    1.0,
+			DiskGb:   10.0,
+		},
+	}
+
+	conf := config.DefaultConfig()
+	conf.Kubernetes.JobsNamespace = jobsNamespace
+	conf.Kubernetes.WorkerTemplate = minimalWorkerTemplate
+	_, err := CreateJob(ctx, task, conf, fake.NewSimpleClientset(), l, nil)
+	if err != nil {
+		t.Errorf("CreateJob failed: %v", err)
+	}
+}
+
+func TestCreateJobDoesNotApplyExecutorGPUCountToWorkerJob(t *testing.T) {
+	task := &tes.Task{
+		Id: testTaskID,
+		Resources: &tes.Resources{
+			BackendParameters: map[string]string{"gpu_count": "2"},
+		},
+	}
+	conf := config.DefaultConfig()
+	conf.Kubernetes.JobsNamespace = jobsNamespace
+	conf.Kubernetes.WorkerImage = "funnel:test"
+	conf.Kubernetes.WorkerTemplate = minimalWorkerTemplate
+
+	job, err := CreateJob(ctx, task, conf, fake.NewSimpleClientset(), l, nil)
+	if err != nil {
+		t.Fatalf("CreateJob: %v", err)
+	}
+	for _, container := range job.Spec.Template.Spec.Containers {
+		if _, exists := container.Resources.Limits[corev1.ResourceName("nvidia.com/gpu")]; exists {
+			t.Fatalf("worker container %q received the executor GPU limit", container.Name)
+		}
+	}
+}
+
+func TestDeleteJob(t *testing.T) {
+	fakeClient := fake.NewSimpleClientset()
+
+	conf := config.DefaultConfig()
+	conf.Kubernetes.JobsNamespace = jobsNamespace
+
+	// Create a test Job in the same namespace DeleteJob will use.
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      testTaskID,
+			Namespace: jobsNamespace,
+		},
+	}
+	_, err := fakeClient.BatchV1().Jobs(jobsNamespace).Create(context.Background(), job, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Failed to create test Job: %v", err)
+	}
+
+	err = DeleteJob(context.Background(), conf, testTaskID, fakeClient, l)
+	if err != nil {
+		t.Errorf("DeleteJob failed: %v", err)
+	}
+
+	// Verify deletion
+	_, err = fakeClient.BatchV1().Jobs(jobsNamespace).Get(context.Background(), testTaskID, metav1.GetOptions{})
+	if err == nil {
+		t.Error("Job was not deleted")
+	}
+}
+
+func TestCreatePV(t *testing.T) {
+	conf := config.DefaultConfig()
+	conf.Kubernetes.JobsNamespace = jobsNamespace
+	conf.Kubernetes.PVTemplate = minimalPVTemplate
+	err := CreatePV(ctx, testTaskID, 0, conf, fake.NewSimpleClientset(), l)
+	if err != nil {
+		t.Errorf("CreatePV failed: %v", err)
+	}
+}
+
+func TestDeletePV(t *testing.T) {
+	fakeClient := fake.NewSimpleClientset()
+
+	// Create a test PV first
+	pv := &corev1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "funnel-worker-pv-" + testTaskID,
+			Labels: map[string]string{
+				"app":       "funnel",
+				"taskId":    testTaskID,
+				"namespace": jobsNamespace,
+			},
+		},
+	}
+	_, err := fakeClient.CoreV1().PersistentVolumes().Create(context.Background(), pv, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Failed to create test PV: %v", err)
+	}
+
+	err = DeletePV(context.Background(), testTaskID, jobsNamespace, fakeClient, l)
+	if err != nil {
+		t.Errorf("DeletePV failed: %v", err)
+	}
+
+	// Verify deletion
+	_, err = fakeClient.CoreV1().PersistentVolumes().Get(context.Background(), "funnel-worker-pv-"+testTaskID, metav1.GetOptions{})
+	if err == nil {
+		t.Error("PV was not deleted")
+	}
+}
+
+func TestCreatePVC(t *testing.T) {
+	conf := config.DefaultConfig()
+	conf.Kubernetes.JobsNamespace = jobsNamespace
+	conf.Kubernetes.PVCTemplate = minimalPVCTemplate
+	err := CreatePVC(ctx, testTaskID, 0, conf, fake.NewSimpleClientset(), l, nil)
+	if err != nil {
+		t.Errorf("CreatePVC failed: %v", err)
+	}
+}
+
+func TestDeletePVC(t *testing.T) {
+	fakeClient := fake.NewSimpleClientset()
+
+	// Create a test PVC first
+	pvc := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "funnel-worker-pvc-" + testTaskID,
+			Namespace: namespace,
+		},
+	}
+	_, err := fakeClient.CoreV1().PersistentVolumeClaims(namespace).Create(context.Background(), pvc, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Failed to create test PVC: %v", err)
+	}
+
+	err = DeletePVC(context.Background(), testTaskID, namespace, fakeClient, l)
+	if err != nil {
+		t.Errorf("DeletePVC failed: %v", err)
+	}
+
+	// Verify deletion
+	_, err = fakeClient.CoreV1().PersistentVolumeClaims(namespace).Get(context.Background(), "funnel-worker-pvc-"+testTaskID, metav1.GetOptions{})
+	if err == nil {
+		t.Error("PVC was not deleted")
+	}
+}
+
+func TestCreateJobWithNoResources(t *testing.T) {
+	task := &tes.Task{
+		Id: testTaskID,
+		// Intentionally omit Resources to test default handling
+	}
+
+	conf := config.DefaultConfig()
+	conf.Kubernetes.JobsNamespace = jobsNamespace
+	conf.Kubernetes.WorkerTemplate = minimalWorkerTemplate
+	_, err := CreateJob(ctx, task, conf, fake.NewSimpleClientset(), l, nil)
+	if err != nil {
+		t.Errorf("CreateJob failed with nil resources: %v", err)
+	}
+}
+
+func TestDeleteNonExistentResources(t *testing.T) {
+	fakeClient := fake.NewSimpleClientset()
+	nonExistentID := "non-existent-id"
+
+	// DeleteConfigMap is a no-op when the resource doesn't exist.
+	t.Run("ConfigMap", func(t *testing.T) {
+		err := DeleteConfigMap(context.Background(), nonExistentID, namespace, fakeClient, l)
+		if err != nil {
+			t.Errorf("DeleteConfigMap returned unexpected error for non-existent resource: %v", err)
+		}
+	})
+
+	// DeletePV and DeletePVC are no-ops when the resource doesn't exist.
+	t.Run("PV", func(t *testing.T) {
+		err := DeletePV(context.Background(), nonExistentID, jobsNamespace, fakeClient, l)
+		if err != nil {
+			t.Errorf("DeletePV returned unexpected error for non-existent resource: %v", err)
+		}
+	})
+
+	t.Run("PVC", func(t *testing.T) {
+		err := DeletePVC(context.Background(), nonExistentID, namespace, fakeClient, l)
+		if err != nil {
+			t.Errorf("DeletePVC returned unexpected error for non-existent resource: %v", err)
+		}
+	})
+}
+
+// TestDeleteRaceNotFound covers the TOCTOU case where a resource exists when we
+// List/Get it but is deleted (by the K8s TTL controller, GC, or a concurrent
+// reconcile/cancel) before our subsequent Delete/Update runs. A NotFound at that
+// point means the resource reached its desired end state and must not surface as
+// an error — otherwise a task :cancel returns a 500. See issue #89.
+func TestDeleteRaceNotFound(t *testing.T) {
+	// Executor job: present in the List, but Delete races with NotFound.
+	t.Run("ExecutorJob", func(t *testing.T) {
+		execJob := &batchv1.Job{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      testTaskID + "-0",
+				Namespace: jobsNamespace,
+			},
+		}
+		fakeClient := fake.NewSimpleClientset(execJob)
+		fakeClient.PrependReactor("delete", "jobs", func(action k8stesting.Action) (bool, runtime.Object, error) {
+			name := action.(k8stesting.DeleteAction).GetName()
+			return true, nil, apierrors.NewNotFound(schema.GroupResource{Group: "batch", Resource: "jobs"}, name)
+		})
+
+		conf := config.DefaultConfig()
+		conf.Kubernetes.JobsNamespace = jobsNamespace
+		if err := DeleteExecutorJobs(context.Background(), conf, testTaskID, fakeClient, l); err != nil {
+			t.Errorf("DeleteExecutorJobs should ignore NotFound on Delete, got: %v", err)
+		}
+	})
+
+	// PV: present in the Get, has a finalizer, but the finalizer-removing Update
+	// races with NotFound.
+	t.Run("PV", func(t *testing.T) {
+		pv := &corev1.PersistentVolume{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "funnel-worker-pv-" + testTaskID,
+				Finalizers: []string{"kubernetes.io/pv-protection"},
+				Labels:     map[string]string{"namespace": jobsNamespace},
+			},
+		}
+		fakeClient := fake.NewSimpleClientset(pv)
+		fakeClient.PrependReactor("update", "persistentvolumes", func(action k8stesting.Action) (bool, runtime.Object, error) {
+			return true, nil, apierrors.NewNotFound(schema.GroupResource{Resource: "persistentvolumes"}, pv.Name)
+		})
+
+		if err := DeletePV(context.Background(), testTaskID, jobsNamespace, fakeClient, l); err != nil {
+			t.Errorf("DeletePV should ignore NotFound on finalizer Update, got: %v", err)
+		}
+	})
+
+	// PVC: present in the Get, has a finalizer, but the finalizer-removing Update
+	// races with NotFound.
+	t.Run("PVC", func(t *testing.T) {
+		pvc := &corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "funnel-worker-pvc-" + testTaskID,
+				Namespace:  namespace,
+				Finalizers: []string{"kubernetes.io/pvc-protection"},
+			},
+		}
+		fakeClient := fake.NewSimpleClientset(pvc)
+		fakeClient.PrependReactor("update", "persistentvolumeclaims", func(action k8stesting.Action) (bool, runtime.Object, error) {
+			return true, nil, apierrors.NewNotFound(schema.GroupResource{Resource: "persistentvolumeclaims"}, pvc.Name)
+		})
+
+		if err := DeletePVC(context.Background(), testTaskID, namespace, fakeClient, l); err != nil {
+			t.Errorf("DeletePVC should ignore NotFound on finalizer Update, got: %v", err)
+		}
+	})
+}
+
+func TestCreateServiceAccount(t *testing.T) {
+	task := &tes.Task{
+		Id: testTaskID,
+	}
+
+	conf := config.DefaultConfig()
+	conf.Kubernetes.JobsNamespace = jobsNamespace
+	conf.Kubernetes.ServiceAccountTemplate = minimalServiceAccountTemplate
+	err := CreateServiceAccount(ctx, task, conf, fake.NewSimpleClientset(), l, nil)
+	if err != nil {
+		t.Errorf("CreateServiceAccount failed: %v", err)
+	}
+}
+
+func TestServiceAccountTemplateDisablesTokenMount(t *testing.T) {
+	conf := config.DefaultConfig()
+	conf.Kubernetes.JobsNamespace = jobsNamespace
+	conf.Kubernetes.ServiceAccountTemplate = serviceAccountTemplateFixture
+	client := fake.NewSimpleClientset()
+	role := "arn:fixture\ncontinued"
+	if err := CreateServiceAccount(t.Context(), &tes.Task{Id: testTaskID, Tags: map[string]string{"_FUNNEL_WORKER_ROLE_ARN": role}}, conf, client, l, nil); err != nil {
+		t.Fatal(err)
+	}
+	sa, err := client.CoreV1().ServiceAccounts(jobsNamespace).Get(t.Context(), "funnel-worker-sa-"+jobsNamespace+"-"+testTaskID, metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sa.AutomountServiceAccountToken == nil || *sa.AutomountServiceAccountToken {
+		t.Fatal("service account template does not disable API token automount")
+	}
+	if sa.Annotations["eks.amazonaws.com/role-arn"] != role || len(sa.ImagePullSecrets) != 0 {
+		t.Error("role annotation did not remain a scalar")
+	}
+}
+
+func TestDeleteServiceAccount(t *testing.T) {
+	fakeClient := fake.NewSimpleClientset()
+
+	sa := &corev1.ServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "funnel-worker-sa-" + testTaskID,
+			Namespace: namespace,
+			Labels: map[string]string{
+				"app":    "funnel",
+				"taskId": testTaskID,
+			},
+		},
+	}
+	_, err := fakeClient.CoreV1().ServiceAccounts(namespace).Create(context.Background(), sa, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Failed to create test ServiceAccount: %v", err)
+	}
+
+	err = DeleteServiceAccount(context.Background(), testTaskID, namespace, fakeClient, l, nil)
+	if err != nil {
+		t.Errorf("DeleteServiceAccount failed: %v", err)
+	}
+}
+
+func TestSharedServiceAccountIsNeverDeleted(t *testing.T) {
+	client := fake.NewSimpleClientset(&corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: "external-account", Namespace: namespace}})
+	if err := DeleteServiceAccount(t.Context(), testTaskID, namespace, client, l, &DeleteServiceAccountOptions{ServiceAccountName: "external-account", SharedSA: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.CoreV1().ServiceAccounts(namespace).Get(t.Context(), "external-account", metav1.GetOptions{}); err != nil {
+		t.Fatal("task cleanup removed the external account", err)
+	}
+	for _, action := range client.Actions() {
+		if action.GetVerb() == "delete" {
+			t.Error("task cleanup attempted external account deletion")
+		}
+	}
+}
+
+func TestDeleteServiceAccountInUse(t *testing.T) {
+	fakeClient := fake.NewSimpleClientset()
+
+	sa := &corev1.ServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "funnel-worker-sa-" + testTaskID,
+			Namespace: namespace,
+			Labels: map[string]string{
+				"app":    "funnel",
+				"taskId": testTaskID,
+			},
+		},
+	}
+	_, err := fakeClient.CoreV1().ServiceAccounts(namespace).Create(context.Background(), sa, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Failed to create test ServiceAccount: %v", err)
+	}
+
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-pod",
+			Namespace: namespace,
+		},
+		Spec: corev1.PodSpec{
+			ServiceAccountName: sa.Name,
+		},
+	}
+	_, err = fakeClient.CoreV1().Pods(namespace).Create(context.Background(), pod, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Failed to create test Pod: %v", err)
+	}
+
+	err = DeleteServiceAccount(context.Background(), testTaskID, namespace, fakeClient, l, nil)
+	if err != nil {
+		t.Fatalf("expected DeleteServiceAccount to succeed (skip) when ServiceAccount is in use, got error: %v", err)
+	}
+
+	// SA must still exist — it was skipped, not deleted.
+	_, err = fakeClient.CoreV1().ServiceAccounts(namespace).Get(context.Background(), sa.Name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("expected ServiceAccount to remain when still in use: %v", err)
+	}
+}
+
+func TestCreateRole(t *testing.T) {
+	task := &tes.Task{
+		Id: testTaskID,
+	}
+
+	conf := config.DefaultConfig()
+	conf.Kubernetes.JobsNamespace = jobsNamespace
+	conf.Kubernetes.RoleTemplate = minimalRoleTemplate
+	err := CreateRole(ctx, task, conf, fake.NewSimpleClientset(), l, nil)
+	if err != nil {
+		t.Errorf("CreateRole failed: %v", err)
+	}
+}
+
+func TestDeleteRole(t *testing.T) {
+	fakeClient := fake.NewSimpleClientset()
+
+	role := &corev1.ServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "funnel-worker-role-" + testTaskID,
+			Namespace: namespace,
+		},
+	}
+	_, err := fakeClient.CoreV1().ServiceAccounts(namespace).Create(context.Background(), role, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Failed to create test Role: %v", err)
+	}
+
+	err = DeleteRole(context.Background(), testTaskID, namespace, fakeClient, l)
+	if err != nil {
+		t.Errorf("DeleteRole failed: %v", err)
+	}
+}
+
+func TestCreateRoleBinding(t *testing.T) {
+	task := &tes.Task{
+		Id: testTaskID,
+	}
+
+	conf := config.DefaultConfig()
+	conf.Kubernetes.JobsNamespace = jobsNamespace
+	conf.Kubernetes.RoleBindingTemplate = minimalRoleBindingTemplate
+	err := CreateRoleBinding(ctx, task, conf, fake.NewSimpleClientset(), l, nil)
+	if err != nil {
+		t.Errorf("CreateRoleBinding failed: %v", err)
+	}
+}
+
+func TestDeleteRoleBinding(t *testing.T) {
+	fakeClient := fake.NewSimpleClientset()
+
+	roleBinding := &corev1.ServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "funnel-worker-rolebinding-" + testTaskID,
+			Namespace: namespace,
+		},
+	}
+	_, err := fakeClient.CoreV1().ServiceAccounts(namespace).Create(context.Background(), roleBinding, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Failed to create test RoleBinding: %v", err)
+	}
+
+	err = DeleteRoleBinding(context.Background(), testTaskID, namespace, fakeClient, l)
+	if err != nil {
+		t.Errorf("DeleteRoleBinding failed: %v", err)
+	}
+}

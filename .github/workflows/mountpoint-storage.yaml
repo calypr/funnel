@@ -3,7 +3,7 @@ name: S3 Mountpoint download tests
 on:
   pull_request:
     paths:
-      - "storage/**"
+      - "internal/storage/**"
       - "go.mod"
       - "go.sum"
       - "tests/storage/mountpoint-download.sh"
@@ -11,7 +11,7 @@ on:
   push:
     branches: [develop]
     paths:
-      - "storage/**"
+      - "internal/storage/**"
       - "go.mod"
       - "go.sum"
       - "tests/storage/mountpoint-download.sh"

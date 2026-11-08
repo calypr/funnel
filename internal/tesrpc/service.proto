@@ -1,0 +1,75 @@
+syntax = "proto3";
+package tes;
+option go_package = "github.com/calypr/funnel/internal/tesrpc";
+import "tes/tes.proto";
+import "google/api/annotations.proto";
+
+service TaskService {
+
+    rpc GetTask(GetTaskRequest) returns (Task) {
+      option (google.api.http) = {
+        get: "/tasks/{id}"
+		additional_bindings {
+			get: "/v1/tasks/{id}"
+		}
+		additional_bindings {
+			get: "/ga4gh/tes/v1/tasks/{id}"
+		}
+      };
+    }
+
+    rpc CancelTask(CancelTaskRequest) returns (CancelTaskResponse) {
+      option (google.api.http) = {
+        post: "/tasks/{id}:cancel"
+		additional_bindings {
+			post: "/v1/tasks/{id}:cancel"
+			body: "*"
+		}
+		additional_bindings {
+			post: "/ga4gh/tes/v1/tasks/{id}:cancel"
+			body: "*"
+		}
+		body: "*"
+      };
+    }
+
+    rpc GetServiceInfo(GetServiceInfoRequest) returns (ServiceInfo) {
+      option (google.api.http) = {
+        get: "/service-info"
+		additional_bindings {
+			get: "/v1/service-info"
+		}
+		additional_bindings {
+			get: "/ga4gh/tes/v1/service-info"
+		}
+      };
+    }
+
+    rpc ListTasks(ListTasksRequest) returns (ListTasksResponse) {
+      option (google.api.http) = {
+        get: "/tasks"
+		additional_bindings {
+			get: "/v1/tasks"
+		}
+		additional_bindings {
+			get: "/ga4gh/tes/v1/tasks"
+		}
+      };
+    }
+
+    rpc CreateTask(Task) returns (CreateTaskResponse) {
+      option (google.api.http) = {
+        post: "/tasks"
+		additional_bindings {
+			post: "/v1/tasks"
+			body: "*"
+		}
+		additional_bindings {
+			post: "/ga4gh/tes/v1/tasks"
+			body: "*"
+		}
+		body: "*"
+      };
+    }
+
+}

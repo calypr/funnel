@@ -11,9 +11,11 @@ import (
 	"time"
 
 	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/database/boltdb"
-	"github.com/calypr/funnel/events"
-	"github.com/calypr/funnel/server"
+	"github.com/calypr/funnel/internal/database/boltdb"
+	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/internal/server"
+	"github.com/calypr/funnel/internal/taskmodel"
+	"github.com/calypr/funnel/internal/tesrpc"
 	"github.com/calypr/funnel/tes"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -63,7 +65,7 @@ func TestListTasksLargeResponses(t *testing.T) {
 			listener := bufconn.Listen(1024 * 1024)
 			rpc := grpc.NewServer(grpc.MaxSendMsgSize(8*1024*1024), grpc.UnaryInterceptor(server.NewAuthentication(nil, nil, server.AccessAll).Interceptor))
 			serviceConf := config.DefaultConfig()
-			tes.RegisterTaskServiceServer(rpc, &server.TaskService{Read: db, Config: serviceConf})
+			tesrpc.RegisterTaskServiceServer(rpc, &server.TaskService{Read: db, Config: serviceConf})
 			serveDone := make(chan error, 1)
 			go func() { serveDone <- rpc.Serve(listener) }()
 			defer func() {
@@ -83,13 +85,13 @@ func TestListTasksLargeResponses(t *testing.T) {
 					t.Errorf("close list size test connection: %v", err)
 				}
 			}()
-			client := tes.NewTaskServiceClient(connection)
+			client := tesrpc.NewTaskServiceClient(connection)
 			for _, view := range []string{"MINIMAL", "BASIC", "FULL"} {
 				t.Run(view, func(t *testing.T) {
 					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 					defer cancel()
 					req := &tes.ListTasksRequest{View: view, PageSize: 1}
-					direct, err := db.ListTasks(tes.WithTaskPageBytes(context.Background(), 8*1024*1024), req)
+					direct, err := db.ListTasks(taskmodel.WithTaskPageBytes(context.Background(), 8*1024*1024), req)
 					if err != nil {
 						t.Fatal(err)
 					}

@@ -32,7 +32,11 @@ func TestCredentialTransportPolicy(t *testing.T) {
 			t.Setenv("FUNNEL_SERVER_USER", "")
 			t.Setenv("FUNNEL_SERVER_PASSWORD", "")
 			t.Setenv("FUNNEL_SERVER_TOKEN", "")
-			c, err := NewClient(tc.address)
+			var options []ClientOption
+			if tc.opt == "true" {
+				options = append(options, WithInsecureCredentials())
+			}
+			c, err := NewClient(tc.address, options...)
 			if err != nil {
 				t.Fatal(err)
 			}

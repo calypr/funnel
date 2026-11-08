@@ -277,6 +277,7 @@ func adjustListTasksResponseFields(fields []Field, taskType string) []Field {
 }
 
 func main() {
+	serviceOnly := flag.Bool("service", false, "Generate internal TES service bindings instead of public messages")
 	flag.Parse()
 
 	input := flag.Arg(0)
@@ -416,6 +417,9 @@ func main() {
 	cleanSchema(messages, enums, services)
 
 	source, err := renderProto(messages, enums, services)
+	if *serviceOnly {
+		source, err = renderServiceProto(services)
+	}
 	if err != nil {
 		log.Fatalf("Template Error: %s\n", err)
 	}
@@ -430,7 +434,6 @@ option go_package = "github.com/calypr/funnel/tes";
 
 package tes;
 
-import "google/api/annotations.proto";
 
 {{range $i, $enum := .enums}}
 enum {{$enum.Name}} { {{range $j, $value := $enum.Values}}
@@ -442,6 +445,28 @@ message {{$message.Name}} { {{range $j, $field := $message.Fields}}
 	{{if $field.Repeated}}repeated {{else if $field.Optional}}optional {{end}}{{$field.Type}} {{$field.Name}} = {{$field.ID}};{{end}}
 }
 {{end}}
+
+
+
+`)
+	if err != nil {
+		return "", err
+	}
+
+	var source strings.Builder
+	err = tmpl.Execute(&source, map[string]interface{}{"messages": messages, "enums": enums, "services": services})
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(source.String()) + "\n", nil
+}
+
+func renderServiceProto(services []ServicePath) (string, error) {
+	tmpl, err := template.New("service").Parse(`syntax = "proto3";
+package tes;
+option go_package = "github.com/calypr/funnel/internal/tesrpc";
+import "tes/tes.proto";
+import "google/api/annotations.proto";
 
 service TaskService {
 {{range $i, $path := .services}}
@@ -464,16 +489,13 @@ service TaskService {
     }
 {{end}}
 }
-
 `)
 	if err != nil {
 		return "", err
 	}
-
 	var source strings.Builder
-	err = tmpl.Execute(&source, map[string]interface{}{"messages": messages, "enums": enums, "services": services})
-	if err != nil {
+	if err := tmpl.Execute(&source, map[string]interface{}{"services": services}); err != nil {
 		return "", err
 	}
-	return source.String(), nil
+	return strings.TrimSpace(source.String()) + "\n", nil
 }

@@ -6,7 +6,8 @@ import (
 	"testing"
 
 	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/server"
+	"github.com/calypr/funnel/internal/server"
+	"github.com/calypr/funnel/internal/taskmodel"
 	"github.com/calypr/funnel/tes"
 	"github.com/calypr/funnel/tests"
 	"google.golang.org/grpc/codes"
@@ -215,7 +216,7 @@ func checkPermissionDenied(t *testing.T, err error) {
 		t.Fatalf("expected PermissionDenied, got %s: %v", s.Code(), err)
 	}
 
-	expectedPrefix := tes.ErrNotPermitted.Error()
+	expectedPrefix := taskmodel.ErrNotPermitted.Error()
 
 	if !strings.HasPrefix(s.Message(), expectedPrefix) {
 		t.Fatal("expected error-prefix [", expectedPrefix, "] but got:", s.Message())

@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/calypr/funnel/database/postgres"
-	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/internal/database/postgres"
+	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/tes"
 )
 

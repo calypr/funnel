@@ -6,7 +6,8 @@ export default defineConfig({
   base: '/',
   server: { port: 3000 },
   build: {
-    outDir: 'build',
+    outDir: '../internal/webdash/build',
+    emptyOutDir: true,
     assetsDir: 'static',
   },
   test: {

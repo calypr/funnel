@@ -11,11 +11,11 @@ builds:
     env:
       - CGO_ENABLED=0
     ldflags: >
-      -X github.com/calypr/funnel/version.BuildDate={{.Date}}
-      -X github.com/calypr/funnel/version.GitCommit={{.ShortCommit}}
-      -X github.com/calypr/funnel/version.GitBranch={{.Env.BRANCH}}
-      -X github.com/calypr/funnel/version.GitUpstream={{.GitURL}}
-      -X github.com/calypr/funnel/version.Version={{.Version}}
+      -X github.com/calypr/funnel/internal/version.BuildDate={{.Date}}
+      -X github.com/calypr/funnel/internal/version.GitCommit={{.ShortCommit}}
+      -X github.com/calypr/funnel/internal/version.GitBranch={{.Env.BRANCH}}
+      -X github.com/calypr/funnel/internal/version.GitUpstream={{.GitURL}}
+      -X github.com/calypr/funnel/internal/version.Version={{.Version}}
 
 dist: build/release
 

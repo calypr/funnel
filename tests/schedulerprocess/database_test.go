@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/compute/scheduler"
 	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/database/mongodb"
-	"github.com/calypr/funnel/database/postgres"
-	"github.com/calypr/funnel/events"
-	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/internal/compute/scheduler"
+	"github.com/calypr/funnel/internal/database/mongodb"
+	"github.com/calypr/funnel/internal/database/postgres"
+	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/internal/taskmodel"
 	"github.com/calypr/funnel/tests/mongotest"
 	"github.com/testcontainers/testcontainers-go"
 	postgrescontainer "github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -30,7 +30,7 @@ type dbSettings struct {
 }
 
 type schedulerStore interface {
-	tes.ReadOnlyServer
+	taskmodel.ReadOnlyServer
 	scheduler.SchedulerServiceServer
 	scheduler.TaskQueue
 	scheduler.AtomicTaskAssigner

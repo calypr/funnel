@@ -9,8 +9,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
-	"regexp"
 	"strings"
 	"time"
 
@@ -20,57 +18,72 @@ import (
 // NewClient returns a new HTTP client for accessing
 // Create/List/Get/Cancel Task endpoints. "address" is the address
 // of the TES server.
-func NewClient(address string) (*Client, error) {
-	user := os.Getenv("FUNNEL_SERVER_USER")
-	password := os.Getenv("FUNNEL_SERVER_PASSWORD")
-	token := os.Getenv("FUNNEL_SERVER_TOKEN")
-
-	re := regexp.MustCompile("^(.+://)?(.[^/]+)(.+)?$")
-	endpoint := re.ReplaceAllString(address, "$1$2")
-
-	reScheme := regexp.MustCompile("^.+://")
-	if reScheme.MatchString(endpoint) {
-		if !strings.HasPrefix(endpoint, "http") {
-			return nil, fmt.Errorf("invalid protocol: '%s'; expected: 'http://' or 'https://'", reScheme.FindString(endpoint))
-		}
-	} else {
-		endpoint = "http://" + endpoint
+func NewClient(address string, options ...ClientOption) (*Client, error) {
+	if !strings.Contains(address, "://") {
+		address = "http://" + address
 	}
+	endpoint, err := url.Parse(address)
+	if err != nil {
+		return nil, fmt.Errorf("tes: invalid server address: %w", err)
+	}
+	if (endpoint.Scheme != "http" && endpoint.Scheme != "https") || endpoint.Hostname() == "" || endpoint.RawQuery != "" || endpoint.ForceQuery || endpoint.Fragment != "" {
+		return nil, fmt.Errorf("tes: server address must be an HTTP(S) URL without query or fragment")
+	}
+	c := &Client{address: strings.TrimRight(endpoint.String(), "/"), client: &http.Client{Timeout: 60 * time.Second}, Marshaler: &Marshaler}
+	for _, option := range options {
+		option(c)
+	}
+	if c.client == nil {
+		return nil, fmt.Errorf("tes: HTTP client must not be nil")
+	}
+	return c, nil
+}
 
-	return &Client{
-		address: endpoint,
-		client: &http.Client{
-			Timeout: 60 * time.Second,
-		},
-		Marshaler: &Marshaler,
-		User:      user,
-		Password:  password,
-		Token:     token,
-	}, nil
+// ClientOption configures a REST client.
+type ClientOption func(*Client)
+
+// WithHTTPClient uses the caller's HTTP client, including its transport and timeout.
+func WithHTTPClient(client *http.Client) ClientOption {
+	return func(c *Client) { c.client = client }
+}
+
+// WithInsecureCredentials explicitly permits credentials over plaintext HTTP.
+// HTTPS-to-HTTP credential redirects are permitted only with this option.
+func WithInsecureCredentials() ClientOption {
+	return func(c *Client) { c.allowInsecureCredentials = true }
 }
 
 // Client represents the HTTP Task client.
 type Client struct {
-	address   string
-	client    *http.Client
-	Marshaler *protojson.MarshalOptions
-	User      string
-	Password  string
-	Token     string
+	allowInsecureCredentials bool
+	address                  string
+	client                   *http.Client
+	Marshaler                *protojson.MarshalOptions
+	User                     string
+	Password                 string
+	Token                    string
 }
 
 // do applies the credential policy at send time, including redirected requests.
 func (c *Client) do(req *http.Request) (*http.Response, error) {
 	if c.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.Token)
-		return DoAuthenticatedRequest(c.client, req, "", "")
+		return doAuthenticatedRequest(c.client, req, "", "", c.allowInsecureCredentials)
 	}
-	return DoAuthenticatedRequest(c.client, req, c.User, c.Password)
+	return doAuthenticatedRequest(c.client, req, c.User, c.Password, c.allowInsecureCredentials)
 }
 
 // DoAuthenticatedRequest sends a request with the same credential transport policy
 // as the TES client, including checks on redirected requests.
-func DoAuthenticatedRequest(httpClient *http.Client, req *http.Request, user, password string) (*http.Response, error) {
+func DoAuthenticatedRequest(httpClient *http.Client, req *http.Request, user, password string, options ...ClientOption) (*http.Response, error) {
+	c := &Client{client: httpClient}
+	for _, option := range options {
+		option(c)
+	}
+	return doAuthenticatedRequest(c.client, req, user, password, c.allowInsecureCredentials)
+}
+
+func doAuthenticatedRequest(httpClient *http.Client, req *http.Request, user, password string, allowInsecure bool) (*http.Response, error) {
 	if user != "" || password != "" {
 		req.SetBasicAuth(user, password)
 	}
@@ -79,15 +92,15 @@ func DoAuthenticatedRequest(httpClient *http.Client, req *http.Request, user, pa
 	if transport == nil {
 		transport = http.DefaultTransport
 	}
-	client.Transport = credentialTransport{base: transport}
+	client.Transport = credentialTransport{base: transport, allowInsecure: allowInsecure}
 	checkRedirect := client.CheckRedirect
 	client.CheckRedirect = func(next *http.Request, via []*http.Request) error {
 		hasCredentials := req.Header.Get("Authorization") != "" || req.URL.User != nil || next.Header.Get("Authorization") != "" || next.URL.User != nil
-		if hasCredentials && os.Getenv("FUNNEL_ALLOW_INSECURE_CREDENTIALS") != "true" {
+		if hasCredentials && !allowInsecure {
 			if next.URL.Scheme != "https" && via[len(via)-1].URL.Scheme == "https" {
 				return errors.New("tes: refusing credential redirect from HTTPS to HTTP")
 			}
-			err := checkCredentialURL(next.URL)
+			err := checkCredentialURL(next.URL, allowInsecure)
 			if err != nil {
 				return err
 			}
@@ -103,11 +116,14 @@ func DoAuthenticatedRequest(httpClient *http.Client, req *http.Request, user, pa
 	return client.Do(req)
 }
 
-type credentialTransport struct{ base http.RoundTripper }
+type credentialTransport struct {
+	base          http.RoundTripper
+	allowInsecure bool
+}
 
 func (t credentialTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if req.Header.Get("Authorization") != "" || req.URL.User != nil {
-		err := checkCredentialURL(req.URL)
+		err := checkCredentialURL(req.URL, t.allowInsecure)
 		if err != nil {
 			return nil, err
 		}
@@ -115,8 +131,8 @@ func (t credentialTransport) RoundTrip(req *http.Request) (*http.Response, error
 	return t.base.RoundTrip(req)
 }
 
-func checkCredentialURL(u *url.URL) error {
-	if u.Scheme == "https" || os.Getenv("FUNNEL_ALLOW_INSECURE_CREDENTIALS") == "true" {
+func checkCredentialURL(u *url.URL, allowInsecure bool) error {
+	if u.Scheme == "https" || allowInsecure {
 		return nil
 	}
 	host := u.Hostname()
@@ -130,7 +146,7 @@ func checkCredentialURL(u *url.URL) error {
 // GetTask returns the raw bytes from GET /v1/tasks/{id}
 func (c *Client) GetTask(ctx context.Context, req *GetTaskRequest) (*Task, error) {
 	// Send request
-	u := c.address + "/v1/tasks/" + req.Id + "?view=" + req.View
+	u := c.address + "/v1/tasks/" + url.PathEscape(req.Id) + "?" + url.Values{"view": []string{req.View}}.Encode()
 	hreq, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return nil, fmt.Errorf("tes: creating GET request: %w", err)
@@ -187,11 +203,6 @@ func (c *Client) ListTasks(ctx context.Context, req *ListTasksRequest) (*ListTas
 
 // CreateTask POSTs a Task message to /v1/tasks
 func (c *Client) CreateTask(ctx context.Context, task *Task) (*CreateTaskResponse, error) {
-	verr := Validate(task)
-	if verr != nil {
-		return nil, fmt.Errorf("invalid task message: %v", verr)
-	}
-
 	b, err := Marshaler.Marshal(task)
 	if err != nil {
 		return nil, fmt.Errorf("error marshaling task message: %v", err)
@@ -235,7 +246,7 @@ type CancelTaskResult struct {
 
 // CancelTaskWithMessage POSTs to /v1/tasks/{id}:cancel and returns any informational message
 func (c *Client) CancelTaskWithMessage(ctx context.Context, req *CancelTaskRequest) (*CancelTaskResult, error) {
-	u := c.address + "/v1/tasks/" + req.Id + ":cancel"
+	u := c.address + "/v1/tasks/" + url.PathEscape(req.Id) + ":cancel"
 	hreq, err := http.NewRequestWithContext(ctx, http.MethodPost, u, nil)
 	if err != nil {
 		return nil, fmt.Errorf("tes: creating POST request: %w", err)
@@ -305,22 +316,27 @@ func (c *Client) GetServiceInfo(ctx context.Context, req *GetServiceInfoRequest)
 // WaitForTask polls /v1/tasks/{id} for each Id provided and returns
 // once all tasks are in a terminal state.
 func (c *Client) WaitForTask(ctx context.Context, taskIDs ...string) error {
-	for range time.NewTicker(time.Second * 2).C {
-		done := false
+	if len(taskIDs) == 0 {
+		return nil
+	}
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+		done := true
 		for _, id := range taskIDs {
-			r, err := c.GetTask(ctx, &GetTaskRequest{
-				Id:   id,
-				View: View_MINIMAL.String(),
-			})
+			task, err := c.GetTask(ctx, &GetTaskRequest{Id: id, View: View_MINIMAL.String()})
 			if err != nil {
 				return err
 			}
-			switch r.State {
+			switch task.State {
 			case State_COMPLETE:
-				done = true
 			case State_EXECUTOR_ERROR, State_SYSTEM_ERROR, State_CANCELED:
-				errMsg := fmt.Sprintf("Task %s exited with state %s", id, r.State.String())
-				return errors.New(errMsg)
+				return fmt.Errorf("Task %s exited with state %s", id, task.State.String())
 			default:
 				done = false
 			}
@@ -329,5 +345,4 @@ func (c *Client) WaitForTask(ctx context.Context, taskIDs ...string) error {
 			return nil
 		}
 	}
-	return nil
 }

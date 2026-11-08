@@ -11,11 +11,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/compute/scheduler"
 	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/internal/compute/scheduler"
+	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/rpcclient"
-	"github.com/calypr/funnel/server"
+	"github.com/calypr/funnel/internal/server"
+	"github.com/calypr/funnel/internal/tesrpc"
 	"github.com/calypr/funnel/tes"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
@@ -318,7 +319,7 @@ func submitTask(t *testing.T, port, id, markers string, hold bool) (string, erro
 			t.Errorf("close scheduler connection: %v", err)
 		}
 	}()
-	response, err := tes.NewTaskServiceClient(conn).CreateTask(ctx, markerTask(id, markers, hold))
+	response, err := tesrpc.NewTaskServiceClient(conn).CreateTask(ctx, markerTask(id, markers, hold))
 	if err != nil {
 		return "", err
 	}

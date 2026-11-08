@@ -14,10 +14,11 @@ import (
 	"testing"
 	"time"
 
-	servercmd "github.com/calypr/funnel/cmd/server"
 	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/logger"
-	"github.com/calypr/funnel/server"
+	servercmd "github.com/calypr/funnel/internal/cli/server"
+	"github.com/calypr/funnel/internal/logger"
+	"github.com/calypr/funnel/internal/server"
+	logconfig "github.com/calypr/funnel/logger"
 	docker "github.com/moby/moby/client"
 )
 
@@ -239,7 +240,7 @@ func newServerTestFunnel(t *testing.T, rpcPort, httpPort string) *Funnel {
 	conf.LocalStorage.AllowedDirs = []string{t.TempDir()}
 	conf.Worker.WorkDir = t.TempDir()
 
-	log := logger.NewLogger("server-lifecycle-test", logger.DefaultConfig())
+	log := logger.NewLogger("server-lifecycle-test", logconfig.DefaultConfig())
 	log.Discard()
 	apiServer := &server.Server{
 		RPCAddress: conf.Server.RPCAddress(),

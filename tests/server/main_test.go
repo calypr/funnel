@@ -4,12 +4,13 @@ import (
 	"os"
 	"testing"
 
-	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/internal/logger"
+	logconfig "github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/tests"
 )
 
 var fun *tests.Funnel
-var log = logger.NewLogger("funnel-e2e-server", logger.DefaultConfig())
+var log = logger.NewLogger("funnel-e2e-server", logconfig.DefaultConfig())
 
 func TestMain(m *testing.M) {
 	tests.ParseConfig()

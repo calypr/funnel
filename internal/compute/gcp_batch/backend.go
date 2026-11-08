@@ -1,0 +1,733 @@
+// Package gcp_batch contains code for accessing compute resources via Google Batch.
+// ref: https://cloud.google.com/batch/docs
+// ref: https://cloud.google.com/batch/docs/reference/rest
+package gcp_batch
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"path"
+	"strconv"
+	"strings"
+	"time"
+
+	batch "cloud.google.com/go/batch/apiv1"
+	"cloud.google.com/go/batch/apiv1/batchpb"
+	"cloud.google.com/go/logging"
+	logadmin "cloud.google.com/go/logging/apiv2"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/internal/compute"
+	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/internal/logger"
+	"github.com/calypr/funnel/internal/storage"
+	"github.com/calypr/funnel/internal/taskmodel"
+	"github.com/calypr/funnel/tes"
+	"google.golang.org/api/iterator"
+	"google.golang.org/api/option"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+)
+
+const (
+	gpuTypeParameter           = "gpu_type"
+	gpuCountParameter          = "gpu_count"
+	gpuMachineTypeParameter    = "machine_type"
+	gpuInstallDriversParameter = "install_gpu_drivers"
+)
+
+var backendParameterKeys = []string{
+	gpuTypeParameter,
+	gpuCountParameter,
+	gpuMachineTypeParameter,
+	gpuInstallDriversParameter,
+}
+
+type gpuOptions struct {
+	typeName       string
+	count          int64
+	machineType    string
+	installDrivers bool
+}
+
+func (b *Backend) BackendParameterKeys() []string {
+	return append([]string(nil), backendParameterKeys...)
+}
+
+func (b *Backend) CheckBackendParameterSupport(task *tes.Task) error {
+	_, err := parseGPUOptions(task)
+	return err
+}
+
+func parseGPUOptions(task *tes.Task) (*gpuOptions, error) {
+	if _, err := taskmodel.FilterBackendParameters(task.GetResources(), backendParameterKeys); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	normalized := task.GetResources().GetBackendParameters()
+
+	typeName, hasType := normalized[gpuTypeParameter]
+	_, hasCount := normalized[gpuCountParameter]
+	if hasType != hasCount {
+		return nil, status.Errorf(codes.InvalidArgument, "%s and %s must be set together", gpuTypeParameter, gpuCountParameter)
+	}
+
+	machineType, hasMachineType := normalized[gpuMachineTypeParameter]
+	driversValue, hasDrivers := normalized[gpuInstallDriversParameter]
+	if !hasType {
+		if hasMachineType || hasDrivers {
+			return nil, status.Errorf(codes.InvalidArgument, "%s and %s require %s and %s", gpuMachineTypeParameter, gpuInstallDriversParameter, gpuTypeParameter, gpuCountParameter)
+		}
+		return nil, nil
+	}
+	if typeName == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "%s must not be empty", gpuTypeParameter)
+	}
+	count, err := taskmodel.GPUCount(task.GetResources())
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "%s must be a positive integer", gpuCountParameter)
+	}
+	if hasMachineType && machineType == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "%s must not be empty", gpuMachineTypeParameter)
+	}
+	installDrivers := true
+	if hasDrivers {
+		installDrivers, err = strconv.ParseBool(driversValue)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "%s must be a boolean", gpuInstallDriversParameter)
+		}
+	}
+
+	return &gpuOptions{
+		typeName:       typeName,
+		count:          int64(count),
+		machineType:    machineType,
+		installDrivers: installDrivers,
+	}, nil
+}
+
+type Backend struct {
+	client             client
+	conf               *config.GCPBatch
+	event              events.Writer
+	database           taskmodel.ReadOnlyServer
+	log                *logger.Logger
+	loggingClient      *logging.Client
+	loggingAdminClient *logadmin.Client
+	events.Backend
+}
+
+func NewBackend(ctx context.Context, conf *config.GCPBatch, reader taskmodel.ReadOnlyServer, writer events.Writer, log *logger.Logger) (*Backend, error) {
+	if conf == nil {
+		return nil, fmt.Errorf("GCPBatch configuration is required")
+	}
+	if strings.TrimSpace(conf.Project) == "" {
+		return nil, fmt.Errorf("GCPBatch.Project must not be empty")
+	}
+	if strings.TrimSpace(conf.Location) == "" {
+		return nil, fmt.Errorf("GCPBatch.Location must not be empty")
+	}
+	err := compute.ValidateReconcileRate("GCPBatch.ReconcileRate", conf.DisableReconciler, conf.ReconcileRate)
+	if err != nil {
+		return nil, err
+	}
+
+	client, err := batch.NewClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Initialize Cloud Logging client for log retrieval
+	loggingClient, err := logging.NewClient(ctx, conf.Project)
+	if err != nil {
+		log.Warn("Failed to initialize Cloud Logging client, log retrieval will be disabled", "error", err)
+		// Continue without logging client - other functionality will still work
+		loggingClient = nil
+	}
+
+	// Initialize Cloud Logging Admin client for reading logs
+	loggingAdminClient, err := logadmin.NewClient(ctx, option.WithQuotaProject(conf.Project))
+	if err != nil {
+		log.Warn("Failed to initialize Cloud Logging Admin client, log retrieval will be disabled", "error", err)
+		loggingAdminClient = nil
+	}
+
+	b := &Backend{
+		client:             client,
+		conf:               conf,
+		event:              writer,
+		database:           reader,
+		log:                log,
+		loggingClient:      loggingClient,
+		loggingAdminClient: loggingAdminClient,
+	}
+
+	if !conf.DisableReconciler {
+		go b.reconcile(ctx)
+	}
+
+	return b, nil
+}
+
+func (b *Backend) WriteEvent(ctx context.Context, ev *events.Event) error {
+	switch ev.Type {
+	case events.Type_TASK_CREATED:
+		return b.Submit(ev.GetTask())
+
+	case events.Type_TASK_STATE:
+		if ev.GetState() == tes.State_CANCELED {
+			return b.Cancel(ctx, ev.Id)
+		}
+	}
+	return nil
+}
+
+func (b *Backend) Close() {
+	if b.loggingClient != nil {
+		err := b.loggingClient.Close()
+		if err != nil {
+			if b.log != nil {
+				b.log.Error("closing Google Cloud Logging client", "error", err)
+			} else {
+				log.Printf("closing Google Cloud Logging client: %v", err)
+			}
+		}
+	}
+	b.database.Close()
+	b.event.Close()
+}
+
+// Example storage interface
+func (b *Backend) NewStorage(conf *config.Config) (*storage.GoogleCloud, error) {
+	gs, nerr := storage.NewGoogleCloud(conf.GoogleStorage)
+	if nerr != nil {
+		return nil, fmt.Errorf("failed to configure Google Storage backend: %s", nerr)
+	}
+
+	return gs, nil
+}
+
+// extractBucketName extracts the bucket name from a gs:// URL
+func extractBucketName(url string) string {
+	if strings.HasPrefix(url, "gs://") {
+		parts := strings.SplitN(strings.TrimPrefix(url, "gs://"), "/", 2)
+		return parts[0]
+	}
+	return ""
+}
+
+// extractGCSPath extracts bucket and object path from a gs:// URL
+func extractGCSPath(url string) (bucket string, objectPath string) {
+	if strings.HasPrefix(url, "gs://") {
+		urlPath := strings.TrimPrefix(url, "gs://")
+		parts := strings.SplitN(urlPath, "/", 2)
+		bucket = parts[0]
+		if len(parts) > 1 {
+			objectPath = parts[1]
+		}
+	}
+	return bucket, objectPath
+}
+
+// validatePath checks if a path is safe to use in shell commands
+func validatePath(path string) error {
+	if path == "" {
+		return nil // Empty paths are handled elsewhere
+	}
+
+	// Check for dangerous shell metacharacters
+	dangerousChars := ";|&$`\n\r<>()"
+	if strings.ContainsAny(path, dangerousChars) {
+		return fmt.Errorf("path contains dangerous shell metacharacters: %s", path)
+	}
+
+	// Ensure path is absolute (starts with /)
+	if !strings.HasPrefix(path, "/") {
+		return fmt.Errorf("path must be absolute (start with /): %s", path)
+	}
+
+	return nil
+}
+
+// detectPathCollisions checks for multiple inputs/outputs using the same path
+func detectPathCollisions(inputs []*tes.Input, outputs []*tes.Output) error {
+	seen := make(map[string]string) // path -> url
+
+	for _, input := range inputs {
+		if input.Path == "" {
+			continue
+		}
+		if existingURL, exists := seen[input.Path]; exists && existingURL != input.Url {
+			return fmt.Errorf("path collision detected: %s used by both %s and %s",
+				input.Path, existingURL, input.Url)
+		}
+		seen[input.Path] = input.Url
+	}
+
+	for _, output := range outputs {
+		if output.Path == "" {
+			continue
+		}
+		if existingURL, exists := seen[output.Path]; exists && existingURL != output.Url {
+			return fmt.Errorf("path collision detected: %s used by both %s and %s",
+				output.Path, existingURL, output.Url)
+		}
+		seen[output.Path] = output.Url
+	}
+
+	return nil
+}
+
+func (b *Backend) Submit(task *tes.Task) error {
+	// Options is a provider-parsed string, not an argv API. Reject paths whose
+	// quoting or splitting would depend on an undocumented provider behavior.
+	for _, executor := range task.Executors {
+		if err := taskmodel.ValidateContainerImage(executor.Image); err != nil {
+			return fmt.Errorf("invalid container image: %w", err)
+		}
+		if executor.Workdir != "" {
+			if !strings.HasPrefix(executor.Workdir, "/") || strings.IndexFunc(executor.Workdir, func(r rune) bool {
+				return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("/._-", r))
+			}) >= 0 {
+				return fmt.Errorf("GCP Batch workdir must be an absolute path containing only letters, digits, /, ., _, or -")
+			}
+		}
+	}
+	ctx := context.Background()
+	gpu, err := parseGPUOptions(task)
+	if err != nil {
+		return err
+	}
+
+	// 1. Identify all unique buckets used by the task
+	buckets := make(map[string]bool)
+	extractBucketName := func(url string) string {
+		if strings.HasPrefix(url, "gs://") {
+			parts := strings.SplitN(strings.TrimPrefix(url, "gs://"), "/", 2)
+			return parts[0]
+		}
+		return ""
+	}
+
+	for _, input := range task.Inputs {
+		if bucket := extractBucketName(input.Url); bucket != "" {
+			buckets[bucket] = true
+		}
+	}
+
+	for _, output := range task.Outputs {
+		if bucket := extractBucketName(output.Url); bucket != "" {
+			buckets[bucket] = true
+		}
+	}
+
+	// Mount all buckets to `/mnt/disks/<BUCKET>` as volumes in the GCP Job Request
+	var volumes []*batchpb.Volume
+	for bucketName := range buckets {
+		volumes = append(volumes, &batchpb.Volume{
+			Source: &batchpb.Volume_Gcs{
+				Gcs: &batchpb.GCS{
+					RemotePath: bucketName,
+				},
+			},
+			MountPath: fmt.Sprintf("/mnt/disks/%s", bucketName),
+		})
+	}
+
+	// Build a path map: user-specified path → /mnt/disks/<bucket>/<object> so
+	// that executor commands referencing those paths are rewritten before
+	// submission. This avoids symlinks, which are unreliable across containers
+	// on COS (Container-Optimized OS) VMs where each container has an isolated
+	// filesystem.
+	if err := detectPathCollisions(task.Inputs, task.Outputs); err != nil {
+		return fmt.Errorf("GCP Batch path collision: %w", err)
+	}
+
+	pathMap := make(map[string]string) // userPath → mountedPath
+	for _, input := range task.Inputs {
+		if input.Path == "" || input.Url == "" {
+			continue
+		}
+		if err := validatePath(input.Path); err != nil {
+			return fmt.Errorf("invalid input path: %w", err)
+		}
+		bucket, objectPath := extractGCSPath(input.Url)
+		if bucket == "" {
+			continue
+		}
+		pathMap[input.Path] = fmt.Sprintf("/mnt/disks/%s/%s", bucket, objectPath)
+	}
+	for _, output := range task.Outputs {
+		if output.Path == "" || output.Url == "" {
+			continue
+		}
+		if err := validatePath(output.Path); err != nil {
+			return fmt.Errorf("invalid output path: %w", err)
+		}
+		bucket, objectPath := extractGCSPath(output.Url)
+		if bucket == "" {
+			continue
+		}
+		pathMap[output.Path] = fmt.Sprintf("/mnt/disks/%s/%s", bucket, objectPath)
+	}
+
+	// rewriteArg replaces all occurrences of known user paths within a string
+	// with their /mnt/disks/... equivalents. This handles both standalone path
+	// arguments and paths embedded inside shell script strings.
+	rewriteArg := func(s string) string {
+		for userPath, mountedPath := range pathMap {
+			s = strings.ReplaceAll(s, userPath, mountedPath)
+		}
+		return s
+	}
+
+	// Runnables
+	var runnables []*batchpb.Runnable
+
+	for _, executor := range task.Executors {
+		var commands []string
+		for _, arg := range executor.Command {
+			commands = append(commands, rewriteArg(arg))
+		}
+
+		// Wrap in a shell only when stdout/stdin/stderr redirection is needed.
+		if executor.Stdout != "" || executor.Stdin != "" || executor.Stderr != "" {
+			cmd := strings.Join(commands, " ")
+			if executor.Stdout != "" {
+				cmd = fmt.Sprintf("%s | tee %s", cmd, rewriteArg(executor.Stdout))
+			}
+			commands = []string{"sh", "-c", cmd}
+		}
+
+		container := &batchpb.Runnable_Container{
+			ImageUri: executor.Image,
+			Commands: commands,
+		}
+
+		if executor.Workdir != "" {
+			container.Options = fmt.Sprintf("--workdir %s", executor.Workdir)
+		}
+		if gpu != nil {
+			if container.Options != "" {
+				container.Options += " "
+			}
+			container.Options += "--gpus all"
+		}
+
+		runnable := &batchpb.Runnable{
+			Executable: &batchpb.Runnable_Container_{
+				Container: container,
+			},
+		}
+
+		runnables = append(runnables, runnable)
+	}
+
+	// Resources
+	resources := &batchpb.ComputeResource{}
+	if task.Resources != nil {
+		resources = &batchpb.ComputeResource{
+			CpuMilli:  int64(task.Resources.CpuCores) * 1000,
+			MemoryMib: int64(task.Resources.RamGb) * 1024,
+		}
+	}
+
+	// TaskSpec
+	taskSpec := &batchpb.TaskSpec{
+		Runnables:       runnables,
+		ComputeResource: resources,
+		Environment:     &batchpb.Environment{},
+		Volumes:         volumes,
+	}
+
+	// TaskGroup
+	taskGroup := &batchpb.TaskGroup{
+		TaskCount: 1,
+		TaskSpec:  taskSpec,
+	}
+
+	// JobRequest
+	var allocationPolicy *batchpb.AllocationPolicy
+	if gpu != nil {
+		allocationPolicy = &batchpb.AllocationPolicy{
+			Instances: []*batchpb.AllocationPolicy_InstancePolicyOrTemplate{{
+				PolicyTemplate: &batchpb.AllocationPolicy_InstancePolicyOrTemplate_Policy{
+					Policy: &batchpb.AllocationPolicy_InstancePolicy{
+						MachineType: gpu.machineType,
+						Accelerators: []*batchpb.AllocationPolicy_Accelerator{{
+							Type:  gpu.typeName,
+							Count: gpu.count,
+						}},
+					},
+				},
+				InstallGpuDrivers: gpu.installDrivers,
+			}},
+		}
+	}
+	req := &batchpb.CreateJobRequest{
+		Parent: fmt.Sprintf("projects/%s/locations/%s", b.conf.Project, b.conf.Location),
+		JobId:  task.Id,
+		Job: &batchpb.Job{
+			Name:             task.Id,
+			Uid:              task.Id,
+			TaskGroups:       []*batchpb.TaskGroup{taskGroup},
+			AllocationPolicy: allocationPolicy,
+			LogsPolicy: &batchpb.LogsPolicy{
+				Destination: batchpb.LogsPolicy_CLOUD_LOGGING,
+			},
+		},
+	}
+
+	logger.Debug("GCP Batch job request", "taskID", task.Id, "project", b.conf.Project, "location", b.conf.Location)
+
+	resp, err := b.client.CreateJob(context.Background(), req)
+
+	if err != nil {
+		if werr := b.event.WriteEvent(ctx, events.NewState(task.Id, tes.SystemError)); werr != nil {
+			b.log.Error("writing SystemError event", "taskID", task.Id, "error", werr)
+		}
+		if werr := b.event.WriteEvent(
+			ctx,
+			events.NewSystemLog(
+				task.Id, 0, 0, "error",
+				"error submitting task to GCP Batch",
+				map[string]string{"error": err.Error()},
+			),
+		); werr != nil {
+			b.log.Error("writing submit-failure log event", "taskID", task.Id, "error", werr)
+		}
+		return err
+	}
+
+	logger.Debug("Submitted task to GCP Batch",
+		"taskID", task.Id,
+		"gcpbatch_uid", resp.Uid,
+		"gcpbatch_name", resp.Name)
+
+	return b.event.WriteEvent(
+		ctx, events.NewMetadata(task.Id, 0, map[string]string{
+			"gcpbatch_uid":  resp.Uid,
+			"gcpbatch_name": resp.Name,
+		}),
+	)
+}
+
+func (b *Backend) Cancel(ctx context.Context, taskID string) error {
+	_, err := b.database.GetTask(ctx, &tes.GetTaskRequest{Id: taskID, View: tes.View_BASIC.String()})
+	if err != nil {
+		return err
+	}
+	if taskID == "" || taskID == "." || taskID == ".." || strings.ContainsAny(taskID, "/\\") {
+		return fmt.Errorf("invalid GCP Batch task ID")
+	}
+	name := fmt.Sprintf("projects/%s/locations/%s/jobs/%s", b.conf.Project, b.conf.Location, taskID)
+	_, err = b.client.CancelJob(ctx, &batchpb.CancelJobRequest{Name: name})
+	return err
+}
+
+// Reconciler adapted from aws_batch/backend.go (worker-based executor) to "direct"-based executor model with GCP Batch.
+//
+// Currently the logic is to:
+//  1. List all tasks in QUEUED, INITIALIZING, RUNNING states from the Funnel Database
+//  2. Map all TES Task IDs to GCP Job IDs
+//  3. List all GCP Jobs that have FAILED
+//  4. Update the TES Task in the Funnel Database to SYSTEM_ERROR
+func (b *Backend) reconcile(ctx context.Context) {
+	ticker := time.NewTicker(b.conf.ReconcileRate.AsDuration())
+
+ReconcileLoop:
+	for {
+		select {
+		case <-ctx.Done():
+			return
+
+		case <-ticker.C:
+			pageToken := ""
+			states := []tes.State{tes.Queued, tes.Initializing, tes.Running}
+
+			// For all Task states in QUEUED, INITIALIZING, RUNNING
+			for _, s := range states {
+				for {
+
+					// List Tasks from Funnel Database
+					lresp, err := b.database.ListTasks(ctx, &tes.ListTasksRequest{
+						View:      tes.View_FULL.String(),
+						State:     s,
+						PageSize:  100,
+						PageToken: pageToken,
+					})
+					if err != nil {
+						b.log.Error("Calling ListTasks", err)
+						continue ReconcileLoop
+					}
+					pageToken = lresp.NextPageToken
+
+					// Map Funnel task ID → task. The GCP job name is always
+					// "projects/.../jobs/<task-id>" so we match on path.Base(j.Name).
+					tmap := make(map[string]*tes.Task)
+					for _, t := range lresp.Tasks {
+						b.log.Debug("Queueing task for reconciliation",
+							"taskID", t.Id,
+							"state", t.State)
+						tmap[t.Id] = t
+					}
+
+					b.log.Debug("Tasks to reconcile",
+						"count", len(tmap),
+						"state", s)
+
+					// Nothing to reconcile on this page — advance or stop.
+					if len(tmap) == 0 {
+						if pageToken == "" {
+							break
+						}
+						continue
+					}
+
+					// List jobs from GCP Batch
+					req := &batchpb.ListJobsRequest{
+						Parent: fmt.Sprintf("projects/%s/locations/%s", b.conf.Project, b.conf.Location),
+					}
+
+					// Using an iterator here to page through GCP Batch jobs
+					// Ref: https://pkg.go.dev/cloud.google.com/go/batch@v1.13.0/apiv1#example-Client.ListJobs
+					it := b.client.ListJobs(ctx, req)
+
+					for {
+						j, err := it.Next()
+						if err == iterator.Done {
+							break
+						}
+						if err != nil {
+							b.log.Error("ListJobs iterator error", err)
+							break
+						}
+
+						// Match by job name suffix, which equals the Funnel task ID.
+						task, ok := tmap[path.Base(j.Name)]
+						if !ok {
+							continue
+						}
+
+						// Handle FAILED jobs for now - basic state syncing
+						if j.Status.State == batchpb.JobStatus_FAILED {
+							// Fetch and write logs from Cloud Logging
+							if b.loggingAdminClient != nil {
+								if logs, err := b.fetchLogs(ctx, task.Id, j.Uid); err == nil {
+									for _, log := range logs {
+										if werr := b.event.WriteEvent(ctx, events.NewSystemLog(
+											task.Id, 0, 0, log.Level, log.Msg, log.Fields,
+										)); werr != nil {
+											b.log.Error("writing cloud log event", "taskID", task.Id, "error", werr)
+										}
+									}
+								} else {
+									b.log.Debug("Could not fetch logs for failed job",
+										"taskID", task.Id,
+										"jobName", j.Name,
+										"error", err)
+								}
+							}
+
+							if task.State != tes.ExecutorError {
+								if werr := b.event.WriteEvent(ctx, events.NewState(task.Id, tes.ExecutorError)); werr != nil {
+									b.log.Error("writing ExecutorError event", "taskID", task.Id, "error", werr)
+								}
+
+								// Get failure reason from status events if available
+								var failureReason string
+								if j.Status != nil && len(j.Status.StatusEvents) > 0 {
+									for _, event := range j.Status.StatusEvents {
+										if event.Description != "" {
+											failureReason = event.Description
+											break
+										}
+									}
+								}
+								if failureReason == "" {
+									failureReason = "GCP Batch job in FAILED state"
+								}
+
+								if werr := b.event.WriteEvent(
+									ctx,
+									events.NewSystemLog(
+										task.Id, 0, 0, "error",
+										failureReason,
+										map[string]string{
+											"gcpbatch_id":    j.Uid,
+											"gcpbatch_name":  j.Name,
+											"gcpbatch_state": j.Status.State.String(),
+										},
+									),
+								); werr != nil {
+									b.log.Error("writing failure-reason log event", "taskID", task.Id, "error", werr)
+								}
+							}
+						}
+
+						// Handle SUCCEEDED jobs
+						if j.Status.State == batchpb.JobStatus_SUCCEEDED {
+
+							// Fetch and write logs from Cloud Logging
+							if b.loggingAdminClient != nil {
+								if logs, err := b.fetchLogs(ctx, task.Id, j.Uid); err == nil {
+									for _, log := range logs {
+										if werr := b.event.WriteEvent(ctx, events.NewSystemLog(
+											task.Id, 0, 0, log.Level, log.Msg, log.Fields,
+										)); werr != nil {
+											b.log.Error("writing cloud log event", "taskID", task.Id, "error", werr)
+										}
+									}
+								} else {
+									b.log.Debug("Could not fetch logs for completed job",
+										"taskID", task.Id,
+										"jobName", j.Name,
+										"error", err)
+								}
+							}
+
+							if task.State != tes.Complete {
+								if werr := b.event.WriteEvent(ctx, events.NewState(task.Id, tes.Complete)); werr != nil {
+									b.log.Error("writing Complete state event", "taskID", task.Id, "error", werr)
+								}
+							}
+						}
+
+						// Handle RUNNING jobs
+						if j.Status.State == batchpb.JobStatus_RUNNING {
+
+							// Fetch and write logs from Cloud Logging for running tasks
+							if b.loggingAdminClient != nil {
+								if logs, err := b.fetchLogs(ctx, task.Id, j.Uid); err == nil {
+									for _, log := range logs {
+										if werr := b.event.WriteEvent(ctx, events.NewSystemLog(
+											task.Id, 0, 0, log.Level, log.Msg, log.Fields,
+										)); werr != nil {
+											b.log.Error("writing cloud log event", "taskID", task.Id, "error", werr)
+										}
+									}
+								} else {
+									b.log.Debug("Could not fetch logs for running job",
+										"taskID", task.Id,
+										"jobName", j.Name,
+										"error", err)
+								}
+							}
+
+							if task.State != tes.Running {
+								if werr := b.event.WriteEvent(ctx, events.NewState(task.Id, tes.Running)); werr != nil {
+									b.log.Error("writing Running state event", "taskID", task.Id, "error", werr)
+								}
+							}
+						}
+					}
+
+					// continue to next page from ListTasks or break
+					if pageToken == "" {
+						break
+					}
+					time.Sleep(time.Millisecond * 100)
+				}
+			}
+		}
+	}
+}

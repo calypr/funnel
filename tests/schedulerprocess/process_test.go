@@ -15,9 +15,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/compute/scheduler"
 	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/internal/compute/scheduler"
+	"github.com/calypr/funnel/internal/logger"
+	logconfig "github.com/calypr/funnel/logger"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
@@ -34,7 +35,7 @@ func TestSchedulerProcessHelper(t *testing.T) {
 	}
 	settings := dbSettingsFromEnv(t)
 	conf := processConfig(t, settings)
-	log := logger.NewLogger("scheduler-process-helper", logger.DefaultConfig())
+	log := logger.NewLogger("scheduler-process-helper", logconfig.DefaultConfig())
 
 	switch mode {
 	case "server":

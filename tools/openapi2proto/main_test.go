@@ -43,3 +43,22 @@ func TestOutputTypeGeneratesProto3Optional(t *testing.T) {
 		t.Fatalf("generated proto makes more than Output.type optional:\n%s", source)
 	}
 }
+
+func TestMessagesAndServiceGenerateSeparateGoPackages(t *testing.T) {
+	models, err := renderProto([]Message{{Name: "Task"}}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := renderServiceProto([]ServicePath{{Name: "CreateTask", Path: "/tasks", Mode: "post", InputType: "Task", OutputType: "Task"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(models, "service TaskService") || strings.Contains(models, "google/api") {
+		t.Fatal("public models contain server bindings")
+	}
+	for _, required := range []string{`package tes;`, `github.com/calypr/funnel/internal/tesrpc`, `import "tes/tes.proto";`, `rpc CreateTask(Task) returns (Task)`, `/ga4gh/tes/v1/tasks`} {
+		if !strings.Contains(service, required) {
+			t.Fatalf("service missing %q", required)
+		}
+	}
+}

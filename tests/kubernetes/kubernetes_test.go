@@ -7,9 +7,10 @@ import (
 	"os/exec"
 	"testing"
 
-	"github.com/calypr/funnel/compute/kubernetes/resources"
 	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/internal/compute/kubernetes/resources"
+	"github.com/calypr/funnel/internal/logger"
+	logconfig "github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/tes"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,7 +24,7 @@ const (
 	unitTestTaskID = "test-task-id"
 )
 
-var unitTestLog = logger.NewLogger("unit-test", logger.DefaultConfig())
+var unitTestLog = logger.NewLogger("unit-test", logconfig.DefaultConfig())
 
 // fakeClientWithFunnelPod returns a fake Kubernetes client pre-populated with a
 // funnel server pod so that CreateJob's pod-image-discovery does not panic.

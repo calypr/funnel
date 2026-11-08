@@ -11,13 +11,14 @@ import (
 	"testing"
 	"time"
 
-	workerCmd "github.com/calypr/funnel/cmd/worker"
+	workerCmd "github.com/calypr/funnel/internal/cli/worker"
+	"github.com/calypr/funnel/internal/taskmodel"
 
-	"github.com/calypr/funnel/events"
-	"github.com/calypr/funnel/storage"
+	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/internal/storage"
+	"github.com/calypr/funnel/internal/worker"
 	"github.com/calypr/funnel/tes"
 	"github.com/calypr/funnel/tests"
-	"github.com/calypr/funnel/worker"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
@@ -182,7 +183,7 @@ func TestLargeLogRate(t *testing.T) {
 	conf.Worker.LogUpdateRate = durationpb.New(time.Millisecond * 500)
 	conf.Worker.LogTailSize = 1000
 	task := tes.Task{
-		Id: "test-task-" + tes.GenerateID(),
+		Id: "test-task-" + taskmodel.GenerateID(),
 		Executors: []*tes.Executor{
 			{
 				Image:   "alpine",
@@ -227,7 +228,7 @@ func TestZeroLogRate(t *testing.T) {
 	conf.Worker.LogUpdateRate = durationpb.New(0)
 	conf.Worker.LogTailSize = 1000
 	task := tes.Task{
-		Id: "test-task-" + tes.GenerateID(),
+		Id: "test-task-" + taskmodel.GenerateID(),
 		Executors: []*tes.Executor{
 			{
 				Image:   "alpine",
@@ -270,7 +271,7 @@ func TestZeroLogTailSize(t *testing.T) {
 	conf.Worker.LogUpdateRate = durationpb.New(time.Millisecond * 500)
 	conf.Worker.LogTailSize = 0
 	task := tes.Task{
-		Id: "test-task-" + tes.GenerateID(),
+		Id: "test-task-" + taskmodel.GenerateID(),
 		Executors: []*tes.Executor{
 			{
 				Image:   "alpine",
@@ -311,7 +312,7 @@ func TestLogTailContent(t *testing.T) {
 	conf.Worker.LogUpdateRate = durationpb.New(time.Millisecond * 10)
 	conf.Worker.LogTailSize = 10
 	task := tes.Task{
-		Id: "test-task-" + tes.GenerateID(),
+		Id: "test-task-" + taskmodel.GenerateID(),
 		Executors: []*tes.Executor{
 			{
 				Image:   "alpine",
@@ -356,7 +357,7 @@ func TestDockerContainerMetadata(t *testing.T) {
 	conf.Worker.LogUpdateRate = durationpb.New(time.Millisecond * 10)
 	conf.Worker.LogTailSize = 10
 	task := tes.Task{
-		Id: "test-task-" + tes.GenerateID(),
+		Id: "test-task-" + taskmodel.GenerateID(),
 		Executors: []*tes.Executor{
 			{
 				Image:   "alpine",
@@ -418,7 +419,7 @@ func TestExecutorErrorStopsTask(t *testing.T) {
 	tests.SetLogOutput(log, t)
 	conf := tests.DefaultConfig()
 	task := tes.Task{
-		Id: "test-task-" + tes.GenerateID(),
+		Id: "test-task-" + taskmodel.GenerateID(),
 		Executors: []*tes.Executor{
 			{
 				// "ERROR" is not a command, so this executor fails (exit 127).
@@ -482,7 +483,7 @@ func TestExecutorErrorPreservedWhenWildcardJoinFails(t *testing.T) {
 	joinErr := errors.New("sentinel wildcard join failure")
 	store := &joinErrorStorage{err: joinErr}
 	task := tes.Task{
-		Id: "test-task-" + tes.GenerateID(),
+		Id: "test-task-" + taskmodel.GenerateID(),
 		Executors: []*tes.Executor{
 			{
 				Image:   "alpine",
@@ -546,7 +547,7 @@ func TestExecutorIgnoreErrorContinuesTask(t *testing.T) {
 	tests.SetLogOutput(log, t)
 	conf := tests.DefaultConfig()
 	task := tes.Task{
-		Id: "test-task-" + tes.GenerateID(),
+		Id: "test-task-" + taskmodel.GenerateID(),
 		Executors: []*tes.Executor{
 			{
 				Image:       "alpine",

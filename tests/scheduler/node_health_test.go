@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/compute/scheduler"
 	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/internal/compute/scheduler"
 	"github.com/calypr/funnel/tests"
 	"google.golang.org/protobuf/types/known/durationpb"
 )

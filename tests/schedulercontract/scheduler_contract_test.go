@@ -14,14 +14,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/compute/scheduler"
 	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/database/boltdb"
-	"github.com/calypr/funnel/database/mongodb"
-	"github.com/calypr/funnel/database/postgres"
-	"github.com/calypr/funnel/events"
-	"github.com/calypr/funnel/logger"
-	"github.com/calypr/funnel/server"
+	"github.com/calypr/funnel/internal/compute/scheduler"
+	"github.com/calypr/funnel/internal/database/boltdb"
+	"github.com/calypr/funnel/internal/database/mongodb"
+	"github.com/calypr/funnel/internal/database/postgres"
+	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/internal/logger"
+	"github.com/calypr/funnel/internal/server"
+	logconfig "github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/tes"
 	"github.com/calypr/funnel/tests/mongotest"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -583,7 +584,7 @@ func createNode(t *testing.T, db store, ctx context.Context, id string, cpus uin
 func newScheduler(nodes scheduler.SchedulerServiceServer, queue scheduler.TaskQueue, assigner scheduler.AtomicTaskAssigner, writer events.Writer) *scheduler.Scheduler {
 	return &scheduler.Scheduler{
 		Conf:           config.DefaultConfig().Scheduler,
-		Log:            logger.NewLogger("scheduler-contract", logger.DefaultConfig()),
+		Log:            logger.NewLogger("scheduler-contract", logconfig.DefaultConfig()),
 		Nodes:          nodes,
 		Queue:          queue,
 		AtomicAssigner: assigner,

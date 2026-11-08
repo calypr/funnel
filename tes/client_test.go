@@ -4,7 +4,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -135,12 +134,7 @@ func TestClientTimeout(t *testing.T) {
 }
 
 func TestClientReturnsMalformedEndpointError(t *testing.T) {
-	c, err := NewClient("http://bad host")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = c.GetTask(context.Background(), &GetTaskRequest{Id: "test-id"})
-	if err == nil || !strings.Contains(err.Error(), "creating GET request") {
-		t.Fatalf("GetTask error = %v, want request construction error", err)
+	if _, err := NewClient("http://bad host"); err == nil {
+		t.Fatal("malformed endpoint accepted")
 	}
 }

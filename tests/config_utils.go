@@ -14,7 +14,8 @@ import (
 	"time"
 
 	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/internal/logger"
+	logconfig "github.com/calypr/funnel/logger"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
@@ -168,8 +169,8 @@ func TestingWriter(t *testing.T) io.Writer {
 }
 
 // LogConfig returns logger configuration useful for tests, which has a text indent.
-func LogConfig() *logger.LoggerConfig {
-	conf := logger.DefaultConfig()
+func LogConfig() *logconfig.LoggerConfig {
+	conf := logconfig.DefaultConfig()
 	conf.TextFormat.ForceColors = true
 	conf.TextFormat.Indent = "        "
 	return conf

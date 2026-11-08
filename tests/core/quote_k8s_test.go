@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/calypr/funnel/internal/taskmodel"
 	"github.com/calypr/funnel/tes"
 	"github.com/calypr/funnel/tests"
 )
@@ -125,7 +126,7 @@ spec:
 
 			// Verify task was loaded correctly
 			if task.Id == "" {
-				task.Id = tes.GenerateID()
+				task.Id = taskmodel.GenerateID()
 			}
 
 			// Verify executor exists
@@ -178,7 +179,7 @@ func loadTaskFromFileK8s(t *testing.T, file string) *tes.Task {
 
 	// Generate a task ID if not present
 	if task.Id == "" {
-		task.Id = tes.GenerateID()
+		task.Id = taskmodel.GenerateID()
 	}
 
 	return &task

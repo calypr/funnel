@@ -12,10 +12,10 @@ import (
 	"time"
 
 	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/events"
-	"github.com/calypr/funnel/storage"
+	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/internal/storage"
+	"github.com/calypr/funnel/internal/worker"
 	"github.com/calypr/funnel/tes"
-	"github.com/calypr/funnel/worker"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 )

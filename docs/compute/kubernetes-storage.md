@@ -200,7 +200,7 @@ The opt-in integration test uses an existing Kubernetes context, creates tempora
 
 ```sh
 FUNNEL_KUBERNETES_TEST_KUBECONFIG=/path/to/test-kubeconfig \
-  go test ./compute/kubernetes -run '^TestNativeStorageLive$' -v -count=1
+  go test ./internal/compute/kubernetes -run '^TestNativeStorageLive$' -v -count=1
 ```
 
 The test verifies real Kubernetes mounts and cleanup. It does not certify an S3 CSI driver or asynchronous S3 output publication.
@@ -209,5 +209,5 @@ To verify permission failures, run the RBAC test with an administrator kubeconfi
 
 ```sh
 FUNNEL_KUBERNETES_TEST_KUBECONFIG=/path/to/test-kubeconfig \
-  go test ./compute/kubernetes -run '^TestNativeStoragePermissionsLive$' -v -count=1
+  go test ./internal/compute/kubernetes -run '^TestNativeStoragePermissionsLive$' -v -count=1
 ```

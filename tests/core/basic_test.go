@@ -9,8 +9,8 @@ import (
 
 	"sync"
 
-	workerCmd "github.com/calypr/funnel/cmd/worker"
-	"github.com/calypr/funnel/events"
+	workerCmd "github.com/calypr/funnel/internal/cli/worker"
+	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/tes"
 	"github.com/calypr/funnel/tests"
 	"google.golang.org/grpc/codes"

@@ -7,14 +7,14 @@ import (
 	"syscall"
 	"testing"
 
-	servercmd "github.com/calypr/funnel/cmd/server"
-	workerCmd "github.com/calypr/funnel/cmd/worker"
-	"github.com/calypr/funnel/compute/scheduler"
 	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/events"
-	"github.com/calypr/funnel/logger"
+	servercmd "github.com/calypr/funnel/internal/cli/server"
+	workerCmd "github.com/calypr/funnel/internal/cli/worker"
+	"github.com/calypr/funnel/internal/compute/scheduler"
+	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/internal/logger"
+	"github.com/calypr/funnel/internal/worker"
 	"github.com/calypr/funnel/tes"
-	"github.com/calypr/funnel/worker"
 )
 
 func runServerHelper(t *testing.T, conf *config.Config, log *logger.Logger) {
