@@ -1,4 +1,4 @@
-package manual
+package scheduler_test
 
 import (
 	"testing"
