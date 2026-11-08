@@ -169,6 +169,8 @@ See [GPU tasks](gpus.md) for a complete TES submission example and deployment ve
 
 Nextflow tasks can specify a working directory via the TES executor `workdir` field, which maps to Docker's `--workdir` flag inside the GCP Batch container:
 
+GCP Batch workdirs must be absolute paths containing only ASCII letters, digits, `/`, `.`, `_`, and `-`. Funnel rejects whitespace, quotes, and other characters before submitting the job because Batch exposes container options as a string rather than an argument array. Other Funnel backends can support paths with spaces.
+
 ```json
 {
   "executors": [

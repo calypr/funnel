@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"time"
 
 	"github.com/calypr/funnel/compute/kubernetes/storageplan"
@@ -300,7 +299,7 @@ func (r *DefaultWorker) openStepLogs(mapper *FileMapper, s *stepWorker, d *tes.E
 
 	// Find the path for task stdin
 	if d.Stdin != "" {
-		stdin, err = mapper.CreateHostFile(d.Stdin)
+		stdin, err = mapper.OpenHostFile(d.Stdin)
 		s.Command.SetStdin(stdin)
 		if err != nil {
 			_ = s.Event.Error("Couldn't prepare log files", err) //nolint:errcheck // Logging must not replace the file creation error returned below.
@@ -345,14 +344,6 @@ func (r *DefaultWorker) validate(mapper *FileMapper) error {
 		}
 	}
 	return nil
-}
-
-// Sanitizes the input string to avoid command injection.
-// Only allows alphanumeric characters, dashes, underscores, and dots.
-func (r *DefaultWorker) sanitizeValues(value string) string {
-	// Replace anything that is not an alphanumeric character, dash, underscore, or dot
-	re := regexp.MustCompile(`[^a-zA-Z0-9-_\.]`)
-	return re.ReplaceAllString(value, "")
 }
 
 func (r *DefaultWorker) pollForCancel(pctx context.Context) (context.Context, func()) {
@@ -426,7 +417,7 @@ func (r *DefaultWorker) runExecutors(ctx context.Context, event *events.TaskWrit
 			}
 			taskCommand = kcmd
 		} else {
-			taskCommand = &DockerCommand{
+			dockerCommand := &DockerCommand{
 				Volumes: mapper.Volumes,
 				Workdir: d.Workdir,
 				Name:    fmt.Sprintf("%s-%d", task.Id, i),
@@ -440,16 +431,13 @@ func (r *DefaultWorker) runExecutors(ctx context.Context, event *events.TaskWrit
 				StopCommand:      r.Conf.Container.StopCommand,
 				Resources:        resources,
 				EnforceResources: r.Conf.Container.EnforceResources,
+				EnableTags:       r.Conf.Container.EnableTags,
 				Command:          command,
 			}
-
-			// TODO: Hide this behind explicit flag/option in configuration
-			// if r.Conf.Container.EnableTags {
-			// 	for k, v := range task.Tags {
-			// 		safeTag := r.sanitizeValues(v)
-			// 		taskCommand.Tags[k] = safeTag
-			// 	}
-			// }
+			if dockerCommand.EnableTags {
+				dockerCommand.Tags = task.Tags
+			}
+			taskCommand = dockerCommand
 		}
 
 		s := &stepWorker{
@@ -525,44 +513,31 @@ func (r *DefaultWorker) runExecutors(ctx context.Context, event *events.TaskWrit
 // worker itself is in a bad state.
 func (r *DefaultWorker) processOutputs(ctx context.Context, event *events.TaskWriter, mapper *FileMapper, run *helper) {
 	outputsAvailable := true
+	publicationMapper := mapper
 	if run.syserr == nil {
-		for _, output := range mapper.Outputs {
-			err := fixLinks(mapper, output.Path)
-			if err != nil {
-				outputsAvailable = false
-				if run.execerr != nil {
-					_ = event.Error("Failed to repair output symlink after executor error", "path", output.Path, "error", err) //nolint:errcheck // Preserve the executor result when reporting a secondary output error.
-				} else {
-					run.syserr = err
-				}
-				break
-			}
-		}
-	}
-
-	if run.syserr == nil && outputsAvailable {
-		unmatched, err := resolveWildcards(mapper, r.Store)
-		if err != nil {
-			if run.execerr != nil {
-				_ = event.Error("Failed to resolve wildcard outputs after executor error", "error", err) //nolint:errcheck // Preserve the executor result when reporting a secondary output error.
-			} else {
-				run.syserr = err
-			}
-		} else {
-			for _, pattern := range unmatched {
-				_ = event.Warn("output pattern matched no files", "path", pattern) //nolint:errcheck // A warning event must not change task execution.
-			}
-		}
-	}
-
-	if run.syserr == nil && outputsAvailable && r.Conf.ScratchPath != "" {
-		err := mapper.CopyOutputsToWorkDir(r.Conf.ScratchPath)
+		snapshot, cleanup, err := snapshotTaskOutputs(ctx, mapper, event)
 		if err != nil {
 			outputsAvailable = false
 			if run.execerr != nil {
-				_ = event.Error("Failed to copy outputs after executor error", "error", err) //nolint:errcheck // Preserve the executor result when reporting a secondary output error.
+				_ = event.Error("Failed to prepare output files after executor error", "error", err) //nolint:errcheck // Preserve the executor result.
 			} else {
-				run.syserr = fmt.Errorf("copy outputs from scratch: %w", err)
+				run.syserr = fmt.Errorf("prepare output publication: %w", err)
+			}
+		} else {
+			defer cleanup()
+			publicationMapper = snapshot
+			unmatched, err := resolveWildcards(publicationMapper, r.Store)
+			if err != nil {
+				outputsAvailable = false
+				if run.execerr != nil {
+					_ = event.Error("Failed to resolve wildcard outputs after executor error", "error", err) //nolint:errcheck // Preserve the executor result.
+				} else {
+					run.syserr = err
+				}
+			} else {
+				for _, pattern := range unmatched {
+					_ = event.Warn("output pattern matched no files", "path", pattern) //nolint:errcheck // A warning must not change publication.
+				}
 			}
 		}
 	}
@@ -570,7 +545,7 @@ func (r *DefaultWorker) processOutputs(ctx context.Context, event *events.TaskWr
 	var outputLog []*tes.OutputFileLog
 	if run.syserr == nil && outputsAvailable {
 		var uploadErr error
-		outputLog, uploadErr = uploadOutputs(ctx, mapper.Outputs, r.Store, event, int(r.Conf.MaxParallelTransfers), mapper)
+		outputLog, uploadErr = uploadOutputs(ctx, publicationMapper.Outputs, r.Store, event, int(r.Conf.MaxParallelTransfers), publicationMapper)
 		if uploadErr != nil {
 			if run.execerr != nil {
 				// The executor already failed; treat upload errors as warnings so the
@@ -584,7 +559,7 @@ func (r *DefaultWorker) processOutputs(ctx context.Context, event *events.TaskWr
 
 	// unmap paths for OutputFileLog
 	for _, o := range outputLog {
-		o.Path = mapper.ContainerPath(o.Path)
+		o.Path = publicationMapper.ContainerPath(o.Path)
 	}
 
 	if len(outputLog) > 0 {

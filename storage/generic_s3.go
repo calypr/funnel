@@ -20,7 +20,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/logger"
-	s3util "github.com/calypr/funnel/util/s3"
 )
 
 // GenericS3 provides access to an S3 object store.
@@ -54,7 +53,7 @@ func NewGenericS3(conf *config.GenericS3Storage) (*GenericS3, error) {
 
 	var endpoint string
 	if conf.Endpoint != "" {
-		endpoint = s3util.ParseEndpoint(conf.Endpoint)
+		endpoint = parseS3Endpoint(conf.Endpoint)
 	}
 
 	region := conf.Region

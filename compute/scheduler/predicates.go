@@ -80,17 +80,6 @@ func Alive(j *tes.Task, n *Node) error {
 	return nil
 }
 
-// NodeHasTag returns a predicate function which returns true
-// if the node has the given tag (key in Metadata field).
-func NodeHasTag(tag string) Predicate {
-	return func(j *tes.Task, n *Node) error {
-		if _, ok := n.Metadata[tag]; !ok {
-			return fmt.Errorf("fail node has tag: %s", tag)
-		}
-		return nil
-	}
-}
-
 // TODO should have a predicate which understands authorization
 //      - storage
 //      - other auth resources?

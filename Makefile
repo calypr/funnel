@@ -43,7 +43,7 @@ debug:
 
 # Generate the protobuf/gRPC code using Buf
 proto: proto-depends
-	@go run ./util/openapi2proto/main.go ./tes/task-execution-schemas/openapi/task_execution_service.openapi.yaml > tes/tes.proto
+	@go run ./tools/openapi2proto/main.go ./tes/task-execution-schemas/openapi/task_execution_service.openapi.yaml > tes/tes.proto
 	@buf generate
 
 # Initialize the TES schema submodule and install Buf.

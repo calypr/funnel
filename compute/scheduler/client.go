@@ -5,7 +5,7 @@ import (
 
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/events"
-	util "github.com/calypr/funnel/util/rpc"
+	"github.com/calypr/funnel/internal/rpcclient"
 	"google.golang.org/grpc"
 )
 
@@ -26,7 +26,7 @@ type client struct {
 // scheduler and task logger services at a given address
 // (e.g. "localhost:9090")
 func NewClient(ctx context.Context, conf *config.RPCClient) (Client, error) {
-	conn, err := util.Dial(ctx, conf)
+	conn, err := rpcclient.Dial(ctx, conf)
 	if err != nil {
 		return nil, err
 	}

@@ -13,7 +13,6 @@ import (
 
 	"github.com/calypr/funnel/compute/scheduler"
 	"github.com/calypr/funnel/tes"
-	"github.com/calypr/funnel/util"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
@@ -125,10 +124,10 @@ func (ts *TaskSource) Nodes() ([]*scheduler.Node, error) {
 			return nil, fmt.Errorf("fetch scheduler nodes: %w", err)
 		}
 		if resp.StatusCode == http.StatusNotFound {
-			_, closeErr := util.CheckHTTPResponse(resp, nil)
+			_, closeErr := tes.CheckHTTPResponse(resp, nil)
 			return nil, fmt.Errorf("scheduler node API is unavailable for this deployment: %w", closeErr)
 		}
-		body, err := util.CheckHTTPResponse(resp, nil)
+		body, err := tes.CheckHTTPResponse(resp, nil)
 		if err != nil {
 			return nil, fmt.Errorf("fetch scheduler nodes: %w", err)
 		}

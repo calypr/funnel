@@ -5,14 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/textproto"
 	urllib "net/url"
 	"os"
 	pathlib "path"
+	"strconv"
 	"strings"
 
 	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/util/fsutil"
 	"github.com/jlaffaye/ftp"
 )
 
@@ -23,6 +24,11 @@ type FTP struct {
 
 // NewFTP creates a new FTP instance.
 func NewFTP(conf *config.FTPStorage) (*FTP, error) {
+	if configuredFTPCredentials(conf) {
+		if _, err := ftpCredentialEndpoint(conf.GetEndpoint()); err != nil {
+			return nil, err
+		}
+	}
 	return &FTP{conf: conf}, nil
 }
 
@@ -93,6 +99,39 @@ type ftpclient struct {
 	client *ftp.ServerConn
 }
 
+// Only the public anonymous defaults may be sent to arbitrary task URLs.
+func configuredFTPCredentials(conf *config.FTPStorage) bool {
+	user, pass := conf.GetUser(), conf.GetPassword()
+	return !((user == "" || strings.EqualFold(user, "anonymous")) && (pass == "" || pass == "anonymous"))
+}
+
+func ftpOrigin(u *urllib.URL) (string, error) {
+	if u.Scheme != "ftp" || u.Hostname() == "" {
+		return "", fmt.Errorf("ftpStorage: invalid FTP origin")
+	}
+	port := 21
+	if u.Port() != "" {
+		number, err := strconv.Atoi(u.Port())
+		if err != nil || number < 1 || number > 65535 {
+			return "", fmt.Errorf("ftpStorage: invalid FTP port")
+		}
+		port = number
+	}
+	return net.JoinHostPort(strings.ToLower(u.Hostname()), strconv.Itoa(port)), nil
+}
+
+func ftpCredentialEndpoint(endpoint string) (string, error) {
+	u, err := urllib.Parse(endpoint)
+	if err != nil || u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+		return "", fmt.Errorf("ftpStorage: credential endpoint must be an FTP origin without credentials, path, query, or fragment")
+	}
+	origin, err := ftpOrigin(u)
+	if err != nil {
+		return "", fmt.Errorf("ftpStorage: credential endpoint must specify ftp://host[:port]")
+	}
+	return origin, nil
+}
+
 func connect(url string, conf *config.FTPStorage) (*ftpclient, error) {
 	u, err := urllib.Parse(url)
 	if err != nil {
@@ -102,33 +141,31 @@ func connect(url string, conf *config.FTPStorage) (*ftpclient, error) {
 		return nil, &ErrUnsupportedProtocol{"ftpStorage"}
 	}
 
-	host := u.Host
-	if u.Port() == "" {
-		host += ":21"
+	host, err := ftpOrigin(u)
+	if err != nil {
+		return nil, err
 	}
-
+	user, pass := conf.GetUser(), conf.GetPassword()
+	if u.User != nil {
+		user = u.User.Username()
+		pass, _ = u.User.Password()
+	} else if configuredFTPCredentials(conf) {
+		endpoint, err := ftpCredentialEndpoint(conf.GetEndpoint())
+		if err != nil {
+			return nil, err
+		}
+		if host != endpoint {
+			return nil, fmt.Errorf("ftpStorage: credential endpoint does not match requested origin")
+		}
+	}
 	client, err := ftp.Dial(host)
 	if err != nil {
 		return nil, fmt.Errorf("ftpStorage: connecting to server: %v", err)
 	}
 
-	user := conf.User
-	pass := conf.Password
-
-	if u.User != nil {
-		user = u.User.Username()
-		// "anonymous" doesn't make sense if there's a username,
-		// so clear it. Then check if the password is set by the URL.
-		p, ok := u.User.Password()
-		if !ok {
-			pass = ""
-		} else {
-			pass = p
-		}
-	}
-
 	err = client.Login(user, pass)
 	if err != nil {
+		_ = client.Quit() //nolint:errcheck // Preserve the authentication failure after closing the connection.
 		return nil, fmt.Errorf("ftpStorage: logging in: %v", err)
 	}
 	return &ftpclient{client}, nil
@@ -193,7 +230,7 @@ func (b *ftpclient) Get(ctx context.Context, url, path string) (obj *Object, ret
 		return nil, fmt.Errorf("ftpStorage: creating host file: %s", err)
 	}
 
-	_, copyErr := io.Copy(dest, fsutil.Reader(ctx, src))
+	_, copyErr := io.Copy(dest, contextReader(ctx, src))
 	closeErr := dest.Close()
 
 	if copyErr != nil {

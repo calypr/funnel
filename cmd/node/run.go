@@ -1,19 +1,18 @@
 package node
 
 import (
-	"fmt"
-
 	"context"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/calypr/funnel/cmd/lifecycle"
 	workerCmd "github.com/calypr/funnel/cmd/worker"
 	"github.com/calypr/funnel/compute/scheduler"
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/logger"
-	"github.com/calypr/funnel/util"
 )
 
 // Run runs a node with the given config, blocking until the node exits.
@@ -44,7 +43,7 @@ func Run(ctx context.Context, conf *config.Config, log *logger.Logger) error {
 	}
 
 	_, cancel := context.WithCancel(context.Background())
-	runctx := util.SignalContext(ctx, time.Nanosecond, syscall.SIGINT, syscall.SIGTERM)
+	runctx := lifecycle.SignalContext(ctx, time.Nanosecond, syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
 	hupsig := make(chan os.Signal, 1)

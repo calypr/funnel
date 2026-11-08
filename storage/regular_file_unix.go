@@ -17,7 +17,8 @@ func openRegularFile(path string) (*os.File, error) {
 	return checkOpenedRegularFile(file, path)
 }
 
-func openRootRegularFile(root *os.Root, path string) (*os.File, error) {
+// OpenRootRegularFile opens a confined regular file without blocking on a FIFO.
+func OpenRootRegularFile(root *os.Root, path string) (*os.File, error) {
 	file, err := root.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return nil, err

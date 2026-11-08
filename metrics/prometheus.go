@@ -18,8 +18,7 @@ func init() {
 	prometheus.MustRegister(nodeAvailableCPU)
 	prometheus.MustRegister(nodeAvailableRAM)
 	prometheus.MustRegister(nodeAvailableDisk)
-	prometheus.MustRegister(logEventsDropped)
-	prometheus.MustRegister(logEventsTotal)
+	prometheus.MustRegister(newLogEventCollector())
 }
 
 var taskStates = prometheus.NewGaugeVec(
@@ -36,16 +35,6 @@ func init() {
 	for key := range tes.State_value {
 		taskStates.WithLabelValues(key).Set(0)
 	}
-}
-
-// RecordLogEventDropped increments the counter for dropped log events.
-func RecordLogEventDropped(eventType string) {
-	logEventsDropped.WithLabelValues(eventType).Inc()
-}
-
-// RecordLogEvent increments the counter for processed log events.
-func RecordLogEvent(eventType string) {
-	logEventsTotal.WithLabelValues(eventType).Inc()
 }
 
 // TaskStateCounter is implemented by database backends which provide
@@ -129,26 +118,6 @@ var nodeAvailableDisk = prometheus.NewGauge(prometheus.GaugeOpts{
 	Name:      "available_disk_bytes",
 	Help:      "Available node disk space, in bytes.",
 })
-
-var logEventsDropped = prometheus.NewCounterVec(
-	prometheus.CounterOpts{
-		Namespace: "funnel",
-		Subsystem: "logging",
-		Name:      "events_dropped_total",
-		Help:      "Total number of log events that were dropped due to busy writer channel.",
-	},
-	[]string{"type"},
-)
-
-var logEventsTotal = prometheus.NewCounterVec(
-	prometheus.CounterOpts{
-		Namespace: "funnel",
-		Subsystem: "logging",
-		Name:      "events_total",
-		Help:      "Total number of log events processed.",
-	},
-	[]string{"type"},
-)
 
 func resetNodes() {
 	for key := range scheduler.NodeState_value {

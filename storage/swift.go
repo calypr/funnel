@@ -11,8 +11,7 @@ import (
 	"time"
 
 	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/util"
-	"github.com/calypr/funnel/util/fsutil"
+	"github.com/calypr/funnel/internal/retry"
 	"github.com/ncw/swift/v2"
 )
 
@@ -65,7 +64,7 @@ func NewSwiftRetrier(conf *config.SwiftStorage) (*Retrier, error) {
 	}
 	return &Retrier{
 		Backend: b,
-		Retrier: &util.Retrier{
+		Retrier: &retry.Retrier{
 			MaxTries:            int(conf.MaxRetries),
 			InitialInterval:     500 * time.Millisecond,
 			MaxInterval:         5 * time.Minute,
@@ -173,7 +172,7 @@ func (sw *Swift) Get(ctx context.Context, url, path string) (obj *Object, retErr
 		return nil, &swiftError{"creating file", url, err}
 	}
 
-	_, copyErr := io.Copy(dest, fsutil.Reader(ctx, f))
+	_, copyErr := io.Copy(dest, contextReader(ctx, f))
 	closeErr := dest.Close()
 
 	if copyErr != nil {
@@ -206,7 +205,7 @@ func (sw *Swift) Put(ctx context.Context, url, path string) (*Object, error) {
 	var contentType string
 	var headers swift.Headers
 
-	fSize := fsutil.FileSize(path)
+	fSize := FileSize(path)
 	if fSize < int64(5*1000*1000*1000) {
 		writer, err = sw.conn.ObjectCreate(ctx, u.bucket, u.path, checkHash, hash, contentType, headers)
 	} else {
@@ -224,7 +223,7 @@ func (sw *Swift) Put(ctx context.Context, url, path string) (*Object, error) {
 		return nil, &swiftError{"creating object", url, err}
 	}
 
-	_, copyErr := io.Copy(writer, fsutil.Reader(ctx, reader))
+	_, copyErr := io.Copy(writer, contextReader(ctx, reader))
 	// In order to do the Stat call below, the writer needs to be closed
 	// so that the object is created.
 	closeErr := writer.Close()

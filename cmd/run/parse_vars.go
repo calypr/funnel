@@ -8,8 +8,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/calypr/funnel/internal/shellwords"
 	"github.com/calypr/funnel/tes"
-	"github.com/calypr/funnel/util/shellwords"
 )
 
 // ErrKeyFmt describes an error in input/output/env/tag flag formatting
@@ -218,14 +218,6 @@ func parseCliVar(raw string) (string, string) {
 	key := res[0]
 	val := res[1]
 	return key, val
-}
-
-// Give a input/output URL "raw", return the path of the file
-// relative to the container.
-func containerPath(raw, base string) string {
-	url := resolvePath(raw)
-	p := stripStoragePrefix(url)
-	return base + p
 }
 
 func stripStoragePrefix(url string) string {

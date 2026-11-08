@@ -8,8 +8,8 @@ import (
 
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/internal/rpcclient"
 	"github.com/calypr/funnel/tes"
-	util "github.com/calypr/funnel/util/rpc"
 	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/retry"
 	"google.golang.org/grpc"
 )
@@ -24,7 +24,7 @@ type RPCTaskReader struct {
 
 // NewRPCTaskReader returns a new RPC-based task reader.
 func NewRPCTaskReader(ctx context.Context, conf *config.RPCClient, taskID string) (*RPCTaskReader, error) {
-	conn, err := util.Dial(ctx, conf)
+	conn, err := rpcclient.Dial(ctx, conf)
 	if err != nil {
 		return nil, err
 	}

@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/util/fsutil"
 )
 
 // HTTP provides access to URLs that need no credentials, such as public or
@@ -107,7 +106,7 @@ func (b *HTTP) Get(ctx context.Context, url, path string) (*Object, error) {
 		return nil, fmt.Errorf("httpStorage: creating host file: %s", err)
 	}
 
-	_, copyErr := io.Copy(dest, fsutil.Reader(ctx, resp.Body))
+	_, copyErr := io.Copy(dest, contextReader(ctx, resp.Body))
 	closeErr := dest.Close()
 
 	if copyErr != nil {
@@ -153,7 +152,7 @@ func (b *HTTP) Put(ctx context.Context, url string, hostPath string) (*Object, e
 	// fall back to chunked encoding, hence NoBody for empty files.
 	var body io.Reader = http.NoBody
 	if info.Size() > 0 {
-		body = fsutil.Reader(ctx, src)
+		body = contextReader(ctx, src)
 	}
 	req, err := http.NewRequestWithContext(ctx, "PUT", url, body)
 	if err != nil {
@@ -175,7 +174,7 @@ func (b *HTTP) Put(ctx context.Context, url string, hostPath string) (*Object, e
 			return struct {
 				io.Reader
 				io.Closer
-			}{fsutil.Reader(ctx, f), f}, nil
+			}{contextReader(ctx, f), f}, nil
 		}
 	}
 

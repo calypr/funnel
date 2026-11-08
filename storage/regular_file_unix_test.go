@@ -54,7 +54,7 @@ func TestOpenRootRegularFileAllowsInRootSymlinkAndRejectsFIFO(t *testing.T) {
 		t.Fatal(err)
 	}
 	closeTestResource(t, root)
-	file, err := openRootRegularFile(root, "link")
+	file, err := OpenRootRegularFile(root, "link")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestOpenRootRegularFileAllowsInRootSymlinkAndRejectsFIFO(t *testing.T) {
 	}
 	opened := make(chan error, 1)
 	go func() {
-		file, err := openRootRegularFile(root, "fifo")
+		file, err := OpenRootRegularFile(root, "fifo")
 		if file != nil {
 			closeErr := file.Close()
 			if closeErr != nil {

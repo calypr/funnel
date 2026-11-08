@@ -6,7 +6,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/calypr/funnel/config"
-	util "github.com/calypr/funnel/util/aws"
+	"github.com/calypr/funnel/internal/awsclient"
 )
 
 const defaultDynamoDBRetryMaxAttempts = 11
@@ -27,7 +27,7 @@ type DynamoDB struct {
 // NewDynamoDB returns a new instance of DynamoDB, accessing the database at
 // the given url, and including the given ServerConfig.
 func NewDynamoDB(conf *config.DynamoDB) (*DynamoDB, error) {
-	sess, err := util.NewAWSConfig(context.Background(), conf.AWSConfig)
+	sess, err := awsclient.NewAWSConfig(context.Background(), conf.AWSConfig)
 	if err != nil {
 		return nil, fmt.Errorf("error occurred creating dynamodb client: %v", err)
 	}

@@ -9,7 +9,6 @@ import (
 	"runtime/debug"
 	"strings"
 
-	"github.com/calypr/funnel/util"
 	"github.com/sirupsen/logrus"
 )
 
@@ -86,7 +85,7 @@ func (l *Logger) Debug(msg string, args ...any) {
 		return
 	}
 	defer recoverLogErr()
-	f := util.ArgListToMap(args...)
+	f := ArgListToMap(args...)
 	l.base.WithFields(f).Debug(msg)
 }
 
@@ -100,7 +99,7 @@ func (l *Logger) Info(msg string, args ...any) {
 		return
 	}
 	defer recoverLogErr()
-	f := util.ArgListToMap(args...)
+	f := ArgListToMap(args...)
 	l.base.WithFields(f).Info(msg)
 }
 
@@ -121,9 +120,9 @@ func (l *Logger) Error(msg string, args ...any) {
 	defer recoverLogErr()
 	var f map[string]any
 	if len(args) == 1 {
-		f = util.ArgListToMap("error", args[0])
+		f = ArgListToMap("error", args[0])
 	} else {
-		f = util.ArgListToMap(args...)
+		f = ArgListToMap(args...)
 	}
 	//l.base.WithFields(f).Error(msg)
 	if _, ok := f["src"]; !ok {
@@ -146,7 +145,7 @@ func (l *Logger) Warn(msg string, args ...any) {
 		return
 	}
 	defer recoverLogErr()
-	f := util.ArgListToMap(args...)
+	f := ArgListToMap(args...)
 	l.base.WithFields(f).Warn(msg)
 }
 
@@ -156,7 +155,7 @@ func (l *Logger) WithFields(args ...any) *Logger {
 		return l
 	}
 	defer recoverLogErr()
-	f := util.ArgListToMap(args...)
+	f := ArgListToMap(args...)
 	base := l.base.WithFields(f)
 	return &Logger{l.logrus, base}
 }

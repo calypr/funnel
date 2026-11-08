@@ -1,16 +1,15 @@
 package postgres
 
 import (
-	"errors"
-
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"time"
 
 	"github.com/calypr/funnel/compute/scheduler"
 	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/util"
+	"github.com/calypr/funnel/internal/retry"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -42,7 +41,7 @@ func NewPostgres(conf *config.Postgres) (*Postgres, error) {
 func (db *Postgres) Init() error {
 	ctx := context.Background()
 
-	retrier := util.NewRetrier()
+	retrier := retry.NewRetrier()
 	retrier.MaxElapsedTime = time.Second * 300
 
 	err := retrier.Retry(ctx, func() error {

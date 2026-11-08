@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/util/fsutil"
 )
 
 func TestStorageWithConfig(t *testing.T) {
@@ -264,7 +263,7 @@ func TestWalkFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	files, err := fsutil.WalkFiles(tmp)
+	files, err := WalkFiles(tmp)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +272,7 @@ func TestWalkFiles(t *testing.T) {
 	}
 
 	nonexistent := path.Join(tmp, "this/path/doesnt/exist")
-	_, err = fsutil.WalkFiles(nonexistent)
+	_, err = WalkFiles(nonexistent)
 	if err == nil {
 		t.Fatal("expected error")
 	}

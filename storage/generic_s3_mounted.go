@@ -193,7 +193,7 @@ func (s *mountedS3Reader) Get(ctx context.Context, raw, destination string) (*Ob
 		return nil, fmt.Errorf("open mounted input root: %w", err)
 	}
 	defer root.Close() //nolint:errcheck // Closing the read-only root cannot affect the copied object.
-	source, err := openRootRegularFile(root, rel)
+	source, err := OpenRootRegularFile(root, rel)
 	if err != nil {
 		return nil, fmt.Errorf("open mounted input: %w", err)
 	}

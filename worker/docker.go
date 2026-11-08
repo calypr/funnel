@@ -10,13 +10,14 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"sort"
 	"strings"
 	"text/template"
 	"time"
 
 	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/internal/shellwords"
 	tes "github.com/calypr/funnel/tes"
-	"github.com/calypr/funnel/util/shellwords"
 )
 
 // DockerCommand is responsible for configuring and running a docker container.
@@ -248,6 +249,16 @@ func (docker DockerCommand) Stop() error {
 }
 
 func (docker DockerCommand) executeCommand(ctx context.Context, commandTemplate string, enableIO bool) error {
+	if docker.Image != "" {
+		if err := tes.ValidateContainerImage(docker.Image); err != nil {
+			return fmt.Errorf("invalid container image: %w", err)
+		}
+	}
+	for _, volume := range docker.Volumes {
+		if strings.ContainsAny(volume.HostPath, ":\x00") || strings.ContainsAny(volume.ContainerPath, ":\x00") {
+			return fmt.Errorf("volume paths cannot contain a colon or NUL")
+		}
+	}
 	var usingCommand bool = false
 	if strings.Contains(commandTemplate, "{{.Command}}") {
 		usingCommand = true
@@ -259,8 +270,9 @@ func (docker DockerCommand) executeCommand(ctx context.Context, commandTemplate 
 		return fmt.Errorf("failed to parse template for command: %w", err)
 	}
 
+	data, restore := docker.templateArguments()
 	var cmdBuffer bytes.Buffer
-	err = tmpl.Execute(&cmdBuffer, docker)
+	err = tmpl.Execute(&cmdBuffer, data)
 	if err != nil {
 		return fmt.Errorf("failed to execute template for command: %w", err)
 	}
@@ -268,6 +280,9 @@ func (docker DockerCommand) executeCommand(ctx context.Context, commandTemplate 
 	cmdParts, err := shellwords.Split(cmdBuffer.String())
 	if err != nil {
 		return fmt.Errorf("failed to parse command: %w", err)
+	}
+	for i := range cmdParts {
+		cmdParts[i] = restore.Replace(cmdParts[i])
 	}
 
 	if usingCommand {
@@ -351,14 +366,30 @@ func shellEscape(s string) string {
 func formatEnvVars(env map[string]string) []string {
 	var result []string
 	for k, v := range env {
-		escapedValue := shellEscape(v)
-		result = append(result, fmt.Sprintf("--env %s=%s", k, escapedValue))
+		result = append(result, "--env "+shellEscape(k+"="+v))
 	}
 	return result
 }
 
 func (docker DockerCommand) GetEnvArgs() string {
 	return strings.Join(formatEnvVars(docker.Env), " ")
+}
+
+// GetTagArgs formats opted-in task tags as literal container label arguments.
+func (docker DockerCommand) GetTagArgs() string {
+	if !docker.EnableTags {
+		return ""
+	}
+	keys := make([]string, 0, len(docker.Tags))
+	for key := range docker.Tags {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	args := make([]string, 0, len(keys))
+	for _, key := range keys {
+		args = append(args, "--label "+shellEscape(key+"="+docker.Tags[key]))
+	}
+	return strings.Join(args, " ")
 }
 
 func (docker DockerCommand) GetImage() string {

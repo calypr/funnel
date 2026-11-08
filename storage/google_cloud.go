@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/util/fsutil"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/option"
 	"google.golang.org/api/storage/v1"
@@ -140,7 +139,7 @@ func (gs *GoogleCloud) Get(ctx context.Context, url, path string) (*Object, erro
 		return nil, fmt.Errorf("googleStorage: creating file %s: %v", path, err)
 	}
 
-	_, copyErr := io.Copy(dest, fsutil.Reader(ctx, resp.Body))
+	_, copyErr := io.Copy(dest, contextReader(ctx, resp.Body))
 	closeErr := dest.Close()
 
 	if copyErr != nil {
@@ -171,7 +170,7 @@ func (gs *GoogleCloud) Put(ctx context.Context, url, path string) (*Object, erro
 		Name: u.path,
 	}
 
-	_, err = gs.svc.Objects.Insert(u.bucket, obj).Media(fsutil.Reader(ctx, reader)).Context(ctx).Do()
+	_, err = gs.svc.Objects.Insert(u.bucket, obj).Media(contextReader(ctx, reader)).Context(ctx).Do()
 	if err != nil {
 		return nil, fmt.Errorf("googleStorage: uploading object %s: %v", url, err)
 	}

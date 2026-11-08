@@ -102,7 +102,7 @@ func DefaultConfig() *Config {
 					"{{.GetEnvArgs}} " +
 
 					// Tags/Labels
-					"{{range $k, $v := .Tags}}--label {{$k}}={{$v}} {{end}} " +
+					"{{.GetTagArgs}} " +
 
 					// Container Name
 					"{{if .Name}}--name {{.Name}}{{end}} " +

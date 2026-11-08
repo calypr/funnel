@@ -10,22 +10,6 @@ import (
 	"path/filepath"
 )
 
-func writeFileAtomically(ctx context.Context, path string, write func(*os.File) error) error {
-	if path == "" || os.IsPathSeparator(path[len(path)-1]) || filepath.Base(path) == "." || filepath.Base(path) == string(filepath.Separator) {
-		return fmt.Errorf("invalid destination path %q", path)
-	}
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("create destination directory: %w", err)
-	}
-	root, err := os.OpenRoot(dir)
-	if err != nil {
-		return fmt.Errorf("open destination directory: %w", err)
-	}
-	defer root.Close() //nolint:errcheck // Closing the directory handle cannot affect the completed write.
-	return writeRootFileAtomically(ctx, root, filepath.Base(path), write)
-}
-
 func writeRootFileAtomically(ctx context.Context, root *os.Root, destination string, write func(*os.File) error) error {
 	return writeRootFileAtomicallyConfigured(ctx, root, destination, nil, write)
 }

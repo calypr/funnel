@@ -8,24 +8,37 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/calypr/funnel/util/ring"
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
-// Global counters for tracking log event drops (for debugging/metrics)
+// Process-wide log delivery counters used by health checks and metrics.
 var (
-	stdoutEventsDropped int64
-	stderrEventsDropped int64
-	logEventsTotal      int64
+	stdoutEventsDropped   int64
+	stderrEventsDropped   int64
+	stdoutEventsProcessed int64
+	stderrEventsProcessed int64
 )
 
 // GetLogEventStats returns current log event statistics
 func GetLogEventStats() (stdoutDropped, stderrDropped, total int64) {
-	return atomic.LoadInt64(&stdoutEventsDropped),
-		atomic.LoadInt64(&stderrEventsDropped),
-		atomic.LoadInt64(&logEventsTotal)
+	stdoutProcessed, stdoutDropped := LogEventCounts(Type_EXECUTOR_STDOUT)
+	stderrProcessed, stderrDropped := LogEventCounts(Type_EXECUTOR_STDERR)
+	return stdoutDropped, stderrDropped, stdoutProcessed + stderrProcessed + stdoutDropped + stderrDropped
+}
+
+// LogEventCounts returns successfully delivered snapshots and busy-channel drops
+// for an executor's stdout or stderr stream.
+func LogEventCounts(eventType Type) (processed, dropped int64) {
+	switch eventType {
+	case Type_EXECUTOR_STDOUT:
+		return atomic.LoadInt64(&stdoutEventsProcessed), atomic.LoadInt64(&stdoutEventsDropped)
+	case Type_EXECUTOR_STDERR:
+		return atomic.LoadInt64(&stderrEventsProcessed), atomic.LoadInt64(&stderrEventsDropped)
+	default:
+		return 0, 0
+	}
 }
 
 // ExecutorGenerator is a type that generates Events for an Executor
@@ -157,10 +170,10 @@ func (ew *ExecutorWriter) StreamLogTail(ctx context.Context, size int64, interva
 // tail of the content (up to "size") and emit events once the ctx.Done
 // is closed.
 func LogTail(ctx context.Context, taskID string, attempt, index uint32, size int64, out Writer, wg *sync.WaitGroup) (stdout, stderr io.Writer) {
-	stdoutbuf := ring.NewBuffer(size)
-	stderrbuf := ring.NewBuffer(size)
+	stdoutbuf := newExecutorBuffer(size)
+	stderrbuf := newExecutorBuffer(size)
 
-	flush := func(buf *ring.Buffer, t Type) error {
+	flush := func(buf *executorBuffer, t Type) error {
 		// Only flush if new bytes have been written to the buffer.
 		if buf.TotalWritten() == 0 {
 			return nil
@@ -201,8 +214,8 @@ func StreamLogTail(ctx context.Context, taskID string, attempt, index uint32, si
 	// they are not exceeding the rate limit.
 	limiter := rate.NewLimiter(rate.Every(interval), 1)
 
-	stdoutbuf := ring.NewBuffer(size)
-	stderrbuf := ring.NewBuffer(size)
+	stdoutbuf := newExecutorBuffer(size)
+	stderrbuf := newExecutorBuffer(size)
 	stdoutch := make(chan []byte)
 	stderrch := make(chan []byte)
 	inputDone := make(chan struct{})
@@ -212,7 +225,7 @@ func StreamLogTail(ctx context.Context, taskID string, attempt, index uint32, si
 	immediate := make(chan time.Time)
 	close(immediate)
 
-	flush := func(buf *ring.Buffer, t Type, timeout <-chan time.Time) {
+	flush := func(buf *executorBuffer, t Type, timeout <-chan time.Time) {
 		// Only flush if new bytes have been written to the buffer.
 		if buf.NewBytesWritten() == 0 {
 			return
@@ -242,7 +255,6 @@ func StreamLogTail(ctx context.Context, taskID string, attempt, index uint32, si
 			case Type_EXECUTOR_STDERR:
 				atomic.AddInt64(&stderrEventsDropped, 1)
 			}
-			atomic.AddInt64(&logEventsTotal, 1)
 		}
 	}
 
@@ -264,16 +276,7 @@ func StreamLogTail(ctx context.Context, taskID string, attempt, index uint32, si
 		defer wg.Done()
 
 		for e := range eventch {
-			err := writeLogTailEvent(out, e)
-
-			if err == nil {
-				switch e.Type {
-				case Type_EXECUTOR_STDOUT:
-					atomic.AddInt64(&logEventsTotal, 1)
-				case Type_EXECUTOR_STDERR:
-					atomic.AddInt64(&logEventsTotal, 1)
-				}
-			}
+			_ = writeLogTailEvent(out, e) //nolint:errcheck // Log delivery is best-effort after bounded retries.
 		}
 	}()
 
@@ -299,12 +302,12 @@ func StreamLogTail(ctx context.Context, taskID string, attempt, index uint32, si
 					flushboth(immediate)
 				}
 			case b := <-stdoutch:
-				_, _ = stdoutbuf.Write(b) //nolint:errcheck // ring.Buffer.Write only copies into memory and has no error path.
+				_, _ = stdoutbuf.Write(b) //nolint:errcheck // executorBuffer.Write only copies into memory and has no error path.
 				if limiter.Allow() {
 					flushboth(immediate)
 				}
 			case b := <-stderrch:
-				_, _ = stderrbuf.Write(b) //nolint:errcheck // ring.Buffer.Write only copies into memory and has no error path.
+				_, _ = stderrbuf.Write(b) //nolint:errcheck // executorBuffer.Write only copies into memory and has no error path.
 				if limiter.Allow() {
 					flushboth(immediate)
 				}
@@ -336,6 +339,12 @@ func writeLogTailEvent(out Writer, event *Event) error {
 		err = out.WriteEvent(ctx, event)
 		cancel()
 		if err == nil {
+			switch event.Type {
+			case Type_EXECUTOR_STDOUT:
+				atomic.AddInt64(&stdoutEventsProcessed, 1)
+			case Type_EXECUTOR_STDERR:
+				atomic.AddInt64(&stderrEventsProcessed, 1)
+			}
 			return nil
 		}
 		if errors.Is(err, context.DeadlineExceeded) {

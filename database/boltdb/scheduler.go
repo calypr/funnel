@@ -2,7 +2,6 @@ package boltdb
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/calypr/funnel/compute/scheduler"
 	"github.com/calypr/funnel/tes"
@@ -10,20 +9,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
-
-// queueTask adds a task to the scheduler queue.
-func (taskBolt *BoltDB) queueTask(task *tes.Task) error {
-	taskID := task.Id
-	idBytes := []byte(taskID)
-
-	err := taskBolt.db.Update(func(tx *bolt.Tx) error {
-		return tx.Bucket(TasksQueued).Put(idBytes, []byte{})
-	})
-	if err != nil {
-		return fmt.Errorf("can't queue task: %s", err)
-	}
-	return nil
-}
 
 // ReadQueue returns a slice of queued Tasks. Up to "n" tasks are returned.
 func (taskBolt *BoltDB) ReadQueue(n int, after *tes.Task) []*tes.Task {

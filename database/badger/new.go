@@ -5,7 +5,7 @@ import (
 	"log"
 
 	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/util/fsutil"
+	"github.com/calypr/funnel/internal/directory"
 	badger "github.com/dgraph-io/badger/v4"
 )
 
@@ -16,7 +16,7 @@ type Badger struct {
 
 // NewBadger creates a new database instance.
 func NewBadger(conf *config.Badger) (*Badger, error) {
-	err := fsutil.EnsureDir(conf.Path)
+	err := directory.EnsureDir(conf.Path)
 	if err != nil {
 		return nil, fmt.Errorf("creating database directory: %s", err)
 	}

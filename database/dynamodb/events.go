@@ -14,8 +14,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/aws/smithy-go"
 	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/internal/retry"
 	"github.com/calypr/funnel/tes"
-	"github.com/calypr/funnel/util"
 )
 
 // WriteEvent creates an event for the server to handle.
@@ -39,7 +39,7 @@ func (db *DynamoDB) WriteEvent(ctx context.Context, e *events.Event) error {
 		return db.createTask(ctx, e.GetTask())
 
 	case events.Type_TASK_STATE:
-		retrier := util.NewRetrier()
+		retrier := retry.NewRetrier()
 		retrier.ShouldRetry = func(err error) bool {
 			var aerr smithy.APIError
 			if errors.As(err, &aerr) {

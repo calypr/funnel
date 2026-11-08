@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/calypr/funnel/internal/directory"
 	"github.com/calypr/funnel/tes"
-	"github.com/calypr/funnel/util/fsutil"
 	proto "google.golang.org/protobuf/proto"
 )
 
@@ -73,7 +73,7 @@ func (mapper *FileMapper) MapTask(task *tes.Task, executorBackend string) error 
 	}
 
 	// Create the working directory
-	err := fsutil.EnsureDir(mapper.WorkDir)
+	err := directory.EnsureDir(mapper.WorkDir)
 	if err != nil {
 		return err
 	}
@@ -325,50 +325,59 @@ func (mapper *FileMapper) HostScratchPath(src string) (string, error) {
 	return p, nil
 }
 
-// OpenHostFile opens a file on the host file system at a mapped path.
-// "src" is an unmapped path. This function will handle mapping the path.
-//
-// # This function calls os.Open
-//
-// If the path can't be mapped or the file can't be opened, an error is returned.
+// OpenHostFile opens a mapped executor input read-only within its working root.
 func (mapper *FileMapper) OpenHostFile(src string) (*os.File, error) {
-	p, perr := mapper.HostPath(src)
-	if perr != nil {
-		return nil, perr
+	base := mapper.WorkDir
+	mapped, err := mapper.HostPath(src)
+	if mapper.ScratchDir != "" {
+		base = mapper.ScratchDir
+		mapped, err = mapper.HostScratchPath(src)
 	}
-	f, oerr := os.Open(p)
-	if oerr != nil {
-		return nil, oerr
+	if err != nil {
+		return nil, err
 	}
-	return f, nil
+	rel, err := filepath.Rel(base, mapped)
+	if err != nil {
+		return nil, err
+	}
+	root, err := os.OpenRoot(base)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close() //nolint:errcheck // Closing the directory handle does not affect the opened input file.
+	return root.Open(rel)
 }
 
 // CreateHostFile creates a file on the host file system at a mapped path.
 // "src" is an unmapped path. This function will handle mapping the path.
 //
-// # This function calls os.Create
-//
 // If the path can't be mapped or the file can't be created, an error is returned.
 func (mapper *FileMapper) CreateHostFile(src string) (*os.File, error) {
-	var p string
-	var perr error
+	base := mapper.WorkDir
+	mapped, err := mapper.HostPath(src)
 	if mapper.ScratchDir != "" {
-		p, perr = mapper.HostScratchPath(src)
-	} else {
-		p, perr = mapper.HostPath(src)
+		base = mapper.ScratchDir
+		mapped, err = mapper.HostScratchPath(src)
 	}
-	if perr != nil {
-		return nil, perr
-	}
-	err := fsutil.EnsurePath(p)
 	if err != nil {
 		return nil, err
 	}
-	f, oerr := os.Create(p)
-	if oerr != nil {
-		return nil, oerr
+	rel, err := filepath.Rel(base, mapped)
+	if err != nil {
+		return nil, err
 	}
-	return f, nil
+	if err := directory.EnsureDir(base); err != nil {
+		return nil, err
+	}
+	root, err := os.OpenRoot(base)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close() //nolint:errcheck // Closing the directory does not affect the opened log file.
+	if err := root.MkdirAll(filepath.Dir(rel), 0775); err != nil {
+		return nil, err
+	}
+	return root.OpenFile(rel, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
 }
 
 // AddTmpVolume creates a directory on the host based on the declared path in
@@ -385,7 +394,7 @@ func (mapper *FileMapper) AddTmpVolume(mountPoint string) error {
 		return err
 	}
 
-	err = fsutil.EnsureDir(hostPath)
+	err = directory.EnsureDir(hostPath)
 	if err != nil {
 		return err
 	}
@@ -404,9 +413,9 @@ func (mapper *FileMapper) addInput(input *tes.Input) (bool, error) {
 	}
 
 	if input.Type == tes.FileType_DIRECTORY {
-		err = fsutil.EnsureDir(hostPath)
+		err = directory.EnsureDir(hostPath)
 	} else {
-		err = fsutil.EnsurePath(hostPath)
+		err = directory.EnsurePath(hostPath)
 	}
 	if err != nil {
 		return false, err
@@ -458,7 +467,7 @@ func (mapper *FileMapper) addOutput(output *tes.Output, rootStreamPaths map[stri
 	}
 
 	if !(output.GetType() == tes.FileType_FILE && rootStreamPaths[containerPath]) {
-		err = fsutil.EnsureDir(hostDir)
+		err = directory.EnsureDir(hostDir)
 		if err != nil {
 			return err
 		}
@@ -499,7 +508,7 @@ func (mapper *FileMapper) prepareRootStreamFiles(task *tes.Task) (map[string]boo
 					return nil, err
 				}
 			}
-			if err := fsutil.EnsureDir(path.Dir(filePath)); err != nil {
+			if err := directory.EnsureDir(path.Dir(filePath)); err != nil {
 				return nil, err
 			}
 			f, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY, 0666)

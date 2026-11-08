@@ -7,9 +7,9 @@ import (
 
 	"github.com/calypr/funnel/compute/scheduler"
 	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/internal/directory"
 	"github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/tes"
-	"github.com/calypr/funnel/util/fsutil"
 	bolt "go.etcd.io/bbolt"
 )
 
@@ -71,7 +71,7 @@ type BoltDB struct {
 // NewBoltDB returns a new instance of BoltDB, accessing the database at
 // the given path, and including the given ServerConfig.
 func NewBoltDB(conf *config.BoltDB) (*BoltDB, error) {
-	if err := fsutil.EnsurePath(conf.Path); err != nil {
+	if err := directory.EnsurePath(conf.Path); err != nil {
 		return nil, fmt.Errorf("creating boltdb directory: %w", err)
 	}
 	db, err := bolt.Open(conf.Path, 0600, &bolt.Options{

@@ -6,12 +6,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/calypr/funnel/cmd/lifecycle"
 	"github.com/calypr/funnel/cmd/node"
 	"github.com/calypr/funnel/cmd/server"
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/config/gce"
 	"github.com/calypr/funnel/logger"
-	"github.com/calypr/funnel/util"
 	"github.com/spf13/cobra"
 )
 
@@ -28,7 +28,7 @@ var runCmd = &cobra.Command{
 	Use: "run",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx, cancel := context.WithCancel(context.Background())
-		ctx = util.SignalContext(ctx, time.Second*5, syscall.SIGINT, syscall.SIGTERM)
+		ctx = lifecycle.SignalContext(ctx, time.Second*5, syscall.SIGINT, syscall.SIGTERM)
 		defer cancel()
 
 		conf := config.DefaultConfig()

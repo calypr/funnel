@@ -44,6 +44,8 @@ message Config {
   AWSBatch AWSBatch = 22;
   Kubernetes Kubernetes = 23;
   GCPBatch GCPBatch = 24;
+  // Private persistent controller directory, outside task data and local storage roots.
+  string HPCStateDir = 36;
   // Storage
   LocalStorage LocalStorage = 25;
   AmazonS3Storage AmazonS3 = 26;
@@ -355,6 +357,8 @@ message FTPStorage {
   TimeoutConfig Timeout = 2;
   string User = 3;
   string Password = 4;
+  // Trusted FTP origin for configured credentials, e.g. ftp://storage.example:21.
+  string Endpoint = 5;
 }
 
 // Kubernetes describes the configuration for the Kubernetes compute backend.

@@ -11,10 +11,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/internal/awsclient"
 	"github.com/calypr/funnel/storage"
 	"github.com/calypr/funnel/tes"
 	"github.com/calypr/funnel/tests"
-	util "github.com/calypr/funnel/util/aws"
 	"github.com/calypr/funnel/worker"
 )
 
@@ -221,7 +221,7 @@ type s3Test struct {
 }
 
 func newS3Test(conf *config.AmazonS3Storage) (*s3Test, error) {
-	sess, err := util.NewAWSConfig(context.Background(), conf.AWSConfig)
+	sess, err := awsclient.NewAWSConfig(context.Background(), conf.AWSConfig)
 	if err != nil {
 		return nil, err
 	}

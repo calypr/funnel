@@ -18,14 +18,13 @@ import (
 
 	runlib "github.com/calypr/funnel/cmd/run"
 	servercmd "github.com/calypr/funnel/cmd/server"
+	funnelkubernetes "github.com/calypr/funnel/compute/kubernetes"
 	"github.com/calypr/funnel/compute/scheduler"
 	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/internal/rpcclient"
 	"github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/server"
 	"github.com/calypr/funnel/tes"
-	"github.com/calypr/funnel/util/dockerutil"
-	"github.com/calypr/funnel/util/k8sutil"
-	"github.com/calypr/funnel/util/rpc"
 	cerrdefs "github.com/containerd/errdefs"
 	docker "github.com/moby/moby/client"
 	"google.golang.org/grpc"
@@ -70,7 +69,7 @@ func NewFunnel(conf *config.Config) *Funnel {
 		panic(err)
 	}
 
-	dcli, derr := dockerutil.NewDockerClient()
+	dcli, derr := newDockerClient()
 	if derr != nil {
 		panic(derr)
 	}
@@ -78,7 +77,7 @@ func NewFunnel(conf *config.Config) *Funnel {
 	var kcli *kubernetes.Clientset
 	var kerr error
 	if conf.Compute == "kubernetes" {
-		kcli, kerr = k8sutil.NewK8sClient(conf)
+		kcli, kerr = funnelkubernetes.NewClient()
 		if kerr != nil {
 			panic(kerr)
 		}
@@ -104,7 +103,7 @@ func NewFunnel(conf *config.Config) *Funnel {
 
 // addRPCClient configures and connects the RPC client to the server.
 func (f *Funnel) addRPCClient() {
-	conn, err := rpc.Dial(context.Background(), f.Conf.RPCClient)
+	conn, err := rpcclient.Dial(context.Background(), f.Conf.RPCClient)
 	if err != nil {
 		panic(err)
 	}
@@ -263,17 +262,6 @@ func (f *Funnel) Cancel(id string) error {
 		Id: id,
 	})
 	return err
-}
-
-// ListView returns a task list (calls ListTasks) with the given view.
-func (f *Funnel) ListView(view tes.View) []*tes.Task {
-	t, err := f.RPC.ListTasks(context.Background(), &tes.ListTasksRequest{
-		View: view.String(),
-	})
-	if err != nil {
-		panic(err)
-	}
-	return t.Tasks
 }
 
 // GetView returns a task (calls GetTask) with the given view.
@@ -516,22 +504,6 @@ func (f *Funnel) StartServerInDocker(containerName, imageName string, extraArgs 
 		break
 	}
 	return
-}
-
-func (f *Funnel) findTestServerContainers() []string {
-	res := []string{}
-	containers, err := f.Docker.ContainerList(context.Background(), docker.ContainerListOptions{})
-	if err != nil {
-		panic(err)
-	}
-	for _, c := range containers.Items {
-		for _, n := range c.Names {
-			if strings.Contains(n, "funnel-test-server-") {
-				res = append(res, n)
-			}
-		}
-	}
-	return res
 }
 
 func (f *Funnel) killTestServerContainers(ids []string) {
