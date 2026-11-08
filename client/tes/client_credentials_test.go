@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/api/tes"
 )
 
 type credentialTestTransport func(*http.Request) (*http.Response, error)

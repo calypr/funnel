@@ -8,7 +8,7 @@ package tesrpc
 
 import (
 	context "context"
-	tes "github.com/calypr/funnel/tes"
+	tes "github.com/calypr/funnel/api/tes"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"

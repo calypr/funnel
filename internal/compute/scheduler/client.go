@@ -3,7 +3,7 @@ package scheduler
 import (
 	"context"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/rpcclient"
 	"google.golang.org/grpc"

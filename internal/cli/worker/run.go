@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 	cmdutil "github.com/calypr/funnel/internal/cli/util"
 	"github.com/calypr/funnel/internal/compute/kubernetes/storageplan"
 	"github.com/calypr/funnel/internal/database/datastore"

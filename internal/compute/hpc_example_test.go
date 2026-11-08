@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/calypr/funnel/api/tes"
 	appconfig "github.com/calypr/funnel/internal/config"
-	"github.com/calypr/funnel/tes"
 )
 
 func TestExampleHPCTemplatesRenderWorkerCommand(t *testing.T) {

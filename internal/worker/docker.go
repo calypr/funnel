@@ -15,10 +15,10 @@ import (
 	"text/template"
 	"time"
 
+	tes "github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/shellwords"
 	"github.com/calypr/funnel/internal/taskmodel"
-	tes "github.com/calypr/funnel/tes"
 )
 
 // DockerCommand is responsible for configuring and running a docker container.

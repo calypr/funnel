@@ -8,11 +8,11 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/compute/kubernetes/storageplan"
 	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
-	"github.com/calypr/funnel/tes"
 )
 
 func TestCreateJobGivesWorkerRetriesDistinctPodIdentities(t *testing.T) {

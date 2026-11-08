@@ -430,7 +430,7 @@ func renderProto(messages []Message, enums []Enum, services []ServicePath) (stri
 	tmpl, err := template.New("proto").Parse(`
 syntax = "proto3";
 
-option go_package = "github.com/calypr/funnel/tes";
+option go_package = "github.com/calypr/funnel/api/tes";
 
 package tes;
 

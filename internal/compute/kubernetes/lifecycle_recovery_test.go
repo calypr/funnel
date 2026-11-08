@@ -19,12 +19,12 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/compute/kubernetes/storageplan"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
 	"github.com/calypr/funnel/internal/storage"
 	"github.com/calypr/funnel/internal/taskmodel"
-	"github.com/calypr/funnel/tes"
 )
 
 func TestLifecycleCancelRacingPVCreate(t *testing.T) {

@@ -3,8 +3,8 @@ package config
 import (
 	durationpb "google.golang.org/protobuf/types/known/durationpb"
 
-	schema "github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/logger"
+	schema "github.com/calypr/funnel/api/config"
+	"github.com/calypr/funnel/api/logger"
 )
 
 func EmptyConfig() *schema.Config {

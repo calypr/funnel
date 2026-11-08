@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/api/tes"
 )
 
 // isForbiddenPath reports whether path is, or is nested under, any of the

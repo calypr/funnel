@@ -7,7 +7,7 @@ import (
 
 	"google.golang.org/protobuf/encoding/protojson"
 
-	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/api/tes"
 )
 
 // GetServiceInfo returns result of GET /v1/service-info

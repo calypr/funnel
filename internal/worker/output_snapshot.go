@@ -10,9 +10,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/storage"
-	"github.com/calypr/funnel/tes"
 	"google.golang.org/protobuf/proto"
 )
 

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 )
 
 type oidcFixtureTransport func(*http.Request) (*http.Response, error)

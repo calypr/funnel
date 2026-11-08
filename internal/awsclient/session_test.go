@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 )
 
 func TestAWSConfigCredentials(t *testing.T) {

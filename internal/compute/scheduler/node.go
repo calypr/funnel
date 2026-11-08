@@ -7,7 +7,7 @@ import (
 	"runtime/debug"
 	"time"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 	"github.com/calypr/funnel/internal/directory"
 	"github.com/calypr/funnel/internal/logger"
 	"github.com/calypr/funnel/internal/version"

@@ -3,9 +3,9 @@ package shared
 import (
 	"context"
 
-	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/plugins/proto"
-	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/api/config"
+	proto "github.com/calypr/funnel/api/plugin"
+	"github.com/calypr/funnel/api/tes"
 )
 
 // GRPCClient is an implementation of KV that talks over RPC.

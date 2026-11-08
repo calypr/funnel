@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 	cmdutil "github.com/calypr/funnel/internal/cli/util"
 	"github.com/calypr/funnel/internal/compute/aws_batch"
 	"github.com/calypr/funnel/internal/compute/gcp_batch"

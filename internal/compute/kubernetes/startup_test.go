@@ -14,9 +14,9 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
+	"github.com/calypr/funnel/api/tes"
 	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/logger"
-	"github.com/calypr/funnel/tes"
 )
 
 type startupTaskDatabase struct {

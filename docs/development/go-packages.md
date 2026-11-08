@@ -2,7 +2,7 @@
 
 Funnel separates its public Go API into two packages:
 
-- `github.com/calypr/funnel/tes`: shared generated TES models, enum conveniences,
+- `github.com/calypr/funnel/api/tes`: shared generated TES models, enum conveniences,
   and request filters. It has no HTTP client or server dependencies.
 - `github.com/calypr/funnel/client/tes`: TES REST operations, client configuration,
   HTTP responses, and task polling.
@@ -26,7 +26,7 @@ result, err := client.CreateTask(ctx, &tes.Task{
 ```
 
 Import `github.com/calypr/funnel/client/tes` as `tesclient` and
-`github.com/calypr/funnel/tes` for the models. Import `context`, `net/http`, and
+`github.com/calypr/funnel/api/tes` for the models. Import `context`, `net/http`, and
 `time` as needed.
 The client preserves URL prefixes and accepts a caller-owned HTTP client for
 transports, timeouts, proxies, and testing. List responses return the next page
@@ -48,7 +48,7 @@ private to the TES client. The CLI owns output formatting, and callers that need
 model JSON serialization can use protobuf's `protojson` package directly.
 
 The former `tes.NewClient` API moves to `client/tes.NewClient`; its request and
-response types retain their `tes` imports. There is no forwarding client in the
+response types use `api/tes` imports. There is no forwarding client in the
 model package. The mutable `tes.Marshaler` global, `tes.MarshalToString` wrapper,
 and the client's formatting-only `Marshaler` field have been removed.
 
@@ -71,10 +71,11 @@ and the client's formatting-only `Marshaler` field have been removed.
 - `internal/webdash`: Go dashboard serving and embedded build output. Frontend
   source and npm commands remain in `webdash/`.
 
-The public `config` and `logger` packages retain generated schemas at their
-existing import paths for plugin compatibility. `config` also retains pure
-server-address helpers and Gob oneof registration required by external plugins.
-`plugins/proto` and `plugins/shared` retain the public plugin contracts. Plugin configuration, TES messages,
+The public `api/config` and `api/logger` packages contain generated schemas.
+`api/config` also contains Gob oneof registration required by external plugins.
+Server address formatting lives in `internal/config`, alongside application
+configuration defaults and loading. `api/plugin` and `plugins/shared` contain the public
+plugin contracts. External Go consumers must update imports and rebuild plugins. Plugin configuration, TES messages,
 protobuf field numbers, service names, and JSON names remain compatible.
 Application implementation imports such as `funnel/server`, `funnel/worker`,
 and TES server helpers are no longer public Go APIs. External applications should
@@ -86,9 +87,24 @@ the plugin contracts. No forwarding packages preserve the former import paths.
 Run `make proto` to generate public message types from the TES OpenAPI schema
 and service bindings from the same source. The schemas share the protobuf
 package `tes`; Go code uses separate public and internal packages. The REST
-schema remains at `tes/tes.swagger.json`. `make proto` installs pinned Go plugins;
-`buf.gen.go.yaml` controls Go generation. `buf.gen.yaml` retains the optional
-multi-language generation configuration.
+schema lives at `api/tes/tes.swagger.json`. All seven protobuf sources and the
+Buf module, dependency lock, and generation configuration live under `api/`.
+`make proto` converts the upstream TES OpenAPI schema to protobuf, then runs
+`buf generate` from `api/`. It installs pinned local Go plugins;
+`api/buf.gen.yaml` controls messages, gRPC, gateway, and Swagger generation.
+Go output follows `go_package`, keeping private bindings under top-level
+`internal/`. There is one generation configuration; the former unused Python
+generation template has been removed.
+
+Proto imports are relative to `api/`, preserving logical paths such as
+`tes/tes.proto` and `config/config.proto`. The plugin schema moves from
+`plugins/proto/plugin.proto` to `plugin/plugin.proto`, and the scheduler schema
+moves from `internal/compute/scheduler/scheduler.proto` to
+`internal/scheduler/scheduler.proto`. Downstream proto consumers must update
+these imports. Protobuf namespaces and service identities stay unchanged; these
+file moves intentionally break the configured Buf `FILE` compatibility policy.
+Run Buf commands from `api/`, including `buf lint` and `buf breaking --against`
+with the desired baseline.
 
 Run `python3 .github/scripts/check-public-api.py` to check the client dependency
 boundary, compile an external client and plugin consumer, and verify Go rejects
@@ -98,8 +114,8 @@ This remains one Go module. The client compiles without server, cloud, database,
 Kubernetes, gRPC, or gateway packages, but independent client dependency versions
 and releases would require a separate module.
 
-Configuration type imports remain `github.com/calypr/funnel/config` and
-`github.com/calypr/funnel/logger`. Application helpers such as `DefaultConfig`,
+Configuration type imports remain `github.com/calypr/funnel/api/config` and
+`github.com/calypr/funnel/api/logger`. Application helpers such as `DefaultConfig`,
 `ParseFile`, `ToYamlFile`, and `Safe` are private to Funnel. Plugins should use
 the configuration supplied by the host and protobuf serialization directly.
 The public schemas have no dependency on YAML loaders, validators, Kubernetes,

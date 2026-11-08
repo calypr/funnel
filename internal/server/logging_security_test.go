@@ -12,12 +12,12 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
+	pluginproto "github.com/calypr/funnel/api/plugin"
+	"github.com/calypr/funnel/api/tes"
 	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
-	pluginproto "github.com/calypr/funnel/plugins/proto"
-	"github.com/calypr/funnel/tes"
 )
 
 func TestDebugInterceptorLogsOnlyMethodAndStatus(t *testing.T) {

@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 )
 
 // Local provides access to a local-disk storage system.

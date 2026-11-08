@@ -11,11 +11,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/compute/kubernetes/resources"
 	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/logger"
-	"github.com/calypr/funnel/tes"
 )
 
 // Constants shared across unit tests that use fake Kubernetes clients.

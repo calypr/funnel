@@ -13,14 +13,14 @@ import (
 
 	"google.golang.org/protobuf/types/known/durationpb"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/compute/scheduler"
 	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/rpcclient"
 	"github.com/calypr/funnel/internal/server"
 	"github.com/calypr/funnel/internal/tesrpc"
-	"github.com/calypr/funnel/tes"
 )
 
 func TestSchedulerProcesses(t *testing.T) {

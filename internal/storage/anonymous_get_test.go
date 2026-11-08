@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 	"google.golang.org/api/option"
 	"google.golang.org/api/storage/v1"
 )

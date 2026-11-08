@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 	appconfig "github.com/calypr/funnel/internal/config"
 )
 

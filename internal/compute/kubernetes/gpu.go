@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/taskmodel"
-	"github.com/calypr/funnel/tes"
 
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/validation"

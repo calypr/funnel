@@ -5,7 +5,7 @@ import (
 	"path"
 	"testing"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 )
 
 func TestStorageWithConfig(t *testing.T) {

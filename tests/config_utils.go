@@ -15,10 +15,10 @@ import (
 
 	"google.golang.org/protobuf/types/known/durationpb"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
+	logconfig "github.com/calypr/funnel/api/logger"
 	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/logger"
-	logconfig "github.com/calypr/funnel/logger"
 )
 
 var configFile string
@@ -91,7 +91,7 @@ func RandomPortConfig(conf *config.Config) *config.Config {
 	ports := randomPorts(2)
 	conf.Server.RPCPort = ports[0]
 	conf.Server.HTTPPort = ports[1]
-	conf.RPCClient.ServerAddress = conf.Server.RPCAddress()
+	conf.RPCClient.ServerAddress = appconfig.RPCAddress(conf.Server)
 	return conf
 }
 

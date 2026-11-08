@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 	"github.com/calypr/funnel/internal/logger"
 	"github.com/stretchr/testify/mock"
 	"google.golang.org/grpc"

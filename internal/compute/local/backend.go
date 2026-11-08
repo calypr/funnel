@@ -7,13 +7,13 @@ import (
 	"sort"
 
 	"dario.cat/mergo"
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
+	proto "github.com/calypr/funnel/api/plugin"
+	"github.com/calypr/funnel/api/tes"
 	workerCmd "github.com/calypr/funnel/internal/cli/worker"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
 	"github.com/calypr/funnel/internal/taskmodel"
-	"github.com/calypr/funnel/plugins/proto"
-	"github.com/calypr/funnel/tes"
 	protobuf "google.golang.org/protobuf/proto"
 
 	"google.golang.org/grpc/codes"

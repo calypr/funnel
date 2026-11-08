@@ -5,9 +5,9 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/compute/scheduler"
 	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/tes"
 	bolt "go.etcd.io/bbolt"
 	"google.golang.org/protobuf/proto"
 )

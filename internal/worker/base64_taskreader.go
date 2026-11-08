@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/taskmodel"
-	"github.com/calypr/funnel/tes"
 )
 
 // Base64TaskReader reads a task from a base64 encoded string.

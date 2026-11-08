@@ -4,9 +4,9 @@ import (
 	"context"
 	"net/rpc"
 
-	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/plugins/proto"
-	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/api/config"
+	proto "github.com/calypr/funnel/api/plugin"
+	"github.com/calypr/funnel/api/tes"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/go-plugin"
 	"google.golang.org/grpc"

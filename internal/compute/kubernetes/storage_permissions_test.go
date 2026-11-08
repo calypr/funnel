@@ -18,12 +18,12 @@ import (
 	fakerest "k8s.io/client-go/rest/fake"
 	k8stesting "k8s.io/client-go/testing"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
+	plugin "github.com/calypr/funnel/api/plugin"
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/compute/kubernetes/storageplan"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
-	plugin "github.com/calypr/funnel/plugins/proto"
-	"github.com/calypr/funnel/tes"
 )
 
 func respondToPVPermissionReviews(client *fake.Clientset, respond func(*authorizationv1.SelfSubjectAccessReview) (*authorizationv1.SelfSubjectAccessReview, error)) {

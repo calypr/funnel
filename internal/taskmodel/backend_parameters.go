@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/api/tes"
 )
 
 // NormalizeBackendParameters rejects ambiguous keys and canonicalizes TES keys.

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/tests/mongotest"
 )
 

@@ -13,11 +13,11 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/storage"
 	"github.com/calypr/funnel/internal/worker"
-	"github.com/calypr/funnel/tes"
 	"github.com/calypr/funnel/tests"
 )
 

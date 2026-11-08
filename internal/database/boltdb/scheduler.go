@@ -3,8 +3,8 @@ package boltdb
 import (
 	"context"
 
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/compute/scheduler"
-	"github.com/calypr/funnel/tes"
 	bolt "go.etcd.io/bbolt"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/tests"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/status"

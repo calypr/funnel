@@ -6,8 +6,8 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/resource"
 
-	schema "github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/tes"
+	schema "github.com/calypr/funnel/api/config"
+	"github.com/calypr/funnel/api/tes"
 )
 
 type ValidationError struct {

@@ -7,7 +7,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	schema "github.com/calypr/funnel/config"
+	schema "github.com/calypr/funnel/api/config"
 )
 
 func TestSafeRedactsFreeFormConfiguration(t *testing.T) {

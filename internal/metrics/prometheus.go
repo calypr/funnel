@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/compute/scheduler"
-	"github.com/calypr/funnel/tes"
 	"github.com/prometheus/client_golang/prometheus"
 )
 

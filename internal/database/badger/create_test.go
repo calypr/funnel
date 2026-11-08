@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/server"
-	"github.com/calypr/funnel/tes"
 	badger "github.com/dgraph-io/badger/v4"
 )
 

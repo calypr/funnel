@@ -18,7 +18,7 @@ return &pluginproto.JobResponse{
 ```
 
 The example uses `proto` from `google.golang.org/protobuf/proto` and `pluginproto`
-from `github.com/calypr/funnel/plugins/proto`.
+from `github.com/calypr/funnel/api/plugin`.
 
 Return the complete edited input, including settings unrelated to the plugin's
 changes. Partial responses can erase required configuration. False, zero, empty

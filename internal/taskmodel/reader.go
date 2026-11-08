@@ -3,7 +3,7 @@ package taskmodel
 import (
 	"context"
 
-	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/api/tes"
 )
 
 // ReadOnlyServer describes the TES interface with only the Get/List tasks methods

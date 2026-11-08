@@ -9,9 +9,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/logger"
-	"github.com/calypr/funnel/tes"
 )
 
 func TestMountedWriteClaimAccessAtSubmission(t *testing.T) {

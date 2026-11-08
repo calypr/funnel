@@ -8,7 +8,7 @@ import (
 
 	"google.golang.org/protobuf/types/known/durationpb"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/tests/configtest"
 )
@@ -41,7 +41,7 @@ func TestMergeConfigFileWithFlags(t *testing.T) {
 			RPCPort:  "9999",
 		},
 	}
-	serverAddress := flagConf.Server.RPCAddress()
+	serverAddress := appconfig.RPCAddress(flagConf.Server)
 
 	result, err := MergeConfigFileWithFlags("", flagConf)
 	if err != nil {
@@ -50,7 +50,7 @@ func TestMergeConfigFileWithFlags(t *testing.T) {
 	if result.Server == nil {
 		t.Fatal("unexpected nil Server config")
 	}
-	if result.Server.RPCAddress() != serverAddress {
+	if appconfig.RPCAddress(result.Server) != serverAddress {
 		t.Error("unexpected server address")
 	}
 	if result.Server.HTTPPort != fileConfig.Server.HTTPPort {
@@ -72,7 +72,7 @@ func TestMergeConfigFileWithFlags(t *testing.T) {
 	if err != nil {
 		t.Error("unexpected error", err)
 	}
-	if result.Server.RPCAddress() != serverAddress {
+	if appconfig.RPCAddress(result.Server) != serverAddress {
 		t.Error("unexpected server address")
 	}
 	if result.RPCClient.ServerAddress != serverAddress {

@@ -3,7 +3,7 @@ package scheduler
 import (
 	"fmt"
 
-	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/api/tes"
 )
 
 // Predicate is a function that checks whether a task fits a node.

@@ -5,7 +5,7 @@ import (
 	"encoding/base64"
 	"testing"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )

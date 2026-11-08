@@ -11,7 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/tes"
+	appconfig "github.com/calypr/funnel/internal/config"
+
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/tests"
 )
 
@@ -34,7 +36,7 @@ func TestRootStreamOutputsDocker(t *testing.T) {
 		`"inputs":[{"path":"/input.txt","content":"input","type":"FILE"}]`,
 	} {
 		body := `{"executors":[{"image":"alpine:latest","command":["echo","should not run"]}],` + fields + `}`
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Server.HTTPAddress()+"/v1/tasks", strings.NewReader(body))
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, appconfig.HTTPAddress(c.Server)+"/v1/tasks", strings.NewReader(body))
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/api/tes"
 )
 
 // WaitForTask polls /v1/tasks/{id} for each Id provided and returns

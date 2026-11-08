@@ -3,7 +3,7 @@ package logger
 import (
 	"os"
 
-	logconfig "github.com/calypr/funnel/logger"
+	logconfig "github.com/calypr/funnel/api/logger"
 )
 
 // Configure configures the logging level and output path.

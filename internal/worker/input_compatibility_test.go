@@ -8,10 +8,10 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/storage"
-	"github.com/calypr/funnel/tes"
 )
 
 func TestFlattenInputsPreservesEndpointQualifiedS3Directory(t *testing.T) {

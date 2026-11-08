@@ -4,8 +4,8 @@ import (
 	"os"
 	"testing"
 
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/logger"
-	"github.com/calypr/funnel/tes"
 	"github.com/calypr/funnel/tests"
 )
 

@@ -14,10 +14,10 @@ import (
 	workerCmd "github.com/calypr/funnel/internal/cli/worker"
 	"github.com/calypr/funnel/internal/taskmodel"
 
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/storage"
 	"github.com/calypr/funnel/internal/worker"
-	"github.com/calypr/funnel/tes"
 	"github.com/calypr/funnel/tests"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"

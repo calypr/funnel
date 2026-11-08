@@ -6,12 +6,12 @@ import (
 
 	bolt "go.etcd.io/bbolt"
 
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/compute/scheduler"
 	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
 	"github.com/calypr/funnel/internal/server"
-	"github.com/calypr/funnel/tes"
 )
 
 func TestPersistedLegacyTrapCanBeCanceledOrCleaned(t *testing.T) {

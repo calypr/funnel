@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 	"github.com/lestrrat-go/jwx/v4/jwt"
 	"golang.org/x/oauth2"
 )

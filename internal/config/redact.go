@@ -7,7 +7,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	schema "github.com/calypr/funnel/config"
+	schema "github.com/calypr/funnel/api/config"
 )
 
 // Safe returns a copy of the config with sensitive fields redacted

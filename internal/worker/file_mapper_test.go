@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/api/tes"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/protobuf/proto"
 )

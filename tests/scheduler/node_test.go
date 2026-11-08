@@ -6,12 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
+	"github.com/calypr/funnel/api/tes"
 	workercmd "github.com/calypr/funnel/internal/cli/worker"
 	"github.com/calypr/funnel/internal/compute/scheduler"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
-	"github.com/calypr/funnel/tes"
 	"github.com/calypr/funnel/tests"
 	"google.golang.org/protobuf/types/known/durationpb"
 )

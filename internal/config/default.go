@@ -8,7 +8,7 @@ import (
 
 	durationpb "google.golang.org/protobuf/types/known/durationpb"
 
-	schema "github.com/calypr/funnel/config"
+	schema "github.com/calypr/funnel/api/config"
 	logging "github.com/calypr/funnel/internal/logger"
 )
 
@@ -44,7 +44,7 @@ func DefaultConfig() *schema.Config {
 		// funnel components
 		Server: server,
 		RPCClient: &schema.RPCClient{
-			ServerAddress: server.RPCAddress(),
+			ServerAddress: RPCAddress(server),
 			Timeout: &schema.TimeoutConfig{
 				TimeoutOption: &schema.TimeoutConfig_Duration{
 					Duration: durationpb.New(time.Second * 60),

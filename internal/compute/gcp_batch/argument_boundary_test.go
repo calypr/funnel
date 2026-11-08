@@ -5,9 +5,9 @@ import (
 
 	"cloud.google.com/go/batch/apiv1/batchpb"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/logger"
-	"github.com/calypr/funnel/tes"
 )
 
 func TestSubmitRejectsAmbiguousContainerWorkdirBeforeDispatch(t *testing.T) {

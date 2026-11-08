@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 	"github.com/calypr/funnel/internal/directory"
 	badger "github.com/dgraph-io/badger/v4"
 )

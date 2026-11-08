@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/version"
-	"github.com/calypr/funnel/tes"
 )
 
 func TestServiceInfoReportsVersionAndOrganization(t *testing.T) {

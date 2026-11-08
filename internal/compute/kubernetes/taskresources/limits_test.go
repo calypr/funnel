@@ -3,8 +3,8 @@ package taskresources
 import (
 	"testing"
 
-	schema "github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/tes"
+	schema "github.com/calypr/funnel/api/config"
+	"github.com/calypr/funnel/api/tes"
 )
 
 func TestParseCpus(t *testing.T) {

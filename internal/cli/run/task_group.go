@@ -8,8 +8,8 @@ import (
 
 	"google.golang.org/protobuf/encoding/protojson"
 
+	"github.com/calypr/funnel/api/tes"
 	tesclient "github.com/calypr/funnel/client/tes"
-	"github.com/calypr/funnel/tes"
 )
 
 type taskGroup struct {

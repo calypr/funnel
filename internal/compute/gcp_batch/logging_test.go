@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
-	"github.com/calypr/funnel/tes"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )

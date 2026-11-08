@@ -10,7 +10,7 @@ import (
 	"github.com/goccy/go-yaml"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	schema "github.com/calypr/funnel/config"
+	schema "github.com/calypr/funnel/api/config"
 )
 
 // ToYaml formats the configuration into YAML and returns the bytes.

@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/events"
 	storageconfig "github.com/calypr/funnel/internal/storage"
 	"github.com/calypr/funnel/internal/worker"
-	"github.com/calypr/funnel/tes"
 	"github.com/calypr/funnel/tests"
 )
 

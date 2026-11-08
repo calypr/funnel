@@ -18,16 +18,16 @@ def run(*args, cwd=ROOT):
 def main():
     dependencies = run("go", "list", "-deps", "./client/tes").splitlines()
     forbidden = [name for name in dependencies if name.startswith((
-        MODULE + "/internal/", MODULE + "/config", MODULE + "/logger",
+        MODULE + "/internal/", MODULE + "/api/config", MODULE + "/api/logger",
         "google.golang.org/grpc", "github.com/grpc-ecosystem/", "k8s.io/",
         "cloud.google.com/", "github.com/aws/",
     ))]
     if forbidden:
         raise RuntimeError("TES client imports server dependencies: " + ", ".join(forbidden))
-    model_dependencies = run("go", "list", "-deps", "./tes").splitlines()
+    model_dependencies = run("go", "list", "-deps", "./api/tes").splitlines()
     if any(name == "net/http" or name.startswith(MODULE + "/client/") for name in model_dependencies):
         raise RuntimeError("TES wire models import HTTP/client behavior")
-    for schema_package in ("config", "logger"):
+    for schema_package in ("api/config", "api/logger"):
         dependencies = run("go", "list", "-deps", "./" + schema_package).splitlines()
         forbidden = [name for name in dependencies if name.startswith((
             MODULE + "/internal/", "k8s.io/", "cloud.google.com/", "github.com/aws/",
@@ -53,11 +53,11 @@ import (
  "net/http"
  "net/http/httptest"
  "testing"
- "github.com/calypr/funnel/tes"
+ "github.com/calypr/funnel/api/tes"
  tesclient "github.com/calypr/funnel/client/tes"
- "github.com/calypr/funnel/config"
- "github.com/calypr/funnel/logger"
- plugin "github.com/calypr/funnel/plugins/proto"
+ "github.com/calypr/funnel/api/config"
+ "github.com/calypr/funnel/api/logger"
+ plugin "github.com/calypr/funnel/api/plugin"
  "github.com/calypr/funnel/plugins/shared"
  "google.golang.org/protobuf/proto"
  "google.golang.org/protobuf/types/known/structpb"

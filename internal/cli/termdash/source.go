@@ -14,9 +14,9 @@ import (
 
 	"google.golang.org/protobuf/encoding/protojson"
 
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/cli/tesenv"
 	"github.com/calypr/funnel/internal/compute/scheduler"
-	"github.com/calypr/funnel/tes"
 )
 
 type taskClient interface {

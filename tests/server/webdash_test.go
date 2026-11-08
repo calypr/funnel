@@ -6,13 +6,15 @@ import (
 	"testing"
 	"time"
 
+	appconfig "github.com/calypr/funnel/internal/config"
+
 	"github.com/calypr/funnel/tests"
 )
 
 func TestWebdash(t *testing.T) {
 	tests.SetLogOutput(log, t)
 	// Get the webdash health check endpoint
-	address := fun.Conf.Server.HTTPAddress()
+	address := appconfig.HTTPAddress(fun.Conf.Server)
 	client := http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Get(address + "/health.html")
 	if err != nil {

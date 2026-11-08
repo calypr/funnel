@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 	cmdutil "github.com/calypr/funnel/internal/cli/util"
 	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/logger"

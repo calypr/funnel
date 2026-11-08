@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/logger"
 	"github.com/calypr/funnel/tests/configtest"
@@ -21,7 +21,7 @@ func TestPersistentPreRun(t *testing.T) {
 
 	c, h := newCommandHooks()
 	h.Run = func(ctx context.Context, conf *config.Config, log *logger.Logger) error {
-		if conf.Server.RPCAddress() != serverAddress {
+		if appconfig.RPCAddress(conf.Server) != serverAddress {
 			t.Fatal("unexpected hostname or rpc port in server config")
 		}
 		if conf.Server.HTTPPort != fileConf.Server.HTTPPort {

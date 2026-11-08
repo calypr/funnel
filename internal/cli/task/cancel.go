@@ -8,8 +8,8 @@ import (
 
 	"google.golang.org/protobuf/encoding/protojson"
 
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/cli/tesenv"
-	"github.com/calypr/funnel/tes"
 )
 
 // Cancel runs the "task cancel" CLI command, which connects to the server,

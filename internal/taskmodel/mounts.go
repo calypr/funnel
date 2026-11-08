@@ -5,7 +5,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/api/tes"
 )
 
 // ValidateMountPaths rejects task paths that would create a container mount

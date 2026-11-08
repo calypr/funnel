@@ -14,7 +14,9 @@ import (
 	"google.golang.org/grpc/status"
 	googleproto "google.golang.org/protobuf/proto"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
+	proto "github.com/calypr/funnel/api/plugin"
+	"github.com/calypr/funnel/api/tes"
 	taskresources "github.com/calypr/funnel/internal/compute/kubernetes/taskresources"
 	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
@@ -23,9 +25,7 @@ import (
 	"github.com/calypr/funnel/internal/taskmodel"
 	"github.com/calypr/funnel/internal/tesrpc"
 	"github.com/calypr/funnel/internal/version"
-	"github.com/calypr/funnel/plugins/proto"
 	"github.com/calypr/funnel/plugins/shared"
-	"github.com/calypr/funnel/tes"
 )
 
 // TaskService is a wrapper which handles common TES Task Service operations,

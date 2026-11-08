@@ -1,7 +1,7 @@
 {
   "swagger": "2.0",
   "info": {
-    "title": "internal/compute/scheduler/scheduler.proto",
+    "title": "internal/scheduler/scheduler.proto",
     "version": "version not set"
   },
   "tags": [

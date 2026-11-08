@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"net/rpc"
 
-	funnelConfig "github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/plugins/proto"
-	"github.com/calypr/funnel/tes"
+	funnelConfig "github.com/calypr/funnel/api/config"
+	proto "github.com/calypr/funnel/api/plugin"
+	"github.com/calypr/funnel/api/tes"
 	googleproto "google.golang.org/protobuf/proto"
 )
 

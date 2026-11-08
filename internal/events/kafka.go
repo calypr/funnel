@@ -6,7 +6,7 @@ import (
 	"context"
 
 	"github.com/IBM/sarama"
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 )
 
 // KafkaWriter writes events to a Kafka topic.

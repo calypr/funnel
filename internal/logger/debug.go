@@ -3,7 +3,7 @@ package logger
 import (
 	"time"
 
-	logconfig "github.com/calypr/funnel/logger"
+	logconfig "github.com/calypr/funnel/api/logger"
 )
 
 var debug_logger = NewLogger("debug", DebugConfig())

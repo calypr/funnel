@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.3.0
 // - protoc             (unknown)
-// source: internal/compute/scheduler/scheduler.proto
+// source: internal/scheduler/scheduler.proto
 
 package scheduler
 
@@ -214,5 +214,5 @@ var SchedulerService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "internal/compute/scheduler/scheduler.proto",
+	Metadata: "internal/scheduler/scheduler.proto",
 }

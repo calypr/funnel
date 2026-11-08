@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 	"github.com/calypr/funnel/internal/cli/lifecycle"
 	workerCmd "github.com/calypr/funnel/internal/cli/worker"
 	"github.com/calypr/funnel/internal/compute/scheduler"

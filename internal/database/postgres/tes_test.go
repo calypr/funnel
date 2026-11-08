@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/taskmodel"
-	"github.com/calypr/funnel/tes"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 

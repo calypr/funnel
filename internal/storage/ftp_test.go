@@ -4,7 +4,7 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 )
 
 func TestFTPSchemeSupport(t *testing.T) {

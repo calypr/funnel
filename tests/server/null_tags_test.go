@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	appconfig "github.com/calypr/funnel/internal/config"
+
 	"github.com/calypr/funnel/tests"
 )
 
@@ -27,7 +29,7 @@ func TestCreateTaskWithNullTagValue(t *testing.T) {
 		}
 	}`
 
-	resp, err := http.Post(fun.Conf.Server.HTTPAddress()+"/v1/tasks", "application/json", strings.NewReader(payload))
+	resp, err := http.Post(appconfig.HTTPAddress(fun.Conf.Server)+"/v1/tasks", "application/json", strings.NewReader(payload))
 	if err != nil {
 		t.Fatalf("failed to create task: %v", err)
 	}
@@ -83,7 +85,7 @@ func TestCreateTaskWithAllNullTagValues(t *testing.T) {
 		}
 	}`
 
-	resp, err := http.Post(fun.Conf.Server.HTTPAddress()+"/v1/tasks", "application/json", strings.NewReader(payload))
+	resp, err := http.Post(appconfig.HTTPAddress(fun.Conf.Server)+"/v1/tasks", "application/json", strings.NewReader(payload))
 	if err != nil {
 		t.Fatalf("failed to create task: %v", err)
 	}

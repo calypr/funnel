@@ -4,11 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
+	plugin "github.com/calypr/funnel/api/plugin"
 	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
-	plugin "github.com/calypr/funnel/plugins/proto"
 )
 
 func TestPluginCredentialsDoNotChangeSharedBackendConfiguration(t *testing.T) {

@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/calypr/funnel/api/tes"
 	tesclient "github.com/calypr/funnel/client/tes"
-	"github.com/calypr/funnel/tes"
 )
 
 func TestRESTClientPreservesPrefixAndEscapesTaskID(t *testing.T) {

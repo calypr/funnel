@@ -1,7 +1,7 @@
 package scheduler
 
 import (
-	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/api/tes"
 )
 
 // Offer describes a node offered by a scheduler for a task.

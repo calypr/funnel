@@ -3,7 +3,7 @@ package scheduler
 import (
 	"time"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 )
 
 // UpdateNodeState checks whether a node is dead/gone based on the last

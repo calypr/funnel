@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/calypr/funnel/config"
-	pluginproto "github.com/calypr/funnel/plugins/proto"
+	"github.com/calypr/funnel/api/config"
+	pluginproto "github.com/calypr/funnel/api/plugin"
 	"google.golang.org/protobuf/proto"
 )
 

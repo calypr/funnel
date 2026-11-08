@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/api/tes"
 )
 
 const (

@@ -5,7 +5,7 @@ import (
 	"log"
 
 	"cloud.google.com/go/datastore"
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 	"google.golang.org/api/option"
 )
 

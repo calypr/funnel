@@ -17,7 +17,7 @@ import (
 
 	"google.golang.org/protobuf/types/known/durationpb"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 	"github.com/calypr/funnel/internal/compute/scheduler"
 	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/logger"
@@ -60,7 +60,7 @@ func processConfig(t *testing.T, settings dbSettings) *config.Config {
 	conf.Server.HostName = "127.0.0.1"
 	conf.Server.HTTPPort = envOr(t, "FUNNEL_PROCESS_HTTP_PORT", "18080")
 	conf.Server.RPCPort = envOr(t, "FUNNEL_PROCESS_RPC_PORT", "19090")
-	conf.RPCClient.ServerAddress = conf.Server.RPCAddress()
+	conf.RPCClient.ServerAddress = appconfig.RPCAddress(conf.Server)
 	conf.Compute = "manual"
 	conf.Scheduler.ScheduleRate = durationpb.New(30 * time.Millisecond)
 	conf.Scheduler.ScheduleChunk = 100

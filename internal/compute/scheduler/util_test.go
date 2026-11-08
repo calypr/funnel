@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 	pscpu "github.com/shirou/gopsutil/v4/cpu"
 	psdisk "github.com/shirou/gopsutil/v4/disk"
 	psmem "github.com/shirou/gopsutil/v4/mem"

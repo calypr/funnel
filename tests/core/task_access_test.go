@@ -5,10 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/server"
 	"github.com/calypr/funnel/internal/taskmodel"
-	"github.com/calypr/funnel/tes"
 	"github.com/calypr/funnel/tests"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

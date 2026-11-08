@@ -5,9 +5,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/server"
 	"github.com/calypr/funnel/internal/taskmodel"
-	"github.com/calypr/funnel/tes"
 	badger "github.com/dgraph-io/badger/v4"
 	"google.golang.org/protobuf/proto"
 )

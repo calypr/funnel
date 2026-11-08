@@ -10,11 +10,11 @@ import (
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
+	"github.com/calypr/funnel/api/tes"
 	cmdutil "github.com/calypr/funnel/internal/cli/util"
 	"github.com/calypr/funnel/internal/logger"
 	"github.com/calypr/funnel/internal/storage"
-	"github.com/calypr/funnel/tes"
 )
 
 var log = logger.NewLogger("storage", logger.DefaultConfig())

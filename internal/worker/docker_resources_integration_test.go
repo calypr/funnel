@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/calypr/funnel/api/tes"
 	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/tes"
 )
 
 func TestDockerResourceLimitsIntegration(t *testing.T) {

@@ -8,9 +8,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/cli/tesenv"
 	"github.com/calypr/funnel/internal/shellwords"
-	"github.com/calypr/funnel/tes"
 )
 
 // *********************************************************************

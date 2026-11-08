@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/api/tes"
 )
 
 // ResourceUsage is a reservation snapshot or the sum of active reservations.

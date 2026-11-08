@@ -13,7 +13,7 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	schema "github.com/calypr/funnel/config"
+	schema "github.com/calypr/funnel/api/config"
 )
 
 func TestKubernetesStorageConfigRoundTrip(t *testing.T) {

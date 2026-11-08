@@ -1,7 +1,7 @@
 package logger
 
 import (
-	logconfig "github.com/calypr/funnel/logger"
+	logconfig "github.com/calypr/funnel/api/logger"
 	"github.com/sirupsen/logrus"
 )
 

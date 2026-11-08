@@ -5,7 +5,7 @@ import (
 
 	"context"
 
-	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/api/tes"
 )
 
 // TaskReader is a type which reads task information

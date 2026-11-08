@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 	"github.com/calypr/funnel/internal/compute/scheduler"
 	"github.com/calypr/funnel/internal/retry"
 	"github.com/jackc/pgx/v5"

@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	appconfig "github.com/calypr/funnel/internal/config"
+
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/tests"
 	"google.golang.org/grpc"
@@ -78,7 +80,7 @@ func BenchmarkRunConcurrentWithFakeNodes(b *testing.B) {
 			case id := <-ids:
 				// fake node that writes to UpdateExecutorLogs every tick
 				go func(id string) {
-					conn, err := grpc.Dial(fun.Conf.Server.RPCAddress(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+					conn, err := grpc.Dial(appconfig.RPCAddress(fun.Conf.Server), grpc.WithTransportCredentials(insecure.NewCredentials()))
 					if err != nil {
 						panic(err)
 					}

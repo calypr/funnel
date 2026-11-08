@@ -17,15 +17,15 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/calypr/funnel/api/config"
+	"github.com/calypr/funnel/api/tes"
 	tesclient "github.com/calypr/funnel/client/tes"
-	"github.com/calypr/funnel/config"
 	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/database/boltdb"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/server"
 	"github.com/calypr/funnel/internal/taskmodel"
 	"github.com/calypr/funnel/internal/tesrpc"
-	"github.com/calypr/funnel/tes"
 )
 
 func TestListTasksLargeResponses(t *testing.T) {
@@ -150,7 +150,7 @@ func TestLargeListThroughConfiguredHTTPGateway(t *testing.T) {
 	f.Server.Tasks = &server.TaskService{Read: db, Config: f.Conf}
 	t.Cleanup(f.Cleanup)
 	f.StartServer()
-	client, err := tesclient.NewClient(f.Conf.Server.HTTPAddress())
+	client, err := tesclient.NewClient(appconfig.HTTPAddress(f.Conf.Server))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 

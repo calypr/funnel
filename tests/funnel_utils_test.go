@@ -174,7 +174,7 @@ func TestFunnelCleanupStopsInProcessServer(t *testing.T) {
 	f.StartServer()
 	f.Cleanup()
 
-	for _, address := range []string{f.Conf.Server.RPCAddress(), ":" + f.Conf.Server.HTTPPort} {
+	for _, address := range []string{appconfig.RPCAddress(f.Conf.Server), ":" + f.Conf.Server.HTTPPort} {
 		listener, err := net.Listen("tcp", address)
 		if err != nil {
 			t.Fatalf("listener at %s remained open after cleanup: %v", address, err)
@@ -220,7 +220,7 @@ func TestStartServerReturnsHTTPBindErrorImmediately(t *testing.T) {
 	}
 
 	f.Cleanup()
-	rpcListener, err := net.Listen("tcp", f.Conf.Server.RPCAddress())
+	rpcListener, err := net.Listen("tcp", appconfig.RPCAddress(f.Conf.Server))
 	if err != nil {
 		t.Fatalf("RPC listener remained open after startup failure: %v", err)
 	}
@@ -236,14 +236,14 @@ func newServerTestFunnel(t *testing.T, rpcPort, httpPort string) *Funnel {
 	conf.Server.HostName = "127.0.0.1"
 	conf.Server.RPCPort = rpcPort
 	conf.Server.HTTPPort = httpPort
-	conf.RPCClient.ServerAddress = conf.Server.RPCAddress()
+	conf.RPCClient.ServerAddress = appconfig.RPCAddress(conf.Server)
 	conf.LocalStorage.AllowedDirs = []string{t.TempDir()}
 	conf.Worker.WorkDir = t.TempDir()
 
 	log := logger.NewLogger("server-lifecycle-test", logger.DefaultConfig())
 	log.Discard()
 	apiServer := &server.Server{
-		RPCAddress: conf.Server.RPCAddress(),
+		RPCAddress: appconfig.RPCAddress(conf.Server),
 		HTTPPort:   conf.Server.HTTPPort,
 		Tasks:      &server.TaskService{},
 		Log:        log,

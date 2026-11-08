@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/server"
-	"github.com/calypr/funnel/tes"
 	"github.com/jackc/pgx/v5"
 	"github.com/testcontainers/testcontainers-go"
 )

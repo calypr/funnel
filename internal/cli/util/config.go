@@ -7,7 +7,7 @@ import (
 	"dario.cat/mergo"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 	appconfig "github.com/calypr/funnel/internal/config"
 )
 
@@ -53,9 +53,9 @@ func MergeConfigFileWithFlags(file string, flagConf *config.Config) (*config.Con
 		return conf, fmt.Errorf("Worker.WorkDir %q starts with ~, which is not expanded; use an explicit path", conf.Worker.WorkDir)
 	}
 
-	if conf.Server.RPCAddress() != defaults.Server.RPCAddress() {
-		if conf.Server.RPCAddress() != conf.RPCClient.ServerAddress {
-			conf.RPCClient.ServerAddress = conf.Server.RPCAddress()
+	if appconfig.RPCAddress(conf.Server) != appconfig.RPCAddress(defaults.Server) {
+		if appconfig.RPCAddress(conf.Server) != conf.RPCClient.ServerAddress {
+			conf.RPCClient.ServerAddress = appconfig.RPCAddress(conf.Server)
 		}
 	}
 

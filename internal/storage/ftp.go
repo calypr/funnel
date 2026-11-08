@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 	"github.com/jlaffaye/ftp"
 )
 

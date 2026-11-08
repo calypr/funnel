@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 )
 
 func TestParseJwtSubjectValidatesOIDCTokens(t *testing.T) {

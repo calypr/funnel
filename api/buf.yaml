@@ -2,8 +2,7 @@ version: v1
 name: buf.build/calypr/funnel
 build:
   excludes:
-    - .ci-worktrees
-    - webdash/node_modules
+    - tes/task-execution-schemas
 deps:
   - buf.build/googleapis/googleapis
 lint:

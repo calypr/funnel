@@ -12,7 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/tes"
+	appconfig "github.com/calypr/funnel/internal/config"
+
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/tests"
 )
 
@@ -63,7 +65,7 @@ func TestOutputContractDocker(t *testing.T) {
 			}
 			body := `{"executors":[{"image":"alpine:latest","command":["sh","-c",` + string(command) + `]}],` +
 				`"volumes":["/outputs"],"outputs":[{"path":"` + tt.path + `","path_prefix":"/outputs","url":` + string(outputURL) + tt.typeField + `}]}`
-			req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Server.HTTPAddress()+"/v1/tasks", strings.NewReader(body))
+			req, err := http.NewRequestWithContext(ctx, http.MethodPost, appconfig.HTTPAddress(c.Server)+"/v1/tasks", strings.NewReader(body))
 			if err != nil {
 				t.Fatal(err)
 			}

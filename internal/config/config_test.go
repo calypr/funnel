@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	schema "github.com/calypr/funnel/config"
+	schema "github.com/calypr/funnel/api/config"
 )
 
 func TestNodeResourceConfigParsing(t *testing.T) {

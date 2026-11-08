@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/api/tes"
 )
 
 // GPUCount returns the requested GPU count, or zero if no GPU was requested.

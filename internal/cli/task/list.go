@@ -8,8 +8,8 @@ import (
 
 	"google.golang.org/protobuf/encoding/protojson"
 
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/cli/tesenv"
-	"github.com/calypr/funnel/tes"
 )
 
 // List runs the "task list" CLI command, which connects to the server,

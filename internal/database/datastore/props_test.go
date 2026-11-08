@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"cloud.google.com/go/datastore"
-	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/api/tes"
 )
 
 func TestTaskDatastoreRoundTripPreservesOutputTypePresence(t *testing.T) {

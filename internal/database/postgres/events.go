@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
 	"github.com/calypr/funnel/internal/server"
-	"github.com/calypr/funnel/tes"
 )
 
 // WriteEvent creates an event for the server to handle.

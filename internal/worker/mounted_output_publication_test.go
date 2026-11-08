@@ -15,12 +15,12 @@ import (
 
 	"google.golang.org/protobuf/types/known/durationpb"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
+	"github.com/calypr/funnel/api/tes"
 	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/retry"
 	"github.com/calypr/funnel/internal/storage"
-	"github.com/calypr/funnel/tes"
 )
 
 func workerMountedOutputMux(t *testing.T, root string, timeout time.Duration, handler http.Handler) (*storage.Mux, *httptest.Server) {

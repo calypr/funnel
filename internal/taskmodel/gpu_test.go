@@ -3,7 +3,7 @@ package taskmodel
 import (
 	"testing"
 
-	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/api/tes"
 )
 
 func TestGPUCount(t *testing.T) {

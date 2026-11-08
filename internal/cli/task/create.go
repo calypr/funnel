@@ -10,8 +10,8 @@ import (
 
 	"google.golang.org/protobuf/encoding/protojson"
 
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/cli/tesenv"
-	"github.com/calypr/funnel/tes"
 )
 
 // Create runs the "task create" CLI command, connecting to the server,

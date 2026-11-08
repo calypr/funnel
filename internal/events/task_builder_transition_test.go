@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/api/tes"
 )
 
 func TestTaskBuilderRejectsUnsupportedEntryAndRecoversLegacyState(t *testing.T) {

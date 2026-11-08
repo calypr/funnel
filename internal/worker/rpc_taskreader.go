@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/rpcclient"
 	"github.com/calypr/funnel/internal/tesrpc"
-	"github.com/calypr/funnel/tes"
 	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/retry"
 	"google.golang.org/grpc"
 )

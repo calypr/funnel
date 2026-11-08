@@ -22,12 +22,12 @@ import (
 	"k8s.io/client-go/rest"
 	"mvdan.cc/sh/v3/syntax"
 
+	"github.com/calypr/funnel/api/tes"
 	k8sbackend "github.com/calypr/funnel/internal/compute/kubernetes"
 	"github.com/calypr/funnel/internal/compute/kubernetes/storageplan"
 	taskresources "github.com/calypr/funnel/internal/compute/kubernetes/taskresources"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
-	"github.com/calypr/funnel/tes"
 )
 
 // KubernetesCommand is responsible for configuring and running a task in a Kubernetes cluster.

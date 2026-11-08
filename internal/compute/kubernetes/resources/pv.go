@@ -7,7 +7,7 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 	"github.com/calypr/funnel/internal/logger"
 
 	corev1 "k8s.io/api/core/v1"

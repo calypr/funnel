@@ -6,11 +6,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/compute/scheduler"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/server"
 	"github.com/calypr/funnel/internal/taskmodel"
-	"github.com/calypr/funnel/tes"
 	"github.com/calypr/funnel/tests/mongotest"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )

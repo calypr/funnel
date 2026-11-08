@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/api/tes"
 	"github.com/sirupsen/logrus"
 )
 

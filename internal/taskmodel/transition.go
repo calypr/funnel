@@ -3,7 +3,7 @@ package taskmodel
 import (
 	"fmt"
 
-	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/api/tes"
 )
 
 // TransitionError describes an invalid state transition.

@@ -8,8 +8,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/cli/util"
-	"github.com/calypr/funnel/tes"
 	"github.com/spf13/cobra"
 )
 

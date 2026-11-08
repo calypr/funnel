@@ -7,8 +7,10 @@ import (
 	"path/filepath"
 	"testing"
 
+	appconfig "github.com/calypr/funnel/internal/config"
+
+	"github.com/calypr/funnel/api/tes"
 	tesclient "github.com/calypr/funnel/client/tes"
-	"github.com/calypr/funnel/tes"
 	"github.com/calypr/funnel/tests"
 )
 
@@ -40,7 +42,7 @@ func TestQuotes(t *testing.T) {
 			}
 
 			// Create TES client
-			client, err := tesclient.NewClient(c.Server.HTTPAddress())
+			client, err := tesclient.NewClient(appconfig.HTTPAddress(c.Server))
 			if err != nil {
 				t.Fatalf("Failed to create TES client: %v", err)
 			}

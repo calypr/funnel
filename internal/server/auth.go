@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 	"github.com/calypr/funnel/internal/logger"
 	"github.com/calypr/funnel/internal/tesrpc"
 	"google.golang.org/grpc"

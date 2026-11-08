@@ -4,8 +4,8 @@ import (
 	"context"
 	"sort"
 
+	tes "github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/taskmodel"
-	tes "github.com/calypr/funnel/tes"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

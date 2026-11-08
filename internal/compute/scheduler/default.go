@@ -1,7 +1,7 @@
 package scheduler
 
 import (
-	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/api/tes"
 )
 
 // DefaultPredicates is a list of Predicate functions that check

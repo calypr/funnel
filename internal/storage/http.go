@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 )
 
 // HTTP provides access to URLs that need no credentials, such as public or

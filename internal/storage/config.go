@@ -3,7 +3,7 @@ package storage
 import (
 	"os"
 
-	schema "github.com/calypr/funnel/config"
+	schema "github.com/calypr/funnel/api/config"
 )
 
 // LocalConfigured reports whether local storage is enabled with allowed directories.

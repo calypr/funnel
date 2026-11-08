@@ -1,7 +1,9 @@
 package config
 
+import schema "github.com/calypr/funnel/api/config"
+
 // HTTPAddress returns the HTTP address based on HostName and HTTPPort
-func (c *Server) HTTPAddress() string {
+func HTTPAddress(c *schema.Server) string {
 	http := ""
 	if c.HostName != "" {
 		http = "http://" + c.HostName
@@ -13,7 +15,7 @@ func (c *Server) HTTPAddress() string {
 }
 
 // RPCAddress returns the RPC address based on HostName and RPCPort
-func (c *Server) RPCAddress() string {
+func RPCAddress(c *schema.Server) string {
 	rpc := c.HostName
 	if c.RPCPort != "" {
 		rpc = rpc + ":" + c.RPCPort

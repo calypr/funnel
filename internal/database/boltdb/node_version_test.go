@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 	"github.com/calypr/funnel/internal/compute/scheduler"
 	bolt "go.etcd.io/bbolt"
 	"google.golang.org/protobuf/proto"

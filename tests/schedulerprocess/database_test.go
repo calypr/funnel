@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 	"github.com/calypr/funnel/internal/compute/scheduler"
 	"github.com/calypr/funnel/internal/database/mongodb"
 	"github.com/calypr/funnel/internal/database/postgres"

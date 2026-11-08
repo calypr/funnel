@@ -1,6 +1,6 @@
 package config
 
-import schema "github.com/calypr/funnel/config"
+import schema "github.com/calypr/funnel/api/config"
 
 // ResponseBytes resolves the server's bounded gRPC response limit.
 func ResponseBytes(s *schema.Server) int {

@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/calypr/funnel/api/tes"
 	appconfig "github.com/calypr/funnel/internal/config"
-	"github.com/calypr/funnel/tes"
 )
 
 func TestSetupTemplatedHPCSubmit(t *testing.T) {

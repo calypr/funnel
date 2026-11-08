@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/compute/scheduler"
 	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/tes"
 )
 
 func readStoredNodeData(t *testing.T, db *Postgres, ctx context.Context, nodeID string) string {

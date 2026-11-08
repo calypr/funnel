@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	logconfig "github.com/calypr/funnel/logger"
+	logconfig "github.com/calypr/funnel/api/logger"
 	"github.com/k0kubun/pp"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/term"

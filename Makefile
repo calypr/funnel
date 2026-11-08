@@ -43,24 +43,24 @@ debug:
 
 # Generate the protobuf/gRPC code using Buf
 proto: proto-depends
-	@go run ./tools/openapi2proto/main.go ./tes/task-execution-schemas/openapi/task_execution_service.openapi.yaml > tes/tes.proto
-	@go run ./tools/openapi2proto/main.go -service ./tes/task-execution-schemas/openapi/task_execution_service.openapi.yaml > internal/tesrpc/service.proto
-	@buf generate --template buf.gen.go.yaml
-	@mv internal/tesrpc/service.swagger.json tes/tes.swagger.json
+	@go run ./tools/openapi2proto/main.go ./api/tes/task-execution-schemas/openapi/task_execution_service.openapi.yaml > api/tes/tes.proto
+	@go run ./tools/openapi2proto/main.go -service ./api/tes/task-execution-schemas/openapi/task_execution_service.openapi.yaml > api/internal/tesrpc/service.proto
+	@cd api && PATH="$(shell go env GOPATH)/bin:$$PATH" buf generate
+	@mv api/internal/tesrpc/service.swagger.json api/tes/tes.swagger.json
 
 # Initialize the TES schema submodule and install Buf.
 # `proto` depends on this target so generation also works from a fresh clone.
 proto-depends:
-	@git submodule update --init --recursive tes/task-execution-schemas
-	@go install github.com/bufbuild/buf/cmd/buf@v1.28.1
-	@go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.12
-	@go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.3.0
-	@go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@v2.26.3
-	@go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2@v2.26.3
+	@test -f api/tes/task-execution-schemas/openapi/task_execution_service.openapi.yaml || git submodule update --init --recursive api/tes/task-execution-schemas
+	@GOTOOLCHAIN=$(shell go env GOVERSION) go install github.com/bufbuild/buf/cmd/buf@v1.28.1
+	@GOTOOLCHAIN=$(shell go env GOVERSION) go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.12
+	@GOTOOLCHAIN=$(shell go env GOVERSION) go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.3.0
+	@GOTOOLCHAIN=$(shell go env GOVERSION) go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@v2.26.3
+	@GOTOOLCHAIN=$(shell go env GOVERSION) go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2@v2.26.3
 
 # Lint Protobuf files
 proto-lint:
-	@buf lint
+	@cd api && buf lint
 
 # Start API reference doc server
 serve-doc:

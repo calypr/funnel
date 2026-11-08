@@ -21,14 +21,14 @@ import (
 	k8stesting "k8s.io/client-go/testing"
 	"sigs.k8s.io/yaml"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
+	plugin "github.com/calypr/funnel/api/plugin"
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/compute/kubernetes/storageplan"
 	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
 	"github.com/calypr/funnel/internal/storage"
-	plugin "github.com/calypr/funnel/plugins/proto"
-	"github.com/calypr/funnel/tes"
 )
 
 const boundClaimTemplate = `metadata:

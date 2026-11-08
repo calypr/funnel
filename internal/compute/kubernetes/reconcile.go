@@ -14,10 +14,10 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/compute/kubernetes/resources"
 	"github.com/calypr/funnel/internal/compute/kubernetes/storageplan"
 	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/tes"
 )
 
 func (b *Backend) listAllWorkerJobs(ctx context.Context) (map[string]*v1.Job, error) {

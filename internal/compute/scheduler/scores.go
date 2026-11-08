@@ -1,7 +1,7 @@
 package scheduler
 
 import (
-	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/api/tes"
 )
 
 // Scores describe how well a task fits a node.

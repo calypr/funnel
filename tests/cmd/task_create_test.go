@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	appconfig "github.com/calypr/funnel/internal/config"
+
 	taskCmd "github.com/calypr/funnel/internal/cli/task"
 	"github.com/calypr/funnel/tests"
 )
@@ -27,7 +29,7 @@ func TestCreateStdin(t *testing.T) {
 	in.Write(a)
 	in.Write(a)
 
-	err = taskCmd.Create(conf.Server.HTTPAddress(), []string{"hello-world.json"}, in, out)
+	err = taskCmd.Create(appconfig.HTTPAddress(conf.Server), []string{"hello-world.json"}, in, out)
 	if err != nil {
 		t.Fatal(err)
 	}

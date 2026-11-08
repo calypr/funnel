@@ -7,8 +7,8 @@ import (
 
 	"google.golang.org/protobuf/encoding/protojson"
 
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/cli/tesenv"
-	"github.com/calypr/funnel/tes"
 )
 
 // Get runs the "task get" CLI command, which connects to the server,

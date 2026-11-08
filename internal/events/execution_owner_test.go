@@ -3,7 +3,7 @@ package events
 import (
 	"testing"
 
-	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/api/tes"
 )
 
 func TestExecutionOwnerMetadataRoundTrip(t *testing.T) {

@@ -4,9 +4,9 @@ import (
 	"context"
 	"sync"
 
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/logger"
 	"github.com/calypr/funnel/internal/taskmodel"
-	"github.com/calypr/funnel/tes"
 )
 
 // TaskBuilder aggregates events into an in-memory Task object.

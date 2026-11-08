@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 	"github.com/calypr/funnel/internal/compute/scheduler"
 	"github.com/calypr/funnel/tests/mongotest"
 	"go.mongodb.org/mongo-driver/v2/bson"

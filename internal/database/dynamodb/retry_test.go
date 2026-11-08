@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 )
 
 func TestDefaultRetryAttemptsPreserveDynamoDBRetries(t *testing.T) {

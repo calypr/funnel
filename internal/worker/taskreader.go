@@ -3,7 +3,7 @@ package worker
 import (
 	"context"
 
-	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/api/tes"
 )
 
 // GenericTaskReader provides read access to tasks.

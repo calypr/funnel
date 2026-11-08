@@ -11,11 +11,11 @@ import (
 
 	"google.golang.org/protobuf/encoding/protojson"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/compute/kubernetes/storageplan"
 	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/logger"
-	"github.com/calypr/funnel/tes"
 )
 
 func TestWorkerUsesSubmittedStorageSnapshot(t *testing.T) {

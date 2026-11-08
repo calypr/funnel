@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/api/tes"
 )
 
 func TestBackendParameters(t *testing.T) {

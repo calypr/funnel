@@ -21,8 +21,9 @@ import (
 	"google.golang.org/grpc"
 	"k8s.io/client-go/kubernetes"
 
+	"github.com/calypr/funnel/api/config"
+	"github.com/calypr/funnel/api/tes"
 	tesclient "github.com/calypr/funnel/client/tes"
-	"github.com/calypr/funnel/config"
 	runlib "github.com/calypr/funnel/internal/cli/run"
 	servercmd "github.com/calypr/funnel/internal/cli/server"
 	"github.com/calypr/funnel/internal/cli/tesenv"
@@ -34,7 +35,6 @@ import (
 	"github.com/calypr/funnel/internal/server"
 	"github.com/calypr/funnel/internal/taskmodel"
 	"github.com/calypr/funnel/internal/tesrpc"
-	"github.com/calypr/funnel/tes"
 )
 
 var log = logger.NewLogger("e2e", LogConfig())
@@ -70,7 +70,7 @@ type Funnel struct {
 // NewFunnel creates a new funnel test server with some test
 // configuration automatically set: random ports, temp work dir, etc.
 func NewFunnel(conf *config.Config) *Funnel {
-	cli, err := tesenv.New(conf.Server.HTTPAddress())
+	cli, err := tesenv.New(appconfig.HTTPAddress(conf.Server))
 	if err != nil {
 		panic(err)
 	}
@@ -183,7 +183,7 @@ func (f *Funnel) pollForServerStart(serverDone <-chan error) error {
 		case <-ticker.C:
 		}
 
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, f.Conf.Server.HTTPAddress()+"/healthz", nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, appconfig.HTTPAddress(f.Conf.Server)+"/healthz", nil)
 		if err != nil {
 			return err
 		}
@@ -198,7 +198,7 @@ func (f *Funnel) pollForServerStart(serverDone <-chan error) error {
 			continue
 		}
 
-		log.Info(fmt.Sprintf("Server at %s found", f.Conf.Server.HTTPAddress()))
+		log.Info(fmt.Sprintf("Server at %s found", appconfig.HTTPAddress(f.Conf.Server)))
 		grace := time.NewTimer(time.Second)
 		select {
 		case err := <-serverDone:

@@ -6,9 +6,11 @@ import (
 	"testing"
 	"time"
 
+	appconfig "github.com/calypr/funnel/internal/config"
+
 	"github.com/k0kubun/pp"
 
-	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/tests"
 	"github.com/prometheus/common/expfmt"
 )
@@ -53,7 +55,7 @@ func TestMetrics(t *testing.T) {
 	// TODO unfortunately, we have to wait for the prometheus poller to update
 	time.Sleep(20 * time.Second)
 
-	hresp, err := http.Get(fun.Conf.Server.HTTPAddress() + "/metrics")
+	hresp, err := http.Get(appconfig.HTTPAddress(fun.Conf.Server) + "/metrics")
 	if err != nil {
 		t.Fatal(err)
 	}

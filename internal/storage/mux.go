@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 	"github.com/calypr/funnel/internal/logger"
 )
 

@@ -6,7 +6,7 @@ import (
 	"net"
 	"testing"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 	"google.golang.org/grpc"
 )
 

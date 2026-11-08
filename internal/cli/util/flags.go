@@ -3,7 +3,7 @@ package util
 import (
 	"strings"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 	"github.com/spf13/pflag"
 )
 

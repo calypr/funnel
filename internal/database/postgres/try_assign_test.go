@@ -6,9 +6,9 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/compute/scheduler"
 	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/tes"
 	"github.com/testcontainers/testcontainers-go"
 	"google.golang.org/protobuf/proto"
 )

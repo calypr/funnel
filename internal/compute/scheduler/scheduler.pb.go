@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.12
 // 	protoc        (unknown)
-// source: internal/compute/scheduler/scheduler.proto
+// source: internal/scheduler/scheduler.proto
 
 package scheduler
 
@@ -64,11 +64,11 @@ func (x NodeState) String() string {
 }
 
 func (NodeState) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_compute_scheduler_scheduler_proto_enumTypes[0].Descriptor()
+	return file_internal_scheduler_scheduler_proto_enumTypes[0].Descriptor()
 }
 
 func (NodeState) Type() protoreflect.EnumType {
-	return &file_internal_compute_scheduler_scheduler_proto_enumTypes[0]
+	return &file_internal_scheduler_scheduler_proto_enumTypes[0]
 }
 
 func (x NodeState) Number() protoreflect.EnumNumber {
@@ -77,7 +77,7 @@ func (x NodeState) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use NodeState.Descriptor instead.
 func (NodeState) EnumDescriptor() ([]byte, []int) {
-	return file_internal_compute_scheduler_scheduler_proto_rawDescGZIP(), []int{0}
+	return file_internal_scheduler_scheduler_proto_rawDescGZIP(), []int{0}
 }
 
 type Resources struct {
@@ -93,7 +93,7 @@ type Resources struct {
 
 func (x *Resources) Reset() {
 	*x = Resources{}
-	mi := &file_internal_compute_scheduler_scheduler_proto_msgTypes[0]
+	mi := &file_internal_scheduler_scheduler_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -105,7 +105,7 @@ func (x *Resources) String() string {
 func (*Resources) ProtoMessage() {}
 
 func (x *Resources) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_compute_scheduler_scheduler_proto_msgTypes[0]
+	mi := &file_internal_scheduler_scheduler_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -118,7 +118,7 @@ func (x *Resources) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Resources.ProtoReflect.Descriptor instead.
 func (*Resources) Descriptor() ([]byte, []int) {
-	return file_internal_compute_scheduler_scheduler_proto_rawDescGZIP(), []int{0}
+	return file_internal_scheduler_scheduler_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *Resources) GetCpus() uint32 {
@@ -162,7 +162,7 @@ type Node struct {
 
 func (x *Node) Reset() {
 	*x = Node{}
-	mi := &file_internal_compute_scheduler_scheduler_proto_msgTypes[1]
+	mi := &file_internal_scheduler_scheduler_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -174,7 +174,7 @@ func (x *Node) String() string {
 func (*Node) ProtoMessage() {}
 
 func (x *Node) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_compute_scheduler_scheduler_proto_msgTypes[1]
+	mi := &file_internal_scheduler_scheduler_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -187,7 +187,7 @@ func (x *Node) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Node.ProtoReflect.Descriptor instead.
 func (*Node) Descriptor() ([]byte, []int) {
-	return file_internal_compute_scheduler_scheduler_proto_rawDescGZIP(), []int{1}
+	return file_internal_scheduler_scheduler_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *Node) GetId() string {
@@ -276,7 +276,7 @@ type GetNodeRequest struct {
 
 func (x *GetNodeRequest) Reset() {
 	*x = GetNodeRequest{}
-	mi := &file_internal_compute_scheduler_scheduler_proto_msgTypes[2]
+	mi := &file_internal_scheduler_scheduler_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -288,7 +288,7 @@ func (x *GetNodeRequest) String() string {
 func (*GetNodeRequest) ProtoMessage() {}
 
 func (x *GetNodeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_compute_scheduler_scheduler_proto_msgTypes[2]
+	mi := &file_internal_scheduler_scheduler_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -301,7 +301,7 @@ func (x *GetNodeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetNodeRequest.ProtoReflect.Descriptor instead.
 func (*GetNodeRequest) Descriptor() ([]byte, []int) {
-	return file_internal_compute_scheduler_scheduler_proto_rawDescGZIP(), []int{2}
+	return file_internal_scheduler_scheduler_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *GetNodeRequest) GetId() string {
@@ -324,7 +324,7 @@ type ListNodesRequest struct {
 
 func (x *ListNodesRequest) Reset() {
 	*x = ListNodesRequest{}
-	mi := &file_internal_compute_scheduler_scheduler_proto_msgTypes[3]
+	mi := &file_internal_scheduler_scheduler_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -336,7 +336,7 @@ func (x *ListNodesRequest) String() string {
 func (*ListNodesRequest) ProtoMessage() {}
 
 func (x *ListNodesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_compute_scheduler_scheduler_proto_msgTypes[3]
+	mi := &file_internal_scheduler_scheduler_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -349,7 +349,7 @@ func (x *ListNodesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListNodesRequest.ProtoReflect.Descriptor instead.
 func (*ListNodesRequest) Descriptor() ([]byte, []int) {
-	return file_internal_compute_scheduler_scheduler_proto_rawDescGZIP(), []int{3}
+	return file_internal_scheduler_scheduler_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *ListNodesRequest) GetPageSize() int32 {
@@ -377,7 +377,7 @@ type ListNodesResponse struct {
 
 func (x *ListNodesResponse) Reset() {
 	*x = ListNodesResponse{}
-	mi := &file_internal_compute_scheduler_scheduler_proto_msgTypes[4]
+	mi := &file_internal_scheduler_scheduler_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -389,7 +389,7 @@ func (x *ListNodesResponse) String() string {
 func (*ListNodesResponse) ProtoMessage() {}
 
 func (x *ListNodesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_compute_scheduler_scheduler_proto_msgTypes[4]
+	mi := &file_internal_scheduler_scheduler_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -402,7 +402,7 @@ func (x *ListNodesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListNodesResponse.ProtoReflect.Descriptor instead.
 func (*ListNodesResponse) Descriptor() ([]byte, []int) {
-	return file_internal_compute_scheduler_scheduler_proto_rawDescGZIP(), []int{4}
+	return file_internal_scheduler_scheduler_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *ListNodesResponse) GetNodes() []*Node {
@@ -427,7 +427,7 @@ type PutNodeResponse struct {
 
 func (x *PutNodeResponse) Reset() {
 	*x = PutNodeResponse{}
-	mi := &file_internal_compute_scheduler_scheduler_proto_msgTypes[5]
+	mi := &file_internal_scheduler_scheduler_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -439,7 +439,7 @@ func (x *PutNodeResponse) String() string {
 func (*PutNodeResponse) ProtoMessage() {}
 
 func (x *PutNodeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_compute_scheduler_scheduler_proto_msgTypes[5]
+	mi := &file_internal_scheduler_scheduler_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -452,7 +452,7 @@ func (x *PutNodeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PutNodeResponse.ProtoReflect.Descriptor instead.
 func (*PutNodeResponse) Descriptor() ([]byte, []int) {
-	return file_internal_compute_scheduler_scheduler_proto_rawDescGZIP(), []int{5}
+	return file_internal_scheduler_scheduler_proto_rawDescGZIP(), []int{5}
 }
 
 type DeleteNodeResponse struct {
@@ -463,7 +463,7 @@ type DeleteNodeResponse struct {
 
 func (x *DeleteNodeResponse) Reset() {
 	*x = DeleteNodeResponse{}
-	mi := &file_internal_compute_scheduler_scheduler_proto_msgTypes[6]
+	mi := &file_internal_scheduler_scheduler_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -475,7 +475,7 @@ func (x *DeleteNodeResponse) String() string {
 func (*DeleteNodeResponse) ProtoMessage() {}
 
 func (x *DeleteNodeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_compute_scheduler_scheduler_proto_msgTypes[6]
+	mi := &file_internal_scheduler_scheduler_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -488,14 +488,14 @@ func (x *DeleteNodeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteNodeResponse.ProtoReflect.Descriptor instead.
 func (*DeleteNodeResponse) Descriptor() ([]byte, []int) {
-	return file_internal_compute_scheduler_scheduler_proto_rawDescGZIP(), []int{6}
+	return file_internal_scheduler_scheduler_proto_rawDescGZIP(), []int{6}
 }
 
-var File_internal_compute_scheduler_scheduler_proto protoreflect.FileDescriptor
+var File_internal_scheduler_scheduler_proto protoreflect.FileDescriptor
 
-const file_internal_compute_scheduler_scheduler_proto_rawDesc = "" +
+const file_internal_scheduler_scheduler_proto_rawDesc = "" +
 	"\n" +
-	"*internal/compute/scheduler/scheduler.proto\x12\tscheduler\x1a\x1cgoogle/api/annotations.proto\"O\n" +
+	"\"internal/scheduler/scheduler.proto\x12\tscheduler\x1a\x1cgoogle/api/annotations.proto\"O\n" +
 	"\tResources\x12\x12\n" +
 	"\x04cpus\x18\x01 \x01(\rR\x04cpus\x12\x15\n" +
 	"\x06ram_gb\x18\x02 \x01(\x01R\x05ramGb\x12\x17\n" +
@@ -542,20 +542,20 @@ const file_internal_compute_scheduler_scheduler_proto_rawDesc = "" +
 	"\aGetNode\x12\x19.scheduler.GetNodeRequest\x1a\x0f.scheduler.Node\"\x16\x82\xd3\xe4\x93\x02\x10\x12\x0e/v1/nodes/{id}B5Z3github.com/calypr/funnel/internal/compute/schedulerb\x06proto3"
 
 var (
-	file_internal_compute_scheduler_scheduler_proto_rawDescOnce sync.Once
-	file_internal_compute_scheduler_scheduler_proto_rawDescData []byte
+	file_internal_scheduler_scheduler_proto_rawDescOnce sync.Once
+	file_internal_scheduler_scheduler_proto_rawDescData []byte
 )
 
-func file_internal_compute_scheduler_scheduler_proto_rawDescGZIP() []byte {
-	file_internal_compute_scheduler_scheduler_proto_rawDescOnce.Do(func() {
-		file_internal_compute_scheduler_scheduler_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_internal_compute_scheduler_scheduler_proto_rawDesc), len(file_internal_compute_scheduler_scheduler_proto_rawDesc)))
+func file_internal_scheduler_scheduler_proto_rawDescGZIP() []byte {
+	file_internal_scheduler_scheduler_proto_rawDescOnce.Do(func() {
+		file_internal_scheduler_scheduler_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_internal_scheduler_scheduler_proto_rawDesc), len(file_internal_scheduler_scheduler_proto_rawDesc)))
 	})
-	return file_internal_compute_scheduler_scheduler_proto_rawDescData
+	return file_internal_scheduler_scheduler_proto_rawDescData
 }
 
-var file_internal_compute_scheduler_scheduler_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_internal_compute_scheduler_scheduler_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
-var file_internal_compute_scheduler_scheduler_proto_goTypes = []any{
+var file_internal_scheduler_scheduler_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_internal_scheduler_scheduler_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_internal_scheduler_scheduler_proto_goTypes = []any{
 	(NodeState)(0),             // 0: scheduler.NodeState
 	(*Resources)(nil),          // 1: scheduler.Resources
 	(*Node)(nil),               // 2: scheduler.Node
@@ -566,7 +566,7 @@ var file_internal_compute_scheduler_scheduler_proto_goTypes = []any{
 	(*DeleteNodeResponse)(nil), // 7: scheduler.DeleteNodeResponse
 	nil,                        // 8: scheduler.Node.MetadataEntry
 }
-var file_internal_compute_scheduler_scheduler_proto_depIdxs = []int32{
+var file_internal_scheduler_scheduler_proto_depIdxs = []int32{
 	1, // 0: scheduler.Node.resources:type_name -> scheduler.Resources
 	1, // 1: scheduler.Node.available:type_name -> scheduler.Resources
 	0, // 2: scheduler.Node.state:type_name -> scheduler.NodeState
@@ -587,27 +587,27 @@ var file_internal_compute_scheduler_scheduler_proto_depIdxs = []int32{
 	0, // [0:5] is the sub-list for field type_name
 }
 
-func init() { file_internal_compute_scheduler_scheduler_proto_init() }
-func file_internal_compute_scheduler_scheduler_proto_init() {
-	if File_internal_compute_scheduler_scheduler_proto != nil {
+func init() { file_internal_scheduler_scheduler_proto_init() }
+func file_internal_scheduler_scheduler_proto_init() {
+	if File_internal_scheduler_scheduler_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_internal_compute_scheduler_scheduler_proto_rawDesc), len(file_internal_compute_scheduler_scheduler_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_internal_scheduler_scheduler_proto_rawDesc), len(file_internal_scheduler_scheduler_proto_rawDesc)),
 			NumEnums:      1,
 			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_internal_compute_scheduler_scheduler_proto_goTypes,
-		DependencyIndexes: file_internal_compute_scheduler_scheduler_proto_depIdxs,
-		EnumInfos:         file_internal_compute_scheduler_scheduler_proto_enumTypes,
-		MessageInfos:      file_internal_compute_scheduler_scheduler_proto_msgTypes,
+		GoTypes:           file_internal_scheduler_scheduler_proto_goTypes,
+		DependencyIndexes: file_internal_scheduler_scheduler_proto_depIdxs,
+		EnumInfos:         file_internal_scheduler_scheduler_proto_enumTypes,
+		MessageInfos:      file_internal_scheduler_scheduler_proto_msgTypes,
 	}.Build()
-	File_internal_compute_scheduler_scheduler_proto = out.File
-	file_internal_compute_scheduler_scheduler_proto_goTypes = nil
-	file_internal_compute_scheduler_scheduler_proto_depIdxs = nil
+	File_internal_scheduler_scheduler_proto = out.File
+	file_internal_scheduler_scheduler_proto_goTypes = nil
+	file_internal_scheduler_scheduler_proto_depIdxs = nil
 }

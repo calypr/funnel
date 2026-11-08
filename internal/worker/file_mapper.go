@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/directory"
 	"github.com/calypr/funnel/internal/taskmodel"
-	"github.com/calypr/funnel/tes"
 	proto "google.golang.org/protobuf/proto"
 )
 

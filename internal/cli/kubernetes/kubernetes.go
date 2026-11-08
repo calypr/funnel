@@ -10,7 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 	"github.com/calypr/funnel/internal/cli/lifecycle"
 	cmdutil "github.com/calypr/funnel/internal/cli/util"
 	k8sbackend "github.com/calypr/funnel/internal/compute/kubernetes"

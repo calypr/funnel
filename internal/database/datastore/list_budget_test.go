@@ -8,8 +8,8 @@ import (
 
 	cloud "cloud.google.com/go/datastore"
 	pb "cloud.google.com/go/datastore/apiv1/datastorepb"
+	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/taskmodel"
-	"github.com/calypr/funnel/tes"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
