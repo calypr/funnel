@@ -81,7 +81,7 @@ func (b *Backend) configForRequest(ctx context.Context) (*config.Config, error) 
 		return nil, fmt.Errorf("missing plugin response")
 	}
 	if resp.Config != nil {
-		if err := mergo.MergeWithOverwrite(conf, resp.Config); err != nil {
+		if err := mergo.Merge(conf, resp.Config, mergo.WithOverwriteWithEmptyValue); err != nil {
 			return nil, fmt.Errorf("error merging configs: %w", err)
 		}
 	}

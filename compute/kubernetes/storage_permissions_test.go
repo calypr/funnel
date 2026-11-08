@@ -217,7 +217,8 @@ func TestNativePVPermissionPreflightUsesPluginResolvedPlan(t *testing.T) {
 	conf := bindingConfig(t, nil)
 	conf.Plugins = &config.Plugins{}
 	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logger.DefaultConfig())}
-	effectiveConfig := &config.Config{Kubernetes: &config.Kubernetes{Storage: createdStorage(t, true)}}
+	effectiveConfig := bindingConfig(t, createdStorage(t, true))
+	effectiveConfig.Plugins = conf.Plugins
 	ctx := context.WithValue(context.Background(), "pluginResponse", &plugin.JobResponse{Config: effectiveConfig})
 	taskID := "plugin"
 	err := backend.WriteEvent(ctx, events.NewTaskCreated(&tes.Task{Id: taskID}))

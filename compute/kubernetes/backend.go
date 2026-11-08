@@ -154,7 +154,7 @@ func (b *Backend) WriteEvent(ctx context.Context, ev *events.Event) error {
 				return fmt.Errorf("missing or invalid plugin job response")
 			}
 
-			err := mergo.Merge(taskConfig, resp.Config, mergo.WithOverride)
+			err := mergo.Merge(taskConfig, resp.Config, mergo.WithOverwriteWithEmptyValue)
 			if err != nil {
 				return fmt.Errorf("merging plugin config: %w", err)
 			}
