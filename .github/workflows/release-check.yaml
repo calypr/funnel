@@ -1,19 +1,6 @@
 name: Release packaging
 
 on:
-  pull_request:
-    paths:
-      - '.github/workflows/release*.yaml'
-      - '.github/scripts/check-release-tag.sh'
-      - '.github/scripts/test-release-tag.sh'
-      - '.github/scripts/test-release-install.sh'
-      - 'install.sh'
-      - '.github/scripts/check-release-archives.sh'
-      - '.goreleaser.yaml'
-      - 'Makefile'
-      - 'CHANGELOG.md'
-      - 'version/**'
-      - 'docs/upgrading.md'
   workflow_dispatch:
 
 permissions:

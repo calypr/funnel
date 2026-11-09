@@ -7,6 +7,7 @@ git_commit := $(shell git rev-parse --short HEAD)
 git_branch := $(shell git symbolic-ref -q --short HEAD)
 git_upstream := $(shell git remote get-url $(shell git config branch.$(shell git symbolic-ref -q --short HEAD).remote) 2> /dev/null)
 export GIT_BRANCH = $(git_branch)
+export BRANCH ?= $(shell git symbolic-ref -q --short HEAD 2>/dev/null || git rev-parse --short HEAD)
 export GIT_UPSTREAM = $(git_upstream)
 
 FUNNEL_VERSION ?= $(shell version=$$(git describe --tags --exact-match 2>/dev/null || git rev-parse --short HEAD 2>/dev/null || printf unknown); if git rev-parse --verify HEAD >/dev/null 2>&1 && ! git diff-index --quiet HEAD --; then version=$${version}-dirty; fi; printf '%s' "$$version")
