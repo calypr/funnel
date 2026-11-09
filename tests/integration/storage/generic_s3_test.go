@@ -164,7 +164,7 @@ func TestGenericS3Storage(t *testing.T) {
 				Command: []string{
 					"sh",
 					"-c",
-					"cat $(find /opt/inputs -type f | sort) > test-output-file.txt; mkdir test-output-directory; cp *.txt test-output-directory/",
+					"umask 000; cat $(find /opt/inputs -type f | sort) > test-output-file.txt; mkdir test-output-directory; cp *.txt test-output-directory/",
 				},
 				Workdir: "/opt/workdir",
 			},
