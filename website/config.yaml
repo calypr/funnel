@@ -2,7 +2,7 @@ baseURL: https://ohsu-comp-bio.github.io/funnel
 canonifyURLs: true
 languageCode: en-us
 title: Funnel
-publishDir: ../docs
+publishDir: ../build/website
 assetDir: assets
 menu:
   main:
@@ -10,6 +10,155 @@ menu:
       parent: Development
       url: https://godoc.org/github.com/ohsu-comp-bio/funnel
       weight: 30
+    - name: AWS Batch
+      pageRef: /docs/compute/aws-batch
+      parent: Compute
+      weight: 20
+    - name: Deploying a cluster
+      pageRef: /docs/compute/deployment
+      parent: Compute
+      weight: -50
+    - name: GCP Batch
+      pageRef: /docs/compute/gcp-batch
+      parent: Compute
+      weight: 20
+    - name: GPU tasks
+      pageRef: /docs/compute/gpus
+      parent: Compute
+      weight: 12
+    - name: Grid Engine
+      pageRef: /docs/compute/grid-engine
+      parent: Compute
+      weight: 20
+    - name: HTCondor
+      pageRef: /docs/compute/htcondor
+      parent: Compute
+      weight: 20
+    - name: Kubernetes storage
+      pageRef: /docs/compute/kubernetes-storage
+      parent: Compute
+      weight: 21
+    - name: Kubernetes
+      pageRef: /docs/compute/kubernetes
+      parent: Compute
+      weight: 20
+    - name: PBS/Torque
+      pageRef: /docs/compute/pbs-torque
+      parent: Compute
+      weight: 20
+    - name: Slurm
+      pageRef: /docs/compute/slurm
+      parent: Compute
+      weight: 20
+    - name: Compute
+      pageRef: /docs/compute
+      weight: -5
+    - name: Badger
+      pageRef: /docs/databases/badger
+      parent: Databases
+    - name: Embedded
+      pageRef: /docs/databases/boltdb
+      parent: Databases
+      weight: -10
+    - name: Datastore
+      pageRef: /docs/databases/datastore
+      parent: Databases
+    - name: DynamoDB
+      pageRef: /docs/databases/dynamodb
+      parent: Databases
+    - name: MongoDB
+      pageRef: /docs/databases/mongodb
+      parent: Databases
+    - name: Postgres
+      pageRef: /docs/databases/postgres
+      parent: Databases
+    - name: Databases
+      pageRef: /docs/databases
+      weight: 5
+    - name: Funnel Developers
+      pageRef: /docs/development/developers
+      parent: Development
+      weight: 30
+    - name: Troubleshooting information
+      pageRef: /docs/development/diagnostics
+      parent: Development
+    - name: Development
+      pageRef: /docs/development
+      weight: 30
+    - name: Event files
+      pageRef: /docs/events/file
+      parent: Events
+    - name: Kafka
+      pageRef: /docs/events/kafka
+      parent: Events
+    - name: Events
+      pageRef: /docs/events
+      weight: 5
+    - name: Nextflow
+      pageRef: /docs/integrations/nextflow
+      parent: Integrations
+    - name: py-tes
+      pageRef: /docs/integrations/py-tes
+      parent: Integrations
+    - name: Remote Funnel server
+      pageRef: /docs/integrations/remote-server
+      parent: Integrations
+    - name: Prometheus
+      pageRef: /docs/metrics/prometheus
+      parent: Metrics
+    - name: Metrics
+      pageRef: /docs/metrics
+      identifier: Metrics
+      weight: 6
+    - name: Advanced Auth
+      pageRef: /docs/security/advanced
+      parent: Security
+      weight: 10
+    - name: Basic Auth
+      pageRef: /docs/security/basic
+      parent: Security
+      weight: 10
+    - name: OAuth2
+      pageRef: /docs/security/oauth2
+      parent: Security
+      weight: 10
+    - name: Security
+      pageRef: /docs/security
+      weight: 10
+    - name: FTP
+      pageRef: /docs/storage/ftp
+      parent: Storage
+    - name: Google Storage
+      pageRef: /docs/storage/google-storage
+      parent: Storage
+    - name: HTTP(S)
+      pageRef: /docs/storage/http
+      parent: Storage
+    - name: Local
+      pageRef: /docs/storage/local
+      parent: Storage
+      weight: -10
+    - name: Mounted inputs
+      pageRef: /docs/storage/mounted-inputs
+      parent: Storage
+    - name: S3
+      pageRef: /docs/storage/s3
+      parent: Storage
+    - name: OpenStack Swift
+      pageRef: /docs/storage/swift
+      parent: Storage
+    - name: Storage
+      pageRef: /docs/storage
+      identifier: Storage
+      weight: -10
+    - name: Tasks
+      pageRef: /docs/tasks
+      identifier: tasks
+      weight: -70
+    - name: Overview
+      pageRef: /docs/
+      identifier: docs
+      weight: -1000
 security:
   funcs:
     getenv:
@@ -19,5 +168,20 @@ markup:
     renderer:
       unsafe: true
 module:
+  mounts:
+    - source: content
+      target: content
+    - source: ../docs
+      target: content/docs
+      excludeFiles:
+        - internal/**
+        - README.md
+    - source: ../docs/README.md
+      target: content/docs/_index.md
   imports:
     - path: github.com/KKKZOZ/hugo-admonitions
+cascade:
+  - _target:
+      path: /docs/development/developers
+    aliases:
+      - /development/developers/

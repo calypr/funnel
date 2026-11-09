@@ -1,11 +1,11 @@
-# Overview
+# Kubernetes reference templates
 
-With the exception of `funnel-server.yaml` (which is expected to be handled by Helm), the following files are pulled directly from the `charts/funnel/files` directory in the Helm Charts repo:
+These files are historical reference material. Funnel does not embed them or use them as runtime defaults. Configure Kubernetes templates through the deployment's Helm chart.
 
-Helm Chart files:
-> https://github.com/ohsu-comp-bio/helm-charts/tree/funnel-0.1.60/charts/funnel/files
+The reference files originated in the [Funnel Helm chart](https://github.com/ohsu-comp-bio/helm-charts/tree/funnel-0.1.60/charts/funnel/files).
 
-Default Config:
-> https://pkg.go.dev/github.com/ohsu-comp-bio/funnel/config#DefaultConfig
+Templates used by Go tests live beside their tests:
 
-After updating any of these files, run `make bundle-examples` to compile them into the `config` package (`config/internal/bundle.go`) to make them "available" as calls to `intern.MustAsset(example.yaml)`.
+- `compute/kubernetes/testdata/worker-job.yaml`
+- `compute/kubernetes/resources/testdata/serviceaccount.yaml`
+- `worker/testdata/executor-job.yaml`

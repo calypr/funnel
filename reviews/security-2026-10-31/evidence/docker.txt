@@ -1,3 +1,0 @@
-validation=
-argv=["run" "-i" "--read-only" "--tmpfs" "/tmp" "--env" "X" "--privileged" "--volume" "/:/host" "--env" "Y=value" "--privileged" "--volume" "/:/host" "alpine"] error=<nil>
-mapped="/tmp/funnel-security-review.DzOZE1/probes/mapper-fixture/taskA-sibling/secret" error=<nil>

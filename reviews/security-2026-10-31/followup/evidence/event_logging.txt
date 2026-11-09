@@ -1,8 +1,0 @@
-task_created_info_env_retained=true
-task_created_info_signed_url_retained=true
-{"attempt":0,"event":{"id":"synthetic-task","timestamp":"2026-10-31T20:24:50.617657-07:00","Data":{"Task":{"executors":[{"env":{"PASSWORD":"synthetic-executor-secret"},"image":"synthetic-image"}],"id":"synthetic-task","inputs":[{"url":"https://example.invalid/input?X-Amz-Signature=synthetic-signature"}]}},"type":14},"index":0,"level":"info","msg":"TASK_CREATED","ns":"secret-control","taskID":"synthetic-task","time":"2026-10-31T20:24:50-07:00","timestamp":"2026-10-31T20:24:50.617657-07:00"}
-transfer_info_signed_url_retained=true
-{"attempt":0,"index":0,"level":"info","msg":"download started","ns":"secret-control","taskID":"synthetic-task","time":"2026-10-31T20:24:50-07:00","timestamp":"2026-10-31T20:24:50.618345-07:00","url":"https://example.invalid/input?X-Amz-Signature=synthetic-transfer-signature"}
-failed_event_error_env_retained=true
-failed_event_error_signed_url_retained=true
-{"error":"synthetic storage failure","event_data":{"Task":{"executors":[{"env":{"PASSWORD":"synthetic-executor-secret"},"image":"synthetic-image"}],"id":"synthetic-task","inputs":[{"url":"https://example.invalid/input?X-Amz-Signature=synthetic-signature"}]}},"event_type":"TASK_CREATED","level":"error","msg":"error writing event","ns":"secret-control","src":"err_logger.go:github.com/calypr/funnel/events.(*ErrLogger).WriteEvent:20","time":"2026-10-31T20:24:50-07:00"}

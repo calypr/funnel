@@ -1,3 +1,0 @@
-case=allowed-sibling/marker allowed=true copied="synthetic-outside-marker" error=<nil>
-case=allowed/../allowed-sibling/marker allowed=true copied="synthetic-outside-marker" error=<nil>
-case=allowed/link/marker allowed=true copied="synthetic-outside-marker" error=<nil>

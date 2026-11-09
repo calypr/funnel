@@ -1,2 +1,0 @@
-scheme=ftp plaintext_commands=["USER synthetic-config-user" "PASS synthetic-config-password"] operation_error=ftpStorage: logging in: 530 "synthetic fixture rejects login"
-scheme=sftp plaintext_commands=["USER synthetic-config-user" "PASS synthetic-config-password"] operation_error=ftpStorage: logging in: 530 "synthetic fixture rejects login"

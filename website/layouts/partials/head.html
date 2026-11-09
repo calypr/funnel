@@ -10,7 +10,11 @@
   {{ if .IsHome }}
   <title>{{ .Site.Title }}</title>
   {{ else }}
-  <title>{{ .Title }} &middot; {{ .Site.Title }}</title>
+  {{ $title := .Title }}
+  {{ with findRE `(?m)^# +.+$` .RawContent 1 }}
+    {{ $title = replaceRE `^# +` "" (index . 0) }}
+  {{ end }}
+  <title>{{ $title }} &middot; {{ .Site.Title }}</title>
   {{ end }}
 
   <!-- CSS -->

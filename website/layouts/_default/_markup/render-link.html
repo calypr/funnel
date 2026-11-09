@@ -1,0 +1,2 @@
+<a href="{{ partial "source-url.html" . | safeURL }}"{{ with .Title }} title="{{ . }}"{{ end }}>{{ .Text | safeHTML }}</a>
+{{- "" -}}

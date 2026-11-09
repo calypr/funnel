@@ -16,6 +16,7 @@ import (
 	plugin "github.com/calypr/funnel/plugins/proto"
 	"github.com/calypr/funnel/storage"
 	"github.com/calypr/funnel/tes"
+	googleproto "google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -80,7 +81,7 @@ func nativeResource(t *testing.T, manifest string) *structpb.Struct {
 func bindingConfig(t *testing.T, storageConfig *config.KubernetesStorage) *config.Config {
 	t.Helper()
 	conf := config.DefaultConfig()
-	workerTemplate, err := os.ReadFile("../../config/kubernetes/worker-job.yaml")
+	workerTemplate, err := os.ReadFile("testdata/worker-job.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -315,7 +316,8 @@ func TestStoragePluginOverridesAreTaskLocal(t *testing.T) {
 		if _, err := client.CoreV1().PersistentVolumeClaims("tasks").Create(ctx, &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: id + "-claim", Namespace: "tasks"}, Spec: corev1.PersistentVolumeClaimSpec{AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany}}}, metav1.CreateOptions{}); err != nil {
 			t.Fatal(err)
 		}
-		override := &config.Config{Kubernetes: &config.Kubernetes{Storage: bindingConfig(t, existingStorage(t, id+"-claim")).Kubernetes.Storage}}
+		override := googleproto.Clone(conf).(*config.Config)
+		override.Kubernetes.Storage = bindingConfig(t, existingStorage(t, id+"-claim")).Kubernetes.Storage
 		taskCtx := context.WithValue(ctx, "pluginResponse", &plugin.JobResponse{Config: override})
 		if err := backend.WriteEvent(taskCtx, events.NewTaskCreated(&tes.Task{Id: id})); err != nil {
 			t.Fatal(err)
@@ -332,6 +334,31 @@ func TestStoragePluginOverridesAreTaskLocal(t *testing.T) {
 	persistentVolumeClaim, ok := conf.Kubernetes.Storage.Volumes[0].AsMap()["persistentVolumeClaim"].(map[string]interface{})
 	if !ok || persistentVolumeClaim["claimName"] != "default-claim" {
 		t.Fatal("plugin mutated server defaults")
+	}
+}
+
+func TestCompletePluginConfigClearsWorkerNodeSelector(t *testing.T) {
+	ctx := context.Background()
+	client := bindingClient()
+	conf := bindingConfig(t, nil)
+	conf.Plugins = &config.Plugins{}
+	conf.Kubernetes.NodeSelector = map[string]string{"pool": "deployment"}
+	complete := googleproto.Clone(conf).(*config.Config)
+	complete.Kubernetes.NodeSelector = nil
+	backend := &Backend{client: client, conf: conf, event: &noopEventWriter{}, log: logger.NewLogger("test", logger.DefaultConfig())}
+	taskCtx := context.WithValue(ctx, "pluginResponse", &plugin.JobResponse{Config: complete})
+	if err := backend.WriteEvent(taskCtx, events.NewTaskCreated(&tes.Task{Id: "clear-selector"})); err != nil {
+		t.Fatal(err)
+	}
+	job, err := client.BatchV1().Jobs("tasks").Get(ctx, "clear-selector", metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(job.Spec.Template.Spec.NodeSelector) != 0 {
+		t.Fatalf("worker inherited the cleared node selector: %v", job.Spec.Template.Spec.NodeSelector)
+	}
+	if conf.Kubernetes.NodeSelector["pool"] != "deployment" {
+		t.Fatal("complete plugin config changed the deployment node selector")
 	}
 }
 

@@ -36,7 +36,7 @@ func TestExecutorImagePullPolicy(t *testing.T) {
 			conf := config.DefaultConfig()
 			worker := DefaultWorker{
 				Executor: Executor{
-					Template:      string(config.MustAsset("config/kubernetes/executor-job.yaml")),
+					Template:      executorTemplateFixture,
 					Namespace:     "test",
 					JobsNamespace: "test",
 					Resources:     conf.Kubernetes.Resources,

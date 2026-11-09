@@ -9,7 +9,7 @@ import (
 // The bundled asset names are prefixed with "config/" to match the
 // previous go-bindata based API.
 //
-//go:embed *.txt *.yaml datastore kubernetes
+//go:embed *.txt *.yaml datastore
 var bundled embed.FS
 
 // AssetNames returns the names of the bundled config assets,

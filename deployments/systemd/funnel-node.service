@@ -1,9 +1,0 @@
-[Unit]
-Description=Funnel Node
-
-[Service]
-ExecStart=/path/to/funnel node run --config /path/to/config.yml
-ExecReload=/bin/kill -HUP $MAINPID
-SyslogIdentifier=funnel
-LimitNOFILE=1000000
-Restart=always

@@ -1,1 +1,0 @@
-ok  	github.com/calypr/funnel/server	0.564s

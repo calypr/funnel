@@ -1,8 +1,0 @@
-[Unit]
-Description=Funnel Server
-
-[Service]
-ExecStart=/path/to/funnel server run --config /path/to/funnel/config.yml
-SyslogIdentifier=funnel
-LimitNOFILE=1000000
-Restart=always
