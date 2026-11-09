@@ -171,7 +171,11 @@ func TestPollForServerStartClosesHTTPResponseBody(t *testing.T) {
 }
 
 func TestFunnelCleanupStopsInProcessServer(t *testing.T) {
-	f := newServerTestFunnel(t, freeTCPPort(t, "127.0.0.1"), freeTCPPort(t, ""))
+	f := newServerTestFunnel(t, "0", "0")
+	f.reserveListeners()
+	f.Server.RPCAddress = appconfig.RPCAddress(f.Conf.Server)
+	f.Server.HTTPPort = f.Conf.Server.HTTPPort
+	f.Server.Listen = f.listen
 	t.Cleanup(f.Cleanup)
 	f.StartServer()
 	f.Cleanup()
@@ -229,6 +233,33 @@ func TestStartServerReturnsHTTPBindErrorImmediately(t *testing.T) {
 	err = rpcListener.Close()
 	if err != nil {
 		t.Errorf("close RPC listener after startup failure: %v", err)
+	}
+}
+
+func TestFunnelReservesListenersThroughStartup(t *testing.T) {
+	f := NewFunnel(t, DefaultConfig(t))
+	for _, port := range []string{f.Conf.Server.RPCPort, f.Conf.Server.HTTPPort} {
+		listener, err := net.Listen("tcp", ":"+port)
+		if err == nil {
+			if err := listener.Close(); err != nil {
+				t.Error(err)
+			}
+			t.Fatalf("server port %s can be stolen before startup", port)
+		}
+		if !errors.Is(err, syscall.EADDRINUSE) {
+			t.Fatalf("port reservation check: %v", err)
+		}
+	}
+	f.StartServer()
+	f.Cleanup()
+	for _, port := range []string{f.Conf.Server.RPCPort, f.Conf.Server.HTTPPort} {
+		listener, err := net.Listen("tcp", ":"+port)
+		if err != nil {
+			t.Fatalf("server port %s not released: %v", port, err)
+		}
+		if err := listener.Close(); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

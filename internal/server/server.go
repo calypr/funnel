@@ -33,6 +33,8 @@ import (
 // RPC traffic via gRPC, HTTP traffic for the TES API,
 // and also serves the web dashboard.
 type Server struct {
+	// Listen defaults to net.Listen. Embedders can supply already-bound listeners.
+	Listen           func(network, address string) (net.Listener, error)
 	RPCAddress       string
 	HTTPPort         string
 	BasicAuth        []*config.BasicCredential
@@ -58,11 +60,23 @@ func (s *Server) Serve(pctx context.Context) error {
 	defer closeTasks()
 
 	// Open TCP connection for RPC
-	lis, err := net.Listen("tcp", s.RPCAddress)
+	listen := s.Listen
+	if listen == nil {
+		listen = net.Listen
+	}
+	lis, err := listen("tcp", s.RPCAddress)
 	if err != nil {
 		return err
 	}
 	defer lis.Close() //nolint:errcheck // Listener cleanup is best effort after the server has stopped.
+	// Bind both sockets before gateway setup can open outgoing connections and
+	// claim an ephemeral port intended for HTTP.
+	httpAddress := ":" + s.HTTPPort
+	httpLis, err := listen("tcp", httpAddress)
+	if err != nil {
+		return err
+	}
+	defer httpLis.Close() //nolint:errcheck // Listener cleanup is best effort after HTTP shutdown.
 
 	auth := serverauth.NewAuthentication(s.BasicAuth, s.OidcAuth, s.TaskAccess, s.Log)
 
@@ -158,14 +172,9 @@ func (s *Server) Serve(pctx context.Context) error {
 	}
 
 	httpServer := &http.Server{
-		Addr:    ":" + s.HTTPPort,
+		Addr:    httpAddress,
 		Handler: mux,
 	}
-	httpLis, err := net.Listen("tcp", httpServer.Addr)
-	if err != nil {
-		return err
-	}
-	defer httpLis.Close() //nolint:errcheck // Listener cleanup is best effort after HTTP shutdown.
 
 	serveErrs := make(chan error, 2)
 	go func() {

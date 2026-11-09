@@ -44,6 +44,10 @@ func (f *Funnel) WaitForDockerDestroy(id string) {
 
 // StartServerInDocker starts a funnel server in a docker image
 func (f *Funnel) StartServerInDocker(containerName, imageName string, extraArgs []string) {
+	// Docker publishes the ports itself and cannot inherit host listeners.
+	if err := f.closeListeners(); err != nil {
+		panic(err)
+	}
 	var funnelBinary string
 	var err error
 	gopath := os.Getenv("GOPATH")

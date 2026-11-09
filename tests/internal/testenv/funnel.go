@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -55,6 +57,7 @@ type Funnel struct {
 	conn          *grpc.ClientConn
 	serverCancel  context.CancelFunc
 	serverStopped <-chan struct{}
+	listeners     []net.Listener
 }
 
 // NewFunnel creates a new funnel test server with some test
@@ -62,6 +65,7 @@ type Funnel struct {
 func NewFunnel(scope CleanupScope, conf *config.Config) *Funnel {
 	f := &Funnel{Conf: conf, StorageDir: conf.LocalStorage.AllowedDirs[0], scope: scope}
 	scope.Cleanup(f.Cleanup)
+	f.reserveListeners()
 	cli, err := tesclient.NewClient(appconfig.HTTPAddress(conf.Server))
 	if err != nil {
 		panic(err)
@@ -91,10 +95,47 @@ func NewFunnel(scope CleanupScope, conf *config.Config) *Funnel {
 	f.HTTP = cli
 	f.Kubernetes = kcli
 	f.Server = srv.Server
+	f.Server.Listen = f.listen
+
 	f.Srv = srv
 	f.Scheduler = srv.Scheduler
 	f.rate = time.Millisecond * 500
 	return f
+}
+
+func (f *Funnel) reserveListeners() {
+	// Keep the actual sockets open from allocation through Serve, rather than
+	// publishing port numbers which another test or outgoing socket can claim.
+	for range 2 {
+		listener, err := net.Listen("tcp", ":0")
+		if err != nil {
+			panic(err)
+		}
+		f.listeners = append(f.listeners, listener)
+	}
+	f.Conf.Server.RPCPort = strconv.Itoa(f.listeners[0].Addr().(*net.TCPAddr).Port)
+	f.Conf.Server.HTTPPort = strconv.Itoa(f.listeners[1].Addr().(*net.TCPAddr).Port)
+	f.Conf.RPCClient.ServerAddress = appconfig.RPCAddress(f.Conf.Server)
+}
+
+func (f *Funnel) listen(network, address string) (net.Listener, error) {
+	if address == f.Server.RPCAddress {
+		return f.listeners[0], nil
+	}
+	if address == ":"+f.Server.HTTPPort {
+		return f.listeners[1], nil
+	}
+	return nil, fmt.Errorf("unexpected test listener: %s %s", network, address)
+}
+
+func (f *Funnel) closeListeners() error {
+	var result error
+	for _, listener := range f.listeners {
+		if err := listener.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			result = errors.Join(result, err)
+		}
+	}
+	return result
 }
 
 // addRPCClient configures and connects the RPC client to the server.
@@ -118,7 +159,7 @@ func (f *Funnel) Cleanup() {
 			f.serverCancel = nil
 			f.serverStopped = nil
 		}
-		var cleanupErr error
+		cleanupErr := f.closeListeners()
 		if f.conn != nil {
 			cleanupErr = errors.Join(cleanupErr, f.conn.Close())
 			f.conn = nil
