@@ -25,17 +25,13 @@ func TestMongoDBAuthentication(t *testing.T) {
 		ContainerRequest: testcontainers.ContainerRequest{
 			Image: "mongo:7", ExposedPorts: []string{"27017/tcp"},
 			Env:        map[string]string{"MONGO_INITDB_ROOT_USERNAME": "root", "MONGO_INITDB_ROOT_PASSWORD": "test-root-password"},
-			WaitingFor: wait.ForLog("Waiting for connections").WithOccurrence(2).WithStartupTimeout(90 * time.Second),
+			WaitingFor: wait.ForAll(wait.ForLog("Waiting for connections").WithOccurrence(2), wait.ForListeningPort("27017/tcp")).WithDeadline(90 * time.Second),
 		}, Started: true,
 	})
+	testcontainers.CleanupContainer(t, container)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		if err := testcontainers.TerminateContainer(container); err != nil {
-			t.Error(err)
-		}
-	})
 	code, out, err := container.Exec(ctx, []string{"mongosh", "--quiet", "--username", "root", "--password", "test-root-password", "--authenticationDatabase", "admin", "--eval", `db.getSiblingDB("funnel").createUser({user:"funnel-user",pwd:"test@password:1",roles:[{role:"readWrite",db:"funnel"}]})`})
 	if err != nil {
 		t.Fatal(err)

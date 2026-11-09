@@ -466,14 +466,10 @@ func runPostgresContract(t *testing.T) {
 		postgrescontainer.WithPassword("example"),
 		postgrescontainer.BasicWaitStrategies(),
 	)
+	testcontainers.CleanupContainer(t, container)
 	if err != nil {
 		t.Fatalf("start PostgreSQL container: %v", err)
 	}
-	t.Cleanup(func() {
-		if err := testcontainers.TerminateContainer(container); err != nil {
-			t.Logf("terminate PostgreSQL container: %v", err)
-		}
-	})
 	containerHost, err := container.Host(startupCtx)
 	if err != nil {
 		t.Fatal(err)

@@ -61,14 +61,10 @@ func startDatabaseFixture(t *testing.T, backend string) *databaseFixture {
 		postgrescontainer.WithPassword("example"),
 		postgrescontainer.BasicWaitStrategies(),
 	)
+	testcontainers.CleanupContainer(t, container)
 	if err != nil {
 		t.Fatalf("start PostgreSQL container: %v", err)
 	}
-	t.Cleanup(func() {
-		if err := testcontainers.TerminateContainer(container); err != nil {
-			t.Errorf("terminate PostgreSQL container: %v", err)
-		}
-	})
 	host, err := container.Host(ctx)
 	if err != nil {
 		t.Fatalf("get PostgreSQL host: %v", err)

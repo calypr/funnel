@@ -37,17 +37,13 @@ func start(t *testing.T, replica bool) string {
 		ContainerRequest: testcontainers.ContainerRequest{
 			Image: "mongo:7", ExposedPorts: []string{"27017/tcp"},
 			Cmd:        command,
-			WaitingFor: wait.ForLog("Waiting for connections").WithStartupTimeout(90 * time.Second),
+			WaitingFor: wait.ForAll(wait.ForLog("Waiting for connections"), wait.ForListeningPort("27017/tcp")).WithDeadline(90 * time.Second),
 		}, Started: true,
 	})
+	testcontainers.CleanupContainer(t, container)
 	if err != nil {
 		t.Fatalf("start MongoDB container: %v", err)
 	}
-	t.Cleanup(func() {
-		if err := testcontainers.TerminateContainer(container); err != nil {
-			t.Errorf("terminate MongoDB: %v", err)
-		}
-	})
 	if replica {
 		code, output, err := container.Exec(ctx, []string{"mongosh", "--quiet", "--eval", `const r = rs.initiate({_id:"rs0",members:[{_id:0,host:"localhost:27017"}]}); if (!r.ok) { printjson(r); quit(1); }`})
 		if err != nil {

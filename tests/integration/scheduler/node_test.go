@@ -316,6 +316,9 @@ func TestNodeDrain(t *testing.T) {
 	log := logger.NewLogger("node", testenv.LogConfig())
 	testenv.SetLogOutput(log, t)
 	srv := testenv.NewFunnel(t, conf)
+	// Drive scheduler passes explicitly so lifecycle assertions do not race its
+	// background loop or depend on a guessed number of ticks.
+	srv.Srv.Scheduler = nil
 	srv.StartServer()
 
 	// test worker that blocks until the test unblocks it below.
@@ -350,79 +353,83 @@ func TestNodeDrain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(conf.Node.UpdateRate.AsDuration() * 10)
-
-	resp, err := srv.Scheduler.Nodes.ListNodes(bg, &scheduler.ListNodesRequest{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	nodes := resp.Nodes
-
-	// Ensure the node started.
-	if len(nodes) != 1 {
-		t.Fatal("failed to register node", nodes)
-	}
+	waitForNodeState(t, srv, "node registration", func(nodes []*scheduler.Node) bool {
+		return len(nodes) == 1 && nodes[0].State == scheduler.NodeState_ALIVE
+	})
 
 	// Start a task, which is expected to be scheduled to the node.
 	first := srv.Run("echo")
-
-	time.Sleep(conf.Node.UpdateRate.AsDuration() * 10)
-	err = srv.Scheduler.CheckNodes()
-	if err != nil {
+	if err := srv.Scheduler.Schedule(bg); err != nil {
 		t.Fatal(err)
 	}
-	resp, err = srv.Scheduler.Nodes.ListNodes(bg, &scheduler.ListNodesRequest{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	nodes = resp.Nodes
 
-	// Ensure the task was scheduled.
-	if len(nodes) != 1 || len(nodes[0].TaskIds) != 1 {
-		t.Fatal("expected task to be scheduled to node")
-	}
+	waitForNodeState(t, srv, "first task assignment", func(nodes []*scheduler.Node) bool {
+		return len(nodes) == 1 && len(nodes[0].TaskIds) == 1 && nodes[0].TaskIds[0] == first
+	})
 
 	// Drain the node.
 	n.Drain()
-	time.Sleep(conf.Node.UpdateRate.AsDuration() * 10)
+	waitForNodeState(t, srv, "node drain acknowledgement", func(nodes []*scheduler.Node) bool {
+		return len(nodes) == 1 && nodes[0].State == scheduler.NodeState_DRAIN && len(nodes[0].TaskIds) == 1
+	})
 
 	// Start a second task, which is expected NOT to be scheduled,
 	// since the node is now draining.
 	second := srv.Run("echo")
 
-	time.Sleep(conf.Node.UpdateRate.AsDuration() * 10)
-
-	resp, err = srv.Scheduler.Nodes.ListNodes(bg, &scheduler.ListNodesRequest{})
+	// Drive a scheduling pass after the drain is visible, rather than guessing
+	// how many background ticks fit in a sleep.
+	if err := srv.Scheduler.Schedule(bg); err != nil {
+		t.Fatal(err)
+	}
+	resp, err := srv.Scheduler.Nodes.ListNodes(bg, &scheduler.ListNodesRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	nodes = resp.Nodes
-
-	// Ensure the task was scheduled.
-	if len(nodes) != 1 || len(nodes[0].TaskIds) != 1 {
-		t.Fatal("expected only 1 task to be scheduled to node")
+	if len(resp.Nodes) != 1 || len(resp.Nodes[0].TaskIds) != 1 || resp.Nodes[0].TaskIds[0] != first {
+		t.Fatal("draining node accepted another task", resp.Nodes)
 	}
-
-	log.Info("NODE", nodes[0])
 
 	close(block)
-	time.Sleep(conf.Node.UpdateRate.AsDuration() * 10)
-
-	resp, err = srv.Scheduler.Nodes.ListNodes(bg, &scheduler.ListNodesRequest{})
-	if err != nil {
+	waitForNodeState(t, srv, "drained node exit", func(nodes []*scheduler.Node) bool {
+		return len(nodes) == 1 && nodes[0].State == scheduler.NodeState_GONE
+	})
+	if err := srv.Scheduler.CheckNodes(); err != nil {
 		t.Fatal(err)
 	}
-	nodes = resp.Nodes
-
-	if len(nodes) != 0 {
-		t.Fatal("expected node to have exited")
-	}
+	waitForNodeState(t, srv, "drained node removal", func(nodes []*scheduler.Node) bool {
+		return len(nodes) == 0
+	})
 
 	// One last check to ensure the second task wasn't scheduled.
 	srv.GetView(first, tes.Minimal)
 
 	if srv.GetView(second, tes.Minimal).State != tes.Queued {
 		t.Fatal("expected second task to be queued")
+	}
+}
+
+func waitForNodeState(t *testing.T, srv *testenv.Funnel, description string, ready func([]*scheduler.Node) bool) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	var nodes []*scheduler.Node
+	for {
+		response, err := srv.Scheduler.Nodes.ListNodes(ctx, &scheduler.ListNodesRequest{})
+		if err != nil {
+			t.Fatalf("waiting for %s: %v", description, err)
+		}
+		nodes = response.Nodes
+		if ready(nodes) {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("waiting for %s: %v; last nodes: %v", description, ctx.Err(), nodes)
+		case <-ticker.C:
+		}
 	}
 }
 

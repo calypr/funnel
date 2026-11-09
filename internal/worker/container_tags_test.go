@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/types/known/durationpb"
+
 	"github.com/calypr/funnel/api/tes"
 	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
@@ -34,6 +36,7 @@ func TestWorkerContainerTagsRespectOptInAndRemainLiteral(t *testing.T) {
 			conf.WorkDir = filepath.Join(dir, "work")
 			conf.Container.DriverCommand = driver
 			conf.Container.EnableTags = enabled
+			conf.PollingRate = durationpb.New(10 * time.Millisecond)
 			value := "study 'quoted' $HOME $(touch " + marker + ") --privileged"
 			task := &tes.Task{Id: "labels", State: tes.Queued, Tags: map[string]string{"study": value}, Executors: []*tes.Executor{{Image: "test", Command: []string{"true"}}}}
 			worker := &DefaultWorker{Conf: conf, Store: &storage.Mux{}, TaskReader: &Base64TaskReader{task: task}, EventWriter: events.Noop{}}
