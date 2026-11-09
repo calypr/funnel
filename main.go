@@ -4,13 +4,13 @@ import (
 	"errors"
 	"os"
 
-	"github.com/calypr/funnel/cmd"
-	"github.com/calypr/funnel/logger"
-	"github.com/calypr/funnel/worker"
+	"github.com/calypr/funnel/internal/cli"
+	"github.com/calypr/funnel/internal/logger"
+	"github.com/calypr/funnel/internal/worker"
 )
 
 func main() {
-	if err := cmd.RootCmd.Execute(); err != nil {
+	if err := cli.RootCmd.Execute(); err != nil {
 		logger.PrintSimpleError(err)
 
 		// In the case of a K8s Executor error, do not error here: when the executor fails, the

@@ -1,0 +1,200 @@
+package storage
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/calypr/funnel/api/tes"
+	"github.com/calypr/funnel/internal/events"
+	storageconfig "github.com/calypr/funnel/internal/storage"
+	"github.com/calypr/funnel/internal/worker"
+	"github.com/calypr/funnel/tests/internal/testenv"
+)
+
+func TestMultiS3Storage(t *testing.T) {
+	testenv.SetLogOutput(log, t)
+
+	if len(conf.GenericS3) == 2 {
+		if !storageconfig.GenericS3Configured(conf.GenericS3[0]) && !storageconfig.GenericS3Configured(conf.GenericS3[1]) {
+			t.Skipf("Skipping generic s3 e2e testenv...")
+		}
+	} else {
+		t.Skipf("Skipping generic s3 e2e testenv...")
+	}
+
+	ev := events.NewTaskWriter("test-task", 0, &events.Logger{Log: log})
+	testBucket := "funnel-e2e-tests-" + testenv.RandomString(6)
+	ctx := context.Background()
+	parallelXfer := 10
+
+	// Generic S3 backend setup
+	gconf1 := conf.GenericS3[0]
+	gclient1, err := newMinioTest(gconf1)
+	if err != nil {
+		t.Fatal("error creating minio client:", err)
+	}
+	err = gclient1.createBucket(testBucket)
+	if err != nil {
+		t.Fatal("error creating test bucket:", err)
+	}
+	defer func() {
+		err := gclient1.deleteBucket(testBucket)
+		if err != nil {
+			t.Errorf("delete test bucket from first backend: %v", err)
+		}
+	}()
+
+	gconf2 := conf.GenericS3[1]
+	gclient2, err := newMinioTest(gconf2)
+	if err != nil {
+		t.Fatal("error creating minio client:", err)
+	}
+	err = gclient2.createBucket(testBucket)
+	if err != nil {
+		t.Fatal("error creating test bucket:", err)
+	}
+	defer func() {
+		err := gclient2.deleteBucket(testBucket)
+		if err != nil {
+			t.Errorf("delete test bucket from second backend: %v", err)
+		}
+	}()
+
+	// Stage input files
+	protocol := "s3://"
+	fPath := "testdata/test_in"
+
+	g1FileURL := protocol + gconf1.Endpoint + "/" + testBucket + "/" + fPath + testenv.RandomString(6)
+	_, err = worker.UploadOutputs(ctx, []*tes.Output{
+		{Url: g1FileURL, Path: fPath},
+	}, gclient1.fcli, ev, parallelXfer)
+	if err != nil {
+		t.Fatal("error uploading test file:", err)
+	}
+
+	g2FileURL := protocol + gconf2.Endpoint + "/" + testBucket + "/" + fPath + testenv.RandomString(6)
+	_, err = worker.UploadOutputs(ctx, []*tes.Output{
+		{Url: g2FileURL, Path: fPath, Type: tes.Directory.Enum()},
+	}, gclient2.fcli, ev, parallelXfer)
+	if err != nil {
+		t.Fatal("error uploading test file:", err)
+	}
+
+	// Expect the following task to complete since s3 urls contain endpoints
+	outFileURL := protocol + gconf1.Endpoint + "/" + testBucket + "/" + "test-output-file.txt"
+	task := &tes.Task{
+		Name: "s3 e2e",
+		Inputs: []*tes.Input{
+			{
+				Url:  g1FileURL,
+				Path: "/opt/inputs/test-file1.txt",
+				Type: tes.FileType_FILE,
+			},
+			{
+				Url:  g2FileURL,
+				Path: "/opt/inputs/test-file2.txt",
+				Type: tes.FileType_FILE,
+			},
+		},
+		Outputs: []*tes.Output{
+			{
+				Path: "/opt/workdir/test-output-file.txt",
+				Url:  outFileURL,
+				Type: tes.FileType_FILE.Enum(),
+			},
+		},
+		Executors: []*tes.Executor{
+			{
+				Image: "alpine:latest",
+				Command: []string{
+					"sh",
+					"-c",
+					"cat $(find /opt/inputs -type f | sort) > test-output-file.txt",
+				},
+				Workdir: "/opt/workdir",
+			},
+		},
+	}
+
+	resp, err := fun.RPC.CreateTask(context.Background(), task)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	taskFinal := fun.Wait(resp.Id)
+
+	if taskFinal.State != tes.State_COMPLETE {
+		t.Fatal("Unexpected task failure")
+	}
+
+	expected := "hello\nhello\n"
+
+	err = worker.DownloadInputs(ctx, []*tes.Input{
+		{Url: outFileURL, Path: filepath.Join(fun.StorageDir, "test-s3-file.txt")},
+	}, gclient1.fcli, ev, parallelXfer)
+	if err != nil {
+		t.Fatal("Failed to download file:", err)
+	}
+
+	b, err := os.ReadFile(filepath.Join(fun.StorageDir, "test-s3-file.txt"))
+	if err != nil {
+		t.Fatal("Failed to read downloaded file:", err)
+	}
+	actual := string(b)
+
+	if actual != expected {
+		t.Log("expected:", expected)
+		t.Log("actual:  ", actual)
+		t.Fatal("unexpected content")
+	}
+
+	// Expect the following task to fail due to s3 provider ambiguity
+	g1FileURL = strings.Replace(g1FileURL, gconf1.Endpoint, "", -1)
+	g2FileURL = strings.Replace(g2FileURL, gconf2.Endpoint, "", -1)
+	task = &tes.Task{
+		Name: "s3 e2e",
+		Inputs: []*tes.Input{
+			{
+				Url:  g1FileURL,
+				Path: "/opt/inputs/test-file1.txt",
+				Type: tes.FileType_FILE,
+			},
+			{
+				Url:  g2FileURL,
+				Path: "/opt/inputs/test-file2.txt",
+				Type: tes.FileType_FILE,
+			},
+		},
+		Outputs: []*tes.Output{
+			{
+				Path: "/opt/workdir/test-output-file.txt",
+				Url:  outFileURL,
+				Type: tes.FileType_FILE.Enum(),
+			},
+		},
+		Executors: []*tes.Executor{
+			{
+				Image: "alpine:latest",
+				Command: []string{
+					"sh",
+					"-c",
+					"cat $(find /opt/inputs -type f | sort) > test-output-file.txt",
+				},
+				Workdir: "/opt/workdir",
+			},
+		},
+	}
+	resp, err = fun.RPC.CreateTask(context.Background(), task)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	taskFinal = fun.Wait(resp.Id)
+
+	if taskFinal.State != tes.State_SYSTEM_ERROR {
+		t.Fatal("expected task failure")
+	}
+}

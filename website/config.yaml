@@ -159,6 +159,9 @@ menu:
       pageRef: /docs/
       identifier: docs
       weight: -1000
+    - name: Upgrade Funnel
+      pageRef: /docs/upgrading
+      weight: -90
 security:
   funcs:
     getenv:

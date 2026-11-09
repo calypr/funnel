@@ -1,6 +1,7 @@
 name: Nextflow Kubernetes integration tests
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - develop
@@ -20,6 +21,7 @@ jobs:
   integration-tests:
     name: Nextflow tasks on Kubernetes (Kind and MinIO)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       NXF_VER: '25.10.4'
  
@@ -39,7 +41,7 @@ jobs:
           cluster_name: funnel-gen3
 
       - name: Build and load candidate Funnel image
-        run: bash tests/kubernetes/build-and-load-candidate-image.sh
+        run: bash tests/e2e/kubernetes/build-and-load-candidate-image.sh
 
       - name: Install Helm
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
@@ -47,7 +49,10 @@ jobs:
           version: v4.3.1
 
       - name: Install local Funnel image post-renderer
-        run: helm plugin install "$GITHUB_WORKSPACE/tests/gen3"
+        run: |
+          kubectl get storageclass standard
+          bash tests/e2e/gen3/test-post-renderer.sh
+          helm plugin install "$GITHUB_WORKSPACE/tests/e2e/kubernetes"
  
       # ---------------------------
       # 2. Install Funnel + MinIO
@@ -82,7 +87,7 @@ jobs:
 
           helm repo add calypr https://calypr.org/helm-charts
           helm repo update
-          helm upgrade --install funnel calypr/funnel --wait --timeout=60s --version 0.1.99-rc.35 --values values.yaml --post-renderer funnel-ci-image
+          helm upgrade --install funnel calypr/funnel --wait --timeout=60s --version 0.1.99-rc.35 --values values.yaml --post-renderer funnel-ci-native-workspace
 
       - name: Debug Funnel pods (on failure)
         if: failure()
@@ -95,24 +100,8 @@ jobs:
         run: |
           helm upgrade --install minio oci://registry-1.docker.io/bitnamicharts/minio \
             --version 17.0.21 \
-            --values tests/kubernetes/minio-values.yaml \
+            --values tests/e2e/kubernetes/minio-values.yaml \
             --wait --timeout=5m
-
-      - name: Install AWS S3 CSI Driver (for testing S3 mounts in Funnel)
-        run: |
-          kubectl create secret generic aws-secret \
-            --namespace kube-system \
-            --from-literal "key_id=example" \
-            --from-literal "access_key=example-password"
-
-          helm repo add aws-mountpoint-s3-csi-driver https://awslabs.github.io/mountpoint-s3-csi-driver
-          helm repo update
-          helm upgrade --install aws-mountpoint-s3-csi-driver aws-mountpoint-s3-csi-driver/aws-mountpoint-s3-csi-driver \
-            --namespace kube-system \
-            --version 2.8.0 \
-            --values tests/gen3/csi-images.yaml \
-            --wait --timeout=3m \
-            --set awsAccessSecret.key_id=example,awsAccessSecret.access_key=example-password
 
       # -------------------------------------
       # 3. Expose services for local testing
@@ -124,10 +113,12 @@ jobs:
       - name: Wait for Funnel port-forward
         run: |
           for i in $(seq 1 10); do
-            curl -sf http://localhost:8000/service-info && break
+            curl --fail --silent --show-error --max-time 2 http://localhost:8000/v1/service-info && exit 0
             echo "Waiting for Funnel... ($i/10)"
             sleep 2
           done
+          echo "Port-forward did not become ready" >&2
+          exit 1
 
       - name: Port-forward Minio
         run: kubectl port-forward svc/minio 9000:9000 &
@@ -135,10 +126,12 @@ jobs:
       - name: Wait for Minio port-forward
         run: |
           for i in $(seq 1 10); do
-            curl -sf http://localhost:9000/minio/health/ready && break
+            curl --fail --silent --show-error --max-time 2 http://localhost:9000/minio/health/ready && exit 0
             echo "Waiting for Minio... ($i/10)"
             sleep 2
           done
+          echo "Port-forward did not become ready" >&2
+          exit 1
  
       # ----------------------------
       # 4. Run Nextflow + nf-canary
@@ -152,7 +145,7 @@ jobs:
           
       - name: Install Nextflow
         run: |
-          curl -s https://get.nextflow.io | bash
+          curl --fail --silent --show-error --location --retry 4 --retry-max-time 180 --connect-timeout 15 --max-time 60 https://get.nextflow.io --output nextflow
           chmod +x nextflow
           mkdir -p $HOME/.local/bin
           mv nextflow $HOME/.local/bin/
@@ -203,7 +196,8 @@ jobs:
         run: |
           set -o pipefail
           cd nf-canary
-          nextflow -c funnel.config run main.nf -with-report report.html -w s3://local/work 2>&1 | tee nextflow.log
+          timeout --signal=TERM --kill-after=30s 10m nextflow -c funnel.config run main.nf -with-report report.html -with-trace trace.tsv -w s3://local/work 2>&1 | tee nextflow.log
+          python3 ../.github/scripts/check-nextflow-canary.py trace.tsv
       
       # ------------------------------
       # 5. Upload test logs + reports
@@ -233,5 +227,6 @@ jobs:
             nf-canary/nextflow.log
             nf-canary/report.html
             nf-canary/.nextflow.log
+            nf-canary/trace.tsv
           if-no-files-found: ignore
           include-hidden-files: true

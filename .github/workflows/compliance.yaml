@@ -55,8 +55,11 @@ jobs:
           # - s3
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      COMPLIANCE_RUNNER_REF: bc3eb911e877521409348e0225852d072d4de196
     steps:
-      # Required to access the tests config files (e.g. tests/postgres.config.yml)
+      # Required to access the tests config files (e.g. tests/testdata/config/postgres.config.yml)
       # Perhaps uploading it as an artifact would be more efficient?
       - name: Check out code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -79,17 +82,16 @@ jobs:
               sleep 1
               [ $i -eq 30 ] && { echo "Postgres did not become ready in time"; exit 1; }
             done
-            cat `pwd`/tests/postgres.config.yml >> config.yml
+            cat `pwd`/tests/testdata/config/postgres.config.yml >> config.yml
           fi
 
           if [ ${{ matrix.storage }} = "s3" ]; then
             docker run -d -p 9000:9000 --name minio \
                        -e "MINIO_ROOT_USER=example-key" \
                        -e "MINIO_ROOT_PASSWORD=example-secret" \
-                       -v /tmp/data:/data \
-                       -v /tmp/config:/root/.minio \
-                       minio/minio server /data
-            cat `pwd`/tests/minio-s3.config.yml >> config.yml
+                       --tmpfs /data:rw,mode=1777 \
+                       quay.io/cdis/minio:chainguard-latest-2026-09-25@sha256:a05a4497e8dce3cb7a7a1bf1872ba5d30ea988f1e8c22c9e0920503761c4b5f1 server /data
+            cat `pwd`/tests/testdata/config/minio-s3.config.yml >> config.yml
           fi
 
           if [ ${{ matrix.compute }} = "kubernetes" ]; then
@@ -119,12 +121,31 @@ jobs:
 
       - name: Run OpenAPI Test Runner
         run: |
-          git clone https://github.com/elixir-cloud-aai/openapi-test-runner
+          git init openapi-test-runner
+          git -C openapi-test-runner remote add origin https://github.com/elixir-cloud-aai/openapi-test-runner
+          git -C openapi-test-runner fetch --depth 1 origin "$COMPLIANCE_RUNNER_REF"
+          git -C openapi-test-runner checkout --detach FETCH_HEAD
           cd openapi-test-runner
           python3 -m venv venv
           source venv/bin/activate
           pip install -r requirements.txt
           python setup.py install
-          output=$(openapi-test-runner report --version "${{ matrix.version }}" --server "http://localhost:8000/" 2>&1)
-          echo "$output"
-          echo "$output" | grep -q "Failed - 0" || { echo "Compliance tests failed"; exit 1; }
+          openapi-test-runner report --version "${{ matrix.version }}" --server "http://localhost:8000/" 2>&1 | tee compliance.log
+          grep -q "Failed - 0" compliance.log || { echo "Compliance tests failed"; exit 1; }
+
+      - name: Collect diagnostics and stop Funnel
+        if: always()
+        run: |
+          if [ -f funnel.pid ]; then
+            kill -TERM "$(cat funnel.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload compliance diagnostics
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: compliance-${{ matrix.version }}
+          path: |
+            funnel.logs
+            openapi-test-runner/compliance.log
+          if-no-files-found: warn

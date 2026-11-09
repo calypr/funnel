@@ -1,5 +1,5 @@
 // Package version reports the Funnel version.
-// Important: these fields are populated in the Makefile when running `make install`
+// Build fields are populated through linker flags by Makefile and release builds.
 package version
 
 import "fmt"

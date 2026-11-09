@@ -1,0 +1,15 @@
+version: v1
+plugins:
+  - plugin: go
+    out: ..
+    opt: module=github.com/calypr/funnel
+  - plugin: go-grpc
+    out: ..
+    opt:
+      - module=github.com/calypr/funnel
+      - require_unimplemented_servers=false
+  - plugin: grpc-gateway
+    out: ..
+    opt: module=github.com/calypr/funnel
+  - plugin: openapiv2
+    out: .

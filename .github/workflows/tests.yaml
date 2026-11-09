@@ -15,6 +15,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  public-api:
+    name: Public TES client and plugin contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: go.mod
+    - run: python3 .github/scripts/check-public-api.py
+
   go-vulnerabilities:
     name: Go vulnerability scan
     runs-on: ubuntu-latest
@@ -43,14 +54,15 @@ jobs:
       with:
         go-version-file: go.mod
     - name: Compile storage permission test as runner
-      run: go test -c ./storage -o "$RUNNER_TEMP/storage-permissions.test"
+      run: go test -c ./internal/storage -o "$RUNNER_TEMP/storage-permissions.test"
     - name: Run storage tests with separate executor identities
-      working-directory: storage
-      run: sudo env FUNNEL_TEST_LOCAL_OWNERSHIP=1 "$RUNNER_TEMP/storage-permissions.test" -test.count=1 -test.v -test.timeout=2m
+      working-directory: internal/storage
+      run: sudo env FUNNEL_TEST_LOCAL_OWNERSHIP=1 "$RUNNER_TEMP/storage-permissions.test" -test.count=1 -test.v -test.timeout=2m -test.run '^TestLocalTransfersPreserveExecutorPermissions$'
 
   docker-resource-integration:
     name: Docker worker integration tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
     - name: Check out code
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -59,33 +71,40 @@ jobs:
       with:
         go-version-file: go.mod
     - name: Pull test container image
-      run: docker pull alpine:latest
+      run: bash .github/scripts/pull-test-images.sh alpine:latest
     - name: Test Docker worker resource limits, cancellation, and execution admission
       env:
         FUNNEL_TEST_DOCKER_INTEGRATION: "1"
-      run: go test -v ./worker -run '^(TestDockerResourceLimitsIntegration|TestDockerCancellationStopsContainer|TestDockerCancellationWithSlowCleanup|TestExecutionAdmissionDockerIntegration)$' -count=1 -timeout=3m
+      run: go test -v ./internal/worker -run '^(TestDockerResourceLimitsIntegration|TestDockerCancellationStopsContainer|TestDockerCancellationWithSlowCleanup|TestExecutionAdmissionDockerIntegration)$' -count=1 -timeout=3m
     - name: Test output contracts through BoltDB and Docker
       env:
         FUNNEL_TEST_DOCKER_INTEGRATION: "1"
-      run: go test -v ./tests/core -run '^(TestRootStreamOutputsDocker|TestOutputContractDocker)$' -count=1 -timeout=3m
+      run: go test -v ./tests/integration/tasks -run '^(TestRootStreamOutputsDocker|TestOutputContractDocker)$' -count=1 -timeout=3m
 
   scheduler-tests:
     name: Scheduler tests (${{ matrix.label }})
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
         include:
           - backend: boltdb
             label: BoltDB
+            packages: ./tests/integration/schedulercontract
+            images: ""
           - backend: postgres
             label: PostgreSQL
+            packages: ./internal/database/postgres ./tests/integration/schedulercontract ./tests/e2e/schedulerprocess
+            images: postgres:16-alpine alpine:3.21
           - backend: mongodb
             label: MongoDB
+            packages: ./internal/database/mongodb ./tests/integration/schedulercontract ./tests/e2e/schedulerprocess
+            images: mongo:7 alpine:3.21
     env:
       CGO_ENABLED: "1"
       FUNNEL_SCHEDULER_TEST_BACKEND: ${{ matrix.backend }}
+      FUNNEL_TEST_SCHEDULER_PROCESS_INTEGRATION: "1"
     steps:
     - name: Check out code
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -97,58 +116,38 @@ jobs:
       run: sh .github/scripts/download-go-modules.sh
     - name: Install gotestsum
       run: go install gotest.tools/gotestsum@v1.13.0
-    - name: Run scheduler contract against ${{ matrix.label }}
-      run: gotestsum --format standard-verbose --junitfile=scheduler-tests.xml -- -race ./tests/schedulercontract -run '^TestSchedulerContract$' -count=1 -timeout=5m
+    - name: Pull database and worker fixtures
+      if: matrix.backend != 'boltdb'
+      env:
+        FIXTURE_IMAGES: ${{ matrix.images }}
+      run: bash .github/scripts/pull-test-images.sh testcontainers/ryuk:0.14.0 $FIXTURE_IMAGES
+    - name: Run database, scheduler contract, and process tests
+      env:
+        TEST_PACKAGES: ${{ matrix.packages }}
+      run: gotestsum --format standard-verbose --junitfile=scheduler-tests.xml -- -race -p 1 $TEST_PACKAGES -count=1 -timeout=10m -coverprofile=scheduler-coverage.out
+    - name: Collect Docker diagnostics
+      if: failure()
+      run: bash .github/scripts/docker-diagnostics.sh "$RUNNER_TEMP/docker-diagnostics"
+    - name: Upload Docker diagnostics
+      if: failure()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: scheduler-docker-diagnostics-${{ matrix.backend }}
+        path: ${{ runner.temp }}/docker-diagnostics
     - name: Upload scheduler test results
       if: always()
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: scheduler-test-results-${{ matrix.backend }}
-        path: scheduler-tests.xml
-        if-no-files-found: warn
-
-  scheduler-process-tests:
-    name: Scheduler process and crash tests (${{ matrix.label }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - backend: postgres
-            label: PostgreSQL
-          - backend: mongodb
-            label: MongoDB
-    env:
-      CGO_ENABLED: "1"
-      FUNNEL_TEST_SCHEDULER_PROCESS_INTEGRATION: "1"
-      FUNNEL_SCHEDULER_TEST_BACKEND: ${{ matrix.backend }}
-    steps:
-    - name: Check out code
-      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-    - name: Set up Go
-      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-      with:
-        go-version-file: go.mod
-    - name: Download Go modules
-      run: sh .github/scripts/download-go-modules.sh
-    - name: Install gotestsum
-      run: go install gotest.tools/gotestsum@v1.13.0
-    - name: Pull worker test image
-      run: docker pull alpine:3.21
-    - name: Test independent schedulers and crash recovery
-      run: gotestsum --format standard-verbose --junitfile=scheduler-process-tests.xml -- -race ./tests/schedulerprocess -run '^TestSchedulerProcesses$' -count=1 -timeout=10m
-    - name: Upload process test results
-      if: always()
-      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-      with:
-        name: scheduler-process-test-results-${{ matrix.backend }}
-        path: scheduler-process-tests.xml
+        path: |
+          scheduler-tests.xml
+          scheduler-coverage.out
         if-no-files-found: warn
 
   unitTest:
     name: Go tests (race detector and coverage)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       checks: write
@@ -167,14 +166,30 @@ jobs:
     - name: Download Go modules
       run: sh .github/scripts/download-go-modules.sh
 
+    - name: Pull integration fixtures
+      run: bash .github/scripts/pull-test-images.sh alpine:latest quay.io/cdis/minio:chainguard-latest-2026-09-25@sha256:a05a4497e8dce3cb7a7a1bf1872ba5d30ea988f1e8c22c9e0920503761c4b5f1
+
     - name: Unit Tests
       id: unit_tests
       continue-on-error: true
       env:
         CGO_ENABLED: "1"
       run: |
-        gotestsum --junitfile=test-report.xml -- -race ./... -skip '^TestSchedulerContract$' -coverprofile=coverage.out
+        go list ./... > "$RUNNER_TEMP/go-test-packages.txt"
+        mapfile -t packages < "$RUNNER_TEMP/go-test-packages.txt"
+        core_packages=()
+        for package in "${packages[@]}"; do
+          case "$package" in
+            */internal/database/postgres|*/internal/database/mongodb|*/tests/integration/schedulercontract|*/tests/e2e/schedulerprocess) ;;
+            *) core_packages+=("$package") ;;
+          esac
+        done
+        gotestsum --junitfile=test-report.xml -- -race -p 2 "${core_packages[@]}" -count=1 -timeout=10m -coverprofile=coverage.out
         go tool cover -func=coverage.out
+
+    - name: Collect Docker diagnostics
+      if: failure() || steps.unit_tests.outcome == 'failure'
+      run: bash .github/scripts/docker-diagnostics.sh "$RUNNER_TEMP/docker-diagnostics"
 
     - name: Test Report
       uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3
@@ -192,6 +207,7 @@ jobs:
         path: |
           test-report.xml
           coverage.out
+          ${{ runner.temp }}/docker-diagnostics/
         if-no-files-found: warn
 
     - name: Fail job if tests failed
@@ -201,15 +217,17 @@ jobs:
   # Preserve the required status context until the stack's ruleset migration.
   required-go-tests:
     name: unitTest
-    needs: [unitTest, scheduler-tests, scheduler-process-tests, local-storage-permissions, go-vulnerabilities]
+    needs: [unitTest, scheduler-tests, docker-resource-integration, local-storage-permissions, go-vulnerabilities, public-api]
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 2
     steps:
       - name: Report test result for existing required-check rules
         env:
+          PUBLIC_API_RESULT: ${{ needs.public-api.result }}
           CHECK_RESULT: ${{ needs.unitTest.result }}
           SCHEDULER_RESULT: ${{ needs.scheduler-tests.result }}
-          PROCESS_RESULT: ${{ needs.scheduler-process-tests.result }}
+          DOCKER_RESULT: ${{ needs.docker-resource-integration.result }}
           STORAGE_RESULT: ${{ needs.local-storage-permissions.result }}
           VULNERABILITY_RESULT: ${{ needs.go-vulnerabilities.result }}
-        run: test "$CHECK_RESULT" = success && test "$SCHEDULER_RESULT" = success && test "$PROCESS_RESULT" = success && test "$STORAGE_RESULT" = success && test "$VULNERABILITY_RESULT" = success
+        run: test "$PUBLIC_API_RESULT" = success && test "$CHECK_RESULT" = success && test "$SCHEDULER_RESULT" = success && test "$DOCKER_RESULT" = success && test "$STORAGE_RESULT" = success && test "$VULNERABILITY_RESULT" = success

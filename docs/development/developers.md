@@ -13,7 +13,7 @@ This page contains a rough collection of notes for people wanting to build Funne
 	$ cd funnel
 	$ make
 	```
-	
+
 4. Funnel is now downloaded and installed. Try `funnel version`.
 5. You can edit the code and run `make install` to recompile.
 
@@ -72,9 +72,9 @@ rejects stale entries when findings disappear, so the baseline can shrink.
 
 ### Go Tests
 
-Run all tests: `make test`   
-Run the worker tests: `go test ./worker/...`  
-Run the worker tests with "Cancel" in the name: `go test ./worker -run Cancel`  
+Run all tests: `make test`
+Run the worker tests: `go test ./internal/worker/...`
+Run the worker tests with "Cancel" in the name: `go test ./internal/worker -run Cancel`
 
 You get the idea. See the `go test` docs for more.
 

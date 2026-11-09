@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/api/config"
 	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/retry"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"

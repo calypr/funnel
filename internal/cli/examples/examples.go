@@ -1,0 +1,63 @@
+package examples
+
+import (
+	"fmt"
+	"sort"
+
+	"github.com/spf13/cobra"
+
+	ex "github.com/calypr/funnel/examples"
+	appconfig "github.com/calypr/funnel/internal/config"
+)
+
+// Cmd represents the examples command
+var Cmd = &cobra.Command{
+	Use:     "examples [name]",
+	Aliases: []string{"example"},
+	Short:   "Print example task messages.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		// Map example name to asset name
+		// e.g. config => examples/config.yml
+		byShortName := map[string]string{}
+		taskEx := ex.Examples()
+		for n, v := range taskEx {
+			byShortName[n] = v
+		}
+
+		confEx := appconfig.Examples()
+		for n, v := range confEx {
+			byShortName[n] = v
+		}
+
+		keys := make([]string, 0, len(byShortName))
+		for k := range byShortName {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+
+		// Print a list of example names and exit
+		if len(args) == 0 || args[0] == "list" {
+			for _, sn := range keys {
+				_, err := fmt.Fprintln(cmd.OutOrStdout(), sn)
+				if err != nil {
+					return fmt.Errorf("writing example names: %w", err)
+				}
+			}
+			return nil
+		}
+
+		// Retrieve and print the example
+		name := args[0]
+		data, ok := byShortName[name]
+		if !ok {
+			return fmt.Errorf("No example by the name of %s", name)
+		}
+
+		_, err := fmt.Fprintln(cmd.OutOrStdout(), data)
+		if err != nil {
+			return fmt.Errorf("writing example: %w", err)
+		}
+		return nil
+	},
+}

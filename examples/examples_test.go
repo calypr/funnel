@@ -3,7 +3,8 @@ package examples
 import (
 	"testing"
 
-	"github.com/calypr/funnel/tes"
+	"github.com/calypr/funnel/api/tes"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
@@ -14,7 +15,7 @@ func TestExamplesAreValid(t *testing.T) {
 		if err != nil {
 			t.Fatal("unmarshal failed", en, err, tb)
 		}
-		if err := tes.Validate(&task); err != nil {
+		if err := taskpolicy.Validate(&task); err != nil {
 			t.Fatal("Invalid task message:", en, "\n", "error:", err)
 		}
 	}

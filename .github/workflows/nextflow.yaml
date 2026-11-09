@@ -67,7 +67,7 @@ jobs:
     - name: Install Nextflow
       run: |
         mkdir -p "$HOME/.local/bin"
-        curl --fail --silent --show-error --location https://get.nextflow.io --output "$HOME/.local/bin/nextflow"
+        curl --fail --silent --show-error --location --retry 4 --retry-max-time 180 --connect-timeout 15 --max-time 60 https://get.nextflow.io --output "$HOME/.local/bin/nextflow"
         chmod +x "$HOME/.local/bin/nextflow"
         echo "$HOME/.local/bin" >> "$GITHUB_PATH"
         "$HOME/.local/bin/nextflow" info

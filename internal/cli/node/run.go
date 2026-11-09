@@ -1,0 +1,67 @@
+package node
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/calypr/funnel/api/config"
+	"github.com/calypr/funnel/internal/cli/lifecycle"
+	workerCmd "github.com/calypr/funnel/internal/cli/worker"
+	"github.com/calypr/funnel/internal/compute/scheduler"
+	"github.com/calypr/funnel/internal/logger"
+)
+
+// Run runs a node with the given config, blocking until the node exits.
+func Run(ctx context.Context, conf *config.Config, log *logger.Logger) error {
+	nodeID, err := scheduler.GenNodeID()
+	if err != nil {
+		return err
+	}
+	conf.Node.ID = nodeID
+
+	factory := func(ctx context.Context, taskID string) error {
+		w, err := workerCmd.NewWorker(ctx, conf, log, &workerCmd.Options{
+			TaskID: taskID,
+		})
+		if err != nil {
+			return err
+		}
+		err = w.Run(ctx)
+		if err != nil {
+			return fmt.Errorf("worker run failed: %w", err)
+		}
+		return nil
+	}
+
+	n, err := scheduler.NewNodeProcess(ctx, conf, factory, log)
+	if err != nil {
+		return err
+	}
+
+	_, cancel := context.WithCancel(context.Background())
+	runctx := lifecycle.SignalContext(ctx, time.Nanosecond, syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
+	hupsig := make(chan os.Signal, 1)
+	go func() {
+		for {
+			select {
+			case <-runctx.Done():
+				return
+			case <-hupsig:
+				n.Drain()
+			}
+		}
+	}()
+	signal.Notify(hupsig, syscall.SIGHUP)
+
+	if err := n.Run(runctx); err != nil {
+		return fmt.Errorf("node run failed: %w", err)
+	}
+
+	return nil
+}

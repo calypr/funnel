@@ -14,6 +14,7 @@ jobs:
   build:
     name: Compile Funnel binary
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
     - name: Check out code
@@ -21,10 +22,11 @@ jobs:
 
     - name: Cache Funnel binary
       id: binary-cache
+      if: inputs.cache
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: funnel
-        key: funnel-binary-${{ hashFiles('**/*.go', 'go.mod', 'go.sum') }}
+        key: funnel-binary-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
 
     - name: Set up Go 1.x
       if: steps.binary-cache.outputs.cache-hit != 'true'

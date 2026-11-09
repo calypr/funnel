@@ -1,0 +1,12 @@
+# Task scratch space needs POSIX directory and file semantics. S3 input/output
+# transport remains enabled through GenericS3; this PVC is not an S3 mount.
+WorkspaceVolume: workspace
+volumeClaimTemplates:
+  - metadata:
+      name: workspace
+    spec:
+      storageClassName: standard
+      accessModes: [ReadWriteOnce]
+      resources:
+        requests:
+          storage: 1Gi

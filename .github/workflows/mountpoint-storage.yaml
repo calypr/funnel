@@ -3,18 +3,18 @@ name: S3 Mountpoint download tests
 on:
   pull_request:
     paths:
-      - "storage/**"
+      - "internal/storage/**"
       - "go.mod"
       - "go.sum"
-      - "tests/storage/mountpoint-download.sh"
+      - "tests/integration/storage/mountpoint-download.sh"
       - ".github/workflows/mountpoint-storage.yaml"
   push:
     branches: [develop]
     paths:
-      - "storage/**"
+      - "internal/storage/**"
       - "go.mod"
       - "go.sum"
-      - "tests/storage/mountpoint-download.sh"
+      - "tests/integration/storage/mountpoint-download.sh"
       - ".github/workflows/mountpoint-storage.yaml"
 
 permissions:
@@ -37,4 +37,4 @@ jobs:
       - name: Enable FUSE
         run: sudo modprobe fuse
       - name: Test downloads against Mountpoint and MinIO
-        run: tests/storage/mountpoint-download.sh
+        run: tests/integration/storage/mountpoint-download.sh

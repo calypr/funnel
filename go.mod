@@ -22,6 +22,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/iam v1.64.9
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.9
 	github.com/aws/smithy-go v1.28.8
+	github.com/cenkalti/backoff/v7 v7.0.3
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/containerd/errdefs v1.0.0

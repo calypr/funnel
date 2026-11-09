@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+script_dir=$(cd "$(dirname "$0")" && pwd)
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+cat >"$tmp/input.yaml" <<'YAML'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: funnel-server
+spec:
+  template:
+    spec:
+      initContainers:
+        - name: config-updater
+          image: quay.io/cdis/awshelper:master
+        - name: plugin
+          image: example/plugin:old
+      containers:
+        - name: funnel
+          image: example/funnel:old
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: funnel-server-config
+data:
+  funnel-server.yaml: |
+    Elastic:
+      URL: http://elasticsearch:9200
+    Kubernetes:
+      ExecutorTemplate: |
+        containers:
+          - image: {{.Image}}
+            imagePullPolicy: {{if .ImagePullPolicy}}{{.ImagePullPolicy}}{{else}}Always{{end}}
+      WorkerTemplate: |
+        containers:
+          - image: {{.Image}}
+            imagePullPolicy: Always
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: arborist-deployment
+spec:
+  template:
+    spec:
+      containers:
+        - name: arborist
+          image: quay.io/cdis/arborist:master
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: usersync
+spec:
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          initContainers:
+            - name: awshelper
+              image: usersync-helper
+YAML
+export FUNNEL_CI_IMAGE_REF=quay.io/ohsu-comp-bio/funnel:ci-123456789abc
+registry_helper=$(yq -r '.global.awshelper_container_image' "$script_dir/values-ci.yaml")
+export USERSYNC_HELPER_IMAGE
+USERSYNC_HELPER_IMAGE=$(yq -r 'explode(.) | .fence.usersync.custom_image' "$script_dir/values-ci.yaml")
+yq eval '(select(.kind == "CronJob" and .metadata.name == "usersync") |
+  .spec.jobTemplate.spec.template.spec.initContainers[0].image) = strenv(USERSYNC_HELPER_IMAGE)' -i "$tmp/input.yaml"
+for mode in plain gen3; do
+  export FUNNEL_CI_PLUGIN_IMAGE_REF=
+  if [[ "$mode" == gen3 ]]; then
+    export FUNNEL_CI_PLUGIN_IMAGE_REF=quay.io/ohsu-comp-bio/funnel-gen3-plugin:ci-123456789abc-eacaf197bfbc
+  fi
+  FUNNEL_CI_BOOTSTRAP_RENDER=false bash "$script_dir/gen3-post-renderer.sh" <"$tmp/input.yaml" >"$tmp/$mode.yaml"
+  if [[ $(yq -r 'select(.kind == "ConfigMap") | .data."funnel-server.yaml" | from_yaml | has("Elastic")' "$tmp/$mode.yaml") != false ]]; then
+    printf 'Removed Elasticsearch configuration prevents Funnel startup\n' >&2
+    exit 1
+  fi
+  executor=$(yq -r 'select(.kind == "ConfigMap") | .data."funnel-server.yaml" | from_yaml | .Kubernetes.ExecutorTemplate' "$tmp/$mode.yaml")
+  if [[ "$mode" == gen3 ]]; then
+    [[ "$executor" == *'eq .Image "quay.io/cdis/gen3-workflow:integration_tests_dicom_image"'* && "$executor" == *'}}Never{{else}}'* ]] || { printf 'Native executors can be overwritten by registry pulls\n' >&2; exit 1; }
+  else
+    [[ "$executor" == *'imagePullPolicy: {{if .ImagePullPolicy}}{{.ImagePullPolicy}}{{else}}Always{{end}}'* ]]
+  fi
+  helper=$(yq -r 'select(.kind == "Deployment") | .spec.template.spec.initContainers[] | select(.name == "config-updater") | .image' "$tmp/$mode.yaml")
+  if [[ "$mode" == plain ]]; then
+    [[ "$helper" == "$registry_helper" ]] || { printf 'Plain chart selected a Gen3-only local helper\n' >&2; exit 1; }
+  else
+    [[ "$helper" == funnel-gen3-awshelper:ci ]] || { printf 'Gen3 chart did not select its native helper\n' >&2; exit 1; }
+    policy=$(yq -r 'select(.kind == "Deployment") | .spec.template.spec.initContainers[] | select(.name == "config-updater") | .imagePullPolicy' "$tmp/$mode.yaml")
+    [[ "$policy" == Never ]]
+  fi
+  arborist=$(yq -r 'select(.metadata.name == "arborist-deployment") | .spec.template.spec.containers[0].image' "$tmp/$mode.yaml")
+  if [[ "$mode" == gen3 ]]; then
+    [[ "$arborist" == funnel-gen3-arborist:ci ]]
+  else
+    [[ "$arborist" == quay.io/cdis/arborist:*@sha256:* ]]
+  fi
+  usersync_helper=$(yq -r 'select(.kind == "CronJob" and .metadata.name == "usersync") | .spec.jobTemplate.spec.template.spec.initContainers[0].image' "$tmp/$mode.yaml")
+  expected_usersync_helper=$registry_helper
+  if [[ "$mode" == gen3 ]]; then expected_usersync_helper=funnel-gen3-awshelper:ci; fi
+  [[ "$usersync_helper" == "$expected_usersync_helper" ]] || {
+    printf 'Usersync helper is %s, expected %s\n' "$usersync_helper" "$expected_usersync_helper" >&2
+    exit 1
+  }
+  printf 'PASS: %s chart selects the correct helper and Arborist images\n' "$mode"
+done
+
+sed 's/imagePullPolicy: {{if .ImagePullPolicy}}{{.ImagePullPolicy}}{{else}}Always{{end}}/imagePullPolicy: Always/' "$tmp/input.yaml" >"$tmp/changed-executor.yaml"
+if FUNNEL_CI_BOOTSTRAP_RENDER=false bash "$script_dir/gen3-post-renderer.sh" <"$tmp/changed-executor.yaml" >"$tmp/rejected.yaml" 2>"$tmp/rejected.log"; then
+  printf 'Changed executor template bypassed the native fixture pull policy\n' >&2
+  exit 1
+fi
+grep -q 'executor template can overwrite native task fixtures' "$tmp/rejected.log"
+printf 'PASS: changed executor templates fail before cluster startup\n'
+
+FUNNEL_CI_PLUGIN_IMAGE_REF= FUNNEL_CI_BOOTSTRAP_RENDER=false \
+  bash "$script_dir/../kubernetes/nextflow-post-renderer.sh" <"$tmp/input.yaml" >"$tmp/nextflow.yaml"
+yq -r 'select(.kind == "ConfigMap" and .metadata.name == "funnel-server-config") | .data."funnel-server.yaml"' \
+  "$tmp/nextflow.yaml" >"$tmp/nextflow-config.yaml"
+yq -e '
+  .Worker.WorkDir == "/opt/funnel/funnel-work-dir" and
+  .Kubernetes.Storage.WorkspaceVolume == "workspace" and
+  (.Kubernetes.Storage.volumeClaimTemplates | length) == 1 and
+  .Kubernetes.Storage.volumeClaimTemplates[0].metadata.name == "workspace" and
+  .Kubernetes.Storage.volumeClaimTemplates[0].spec.storageClassName == "standard" and
+  .Kubernetes.PVTemplate == "" and .Kubernetes.PVCTemplate == ""
+' "$tmp/nextflow-config.yaml" >/dev/null
+printf 'PASS: Nextflow scratch uses native PVC storage instead of S3 Mountpoint\n'

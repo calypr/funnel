@@ -19,7 +19,7 @@ linters:
   exclusions:
     paths:
       - vendor
-      - webdash/build
+      - internal/webdash/build
       - funnel-work-dir
     rules:
       - path: ".*bundle\\.go"
@@ -36,7 +36,7 @@ formatters:
   exclusions:
     paths:
       - vendor
-      - webdash/build
+      - internal/webdash/build
       - funnel-work-dir
       - ".*bundle\\.go"
       - ".*\\.pb\\.go"

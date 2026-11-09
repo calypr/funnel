@@ -15,6 +15,7 @@ jobs:
   integration_tests:
     name: Gen3 workflow tests (Kind, authentication, and storage)
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     env:
       TEST_REPO: ${{ github.workspace }}/gen3-code-vigil
       TEST_REPO_SHA: 87da170a9a1cb099cfd1aded9402bc323201d6bc
@@ -23,7 +24,7 @@ jobs:
       GITOPS_REPO: ${{ github.workspace }}/gen3-gitops-ci
       GEN3_GITOPS_SHA: 19a687205de78d985416f44ad89c79bd2e66dab8
       GEN3_CHART_VERSION: 0.3.110
-      GEN3_VALUES_FILE: ${{ github.workspace }}/tests/gen3/values-ci.yaml
+      GEN3_VALUES_FILE: ${{ github.workspace }}/tests/e2e/gen3/values-ci.yaml
       GEN3_PYTHON_VERSION: "3.13.16"
       NXF_VER: "26.10.1"
       SERVICE_TO_TEST: gen3_workflow
@@ -92,6 +93,13 @@ jobs:
           path: gen3-code-vigil
           persist-credentials: false
 
+      - name: Correct pinned directory output fixture
+        shell: bash
+        run: |
+          patch_file="$GITHUB_WORKSPACE/tests/e2e/gen3/directory-output-type.patch"
+          git -C "$TEST_REPO" apply --check "$patch_file"
+          git -C "$TEST_REPO" apply "$patch_file"
+
       - name: Checkout pinned Gen3 GitOps
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -143,7 +151,7 @@ jobs:
             ${{ runner.temp }}/gen3-poetry-cache
             ${{ runner.temp }}/gen3-uv-cache
             ${{ runner.temp }}/gen3-nextflow-cache
-          key: funnel-gen3-deps-${{ runner.os }}-${{ runner.arch }}-${{ env.TEST_REPO_SHA }}-${{ hashFiles('gen3-code-vigil/gen3-integration-tests/poetry.lock') }}-${{ env.FUNNEL_CI_BUILD_PLATFORM }}-${{ hashFiles('Dockerfile', 'tests/gen3/image-build/Dockerfile', 'go.mod', 'go.sum') }}-py${{ env.GEN3_PYTHON_VERSION }}
+          key: funnel-gen3-deps-${{ runner.os }}-${{ runner.arch }}-${{ env.TEST_REPO_SHA }}-${{ hashFiles('gen3-code-vigil/gen3-integration-tests/poetry.lock') }}-${{ env.FUNNEL_CI_BUILD_PLATFORM }}-${{ hashFiles('Dockerfile', 'tests/e2e/gen3/image-build/Dockerfile', 'go.mod', 'go.sum') }}-py${{ env.GEN3_PYTHON_VERSION }}
           restore-keys: |
             funnel-gen3-deps-${{ runner.os }}-${{ runner.arch }}-${{ env.TEST_REPO_SHA }}-${{ hashFiles('gen3-code-vigil/gen3-integration-tests/poetry.lock') }}-
             funnel-gen3-deps-${{ runner.os }}-${{ runner.arch }}-${{ env.TEST_REPO_SHA }}-
@@ -153,14 +161,14 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.FUNNEL_CI_FIXTURE_CACHE_DIR }}
-          key: gen3-fixtures-v4-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tests/gen3/fixture-images.json', 'tests/gen3/csi-images.yaml', 'tests/gen3/csi-images-arm64.yaml', 'tests/gen3/values-ci.yaml') }}
+          key: gen3-fixtures-v4-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tests/e2e/gen3/fixture-images.json', 'tests/e2e/gen3/csi-images.yaml', 'tests/e2e/gen3/csi-images-arm64.yaml', 'tests/e2e/gen3/values-ci.yaml') }}
 
       - name: Restore native task images
         id: restore-test-images
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.FUNNEL_CI_TEST_IMAGE_CACHE_DIR }}
-          key: gen3-task-images-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tests/gen3/arborist-image/**', 'tests/gen3/awshelper-image/**', 'tests/gen3/dicom-image/**', 'tests/gen3/canary-image/**', 'tests/gen3/prepare-test-tools.sh') }}
+          key: gen3-task-images-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tests/e2e/gen3/arborist-image/**', 'tests/e2e/gen3/awshelper-image/**', 'tests/e2e/gen3/dicom-image/**', 'tests/e2e/gen3/canary-image/**', 'tests/e2e/gen3/prepare-test-tools.sh') }}
           restore-keys: |
             gen3-task-images-${{ runner.os }}-${{ runner.arch }}-
 
@@ -181,18 +189,23 @@ jobs:
           sudo install -m 0755 "$RUNNER_TEMP/yq" /usr/local/bin/yq
 
       - name: Verify plain and Gen3 Helm rendering
-        run: bash tests/gen3/test-post-renderer.sh
+        run: bash tests/e2e/gen3/test-post-renderer.sh
 
       - name: Verify shared workflow fixture initialization
-        run: python3 tests/gen3/test-shared-workflow-fixture.py
+        run: python3 tests/e2e/gen3/test-shared-workflow-fixture.py
+
+      - name: Verify worker log startup synchronization
+        run: |
+          python3 tests/e2e/gen3/test-worker-logs.py
+          python3 tests/e2e/gen3/test-configure-tests.py "$WORKING_DIR"
 
       - name: Verify port-forward process ownership
-        run: bash tests/gen3/test-port-forward.sh
+        run: bash tests/e2e/gen3/test-port-forward.sh
 
       - name: Run Gen3 integration lifecycle
         id: lifecycle
         shell: bash
-        run: bash tests/gen3/run-integration.sh
+        run: bash tests/e2e/gen3/run-integration.sh
 
       - name: Preserve lifecycle start record
         if: always()
@@ -229,7 +242,7 @@ jobs:
             ${{ runner.temp }}/gen3-poetry-cache
             ${{ runner.temp }}/gen3-uv-cache
             ${{ runner.temp }}/gen3-nextflow-cache
-          key: funnel-gen3-deps-${{ runner.os }}-${{ runner.arch }}-${{ env.TEST_REPO_SHA }}-${{ hashFiles('gen3-code-vigil/gen3-integration-tests/poetry.lock') }}-${{ env.FUNNEL_CI_BUILD_PLATFORM }}-${{ hashFiles('Dockerfile', 'tests/gen3/image-build/Dockerfile', 'go.mod', 'go.sum') }}-py${{ env.GEN3_PYTHON_VERSION }}
+          key: funnel-gen3-deps-${{ runner.os }}-${{ runner.arch }}-${{ env.TEST_REPO_SHA }}-${{ hashFiles('gen3-code-vigil/gen3-integration-tests/poetry.lock') }}-${{ env.FUNNEL_CI_BUILD_PLATFORM }}-${{ hashFiles('Dockerfile', 'tests/e2e/gen3/image-build/Dockerfile', 'go.mod', 'go.sum') }}-py${{ env.GEN3_PYTHON_VERSION }}
 
       - name: Save immutable fixture images
         if: always() && steps.lifecycle.outputs.fixture_cache_ready == 'true' && steps.restore-fixtures.outputs.cache-hit != 'true'
@@ -238,7 +251,7 @@ jobs:
         continue-on-error: true
         with:
           path: ${{ env.FUNNEL_CI_FIXTURE_CACHE_DIR }}
-          key: gen3-fixtures-v4-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tests/gen3/fixture-images.json', 'tests/gen3/csi-images.yaml', 'tests/gen3/csi-images-arm64.yaml', 'tests/gen3/values-ci.yaml') }}
+          key: gen3-fixtures-v4-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tests/e2e/gen3/fixture-images.json', 'tests/e2e/gen3/csi-images.yaml', 'tests/e2e/gen3/csi-images-arm64.yaml', 'tests/e2e/gen3/values-ci.yaml') }}
 
       - name: Save native task images
         if: always() && steps.lifecycle.outputs.test_images_ready == 'true' && steps.restore-test-images.outputs.cache-hit != 'true'
@@ -247,7 +260,7 @@ jobs:
         continue-on-error: true
         with:
           path: ${{ env.FUNNEL_CI_TEST_IMAGE_CACHE_DIR }}
-          key: gen3-task-images-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tests/gen3/arborist-image/**', 'tests/gen3/awshelper-image/**', 'tests/gen3/dicom-image/**', 'tests/gen3/canary-image/**', 'tests/gen3/prepare-test-tools.sh') }}
+          key: gen3-task-images-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tests/e2e/gen3/arborist-image/**', 'tests/e2e/gen3/awshelper-image/**', 'tests/e2e/gen3/dicom-image/**', 'tests/e2e/gen3/canary-image/**', 'tests/e2e/gen3/prepare-test-tools.sh') }}
 
   # Preserve the required status context until the stack's ruleset migration.
   required-gen3-tests:
@@ -255,6 +268,7 @@ jobs:
     needs: integration_tests
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 2
     steps:
       - name: Report test result for existing required-check rules
         env:

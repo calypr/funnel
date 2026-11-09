@@ -1,0 +1,15 @@
+version: v1
+name: buf.build/calypr/funnel
+build:
+  excludes:
+    - tes/task-execution-schemas
+deps:
+  - buf.build/googleapis/googleapis
+lint:
+  use:
+    - STANDARD
+  except:
+    - PACKAGE_DIRECTORY_MATCH
+breaking:
+  use:
+    - FILE

@@ -1,0 +1,325 @@
+package boltdb
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+
+	"github.com/calypr/funnel/api/tes"
+	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/internal/identity"
+	taskpolicy "github.com/calypr/funnel/internal/task"
+	bolt "go.etcd.io/bbolt"
+	"google.golang.org/protobuf/proto"
+)
+
+// State variables for convenience
+const (
+	Unknown       = tes.State_UNKNOWN
+	Queued        = tes.State_QUEUED
+	Initializing  = tes.State_INITIALIZING
+	Running       = tes.State_RUNNING
+	Paused        = tes.State_PAUSED
+	Complete      = tes.State_COMPLETE
+	ExecutorError = tes.State_EXECUTOR_ERROR
+	SystemError   = tes.State_SYSTEM_ERROR
+	Canceled      = tes.State_CANCELED
+)
+
+// WriteEvent creates an event for the server to handle.
+func (taskBolt *BoltDB) WriteEvent(ctx context.Context, req *events.Event) error {
+	var err error
+
+	if req.Type == events.Type_TASK_CREATED {
+		task := req.GetTask()
+		idBytes := []byte(task.Id)
+		taskString, err := proto.Marshal(task)
+		if err != nil {
+			return err
+		}
+		// Combine task storage and queueing into single transaction to avoid BoltDB write lock contention
+		err = taskBolt.db.Update(func(tx *bolt.Tx) error {
+			if tx.Bucket(TaskBucket).Get(idBytes) != nil {
+				return fmt.Errorf("task %q already exists", task.Id)
+			}
+			if tx.Bucket(TaskClaims).Get(idBytes) != nil {
+				return fmt.Errorf("cannot recreate assigned task %q", task.Id)
+			}
+			if err := tx.Bucket(TaskBucket).Put(idBytes, taskString); err != nil {
+				return err
+			}
+			if err := tx.Bucket(TaskState).Put(idBytes, []byte(tes.State_QUEUED.String())); err != nil {
+				return err
+			}
+			if err := tx.Bucket(TaskOwner).Put(idBytes, []byte(identity.GetUsername(ctx))); err != nil {
+				return err
+			}
+			// Queue task in same transaction to avoid double-locking
+			return tx.Bucket(TasksQueued).Put(idBytes, []byte{})
+		})
+		if err != nil {
+			return fmt.Errorf("error storing and queueing task: %s", err)
+		}
+		return nil
+	}
+
+	// Check that the task exists
+	err = taskBolt.db.View(func(tx *bolt.Tx) error {
+		_, err := getTaskView(tx, req.Id, tes.View_MINIMAL, nil)
+		return err
+	})
+	if err != nil {
+		return err
+	}
+
+	tl := &tes.TaskLog{}
+	el := &tes.ExecutorLog{}
+	update := func(write func(*bolt.Tx) error) error {
+		return taskBolt.db.Update(func(tx *bolt.Tx) error {
+			if err := checkOwner(tx, req.Id, ctx); err != nil {
+				return err
+			}
+			return write(tx)
+		})
+	}
+
+	switch req.Type {
+	case events.Type_TASK_STATE:
+		err = update(func(tx *bolt.Tx) error {
+			if err := checkOwner(tx, req.Id, ctx); err != nil {
+				return err
+			}
+			return transitionTaskState(tx, req.Id, req.GetState())
+		})
+
+	case events.Type_TASK_START_TIME:
+		tl.StartTime = req.GetStartTime()
+		err = update(func(tx *bolt.Tx) error {
+			return updateTaskLogs(tx, req.Id, tl)
+		})
+
+	case events.Type_TASK_END_TIME:
+		tl.EndTime = req.GetEndTime()
+		err = update(func(tx *bolt.Tx) error {
+			return updateTaskLogs(tx, req.Id, tl)
+		})
+
+	case events.Type_TASK_OUTPUTS:
+		tl.Outputs = req.GetOutputs().Value
+		err = update(func(tx *bolt.Tx) error {
+			return updateTaskLogs(tx, req.Id, tl)
+		})
+
+	case events.Type_TASK_METADATA:
+		metadata := req.GetMetadata().Value
+		if _, reserved := metadata[events.ExecutionOwnerMetadataKey]; reserved {
+			return fmt.Errorf("task metadata key %q is reserved", events.ExecutionOwnerMetadataKey)
+		}
+		tl.Metadata = metadata
+		err = update(func(tx *bolt.Tx) error {
+			return updateTaskLogs(tx, req.Id, tl)
+		})
+
+	case events.Type_EXECUTOR_START_TIME:
+		el.StartTime = req.GetStartTime()
+		err = update(func(tx *bolt.Tx) error {
+			return updateExecutorLogs(tx, fmt.Sprint(req.Id, req.Index), el)
+		})
+
+	case events.Type_EXECUTOR_END_TIME:
+		el.EndTime = req.GetEndTime()
+		err = update(func(tx *bolt.Tx) error {
+			return updateExecutorLogs(tx, fmt.Sprint(req.Id, req.Index), el)
+		})
+
+	case events.Type_EXECUTOR_EXIT_CODE:
+		el.ExitCode = req.GetExitCode()
+		err = update(func(tx *bolt.Tx) error {
+			return updateExecutorLogs(tx, fmt.Sprint(req.Id, req.Index), el)
+		})
+
+	case events.Type_EXECUTOR_STDOUT:
+		err = update(func(tx *bolt.Tx) error {
+			return updateExecutorStdout(tx, fmt.Sprint(req.Id, req.Index), req.GetStdout())
+		})
+
+	case events.Type_EXECUTOR_STDERR:
+		err = update(func(tx *bolt.Tx) error {
+			return updateExecutorStderr(tx, fmt.Sprint(req.Id, req.Index), req.GetStderr())
+		})
+
+	case events.Type_SYSTEM_LOG:
+		idBytes := []byte(req.Id)
+		err = update(func(tx *bolt.Tx) error {
+			var syslogs []string
+			existing := tx.Bucket(SysLogs).Get(idBytes)
+			if existing != nil {
+				if err := json.Unmarshal(existing, &syslogs); err != nil {
+					return err
+				}
+			}
+			syslogs = append(syslogs, req.SysLogString())
+			logbytes, err := json.Marshal(syslogs)
+			if err != nil {
+				return err
+			}
+			return tx.Bucket(SysLogs).Put(idBytes, logbytes)
+		})
+		if err != nil {
+			return err
+		}
+
+	case events.Type_TASK_RESOURCES:
+		r := req.GetResources()
+		err = update(func(tx *bolt.Tx) error {
+			if err := checkOwner(tx, req.Id, ctx); err != nil {
+				return err
+			}
+			task := &tes.Task{}
+			if err := loadTask(tx, req.Id, task, ctx); err != nil {
+				return err
+			}
+			if task.Resources == nil {
+				task.Resources = &tes.Resources{}
+			}
+			task.Resources.CpuCores = r.CpuCores
+			task.Resources.RamGb = r.RamGb
+			task.Resources.DiskGb = r.DiskGb
+			task.Resources.Preemptible = r.Preemptible
+			task.Resources.BackendParameters = r.BackendParameters
+			task.Resources.Zones = r.Zones
+			taskBytes, merr := proto.Marshal(task)
+			if merr != nil {
+				return merr
+			}
+			if err := tx.Bucket(TaskBucket).Put([]byte(req.Id), taskBytes); err != nil {
+				return err
+			}
+			return nil
+		})
+	}
+
+	return err
+}
+
+func transitionTaskState(tx *bolt.Tx, id string, target tes.State) error {
+	idBytes := []byte(id)
+	current := getTaskState(tx, id)
+	if target == current {
+		return nil
+	}
+	if err := taskpolicy.ValidateTransition(current, target); err != nil {
+		return err
+	}
+	if tx.Bucket(TaskClaims).Get(idBytes) != nil && tes.TerminalState(current) && !tes.TerminalState(target) {
+		return fmt.Errorf("task %q has a finished allocation; submit a new task to retry", id)
+	}
+
+	switch target {
+	case Unknown, Paused:
+		return fmt.Errorf("Unimplemented task state %s", target.String())
+
+	case Queued:
+		if err := tx.Bucket(TasksQueued).Put(idBytes, []byte{}); err != nil {
+			return err
+		}
+
+	case Canceled, Complete, ExecutorError, SystemError:
+		// Remove from queue
+		if err := tx.Bucket(TasksQueued).Delete(idBytes); err != nil {
+			return err
+		}
+
+	case Running, Initializing:
+		if err := tx.Bucket(TasksQueued).Delete(idBytes); err != nil {
+			return err
+		}
+
+	default:
+		return fmt.Errorf("Unknown target state: %s", target.String())
+	}
+
+	if tes.TerminalState(target) {
+		if err := releaseTaskReservation(tx, id); err != nil {
+			return err
+		}
+	}
+
+	return tx.Bucket(TaskState).Put(idBytes, []byte(target.String()))
+}
+
+func updateTaskLogs(tx *bolt.Tx, id string, tl *tes.TaskLog) error {
+	tasklog := &tes.TaskLog{}
+
+	// Try to load existing task log
+	b := tx.Bucket(TasksLog).Get([]byte(id))
+	if b != nil {
+		err := proto.Unmarshal(b, tasklog)
+		if err != nil {
+			return err
+		}
+	}
+
+	if tl.StartTime != "" {
+		tasklog.StartTime = tl.StartTime
+	}
+
+	if tl.EndTime != "" {
+		tasklog.EndTime = tl.EndTime
+	}
+
+	if tl.Outputs != nil {
+		tasklog.Outputs = tl.Outputs
+	}
+
+	if tl.Metadata != nil {
+		if tasklog.Metadata == nil {
+			tasklog.Metadata = map[string]string{}
+		}
+		for k, v := range tl.Metadata {
+			tasklog.Metadata[k] = v
+		}
+	}
+
+	logbytes, err := proto.Marshal(tasklog)
+	if err != nil {
+		return err
+	}
+	return tx.Bucket(TasksLog).Put([]byte(id), logbytes)
+}
+
+func updateExecutorLogs(tx *bolt.Tx, id string, el *tes.ExecutorLog) error {
+	// Check if there is an existing task log
+	o := tx.Bucket(ExecutorLogs).Get([]byte(id))
+	if o != nil {
+		// There is an existing log in the DB, load it
+		existing := &tes.ExecutorLog{}
+		err := proto.Unmarshal(o, existing)
+		if err != nil {
+			return err
+		}
+
+		el.Stdout = ""
+		el.Stderr = ""
+
+		// Merge the updates into the existing.
+		proto.Merge(existing, el)
+		// existing is updated, so set that to el which will get saved below.
+		el = existing
+	}
+
+	// Save the updated log
+	logbytes, err := proto.Marshal(el)
+	if err != nil {
+		return err
+	}
+	return tx.Bucket(ExecutorLogs).Put([]byte(id), logbytes)
+}
+
+func updateExecutorStdout(tx *bolt.Tx, id, stdout string) error {
+	return tx.Bucket(ExecutorStdout).Put([]byte(id), []byte(stdout))
+}
+
+func updateExecutorStderr(tx *bolt.Tx, id, stderr string) error {
+	return tx.Bucket(ExecutorStderr).Put([]byte(id), []byte(stderr))
+}

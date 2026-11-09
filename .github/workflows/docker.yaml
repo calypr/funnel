@@ -29,6 +29,7 @@ jobs:
           - platform: linux/arm64
             runner: ubuntu-22.04-arm
     runs-on: ${{ matrix.runner || 'ubuntu-22.04' }}
+    timeout-minutes: 30
     steps:
       - name: Prepare
         run: |
@@ -99,6 +100,7 @@ jobs:
   merge:
     name: Publish multi-platform image manifest
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs:
       - build
     steps:

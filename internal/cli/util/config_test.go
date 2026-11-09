@@ -1,0 +1,160 @@
+package util
+
+import (
+	"reflect"
+	"strings"
+	"testing"
+	"time"
+
+	"google.golang.org/protobuf/types/known/durationpb"
+
+	"github.com/calypr/funnel/api/config"
+	appconfig "github.com/calypr/funnel/internal/config"
+	"github.com/calypr/funnel/internal/config/configtest"
+)
+
+func TestConfigEnvironmentDefaultsAndOverrides(t *testing.T) {
+	fileConfig := appconfig.EmptyConfig()
+	fileConfig.Server.HTTPPort = "8123"
+	fileConfig.Logger.Level = "warn"
+	file := configtest.WriteFile(t, fileConfig, "environment.yaml")
+	t.Setenv("FUNNEL_CONFIG", file)
+	t.Setenv("FUNNEL_LOG_LEVEL", "debug")
+	got, err := MergeConfigFileWithFlags("", appconfig.EmptyConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Server.HTTPPort != "8123" || got.Logger.Level != "debug" {
+		t.Fatalf("environment configuration not applied: port=%s level=%s", got.Server.HTTPPort, got.Logger.Level)
+	}
+	explicitConfig := appconfig.EmptyConfig()
+	explicitConfig.Server.HTTPPort = "8456"
+	explicitFile := configtest.WriteFile(t, explicitConfig, "explicit.yaml")
+	flags := appconfig.EmptyConfig()
+	flags.Logger.Level = "error"
+	got, err = MergeConfigFileWithFlags(explicitFile, flags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Server.HTTPPort != "8456" || got.Logger.Level != "error" {
+		t.Fatalf("explicit configuration did not win: port=%s level=%s", got.Server.HTTPPort, got.Logger.Level)
+	}
+	t.Setenv("FUNNEL_CONFIG", file+".missing")
+	if _, err := MergeConfigFileWithFlags("", appconfig.EmptyConfig()); err == nil {
+		t.Fatal("missing environment-selected config must return an error")
+	}
+}
+
+func TestHTTPStorageTimeoutDefaultsAndOverrides(t *testing.T) {
+	defaults, err := MergeConfigFileWithFlags("", appconfig.EmptyConfig())
+	if err != nil || !defaults.HTTPStorage.Timeout.GetDisabled() {
+		t.Fatalf("expected disabled default timeout, got %v, %v", defaults.HTTPStorage.Timeout, err)
+	}
+	fileConfig := appconfig.EmptyConfig()
+	fileConfig.HTTPStorage.Timeout.TimeoutOption = &config.TimeoutConfig_Duration{Duration: durationpb.New(3 * time.Minute)}
+	file := configtest.WriteFile(t, fileConfig, "config.yaml")
+	merged, err := MergeConfigFileWithFlags(file, appconfig.EmptyConfig())
+	if err != nil || merged.HTTPStorage.Timeout.GetDuration().AsDuration() != 3*time.Minute {
+		t.Fatalf("expected configured timeout, got %v, %v", merged.HTTPStorage.Timeout, err)
+	}
+	flags := appconfig.EmptyConfig()
+	flags.HTTPStorage.Timeout.TimeoutOption = &config.TimeoutConfig_Duration{Duration: durationpb.New(4 * time.Minute)}
+	merged, err = MergeConfigFileWithFlags(file, flags)
+	if err != nil || merged.HTTPStorage.Timeout.GetDuration().AsDuration() != 4*time.Minute {
+		t.Fatalf("expected flag timeout, got %v, %v", merged.HTTPStorage.Timeout, err)
+	}
+}
+
+func TestMergeConfigFileWithFlags(t *testing.T) {
+	fileConfig := appconfig.DefaultConfig()
+	flagConf := &config.Config{
+		Server: &config.Server{
+			HostName: "test",
+			RPCPort:  "9999",
+		},
+	}
+	serverAddress := appconfig.RPCAddress(flagConf.Server)
+
+	result, err := MergeConfigFileWithFlags("", flagConf)
+	if err != nil {
+		t.Error("unexpected error", err)
+	}
+	if result.Server == nil {
+		t.Fatal("unexpected nil Server config")
+	}
+	if appconfig.RPCAddress(result.Server) != serverAddress {
+		t.Error("unexpected server address")
+	}
+	if result.Server.HTTPPort != fileConfig.Server.HTTPPort {
+		t.Error("expected Config.Server.HTTPPort to equal the value from from config.DefaultValue()")
+	}
+	if result.RPCClient.ServerAddress != serverAddress {
+		t.Error("unexpected Config.RPCClient.ServerAddress")
+	}
+	if result.Compute != fileConfig.Compute {
+		t.Error("expected Config.Compute to equal default value from config.DefaultValue()")
+	}
+	if got, want := result.Kubernetes.ForbiddenPathPrefixes, []string{"/dev", "/proc", "/sys", "/run", "/var/run"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected runtime deny-list defaults %v, got %v", want, got)
+	}
+
+	fileConfig.Server.HTTPPort = "8888"
+	tmp := configtest.WriteFile(t, fileConfig, "testconfig.yaml")
+	result, err = MergeConfigFileWithFlags(tmp, flagConf)
+	if err != nil {
+		t.Error("unexpected error", err)
+	}
+	if appconfig.RPCAddress(result.Server) != serverAddress {
+		t.Error("unexpected server address")
+	}
+	if result.RPCClient.ServerAddress != serverAddress {
+		t.Error("unexpected Config.RPCClient.ServerAddress")
+	}
+	if result.Server.HTTPPort != fileConfig.Server.HTTPPort {
+		t.Error("expected Config.Server.HTTPPort to equal the value from the config file")
+	}
+	if result.Compute != fileConfig.Compute {
+		t.Error("expected Config.Compute to equal default value from config.DefaultValue()")
+	}
+}
+
+func TestMergeConfigRejectsTildeWorkDir(t *testing.T) {
+	for _, source := range []string{"file", "flag"} {
+		for _, workDir := range []string{"~", "~/work", "~other/work", "./work", "/tmp/work"} {
+			t.Run(source+"/"+workDir, func(t *testing.T) {
+				flags := appconfig.EmptyConfig()
+				file := ""
+				if source == "file" {
+					conf := appconfig.EmptyConfig()
+					conf.Worker.WorkDir = workDir
+					file = configtest.WriteFile(t, conf, "config.yaml")
+				} else {
+					flags.Worker.WorkDir = workDir
+				}
+				got, err := MergeConfigFileWithFlags(file, flags)
+				if strings.HasPrefix(workDir, "~") {
+					if err == nil || !strings.Contains(err.Error(), "Worker.WorkDir") || !strings.Contains(err.Error(), "not expanded") {
+						t.Fatalf("expected actionable error, got %v", err)
+					}
+				} else if err != nil || got.Worker.WorkDir != workDir {
+					t.Fatalf("work directory = %q, error = %v", got.Worker.WorkDir, err)
+				}
+			})
+		}
+	}
+}
+
+func TestMergeConfigFileReplacesForbiddenPathPrefixes(t *testing.T) {
+	fileConfig := appconfig.DefaultConfig()
+	fileConfig.Kubernetes.ForbiddenPathPrefixes = []string{"/secret"}
+	tmp := configtest.WriteFile(t, fileConfig, "testconfig.yaml")
+
+	result, err := MergeConfigFileWithFlags(tmp, appconfig.EmptyConfig())
+	if err != nil {
+		t.Fatal("unexpected error", err)
+	}
+
+	if got, want := result.Kubernetes.ForbiddenPathPrefixes, []string{"/secret"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected configured deny list %v, got %v", want, got)
+	}
+}

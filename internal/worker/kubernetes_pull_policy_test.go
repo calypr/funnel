@@ -1,0 +1,107 @@
+package worker
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"testing"
+
+	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
+
+	"github.com/calypr/funnel/api/tes"
+	appconfig "github.com/calypr/funnel/internal/config"
+	"github.com/calypr/funnel/internal/events"
+)
+
+func TestExecutorImagePullPolicy(t *testing.T) {
+	tests := []struct {
+		name string
+		tags map[string]string
+		want corev1.PullPolicy
+	}{
+		{name: "absent tag", want: corev1.PullAlways},
+		{name: "empty tag", tags: map[string]string{"_IMAGE_PULL_POLICY": ""}, want: corev1.PullAlways},
+		{name: "always", tags: map[string]string{"_IMAGE_PULL_POLICY": "Always"}, want: corev1.PullAlways},
+		{name: "cached image", tags: map[string]string{"_IMAGE_PULL_POLICY": "IfNotPresent"}, want: corev1.PullIfNotPresent},
+		{name: "local image only", tags: map[string]string{"_IMAGE_PULL_POLICY": "Never"}, want: corev1.PullNever},
+		{name: "invalid policy", tags: map[string]string{"_IMAGE_PULL_POLICY": "sometimes"}},
+		{name: "invalid multiline policy", tags: map[string]string{"_IMAGE_PULL_POLICY": "Always\n        privileged: true"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			conf := appconfig.DefaultConfig()
+			worker := DefaultWorker{
+				Executor: Executor{
+					Template:      executorTemplateFixture,
+					Namespace:     "test",
+					JobsNamespace: "test",
+					Resources:     conf.Kubernetes.Resources,
+				},
+				EventWriter: events.Noop{},
+			}
+			task := &tes.Task{Id: "pull-policy", Tags: tt.tags}
+			command, err := worker.newKubernetesCommand(ctx, events.NewTaskWriter(task.Id, 0, events.Noop{}), task, &tes.Executor{}, 0,
+				Command{Image: "alpine:3.21", ShellCommand: []string{"echo", "ok"}}, &tes.Resources{CpuCores: 1, RamGb: 1, DiskGb: 1})
+			if tt.want == "" {
+				if err == nil || !strings.Contains(err.Error(), "_IMAGE_PULL_POLICY") {
+					t.Fatalf("expected invalid pull-policy error, got %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			client := fake.NewSimpleClientset()
+			var submitted *batchv1.Job
+			stop := errors.New("stop after observing submitted job")
+			client.PrependReactor("create", "jobs", func(action k8stesting.Action) (bool, runtime.Object, error) {
+				submitted = action.(k8stesting.CreateAction).GetObject().(*batchv1.Job).DeepCopy()
+				return true, nil, stop
+			})
+			command.Clientset = client
+			err = command.Run(ctx)
+			var systemErr *K8sSystemErr
+			if !errors.As(err, &systemErr) || !errors.Is(systemErr.Err, stop) {
+				t.Fatalf("expected to stop at job submission, got %v", err)
+			}
+			if submitted == nil {
+				t.Fatal("executor job was not submitted")
+			}
+			if got := submitted.Spec.Template.Spec.Containers[0].ImagePullPolicy; got != tt.want {
+				t.Fatalf("submitted executor image pull policy = %q, want %q", got, tt.want)
+			}
+			pod := submitted.Spec.Template.Spec
+			if pod.ServiceAccountName != command.ServiceAccount {
+				t.Errorf("executor service account = %q, want %q", pod.ServiceAccountName, command.ServiceAccount)
+			}
+			if pod.AutomountServiceAccountToken == nil || *pod.AutomountServiceAccountToken {
+				t.Error("executor must explicitly disable API token automount")
+			}
+		})
+	}
+}
+
+func TestExecutorServiceAccountSelection(t *testing.T) {
+	for _, tc := range []struct{ name, configured, template, want string }{
+		{"existing shared account", "", "", "funnel-sa-test"},
+		{"generated task account", "", "configured-template", "funnel-worker-sa-test-task-1"},
+		{"explicit account", "configured-account", "configured-template", "configured-account"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			worker := DefaultWorker{Executor: Executor{Namespace: "test", JobsNamespace: "test", ServiceAccount: tc.configured, ServiceAccountTemplate: tc.template, Resources: appconfig.DefaultConfig().Kubernetes.Resources}, EventWriter: events.Noop{}}
+			command, err := worker.newKubernetesCommand(t.Context(), events.NewTaskWriter("task-1", 0, events.Noop{}), &tes.Task{Id: "task-1"}, &tes.Executor{}, 0, Command{}, &tes.Resources{CpuCores: 1, RamGb: 1, DiskGb: 1})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if command.ServiceAccount != tc.want {
+				t.Errorf("account = %q, want %q", command.ServiceAccount, tc.want)
+			}
+		})
+	}
+}

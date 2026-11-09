@@ -21,7 +21,7 @@ docker/funnel
 /docs/internal/
 funnel-work-dir
 node_modules
-storage/_test_download
+/internal/storage/_test_download
 test_tmp
 website/resources
 
