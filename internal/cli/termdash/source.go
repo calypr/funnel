@@ -15,8 +15,9 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/calypr/funnel/api/tes"
-	"github.com/calypr/funnel/internal/cli/tesenv"
+	tesclient "github.com/calypr/funnel/client/tes"
 	"github.com/calypr/funnel/internal/compute/scheduler"
+	"github.com/calypr/funnel/internal/httpauth"
 )
 
 type taskClient interface {
@@ -82,7 +83,7 @@ func (ts *TaskSource) TaskWorkers() ([]taskWorker, error) {
 }
 
 func NewTaskSource(tesHTTPServerAddress string, pageSize int32) (*TaskSource, error) {
-	cli, err := tesenv.New(tesHTTPServerAddress)
+	cli, err := tesclient.NewClient(tesHTTPServerAddress)
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +123,7 @@ func (ts *TaskSource) Nodes() ([]*scheduler.Node, error) {
 		if err != nil {
 			return nil, err
 		}
-		resp, err := tesenv.DoAuthenticatedRequest(ts.nodeClient, req, os.Getenv("FUNNEL_SERVER_USER"), os.Getenv("FUNNEL_SERVER_PASSWORD"))
+		resp, err := (httpauth.Policy{AllowInsecure: os.Getenv("FUNNEL_ALLOW_INSECURE_CREDENTIALS") == "true"}).Do(ts.nodeClient, req, os.Getenv("FUNNEL_SERVER_USER"), os.Getenv("FUNNEL_SERVER_PASSWORD"))
 		if err != nil {
 			return nil, fmt.Errorf("fetch scheduler nodes: %w", err)
 		}

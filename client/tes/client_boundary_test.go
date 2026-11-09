@@ -39,20 +39,21 @@ func TestRESTClientPreservesPrefixAndEscapesTaskID(t *testing.T) {
 	}
 }
 
-func TestRESTClientIgnoresProcessCredentials(t *testing.T) {
+func TestRESTClientOptionsOverrideEnvironmentCredentials(t *testing.T) {
 	t.Setenv("FUNNEL_SERVER_USER", "implicit-user")
 	t.Setenv("FUNNEL_SERVER_PASSWORD", "implicit-password")
 	t.Setenv("FUNNEL_SERVER_TOKEN", "implicit-token")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "" {
-			t.Error("library read process credentials")
+		user, password, ok := r.BasicAuth()
+		if !ok || user != "explicit-user" || password != "explicit-password" {
+			t.Error("explicit credentials did not override environment defaults")
 		}
-		if _, err := io.WriteString(w, `{}`); err != nil {
-			t.Error(err)
-		}
+		_, _ = io.WriteString(w, `{}`)
 	}))
 	defer server.Close()
-	c, err := tesclient.NewClient(server.URL)
+	c, err := tesclient.NewClient(server.URL, func(c *tesclient.Client) {
+		c.User, c.Password, c.Token = "explicit-user", "explicit-password", ""
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

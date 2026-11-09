@@ -11,14 +11,14 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/calypr/funnel/api/tes"
-	"github.com/calypr/funnel/internal/cli/tesenv"
+	tesclient "github.com/calypr/funnel/client/tes"
 )
 
 // Create runs the "task create" CLI command, connecting to the server,
 // calling CreateTask, and writing output to the given writer.
 // Tasks are loaded from the "files" arg. "files" are file paths to JSON objects.
 func Create(server string, files []string, reader io.Reader, writer io.Writer) error {
-	cli, err := tesenv.New(server)
+	cli, err := tesclient.NewClient(server)
 	if err != nil {
 		return err
 	}

@@ -9,13 +9,13 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/calypr/funnel/api/tes"
-	"github.com/calypr/funnel/internal/cli/tesenv"
+	tesclient "github.com/calypr/funnel/client/tes"
 )
 
 // Cancel runs the "task cancel" CLI command, which connects to the server,
 // calls CancelTask() on each ID, and writes output to the given writer.
 func Cancel(server string, ids []string, writer io.Writer) error {
-	cli, err := tesenv.New(server)
+	cli, err := tesclient.NewClient(server)
 	if err != nil {
 		return err
 	}

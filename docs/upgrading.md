@@ -58,9 +58,10 @@ not replace the old runtime helpers such as `config.DefaultConfig`, `ParseFile`,
 `ToYamlFile`, or `logger.NewLogger`. The former `util` helpers have moved to their
 owning packages or the standard library. Build metadata is public in `version`.
 
-### Configure the REST client explicitly
+### Configure the REST client
 
-Import the client separately from the TES models and set credentials explicitly:
+Import the client separately from the TES models. Credentials can come from the
+environment or be set on the client:
 
 ```go
 package example
@@ -85,15 +86,16 @@ func GetTask(ctx context.Context, address, token, id string) (*tes.Task, error) 
 }
 ```
 
-The library no longer reads `FUNNEL_SERVER_USER`, `FUNNEL_SERVER_PASSWORD`,
-`FUNNEL_SERVER_TOKEN`, or `FUNNEL_ALLOW_INSECURE_CREDENTIALS`. Set `User`,
-`Password`, and `Token` on the client as needed. A token takes precedence over
-Basic credentials. The CLI continues to read those environment variables.
+`NewClient` continues to read `FUNNEL_SERVER_USER`, `FUNNEL_SERVER_PASSWORD`,
+`FUNNEL_SERVER_TOKEN`, and `FUNNEL_ALLOW_INSECURE_CREDENTIALS` at construction.
+These variables remain supported by both Go applications and the CLI. Set
+`User`, `Password`, or `Token` afterward, or supply a `ClientOption`, to override
+the environment defaults. A token takes precedence over Basic credentials.
 
 Use HTTPS for credentials sent to remote hosts. The REST client allows loopback
 HTTP. For deployments that deliberately permit remote plaintext credentials,
 pass `tesclient.WithInsecureCredentials()` in Go or set
-`FUNNEL_ALLOW_INSECURE_CREDENTIALS=true` for the CLI and connecting processes.
+`FUNNEL_ALLOW_INSECURE_CREDENTIALS=true` for Go clients, the CLI, and connecting processes.
 Authenticated remote plaintext gRPC connections require the explicit setting
 or a secure tunnel ending on loopback. The opt-in also permits authenticated
 HTTPS-to-HTTP redirects. See [remote server connections](integrations/remote-server.md).

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -13,6 +14,8 @@ import (
 // NewClient returns a new HTTP client for accessing
 // Create/List/Get/Cancel Task endpoints. "address" is the address
 // of the TES server.
+// Credentials and plaintext opt-in default to the FUNNEL_SERVER_* and
+// FUNNEL_ALLOW_INSECURE_CREDENTIALS environment variables. Options apply afterward.
 func NewClient(address string, options ...ClientOption) (*Client, error) {
 	if !strings.Contains(address, "://") {
 		address = "http://" + address
@@ -24,7 +27,14 @@ func NewClient(address string, options ...ClientOption) (*Client, error) {
 	if (endpoint.Scheme != "http" && endpoint.Scheme != "https") || endpoint.Hostname() == "" || endpoint.RawQuery != "" || endpoint.ForceQuery || endpoint.Fragment != "" {
 		return nil, fmt.Errorf("tes: server address must be an HTTP(S) URL without query or fragment")
 	}
-	c := &Client{address: strings.TrimRight(endpoint.String(), "/"), client: &http.Client{Timeout: 60 * time.Second}}
+	c := &Client{
+		address:                  strings.TrimRight(endpoint.String(), "/"),
+		client:                   &http.Client{Timeout: 60 * time.Second},
+		User:                     os.Getenv("FUNNEL_SERVER_USER"),
+		Password:                 os.Getenv("FUNNEL_SERVER_PASSWORD"),
+		Token:                    os.Getenv("FUNNEL_SERVER_TOKEN"),
+		allowInsecureCredentials: os.Getenv("FUNNEL_ALLOW_INSECURE_CREDENTIALS") == "true",
+	}
 	for _, option := range options {
 		option(c)
 	}

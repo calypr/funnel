@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/calypr/funnel/api/tes"
-	"github.com/calypr/funnel/internal/cli/tesenv"
+	tesclient "github.com/calypr/funnel/client/tes"
 	"github.com/calypr/funnel/internal/shellwords"
 )
 
@@ -85,7 +85,7 @@ func Run(args []string) error {
 		return err
 	}
 
-	cli, err := tesenv.New(vals.server)
+	cli, err := tesclient.NewClient(vals.server)
 	if err != nil {
 		return err
 	}

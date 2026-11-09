@@ -18,6 +18,7 @@ func TestCredentialTransportPolicy(t *testing.T) {
 	for _, tc := range []struct {
 		name, address, user, password, opt string
 		reject                             bool
+		explicit                           bool
 	}{
 		{name: "remote credentials", address: "http://remote.invalid", user: "u", reject: true},
 		{name: "password only", address: "http://remote.invalid", password: "p", reject: true},
@@ -28,6 +29,7 @@ func TestCredentialTransportPolicy(t *testing.T) {
 		{name: "ipv6 loopback", address: "http://[::1]:8000", user: "u"},
 		{name: "localhost lookalike", address: "http://localhost.invalid", user: "u", reject: true},
 		{name: "opt in", address: "http://remote.invalid", user: "u", opt: "true"},
+		{name: "explicit option", address: "http://remote.invalid", user: "u", explicit: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("FUNNEL_ALLOW_INSECURE_CREDENTIALS", tc.opt)
@@ -35,7 +37,7 @@ func TestCredentialTransportPolicy(t *testing.T) {
 			t.Setenv("FUNNEL_SERVER_PASSWORD", "")
 			t.Setenv("FUNNEL_SERVER_TOKEN", "")
 			var options []ClientOption
-			if tc.opt == "true" {
+			if tc.explicit {
 				options = append(options, WithInsecureCredentials())
 			}
 			c, err := NewClient(tc.address, options...)

@@ -1,4 +1,4 @@
-package tesenv
+package tes_test
 
 import (
 	"io"
@@ -7,9 +7,10 @@ import (
 	"testing"
 
 	"github.com/calypr/funnel/api/tes"
+	tesclient "github.com/calypr/funnel/client/tes"
 )
 
-func TestClientCredentials(t *testing.T) {
+func TestRESTClientEnvironmentCredentials(t *testing.T) {
 	for _, tc := range []struct {
 		name, token, user, password, want string
 	}{
@@ -21,6 +22,7 @@ func TestClientCredentials(t *testing.T) {
 		{name: "anonymous"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("FUNNEL_ALLOW_INSECURE_CREDENTIALS", "")
 			t.Setenv("FUNNEL_SERVER_TOKEN", tc.token)
 			t.Setenv("FUNNEL_SERVER_USER", tc.user)
 			t.Setenv("FUNNEL_SERVER_PASSWORD", tc.password)
@@ -33,7 +35,7 @@ func TestClientCredentials(t *testing.T) {
 				}
 			}))
 			defer srv.Close()
-			client, err := New(srv.URL)
+			client, err := tesclient.NewClient(srv.URL)
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -36,13 +36,14 @@ transports, timeouts, proxies, and testing. List responses return the next page
 token; callers choose when to fetch another page. Requests use the caller's
 context, and the server owns task validation and initialization.
 
-The library does not read `FUNNEL_SERVER_USER`, `FUNNEL_SERVER_PASSWORD`,
-`FUNNEL_SERVER_TOKEN`, or `FUNNEL_ALLOW_INSECURE_CREDENTIALS`. Set `User`,
-`Password`, or `Token` explicitly. Bearer tokens take precedence over Basic
-credentials. Credentials require HTTPS except for loopback hosts; applications
-that deliberately permit plaintext credentials must pass
-`tesclient.WithInsecureCredentials()`. The same rule covers redirects. The CLI retains
-its environment-variable behavior through `internal/cli/tesenv`.
+`NewClient` reads `FUNNEL_SERVER_USER`, `FUNNEL_SERVER_PASSWORD`,
+`FUNNEL_SERVER_TOKEN`, and `FUNNEL_ALLOW_INSECURE_CREDENTIALS` as constructor
+defaults, preserving existing library and CLI behavior. Set `User`, `Password`,
+or `Token` afterward, or use a `ClientOption`, to override those defaults.
+Bearer tokens take precedence over Basic credentials. Credentials require HTTPS
+except for loopback hosts. Remote plaintext credentials and authenticated
+HTTPS-to-HTTP redirects require `FUNNEL_ALLOW_INSECURE_CREDENTIALS=true` or
+`tesclient.WithInsecureCredentials()`. CLI commands use the same public constructor.
 
 The client and dashboard node requests share a focused `internal/httpauth` credential
 transport policy. It is a private helper with only standard-library dependencies.

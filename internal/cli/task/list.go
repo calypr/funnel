@@ -9,14 +9,14 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/calypr/funnel/api/tes"
-	"github.com/calypr/funnel/internal/cli/tesenv"
+	tesclient "github.com/calypr/funnel/client/tes"
 )
 
 // List runs the "task list" CLI command, which connects to the server,
 // calls ListTasks() and requests the given task view.
 // Output is written to the given writer.
 func List(server, taskView, pageToken, stateFilter string, tagsFilter []string, namePrefix string, pageSize int32, all bool, writer io.Writer) error {
-	cli, err := tesenv.New(server)
+	cli, err := tesclient.NewClient(server)
 	if err != nil {
 		return err
 	}

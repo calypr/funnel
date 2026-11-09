@@ -15,7 +15,7 @@ import (
 	"github.com/calypr/funnel/api/config"
 	tesclient "github.com/calypr/funnel/client/tes"
 	servercmd "github.com/calypr/funnel/internal/cli/server"
-	"github.com/calypr/funnel/internal/cli/tesenv"
+
 	funnelkubernetes "github.com/calypr/funnel/internal/compute/kubernetes"
 	"github.com/calypr/funnel/internal/compute/scheduler"
 	appconfig "github.com/calypr/funnel/internal/config"
@@ -62,7 +62,7 @@ type Funnel struct {
 func NewFunnel(scope CleanupScope, conf *config.Config) *Funnel {
 	f := &Funnel{Conf: conf, StorageDir: conf.LocalStorage.AllowedDirs[0], scope: scope}
 	scope.Cleanup(f.Cleanup)
-	cli, err := tesenv.New(appconfig.HTTPAddress(conf.Server))
+	cli, err := tesclient.NewClient(appconfig.HTTPAddress(conf.Server))
 	if err != nil {
 		panic(err)
 	}
