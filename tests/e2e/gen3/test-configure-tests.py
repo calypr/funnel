@@ -60,8 +60,10 @@ def main(test_root):
         workflow_test.write_text((test_root / "tests" / "test_gen3_workflow.py").read_text())
         original_workflow = workflow_test.read_text()
         configuration.configure(copy)
-        assert 'app=funnel-worker,task-id={task_id} --all-containers' in workflow_test.read_text()
+        assert configuration.WORKER_LOGS_CONFIGURED in workflow_test.read_text()
         assert workflow_test.read_text().replace(
+            configuration.WORKER_LOGS_CONFIGURED, configuration.WORKER_LOGS_ORIGINAL
+        ).replace(
             'app=funnel-worker,task-id={task_id}', 'app=funnel-worker'
         ).replace(configuration.STORAGE_CONFIGURED, configuration.STORAGE_ORIGINAL) == original_workflow
         configured = destination.read_text()

@@ -186,6 +186,11 @@ jobs:
       - name: Verify shared workflow fixture initialization
         run: python3 tests/e2e/gen3/test-shared-workflow-fixture.py
 
+      - name: Verify worker log startup synchronization
+        run: |
+          python3 tests/e2e/gen3/test-worker-logs.py
+          python3 tests/e2e/gen3/test-configure-tests.py "$WORKING_DIR"
+
       - name: Verify port-forward process ownership
         run: bash tests/e2e/gen3/test-port-forward.sh
 

@@ -33,6 +33,19 @@ STORAGE_CONFIGURED = """        from funnel_ci_fixture import initialize_storage
 """
 
 
+WORKER_LOGS_ORIGINAL = '''        cmd = [
+            f"kubectl -n workflow-pods-{pytest.namespace} logs -l app=funnel-worker --all-containers --tail -1"
+        ]
+        result = subprocess.run(
+            cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+'''
+WORKER_LOGS_CONFIGURED = '''        from funnel_ci_fixture import worker_logs
+
+        result = worker_logs(f"workflow-pods-{pytest.namespace}", task_id)
+'''
+
+
 def replace_once(path: Path, original: str, configured: str) -> None:
     source = path.read_text()
     if source.count(configured) == 1 and original not in source:
@@ -45,12 +58,8 @@ def replace_once(path: Path, original: str, configured: str) -> None:
 def configure(test_root: Path) -> None:
     replace_once(test_root / "services" / "gen3workflow.py", ORIGINAL, CONFIGURED)
     replace_once(test_root / "conftest.py", AUTH_ORIGINAL, AUTH_CONFIGURED)
-    replace_once(
-        test_root / "tests" / "test_gen3_workflow.py",
-        'logs -l app=funnel-worker --all-containers --tail -1',
-        'logs -l app=funnel-worker,task-id={task_id} --all-containers --tail -1',
-    )
     replace_once(test_root / "tests" / "test_gen3_workflow.py", STORAGE_ORIGINAL, STORAGE_CONFIGURED)
+    replace_once(test_root / "tests" / "test_gen3_workflow.py", WORKER_LOGS_ORIGINAL, WORKER_LOGS_CONFIGURED)
     (test_root / "funnel_ci_fixture.py").write_text(
         Path(__file__).with_name("funnel_ci_fixture.py").read_text()
     )
