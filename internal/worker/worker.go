@@ -515,15 +515,18 @@ func (r *DefaultWorker) runExecutors(ctx context.Context, event *events.TaskWrit
 func (r *DefaultWorker) processOutputs(ctx context.Context, event *events.TaskWriter, mapper *workspace.FileMapper, run *helper) {
 	outputsAvailable := true
 	publicationMapper := mapper
+	var preparationErr error
 	if run.syserr == nil {
 		snapshot, cleanup, err := snapshotTaskOutputs(ctx, mapper, event)
 		if err != nil {
-			outputsAvailable = false
 			if run.execerr != nil {
 				_ = event.Error("Failed to prepare output files after executor error", "error", err) //nolint:errcheck // Preserve the executor result.
 			} else {
-				run.syserr = fmt.Errorf("prepare output publication: %w", err)
+				preparationErr = fmt.Errorf("prepare output publication: %w", err)
 			}
+		}
+		if snapshot == nil {
+			outputsAvailable = false
 		} else {
 			defer cleanup()
 			publicationMapper = snapshot
@@ -572,5 +575,8 @@ func (r *DefaultWorker) processOutputs(ctx context.Context, event *events.TaskWr
 				run.syserr = fmt.Errorf("recording output files: %w", err)
 			}
 		}
+	}
+	if preparationErr != nil {
+		run.syserr = errors.Join(run.syserr, preparationErr)
 	}
 }

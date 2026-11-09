@@ -82,6 +82,71 @@ func workerOutputFile(t *testing.T, name, content string) *tes.Output {
 	return &tes.Output{Url: "s3://outputs/" + name, Path: path, Type: tes.File.Enum()}
 }
 
+func TestProcessOutputsPublishesAvailableFilesAfterPreparationFailure(t *testing.T) {
+	for _, tc := range []struct {
+		name                       string
+		missingFirst, executorFail bool
+	}{
+		{name: "successful executor, missing last"},
+		{name: "successful executor, missing first", missingFirst: true},
+		{name: "failed executor, missing last", executorFail: true},
+		{name: "failed executor, missing first", missingFirst: true, executorFail: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mapper := workspace.NewFileMapper(t.TempDir())
+			outputs := []*tes.Output{
+				{Path: "/outputs/diagnostic.txt", Url: "test://diagnostic", Type: tes.File.Enum()},
+				{Path: "/outputs/missing.txt", Url: "test://missing", Type: tes.File.Enum()},
+			}
+			if tc.missingFirst {
+				outputs[0], outputs[1] = outputs[1], outputs[0]
+			}
+			if err := mapper.MapTask(&tes.Task{Outputs: outputs}, "docker"); err != nil {
+				t.Fatal(err)
+			}
+			for _, output := range mapper.Outputs {
+				if output.Url == "test://diagnostic" {
+					if err := os.WriteFile(output.Path, []byte("diagnostic bytes"), 0600); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			store := &capturingUploadStorage{uploaded: make(map[string]string)}
+			writer := &publicationEvents{}
+			run := &helper{}
+			if tc.executorFail {
+				run.execerr = errors.New("executor failed")
+			}
+			execErr := run.execerr
+			worker := &DefaultWorker{Conf: &config.Worker{MaxParallelTransfers: 1}, Store: store}
+			worker.processOutputs(t.Context(), events.NewTaskWriter("task", 0, writer), mapper, run)
+			if len(store.uploaded) != 1 || store.uploaded["test://diagnostic"] != "diagnostic bytes" {
+				t.Fatalf("available diagnostic was not published: %v", store.uploaded)
+			}
+			if tc.executorFail {
+				if run.syserr != nil || run.execerr != execErr {
+					t.Fatalf("executor error was replaced: system=%v executor=%v", run.syserr, run.execerr)
+				}
+			} else if !errors.Is(run.syserr, os.ErrNotExist) {
+				t.Fatalf("missing output error was lost: %v", run.syserr)
+			}
+			if writer.count("upload failed") != 1 || writer.count("upload finished") != 1 {
+				t.Fatalf("missing per-output transfer events: %v", writer.snapshot())
+			}
+			for _, event := range writer.snapshot() {
+				if event.Type == events.Type_TASK_OUTPUTS {
+					files := event.GetOutputs().Value
+					if len(files) != 1 || files[0].Url != "test://diagnostic" || files[0].Path != "/outputs/diagnostic.txt" {
+						t.Fatalf("incorrect successful-output log: %v", files)
+					}
+					return
+				}
+			}
+			t.Fatal("successful output was not recorded")
+		})
+	}
+}
+
 func TestUploadOutputsKeepsAcknowledgedFilesOnPartialFailure(t *testing.T) {
 	var reads atomic.Int32
 	store := workerPublicationS3(t, func(w http.ResponseWriter, r *http.Request) {

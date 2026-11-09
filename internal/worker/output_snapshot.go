@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -19,7 +20,9 @@ import (
 
 // snapshotTaskOutputs copies through confined descriptors into a private sibling
 // directory. Uploaders can reopen these paths without racing task-owned links.
-func snapshotTaskOutputs(ctx context.Context, mapper *workspace.FileMapper, event *events.TaskWriter) (_ *workspace.FileMapper, cleanup func(), retErr error) {
+// Per-output failures accompany the successfully prepared outputs. A nil mapper
+// means snapshot preparation could not continue.
+func snapshotTaskOutputs(ctx context.Context, mapper *workspace.FileMapper, event *events.TaskWriter) (prepared *workspace.FileMapper, cleanup func(), err error) {
 	if len(mapper.Outputs) == 0 {
 		return mapper, func() {}, nil
 	}
@@ -39,12 +42,13 @@ func snapshotTaskOutputs(ctx context.Context, mapper *workspace.FileMapper, even
 	remove := func() { _ = os.RemoveAll(stage) } //nolint:errcheck // Snapshot cleanup must not replace the publication result.
 	cleanup = remove
 	defer func() {
-		if retErr != nil {
+		if prepared == nil {
 			remove()
 		}
 	}()
 	copyMapper := *mapper
 	copyMapper.WorkDir, copyMapper.ScratchDir, copyMapper.Outputs = stage, "", nil
+	var preparationErrors []error
 	for _, output := range mapper.Outputs {
 		if err := ctx.Err(); err != nil {
 			return nil, nil, err
@@ -56,14 +60,18 @@ func snapshotTaskOutputs(ctx context.Context, mapper *workspace.FileMapper, even
 		if err := snapshotOutput(ctx, root, rel, stage, base, mapper.WorkDir); err != nil {
 			wrapped := fmt.Errorf("prepare output %s: %w", output.Path, err)
 			_ = event.Error("upload failed", "path", mapper.ContainerPath(output.Path), "url", output.Url, "error", wrapped) //nolint:errcheck // The preparation error is returned to the worker.
-			return nil, nil, wrapped
+			if errors.Is(err, path.ErrBadPattern) {
+				return nil, nil, wrapped
+			}
+			preparationErrors = append(preparationErrors, wrapped)
+			continue
 		}
 
 		cloned := proto.Clone(output).(*tes.Output)
 		cloned.Path = filepath.Join(stage, rel)
 		copyMapper.Outputs = append(copyMapper.Outputs, cloned)
 	}
-	return &copyMapper, cleanup, nil
+	return &copyMapper, cleanup, errors.Join(preparationErrors...)
 }
 
 func snapshotOutput(ctx context.Context, root *os.Root, rel, stage string, hostRoots ...string) error {
