@@ -135,7 +135,12 @@ from replacing the candidate.
 
 The authorizer is built from the pinned
 [`funnel-gen3-plugin` commit `eacaf197bfbc786c753d9ecfb86a2a2f7022a5e3`](https://github.com/calypr/funnel-gen3-plugin/commit/eacaf197bfbc786c753d9ecfb86a2a2f7022a5e3)
-and the candidate's Funnel module. Both Kind nodes receive that image, and the
+and the candidate's Funnel module. `plugin-api.patch` migrates that pinned
+authorizer and its tests to `api/config`, `api/tes`, and `api/plugin`; logging
+uses HashiCorp's logger directly. The build runs the authorizer's tests before
+compiling it. It resolves dependencies for `plugin-gen3` rather than tidying
+unrelated upstream demo programs that use older Funnel APIs.
+Both Kind nodes receive that image, and the
 verification hook checks the running plugin init container. The renderer requires
 both candidate image references to prevent a registry image from replacing either
 built artifact.

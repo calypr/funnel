@@ -361,6 +361,8 @@ build_images() {
     "https://github.com/calypr/funnel-gen3-plugin/archive/${plugin_source_sha}.tar.gz" \
     --output "$plugin_archive"
   tar -xzf "$plugin_archive" --strip-components=1 -C "$plugin_context"
+  # Migrate the pinned authorizer to the public API without changing its policy.
+  patch --batch --forward -d "$plugin_context" -p1 < "$workspace/tests/e2e/gen3/plugin-api.patch"
 
   funnel_module=$(awk '$1 == "module" { module = $2 } END { print module }' "$build_context/go.mod")
   if [[ -z "$funnel_module" ]]; then
@@ -400,12 +402,8 @@ PY
     "$builder_image" \
     bash -euo pipefail -c '
       go mod edit "-replace=${FUNNEL_MODULE}=${FUNNEL_MODULE_DIR}"
-      for attempt in 1 2 3; do
-        if go mod tidy; then break; fi
-        test "$attempt" -lt 3 || exit 1
-        sleep "$attempt"
-      done
-      CGO_ENABLED=0 go build -trimpath -o /out/authorizer ./plugin-gen3
+      go test -mod=mod ./plugin-gen3
+      CGO_ENABLED=0 go build -mod=mod -trimpath -o /out/authorizer ./plugin-gen3
     '
   install -m 0755 "$plugin_output/authorizer" "$build_context/authorizer-binary"
   DOCKER_BUILDKIT=1 docker build --platform "$build_platform" \

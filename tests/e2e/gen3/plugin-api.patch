@@ -1,0 +1,40 @@
+--- a/plugin-gen3/auth_impl.go
++++ b/plugin-gen3/auth_impl.go
+@@ -14,3 +14,2 @@
+-	"github.com/ohsu-comp-bio/funnel/config"
+-	"github.com/ohsu-comp-bio/funnel/plugins/proto"
+-	"github.com/ohsu-comp-bio/funnel/plugins/shared"
++	"github.com/calypr/funnel/api/config"
++	proto "github.com/calypr/funnel/api/plugin"
+@@ -18,0 +18,2 @@
++	"github.com/calypr/funnel/api/tes"
++	"github.com/hashicorp/go-hclog"
+@@ -20 +20,0 @@
+-	"github.com/ohsu-comp-bio/funnel/tes"
+@@ -100 +100 @@
+-	shared.Logger.Info("Configuration", "S3Url", S3Url)
++	hclog.Default().Info("Configuration", "S3Url", S3Url)
+@@ -142 +142 @@
+-	shared.Logger.Info("User's storage", "Bucket", storageInfoResponse.Bucket, "Region", storageInfoResponse.Region)
++	hclog.Default().Info("User's storage", "Bucket", storageInfoResponse.Bucket, "Region", storageInfoResponse.Region)
+@@ -168 +168 @@
+-		HandshakeConfig: shared.Handshake,
++		HandshakeConfig: proto.Handshake,
+@@ -170 +170 @@
+-			"authorize": &shared.AuthorizePlugin{Impl: &Authorize{}},
++			"authorize": &proto.AuthorizePlugin{Impl: &Authorize{}},
+--- a/plugin-gen3/auth_impl_test.go
++++ b/plugin-gen3/auth_impl_test.go
+@@ -18,3 +18,3 @@
+-	"github.com/ohsu-comp-bio/funnel/config"
+-	"github.com/ohsu-comp-bio/funnel/plugins/proto"
+-	"github.com/ohsu-comp-bio/funnel/tes"
++	"github.com/calypr/funnel/api/config"
++	proto "github.com/calypr/funnel/api/plugin"
++	"github.com/calypr/funnel/api/tes"
+@@ -51 +51 @@
+-	cfg := config.DefaultConfig()
++	cfg := &config.Config{AmazonS3: &config.AmazonS3Storage{}}
+@@ -145 +145 @@
+-		config.DefaultConfig(),
++		&config.Config{AmazonS3: &config.AmazonS3Storage{}},
