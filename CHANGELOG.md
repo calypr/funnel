@@ -1,3 +1,12 @@
+# Unreleased
+
+### Breaking changes and upgrade preparation
+
+* Elasticsearch support has been removed. Remove the entire `Elastic` section from existing configuration files before upgrading, even when another database backend is selected. Older full configurations can contain this unused section; leaving it present causes startup to fail with `unknown field "Elastic"`. Deployments using Elasticsearch must migrate their data to a supported backend before upgrading.
+* MongoDB now requires a replica set or sharded cluster for atomic task assignment and resource release. Standalone servers are rejected at startup. Convert existing standalone deployments before upgrading; a single-node replica set is sufficient for development. See the [MongoDB upgrade guide](website/content/docs/databases/mongodb.md#upgrade-an-existing-standalone-server).
+* Authenticated remote plaintext gRPC connections are now rejected by default. Use a secure tunnel terminating on loopback, or explicitly set `FUNNEL_ALLOW_INSECURE_CREDENTIALS=true` in connecting processes for a trusted private deployment. Authenticated Kubernetes workers using a service DNS address need the tunnel or the explicit setting in their worker template. The setting also permits authenticated HTTP downgrades. See the [remote server guide](website/content/docs/integrations/remote-server.md).
+* Node listings are now paginated. An empty `ListNodes` request or `GET /v1/nodes` returns at most 500 nodes by default. Follow `next_page_token` by supplying `page_token` until the returned token is empty. Set `page_size` from 1 through 1000 to request an explicit page size. Upgrade or regenerate older gRPC clients to access these fields; consumers that issue only one request can miss nodes in larger deployments.
+
 # [0.12.0](https://github.com/ohsu-comp-bio/funnel/compare/0.11.0...0.12.0) (2025-08-27)
 
 

@@ -2,7 +2,9 @@ package events
 
 import (
 	"context"
+	"errors"
 
+	"github.com/calypr/funnel/tes"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -36,6 +38,9 @@ func (s *Service) ClaimExecution(ctx context.Context, req *ClaimExecutionRequest
 	}
 	claimed, err := s.Claimer.ClaimExecution(ctx, req.GetTaskId(), req.GetOwner())
 	if err != nil {
+		if errors.Is(err, tes.ErrNotPermitted) {
+			return nil, status.Error(codes.PermissionDenied, tes.ErrNotPermitted.Error())
+		}
 		return nil, err
 	}
 	return &ClaimExecutionResponse{Claimed: claimed}, nil

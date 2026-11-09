@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/tests/configtest"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
@@ -17,8 +18,7 @@ func TestHTTPStorageTimeoutDefaultsAndOverrides(t *testing.T) {
 	}
 	fileConfig := config.EmptyConfig()
 	fileConfig.HTTPStorage.Timeout.TimeoutOption = &config.TimeoutConfig_Duration{Duration: durationpb.New(3 * time.Minute)}
-	file, cleanup := TempConfigFile(fileConfig, "config.yaml")
-	defer cleanup()
+	file := configtest.WriteFile(t, fileConfig, "config.yaml")
 	merged, err := MergeConfigFileWithFlags(file, config.EmptyConfig())
 	if err != nil || merged.HTTPStorage.Timeout.GetDuration().AsDuration() != 3*time.Minute {
 		t.Fatalf("expected configured timeout, got %v, %v", merged.HTTPStorage.Timeout, err)
@@ -65,8 +65,7 @@ func TestMergeConfigFileWithFlags(t *testing.T) {
 	}
 
 	fileConfig.Server.HTTPPort = "8888"
-	tmp, cleanup := TempConfigFile(fileConfig, "testconfig.yaml")
-	defer cleanup()
+	tmp := configtest.WriteFile(t, fileConfig, "testconfig.yaml")
 	result, err = MergeConfigFileWithFlags(tmp, flagConf)
 	if err != nil {
 		t.Error("unexpected error", err)
@@ -94,9 +93,7 @@ func TestMergeConfigRejectsTildeWorkDir(t *testing.T) {
 				if source == "file" {
 					conf := config.EmptyConfig()
 					conf.Worker.WorkDir = workDir
-					var cleanup func()
-					file, cleanup = TempConfigFile(conf, "config.yaml")
-					defer cleanup()
+					file = configtest.WriteFile(t, conf, "config.yaml")
 				} else {
 					flags.Worker.WorkDir = workDir
 				}
@@ -116,8 +113,7 @@ func TestMergeConfigRejectsTildeWorkDir(t *testing.T) {
 func TestMergeConfigFileReplacesForbiddenPathPrefixes(t *testing.T) {
 	fileConfig := config.DefaultConfig()
 	fileConfig.Kubernetes.ForbiddenPathPrefixes = []string{"/secret"}
-	tmp, cleanup := TempConfigFile(fileConfig, "testconfig.yaml")
-	defer cleanup()
+	tmp := configtest.WriteFile(t, fileConfig, "testconfig.yaml")
 
 	result, err := MergeConfigFileWithFlags(tmp, config.EmptyConfig())
 	if err != nil {

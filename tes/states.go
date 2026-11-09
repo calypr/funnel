@@ -32,6 +32,15 @@ func ValidateTransition(from, to State) error {
 	if from == to {
 		return nil
 	}
+	if to == State_PREEMPTED || to == State_CANCELING {
+		return &TransitionError{from, to}
+	}
+	if from == State_PREEMPTED || from == State_CANCELING {
+		if to == Canceled || to == SystemError {
+			return nil
+		}
+		return &TransitionError{from, to}
+	}
 
 	if from == Paused || to == Paused {
 		return fmt.Errorf("paused state is not implemented")
@@ -39,11 +48,9 @@ func ValidateTransition(from, to State) error {
 
 	switch from {
 	case Unknown:
-		// May transition from Unknown to anything
 		return nil
 
 	case Queued:
-		// May transition from Queued to anything except Unknown
 		if to == Unknown {
 			return &TransitionError{from, to}
 		}

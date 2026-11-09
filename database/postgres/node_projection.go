@@ -10,12 +10,12 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func (db *Postgres) activeTaskIDs(ctx context.Context, nodeIDs []string) (map[string][]string, error) {
+func activeTaskIDs(ctx context.Context, tx pgx.Tx, nodeIDs []string) (map[string][]string, error) {
 	ids := make(map[string][]string, len(nodeIDs))
 	if len(nodeIDs) == 0 {
 		return ids, nil
 	}
-	rows, err := db.client.Query(ctx,
+	rows, err := tx.Query(ctx,
 		`SELECT id,claim_owner FROM tasks WHERE claim_active AND claim_owner=ANY($1::varchar[]) ORDER BY claim_owner,id`,
 		nodeIDs,
 	)

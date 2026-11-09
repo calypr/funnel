@@ -98,6 +98,56 @@ func (db *MongoDB) migrateScheduler(ctx context.Context) error {
 	return err
 }
 
+func (db *MongoDB) migrateEmptyNodeUsage(ctx context.Context) error {
+	const migration = "empty-node-usage-v1"
+	migrations := db.collection("scheduler_migrations")
+	if _, err := migrations.UpdateOne(ctx, bson.M{"_id": migration}, bson.M{"$setOnInsert": bson.M{"done": false}}, options.UpdateOne().SetUpsert(true)); err != nil {
+		return err
+	}
+	_, err := db.transaction(ctx, func(ctx context.Context) (any, error) {
+		var marker struct {
+			Done bool `bson:"done"`
+		}
+		if err := migrations.FindOne(ctx, bson.M{"_id": migration}).Decode(&marker); err != nil {
+			return nil, err
+		}
+		if marker.Done {
+			return nil, nil
+		}
+		if _, err := migrations.UpdateOne(ctx, bson.M{"_id": migration}, bson.M{"$inc": bson.M{"revision": 1}}); err != nil {
+			return nil, err
+		}
+		cursor, err := db.nodes().Find(ctx, bson.M{})
+		if err != nil {
+			return nil, err
+		}
+		var nodes []nodeRecord
+		if err := cursor.All(ctx, &nodes); err != nil {
+			return nil, err
+		}
+		for i := range nodes {
+			node := &nodes[i]
+			if node.Reserved == (scheduler.ResourceUsage{}) {
+				continue
+			}
+			active, err := db.hasActiveTaskIDs(ctx, node.Node.Id)
+			if err != nil {
+				return nil, err
+			}
+			if active {
+				continue
+			}
+			node.Reserved = scheduler.ResourceUsage{}
+			if err := db.saveReservedNode(ctx, node); err != nil {
+				return nil, err
+			}
+		}
+		_, err = migrations.UpdateOne(ctx, bson.M{"_id": migration}, bson.M{"$set": bson.M{"done": true}})
+		return nil, err
+	})
+	return err
+}
+
 func (db *MongoDB) migrateNodeTaskIDProjection(ctx context.Context) error {
 	const migration = "node-taskids-projection-v1"
 	migrations := db.collection("scheduler_migrations")

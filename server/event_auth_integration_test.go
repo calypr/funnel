@@ -21,7 +21,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-func TestServerRejectsCrossOwnerEvents(t *testing.T) {
+func TestServerRejectsCrossOwnerEventsAndClaims(t *testing.T) {
 	db, err := boltdb.NewBoltDB(&config.BoltDB{Path: filepath.Join(t.TempDir(), "tasks.db")})
 	if err != nil {
 		t.Fatal(err)
@@ -32,7 +32,7 @@ func TestServerRejectsCrossOwnerEvents(t *testing.T) {
 		t.Fatal(err)
 	}
 	alice := context.WithValue(context.Background(), server.UserInfoKey, &server.UserInfo{Username: "alice"})
-	err = db.WriteEvent(alice, events.NewTaskCreated(&tes.Task{Id: "owned-task"}))
+	err = db.WriteEvent(alice, events.NewTaskCreated(&tes.Task{Id: "owned-task", State: tes.Queued}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestServerRejectsCrossOwnerEvents(t *testing.T) {
 	}
 	log := logger.NewLogger("auth-integration", logger.DefaultConfig())
 	log.Discard()
-	srv := &server.Server{RPCAddress: address, HTTPPort: "0", Log: log, Tasks: &server.TaskService{Read: db, Log: log, Config: config.DefaultConfig()}, Events: &events.Service{Writer: db}, TaskAccess: server.AccessOwner, BasicAuth: []*config.BasicCredential{{User: "alice", Password: "synthetic"}, {User: "bob", Password: "synthetic"}}}
+	srv := &server.Server{RPCAddress: address, HTTPPort: "0", Log: log, Tasks: &server.TaskService{Read: db, Log: log, Config: config.DefaultConfig()}, Events: &events.Service{Writer: db, Claimer: db}, TaskAccess: server.AccessOwner, BasicAuth: []*config.BasicCredential{{User: "alice", Password: "synthetic"}, {User: "bob", Password: "synthetic"}}}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- srv.Serve(ctx) }()
@@ -73,16 +73,25 @@ func TestServerRejectsCrossOwnerEvents(t *testing.T) {
 		}
 	}()
 	client := events.NewEventServiceClient(conn)
-	for _, user := range []string{"alice", "bob"} {
+	for _, user := range []string{"bob", "alice"} {
 		requestCtx, requestCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		requestCtx = metadata.NewOutgoingContext(requestCtx, metadata.Pairs("authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(user+":synthetic"))))
 		_, err = client.WriteEvent(requestCtx, events.NewSystemLog("owned-task", 0, 0, "info", "marker-"+user, nil), grpc.WaitForReady(true))
-		requestCancel()
 		if user == "alice" && err != nil {
+			requestCancel()
 			t.Fatalf("owner event rejected: %v", err)
 		}
 		if user == "bob" && status.Code(err) != codes.PermissionDenied {
+			requestCancel()
 			t.Fatalf("cross-owner result: %v", err)
+		}
+		claim, claimErr := client.ClaimExecution(requestCtx, &events.ClaimExecutionRequest{TaskId: "owned-task"}, grpc.WaitForReady(true))
+		requestCancel()
+		if user == "alice" && (claimErr != nil || !claim.GetClaimed()) {
+			t.Fatalf("owner claim rejected: response=%v error=%v", claim, claimErr)
+		}
+		if user == "bob" && status.Code(claimErr) != codes.PermissionDenied {
+			t.Fatalf("cross-owner claim result: %v", claimErr)
 		}
 	}
 	task, err := db.GetTask(alice, &tes.GetTaskRequest{Id: "owned-task", View: "FULL"})

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/calypr/funnel/events"
@@ -94,20 +93,29 @@ func (db *Postgres) WriteEvent(ctx context.Context, req *events.Event) error {
 			if _, reserved := metadata[events.ExecutionOwnerMetadataKey]; reserved {
 				return fmt.Errorf("task metadata key %q is reserved", events.ExecutionOwnerMetadataKey)
 			}
-			for k, v := range metadata {
-				path := []string{"logs", strconv.FormatUint(uint64(req.Attempt), 10), "metadata", k}
-				updateSQL := `
-                    UPDATE tasks 
-                    SET data = jsonb_set(data, $1::text[], $2::jsonb, true)
-                    WHERE id = $3
-                `
-				value, err := json.Marshal(v)
-				if err != nil {
-					return err
-				}
-				if _, err := db.client.Exec(ctx, updateSQL, path, value, selector); err != nil {
-					return fmt.Errorf("failed to update task metadata %q: %w", k, err)
-				}
+			if len(metadata) == 0 {
+				return nil
+			}
+			metadataJSON, err := json.Marshal(metadata)
+			if err != nil {
+				return fmt.Errorf("marshal task metadata: %w", err)
+			}
+			path := fmt.Sprintf("{logs,%v,metadata}", req.Attempt)
+			updateSQL := `
+				UPDATE tasks
+				SET data = jsonb_set(
+					data,
+					$1::text[],
+					CASE WHEN jsonb_typeof(data #> $1::text[]) = 'object'
+						THEN (data #> $1::text[]) || $2::jsonb
+						ELSE $2::jsonb
+					END,
+					true
+				)
+				WHERE id = $3
+			`
+			if _, err := db.client.Exec(ctx, updateSQL, path, metadataJSON, selector); err != nil {
+				return fmt.Errorf("failed to update task metadata: %w", err)
 			}
 			return nil
 
@@ -157,39 +165,19 @@ func (db *Postgres) WriteEvent(ctx context.Context, req *events.Event) error {
 	case events.Type_SYSTEM_LOG:
 		jsonPath := fmt.Sprintf("{logs,%v,system_logs}", req.Attempt)
 		logValue := req.SysLogString()
-
-		selectSQL := `
-            SELECT data #> '{logs,0,system_logs}' 
-            FROM tasks
-            WHERE id = $1
-        `
-		var currentLogsJSON []byte
-		err := db.client.QueryRow(ctx, selectSQL, selector).Scan(&currentLogsJSON)
-		if err != nil {
-			return fmt.Errorf("failed to read current system logs for task %s: %w", selector, err)
-		}
-
-		var currentLogs []string
-		if len(currentLogsJSON) > 0 {
-			if err := json.Unmarshal(currentLogsJSON, &currentLogs); err != nil {
-				return fmt.Errorf("failed to unmarshal current system logs for task %s: %w", selector, err)
-			}
-		}
-
-		currentLogs = append(currentLogs, logValue)
-
-		newLogsJSON, err := json.Marshal(currentLogs)
-		if err != nil {
-			return fmt.Errorf("marshal task system logs: %w", err)
-		}
-
 		updateSQL := `
-            UPDATE tasks
-            SET data = jsonb_set(data, $1::text[], $2::jsonb)
-            WHERE id = $3
-        `
-		_, err = db.client.Exec(ctx, updateSQL, jsonPath, newLogsJSON, selector)
-		return err
+			UPDATE tasks
+			SET data = jsonb_set(
+				data,
+				$1::text[],
+				COALESCE(NULLIF(data #> $1::text[], 'null'::jsonb), '[]'::jsonb) || jsonb_build_array($2::text),
+				true
+			)
+			WHERE id = $3
+			RETURNING id
+		`
+		var taskID string
+		return db.client.QueryRow(ctx, updateSQL, jsonPath, logValue, selector).Scan(&taskID)
 	}
 
 	return nil

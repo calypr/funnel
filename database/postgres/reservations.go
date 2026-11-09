@@ -114,6 +114,46 @@ func (db *Postgres) migrateResourceReservations(ctx context.Context) error {
 	return tx.Commit(ctx)
 }
 
+func (db *Postgres) migrateEmptyNodeUsage(ctx context.Context) error {
+	const migration = "empty-node-usage-v1"
+	zero, err := json.Marshal(scheduler.ResourceUsage{})
+	if err != nil {
+		return err
+	}
+	tx, err := db.client.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }() //nolint:errcheck // Rolls back early exits and is a no-op after a successful commit.
+	if _, err := tx.Exec(ctx, `LOCK TABLE scheduler_migrations IN EXCLUSIVE MODE`); err != nil {
+		return err
+	}
+	var done bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM scheduler_migrations WHERE name=$1)`, migration).Scan(&done); err != nil {
+		return err
+	}
+	if done {
+		return tx.Commit(ctx)
+	}
+	if _, err := tx.Exec(ctx, `LOCK TABLE tasks,nodes IN SHARE ROW EXCLUSIVE MODE`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE nodes AS node
+		SET reserved=$1::jsonb, version=version+1
+		WHERE node.reserved IS DISTINCT FROM $1::jsonb
+		  AND NOT EXISTS (
+			SELECT 1 FROM tasks AS task
+			WHERE task.claim_owner=node.id AND task.claim_active=true
+		  )`, zero); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO scheduler_migrations (name) VALUES ($1)`, migration); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 func saveReservedNode(ctx context.Context, tx pgx.Tx, node *scheduler.Node, used scheduler.ResourceUsage) error {
 	usage, err := json.Marshal(used)
 	if err != nil {
@@ -166,6 +206,15 @@ func releaseTaskReservation(ctx context.Context, tx pgx.Tx, taskID, owner string
 	used, err = used.Release(held)
 	if err != nil {
 		return err
+	}
+	if used != (scheduler.ResourceUsage{}) {
+		var hasOtherClaims bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM tasks WHERE claim_owner=$1 AND claim_active=true AND id<>$2)`, owner, taskID).Scan(&hasOtherClaims); err != nil {
+			return err
+		}
+		if !hasOtherClaims {
+			used = scheduler.ResourceUsage{}
+		}
 	}
 	return saveReservedNode(ctx, tx, &node, used)
 }

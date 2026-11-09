@@ -6,9 +6,9 @@ import (
 	"path"
 	"testing"
 
-	"github.com/calypr/funnel/cmd/util"
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/tests/configtest"
 )
 
 func TestPersistentPreRun(t *testing.T) {
@@ -22,8 +22,7 @@ func TestPersistentPreRun(t *testing.T) {
 	workDir := path.Join(cwd, "funnel-work-dir")
 
 	fileConf := config.EmptyConfig()
-	tmp, cleanup := util.TempConfigFile(fileConf, "testconfig.yaml")
-	defer cleanup()
+	tmp := configtest.WriteFile(t, fileConf, "testconfig.yaml")
 
 	c, h := newCommandHooks()
 	h.Run = func(ctx context.Context, conf *config.Config, log *logger.Logger) error {

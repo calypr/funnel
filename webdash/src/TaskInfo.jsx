@@ -62,20 +62,26 @@ function TaskInfoRaw(props) {
   const renderResources = (resources) => {
     if ( resources ) {
       const r = resources;
-      var s = r.cpuCores + " CPU cores";
-      if (r.ramGb) {
-        s += ", " + r.ramGb + " GB RAM";
+      const cpuCores = r.cpuCores ?? r.cpu_cores;
+      const ramGb = r.ramGb ?? r.ram_gb;
+      const diskGb = r.diskGb ?? r.disk_gb;
+      const values = [];
+      if (cpuCores !== undefined && cpuCores !== null) {
+        values.push(cpuCores + " CPU cores");
       }
-      if (r.diskGb) {
-        s += ", " + r.diskGb + " GB disk space";
+      if (ramGb !== undefined && ramGb !== null) {
+        values.push(ramGb + " GB RAM");
+      }
+      if (diskGb !== undefined && diskGb !== null) {
+        values.push(diskGb + " GB disk space");
       }
       if (r.preemptible) {
-        s += ", preemptible";
+        values.push("preemptible");
       }
       return (
         <TableRow key='Resources' sx={styles.row}>
           <TableCell sx={keyCellSx}><b>Resources</b></TableCell>
-          <TableCell sx={valueCellSx}>{s}</TableCell>
+          <TableCell sx={valueCellSx}>{values.join(", ")}</TableCell>
         </TableRow>
       );
     }

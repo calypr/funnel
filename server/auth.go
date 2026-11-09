@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/tes"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -20,6 +22,7 @@ type Authentication struct {
 	basic      map[string]string
 	oidc       *OidcConfig
 	accessMode string
+	log        *logger.Logger
 }
 
 const (
@@ -30,8 +33,7 @@ const (
 
 // Extracted info about the current user, which is exposed through Context.
 type UserInfo struct {
-	// Public users are non-authenticated, in case Funnel configuration does
-	// not require OIDC nor Basic authentication.
+	// Public users are unauthenticated callers, including callers of public endpoints.
 	IsPublic bool
 	// Administrators are defined by the configuration file:
 	// 1) Basic-authentication: a user with the `Admin: true` property.
@@ -112,8 +114,7 @@ func (a *Authentication) Interceptor(
 	info *grpc.UnaryServerInfo,
 	handler grpc.UnaryHandler) (interface{}, error) {
 
-	// Case when authentication is not required:
-	if len(a.basic) == 0 && a.oidc == nil {
+	if (len(a.basic) == 0 && a.oidc == nil) || info.FullMethod == tes.TaskService_GetServiceInfo_FullMethodName {
 		userInfo := publicUserInfo
 		userInfo.accessMode = a.accessMode
 		ctx = context.WithValue(ctx, UserInfoKey, &userInfo)
@@ -122,11 +123,13 @@ func (a *Authentication) Interceptor(
 
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
+		logAuditEntry(a.log, info.FullMethod, anonymousUserID, "", errMissingMetadata)
 		return nil, errMissingMetadata
 	}
 
 	values := md["authorization"]
 	if len(values) == 0 {
+		logAuditEntry(a.log, info.FullMethod, anonymousUserID, "", errTokenRequired)
 		return nil, errTokenRequired
 	}
 
@@ -154,12 +157,15 @@ func (a *Authentication) Interceptor(
 	}
 
 	if !authorized {
+		logAuditEntry(a.log, info.FullMethod, anonymousUserID, "", authErr)
 		return nil, authErr
 	}
 	switch info.FullMethod {
 	case "/scheduler.SchedulerService/PutNode", "/scheduler.SchedulerService/DeleteNode":
 		if !GetUser(ctx).IsAdmin {
-			return nil, status.Error(codes.PermissionDenied, "scheduler node management requires administrator credentials")
+			err := status.Error(codes.PermissionDenied, "scheduler node management requires administrator credentials")
+			logAuditEntry(a.log, info.FullMethod, GetUserID(ctx), "", err)
+			return nil, err
 		}
 	}
 

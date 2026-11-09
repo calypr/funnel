@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 
 	"github.com/calypr/funnel/server"
 	"github.com/calypr/funnel/tes"
@@ -102,7 +103,7 @@ func (db *MongoDB) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*t
 	}
 
 	if req.NamePrefix != "" {
-		query["name"] = bson.M{"$regex": fmt.Sprintf("^%s", req.NamePrefix)}
+		query["name"] = bson.M{"$regex": fmt.Sprintf("^%s", regexp.QuoteMeta(req.NamePrefix))}
 	}
 
 	if userInfo := server.GetUser(ctx); !userInfo.CanSeeAllTasks() {

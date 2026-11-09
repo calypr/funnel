@@ -66,6 +66,9 @@ func (db *Postgres) Init() error {
 	if err := db.migrateResourceReservations(ctx); err != nil {
 		return err
 	}
+	if err := db.migrateEmptyNodeUsage(ctx); err != nil {
+		return err
+	}
 	if err := db.migrateNodeTaskIDProjection(ctx); err != nil {
 		return err
 	}

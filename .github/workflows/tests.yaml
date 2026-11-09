@@ -15,6 +15,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  go-vulnerabilities:
+    name: Go vulnerability scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+    - name: Check out code
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - name: Set up Go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: go.mod
+    - name: Check reachable Go vulnerabilities
+      env:
+        GOTOOLCHAIN: local
+      run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
   local-storage-permissions:
     name: Local storage executor permissions
     runs-on: ubuntu-latest
@@ -185,7 +201,7 @@ jobs:
   # Preserve the required status context until the stack's ruleset migration.
   required-go-tests:
     name: unitTest
-    needs: [unitTest, scheduler-tests, scheduler-process-tests, local-storage-permissions]
+    needs: [unitTest, scheduler-tests, scheduler-process-tests, local-storage-permissions, go-vulnerabilities]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -195,4 +211,5 @@ jobs:
           SCHEDULER_RESULT: ${{ needs.scheduler-tests.result }}
           PROCESS_RESULT: ${{ needs.scheduler-process-tests.result }}
           STORAGE_RESULT: ${{ needs.local-storage-permissions.result }}
-        run: test "$CHECK_RESULT" = success && test "$SCHEDULER_RESULT" = success && test "$PROCESS_RESULT" = success && test "$STORAGE_RESULT" = success
+          VULNERABILITY_RESULT: ${{ needs.go-vulnerabilities.result }}
+        run: test "$CHECK_RESULT" = success && test "$SCHEDULER_RESULT" = success && test "$PROCESS_RESULT" = success && test "$STORAGE_RESULT" = success && test "$VULNERABILITY_RESULT" = success

@@ -44,11 +44,13 @@ function NodeInfoRaw(props) {
     if ( resources ) {
       const r = resources;
       var s = r.cpus + " CPU cores";
-      if (r.ramGb) {
-        s += ", " + r.ramGb + " GB RAM";
+      const ramGb = r.ram_gb ?? r.ramGb;
+      const diskGb = r.disk_gb ?? r.diskGb;
+      if (ramGb) {
+        s += ", " + ramGb + " GB RAM";
       }
-      if (r.diskGb) {
-        s += ", " + r.diskGb + " GB disk space";
+      if (diskGb) {
+        s += ", " + diskGb + " GB disk space";
       }
       if (r.preemptible) {
         s += ", preemptible";

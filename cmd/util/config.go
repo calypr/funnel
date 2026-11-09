@@ -2,8 +2,6 @@ package util
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"dario.cat/mergo"
@@ -60,27 +58,4 @@ func MergeConfigFileWithFlags(file string, flagConf *config.Config) (*config.Con
 	}
 
 	return conf, nil
-}
-
-// TempConfigFile writes the configuration to a temporary file.
-// Returns:
-// - "path" is the path of the file.
-// - "cleanup" can be called to remove the temporary file.
-func TempConfigFile(c *config.Config, name string) (path string, cleanup func()) {
-	tmpdir, err := os.MkdirTemp("", "")
-	if err != nil {
-		panic(err)
-	}
-
-	cleanup = func() {
-		//nolint:errcheck // removing the temporary config directory is best-effort test cleanup.
-		_ = os.RemoveAll(tmpdir)
-	}
-
-	p := filepath.Join(tmpdir, name)
-	err = config.ToYamlFile(c, p)
-	if err != nil {
-		panic(err)
-	}
-	return p, cleanup
 }

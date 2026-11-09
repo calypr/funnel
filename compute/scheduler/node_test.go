@@ -35,6 +35,101 @@ func TestStopNode(t *testing.T) {
 	n.Client.AssertCalled(t, "Close")
 }
 
+func TestNodeShutdownSyncHasDeadline(t *testing.T) {
+	conf := config.DefaultConfig()
+	conf.Node.UpdateRate = durationpb.New(time.Hour)
+	n := newTestNode(conf, t)
+	client := new(MockClient)
+	n.client = client
+	client.On("GetNode", mock.Anything, mock.Anything).Return(&Node{}, nil)
+	client.On("Close").Return(nil).Once()
+	type update struct {
+		state    NodeState
+		deadline time.Time
+		bounded  bool
+		err      error
+	}
+	updates := make(chan update, 2)
+	client.On("PutNode", mock.Anything, mock.Anything).Return(nil, nil).
+		Run(func(args mock.Arguments) {
+			ctx := args.Get(0).(context.Context)
+			deadline, bounded := ctx.Deadline()
+			updates <- update{args.Get(1).(*Node).State, deadline, bounded, ctx.Err()}
+		})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- n.Run(ctx) }()
+	t.Cleanup(cancel)
+	select {
+	case first := <-updates:
+		if first.state != NodeState_ALIVE {
+			t.Fatalf("initial node state = %s, want ALIVE", first.state)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("node did not publish initial state")
+	}
+	cancel()
+	select {
+	case final := <-updates:
+		if final.state != NodeState_GONE || !final.bounded || final.err != nil {
+			t.Errorf("final node update = %+v, want GONE with a live deadline", final)
+		}
+		if final.bounded && (time.Until(final.deadline) <= 0 || time.Until(final.deadline) > 10*time.Second) {
+			t.Errorf("final sync deadline = %s, want within 10 seconds", final.deadline)
+		}
+	case <-time.After(5 * time.Second):
+		t.Error("node did not publish final state")
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("node did not stop")
+	}
+	client.AssertExpectations(t)
+}
+
+func TestNodeSyncCancelsBlockedPutNode(t *testing.T) {
+	n := newTestNode(config.DefaultConfig(), t)
+	client := new(MockClient)
+	n.client = client
+	client.On("GetNode", mock.Anything, mock.Anything).Return(&Node{}, nil)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	client.On("PutNode", mock.Anything, mock.Anything).Return(nil, nil).
+		Run(func(args mock.Arguments) {
+			close(started)
+			select {
+			case <-args.Get(0).(context.Context).Done():
+			case <-release:
+			}
+		})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		n.sync(ctx)
+		close(done)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		close(release)
+		<-done
+	})
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("node did not start PutNode")
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("canceling the sync context did not stop the blocked PutNode")
+	}
+}
+
 func TestDrainPublishesBeforeNextUpdate(t *testing.T) {
 	conf := config.DefaultConfig()
 	conf.Node.UpdateRate = durationpb.New(time.Hour)

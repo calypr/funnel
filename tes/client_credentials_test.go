@@ -31,6 +31,7 @@ func TestCredentialTransportPolicy(t *testing.T) {
 			t.Setenv("FUNNEL_ALLOW_INSECURE_CREDENTIALS", tc.opt)
 			t.Setenv("FUNNEL_SERVER_USER", "")
 			t.Setenv("FUNNEL_SERVER_PASSWORD", "")
+			t.Setenv("FUNNEL_SERVER_TOKEN", "")
 			c, err := NewClient(tc.address)
 			if err != nil {
 				t.Fatal(err)
@@ -56,6 +57,7 @@ func TestCredentialTransportPolicy(t *testing.T) {
 }
 
 func TestCredentialRedirectDowngrade(t *testing.T) {
+	t.Setenv("FUNNEL_SERVER_TOKEN", "")
 	t.Setenv("FUNNEL_ALLOW_INSECURE_CREDENTIALS", "")
 	c, err := NewClient("https://origin.invalid")
 	if err != nil {

@@ -11,6 +11,9 @@ import (
 )
 
 var NodeUsage = []byte("node-resource-usage")
+var resourceUsageMigrations = []byte("resource-usage-migrations")
+
+const emptyNodeUsageMigration = "empty-node-usage-v1"
 
 type nodeBudget struct {
 	scheduler.ResourceUsage
@@ -43,6 +46,47 @@ func saveNodeUsageVersion(tx *bolt.Tx, id string, usage scheduler.ResourceUsage,
 		return err
 	}
 	return tx.Bucket(NodeUsage).Put([]byte(id), data)
+}
+
+func migrateEmptyNodeUsage(tx *bolt.Tx) error {
+	migrations, err := tx.CreateBucketIfNotExists(resourceUsageMigrations)
+	if err != nil {
+		return err
+	}
+	marker := []byte(emptyNodeUsageMigration)
+	if migrations.Get(marker) != nil {
+		return nil
+	}
+	type update struct {
+		id   []byte
+		data []byte
+	}
+	var updates []update
+	if err := tx.Bucket(NodeUsage).ForEach(func(id, data []byte) error {
+		var budget nodeBudget
+		if err := json.Unmarshal(data, &budget); err != nil {
+			return err
+		}
+		if budget.ResourceUsage == (scheduler.ResourceUsage{}) || hasActiveNodeClaims(tx, string(id)) {
+			return nil
+		}
+		budget.ResourceUsage = scheduler.ResourceUsage{}
+		budget.Version++
+		encoded, err := json.Marshal(budget)
+		if err != nil {
+			return err
+		}
+		updates = append(updates, update{id: append([]byte(nil), id...), data: encoded})
+		return nil
+	}); err != nil {
+		return err
+	}
+	for _, update := range updates {
+		if err := tx.Bucket(NodeUsage).Put(update.id, update.data); err != nil {
+			return err
+		}
+	}
+	return migrations.Put(marker, []byte{1})
 }
 
 func migrateResourceReservations(tx *bolt.Tx) error {
@@ -163,6 +207,9 @@ func releaseTaskReservation(tx *bolt.Tx, id string) error {
 	}
 	if err := claims.Delete([]byte(id)); err != nil {
 		return err
+	}
+	if used != (scheduler.ResourceUsage{}) && !hasActiveNodeClaims(tx, string(owner)) {
+		used = scheduler.ResourceUsage{}
 	}
 	if data := tx.Bucket(Nodes).Get(owner); data != nil {
 		var node scheduler.Node

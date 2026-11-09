@@ -288,13 +288,11 @@ func TestGetTaskView(t *testing.T) {
 
 }
 
-// TODO this is a bit hacky for now because we're reusing the same
-//
-//	server + DB for all the e2e tests, so ListTasks gets the
-//	results of all of those. It works for the moment, but
-//	should probably run against a clean environment.
 func TestListTaskView(t *testing.T) {
 	tests.SetLogOutput(log, t)
+	fun := tests.NewFunnel(tests.DefaultConfig())
+	fun.StartServer()
+	t.Cleanup(fun.Cleanup)
 	var tasks []*tes.Task
 	var task *tes.Task
 	var err error
@@ -308,9 +306,28 @@ func TestListTaskView(t *testing.T) {
   `)
 	fun.Wait(id)
 
-	time.Sleep(500 * time.Millisecond)
+	if _, err := fun.Server.Events.WriteEvent(t.Context(), events.NewTaskCreated(&tes.Task{
+		Id: "ffffffff-ffff-1fff-8fff-ffffffffffff", Name: "unrelated-task",
+		State: tes.State_COMPLETE, CreationTime: "2000-01-01T00:00:00Z",
+	})); err != nil {
+		t.Fatal(err)
+	}
 
-	tasks = fun.ListView(tes.View_MINIMAL)
+	listView := func(view tes.View) []*tes.Task {
+		t.Helper()
+		response, err := fun.RPC.ListTasks(t.Context(), &tes.ListTasksRequest{
+			View: view.String(), NamePrefix: "foo",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(response.Tasks) != 1 {
+			t.Fatalf("expected one task for view %s, got %d", view, len(response.Tasks))
+		}
+		return response.Tasks
+	}
+
+	tasks = listView(tes.View_MINIMAL)
 	task = tasks[0]
 
 	if task.Id != id {
@@ -335,7 +352,7 @@ func TestListTaskView(t *testing.T) {
 		t.Fatal("unexpected task logs included in minimal view")
 	}
 
-	tasks = fun.ListView(tes.View_BASIC)
+	tasks = listView(tes.View_BASIC)
 	task = tasks[0]
 
 	if task.Id != id {
@@ -372,7 +389,7 @@ func TestListTaskView(t *testing.T) {
 		t.Fatal("unexpected ExecutorLog stderr included in basic view")
 	}
 
-	tasks = fun.ListView(tes.View_FULL)
+	tasks = listView(tes.View_FULL)
 	task = tasks[0]
 
 	if task.Id != id {
@@ -412,7 +429,7 @@ func TestListTaskView(t *testing.T) {
 	// test http proxy
 	var r *tes.ListTasksResponse
 	r, err = fun.HTTP.ListTasks(context.Background(), &tes.ListTasksRequest{
-		View: tes.View_MINIMAL.String(),
+		View: tes.View_MINIMAL.String(), NamePrefix: "foo",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -439,7 +456,7 @@ func TestListTaskView(t *testing.T) {
 	}
 
 	r, err = fun.HTTP.ListTasks(context.Background(), &tes.ListTasksRequest{
-		View: tes.View_BASIC.String(),
+		View: tes.View_BASIC.String(), NamePrefix: "foo",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -484,7 +501,7 @@ func TestListTaskView(t *testing.T) {
 	}
 
 	r, err = fun.HTTP.ListTasks(context.Background(), &tes.ListTasksRequest{
-		View: tes.View_FULL.String(),
+		View: tes.View_FULL.String(), NamePrefix: "foo",
 	})
 	if err != nil {
 		t.Fatal(err)
