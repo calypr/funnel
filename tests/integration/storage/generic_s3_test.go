@@ -35,7 +35,7 @@ func startMinio(t *testing.T) string {
 	ctx := context.Background()
 	ctr, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
-			Image:        "quay.io/minio/minio:latest",
+			Image:        "quay.io/cdis/minio:chainguard-latest-2026-09-25@sha256:a05a4497e8dce3cb7a7a1bf1872ba5d30ea988f1e8c22c9e0920503761c4b5f1",
 			ExposedPorts: []string{"9000/tcp"},
 			Env: map[string]string{
 				"MINIO_ROOT_USER":     minioKey,

@@ -86,9 +86,8 @@ jobs:
             docker run -d -p 9000:9000 --name minio \
                        -e "MINIO_ROOT_USER=example-key" \
                        -e "MINIO_ROOT_PASSWORD=example-secret" \
-                       -v /tmp/data:/data \
-                       -v /tmp/config:/root/.minio \
-                       minio/minio server /data
+                       --tmpfs /data:rw,mode=1777 \
+                       quay.io/cdis/minio:chainguard-latest-2026-09-25@sha256:a05a4497e8dce3cb7a7a1bf1872ba5d30ea988f1e8c22c9e0920503761c4b5f1 server /data
             cat `pwd`/tests/testdata/config/minio-s3.config.yml >> config.yml
           fi
 
