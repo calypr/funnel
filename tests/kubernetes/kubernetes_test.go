@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"testing"
@@ -39,7 +40,10 @@ func fakeClientWithFunnelPod(ns string) *fake.Clientset {
 			},
 		},
 	}
-	_, _ = client.CoreV1().Pods(ns).Create(context.Background(), pod, metav1.CreateOptions{})
+	_, err := client.CoreV1().Pods(ns).Create(context.Background(), pod, metav1.CreateOptions{})
+	if err != nil {
+		panic(fmt.Errorf("create fixture Funnel pod: %w", err))
+	}
 	return client
 }
 

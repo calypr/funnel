@@ -1464,7 +1464,7 @@ type Output struct {
 	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	Path          string                 `protobuf:"bytes,3,opt,name=path,proto3" json:"path,omitempty"`
 	PathPrefix    string                 `protobuf:"bytes,4,opt,name=path_prefix,json=pathPrefix,proto3" json:"path_prefix,omitempty"`
-	Type          FileType               `protobuf:"varint,5,opt,name=type,proto3,enum=tes.FileType" json:"type,omitempty"`
+	Type          *FileType              `protobuf:"varint,5,opt,name=type,proto3,enum=tes.FileType,oneof" json:"type,omitempty"`
 	Url           string                 `protobuf:"bytes,6,opt,name=url,proto3" json:"url,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1529,8 +1529,8 @@ func (x *Output) GetPathPrefix() string {
 }
 
 func (x *Output) GetType() FileType {
-	if x != nil {
-		return x.Type
+	if x != nil && x.Type != nil {
+		return *x.Type
 	}
 	return FileType_FILE
 }
@@ -2244,15 +2244,16 @@ const file_tes_tes_proto_rawDesc = "" +
 	"\x03url\x18\a \x01(\tR\x03url\"\\\n" +
 	"\x11ListTasksResponse\x12&\n" +
 	"\x0fnext_page_token\x18\x01 \x01(\tR\rnextPageToken\x12\x1f\n" +
-	"\x05tasks\x18\x02 \x03(\v2\t.tes.TaskR\x05tasks\"\xa8\x01\n" +
+	"\x05tasks\x18\x02 \x03(\v2\t.tes.TaskR\x05tasks\"\xb6\x01\n" +
 	"\x06Output\x12 \n" +
 	"\vdescription\x18\x01 \x01(\tR\vdescription\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
 	"\x04path\x18\x03 \x01(\tR\x04path\x12\x1f\n" +
 	"\vpath_prefix\x18\x04 \x01(\tR\n" +
-	"pathPrefix\x12!\n" +
-	"\x04type\x18\x05 \x01(\x0e2\r.tes.FileTypeR\x04type\x12\x10\n" +
-	"\x03url\x18\x06 \x01(\tR\x03url\"T\n" +
+	"pathPrefix\x12&\n" +
+	"\x04type\x18\x05 \x01(\x0e2\r.tes.FileTypeH\x00R\x04type\x88\x01\x01\x12\x10\n" +
+	"\x03url\x18\x06 \x01(\tR\x03urlB\a\n" +
+	"\x05_type\"T\n" +
 	"\rOutputFileLog\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x1d\n" +
 	"\n" +
@@ -2469,6 +2470,7 @@ func file_tes_tes_proto_init() {
 	if File_tes_tes_proto != nil {
 		return
 	}
+	file_tes_tes_proto_msgTypes[17].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

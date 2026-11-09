@@ -50,10 +50,20 @@ func TestNodeGoneOnCanceledContext(t *testing.T) {
 		t.Fatal("failed to start node", err)
 	}
 	ctx, cancel := context.WithCancel(bg)
-	defer cancel()
-	go n.Run(ctx)
+	runDone := make(chan error, 1)
+	go func() { runDone <- n.Run(ctx) }()
+	defer func() {
+		cancel()
+		err := <-runDone
+		if err != nil {
+			t.Errorf("run node: %v", err)
+		}
+	}()
 
-	srv.Scheduler.CheckNodes()
+	err = srv.Scheduler.CheckNodes()
+	if err != nil {
+		t.Fatal(err)
+	}
 	time.Sleep(conf.Node.UpdateRate.AsDuration() * 2)
 
 	resp, err := srv.Scheduler.Nodes.ListNodes(bg, &scheduler.ListNodesRequest{})
@@ -68,7 +78,10 @@ func TestNodeGoneOnCanceledContext(t *testing.T) {
 
 	cancel()
 	time.Sleep(conf.Node.UpdateRate.AsDuration() * 2)
-	srv.Scheduler.CheckNodes()
+	err = srv.Scheduler.CheckNodes()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	resp, err = srv.Scheduler.Nodes.ListNodes(bg, &scheduler.ListNodesRequest{})
 	if err != nil {
@@ -107,7 +120,6 @@ func TestManualBackend(t *testing.T) {
 	srv.StartServer()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	srv.Conf.Node.ID = "test-node-manual"
 	// create a node
@@ -125,7 +137,15 @@ func TestManualBackend(t *testing.T) {
 	if err != nil {
 		t.Fatal("failed to create node", err)
 	}
-	go n.Run(ctx)
+	runDone := make(chan error, 1)
+	go func() { runDone <- n.Run(ctx) }()
+	defer func() {
+		cancel()
+		err := <-runDone
+		if err != nil {
+			t.Errorf("run node: %v", err)
+		}
+	}()
 
 	// run tasks and check that they all complete
 	tasks := []string{}
@@ -249,7 +269,8 @@ func TestNodeCleanup(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := srv.Scheduler.CheckNodes(); err != nil {
+	err := srv.Scheduler.CheckNodes()
+	if err != nil {
 		t.Fatal(err)
 	}
 	nodes, err := scheduler.ListAllNodes(ctx, srv.Scheduler.Nodes)
@@ -309,10 +330,20 @@ func TestNodeDrain(t *testing.T) {
 		t.Fatal("failed to start node", err)
 	}
 	ctx, cancel := context.WithCancel(bg)
-	defer cancel()
-	go n.Run(ctx)
+	runDone := make(chan error, 1)
+	go func() { runDone <- n.Run(ctx) }()
+	defer func() {
+		cancel()
+		err := <-runDone
+		if err != nil {
+			t.Errorf("run node: %v", err)
+		}
+	}()
 
-	srv.Scheduler.CheckNodes()
+	err = srv.Scheduler.CheckNodes()
+	if err != nil {
+		t.Fatal(err)
+	}
 	time.Sleep(conf.Node.UpdateRate.AsDuration() * 10)
 
 	resp, err := srv.Scheduler.Nodes.ListNodes(bg, &scheduler.ListNodesRequest{})
@@ -330,7 +361,10 @@ func TestNodeDrain(t *testing.T) {
 	first := srv.Run("echo")
 
 	time.Sleep(conf.Node.UpdateRate.AsDuration() * 10)
-	srv.Scheduler.CheckNodes()
+	err = srv.Scheduler.CheckNodes()
+	if err != nil {
+		t.Fatal(err)
+	}
 	resp, err = srv.Scheduler.Nodes.ListNodes(bg, &scheduler.ListNodesRequest{})
 	if err != nil {
 		t.Fatal(err)

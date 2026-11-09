@@ -3,7 +3,6 @@ package storage
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -42,14 +41,14 @@ func mountedFixture(t *testing.T) (*GenericS3, *mountedAPI, string) {
 		}
 		if r.URL.Query().Has("list-type") {
 			w.Header().Set("Content-Type", "application/xml")
-			fmt.Fprint(w, `<ListBucketResult><Name>bucket</Name><IsTruncated>false</IsTruncated></ListBucketResult>`)
+			writeTestResponse(t, w, []byte(`<ListBucketResult><Name>bucket</Name><IsTruncated>false</IsTruncated></ListBucketResult>`))
 			return
 		}
 		w.Header().Set("ETag", `"remote"`)
 		w.Header().Set("Last-Modified", "Mon, 02 Jan 2006 15:04:05 GMT")
 		w.Header().Set("Content-Length", "6")
 		if r.Method == http.MethodGet {
-			fmt.Fprint(w, "remote")
+			writeTestResponse(t, w, []byte("remote"))
 		}
 	}))
 	t.Cleanup(server.Close)

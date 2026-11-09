@@ -71,7 +71,7 @@ func TestTESRequestStagesIdenticallyAcrossStorageBindings(t *testing.T) {
 				t.Fatal(err)
 			}
 			mapper := NewFileMapper(filepath.Join(conf.Worker.WorkDir, task.Id))
-			if err := mapper.MapTask(task); err != nil {
+			if err := mapper.MapTask(task, "kubernetes"); err != nil {
 				t.Fatal(err)
 			}
 			if err := DownloadInputs(context.Background(), mapper.Inputs, store, events.NewTaskWriter(task.Id, 0, events.Noop{}), 1); err != nil {

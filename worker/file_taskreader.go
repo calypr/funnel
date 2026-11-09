@@ -23,7 +23,7 @@ func NewFileTaskReader(path string) (*FileTaskReader, error) {
 	if err != nil {
 		return nil, fmt.Errorf("opening task file: %v", err)
 	}
-	defer fh.Close()
+	defer fh.Close() //nolint:errcheck // The task file is read-only; io.ReadAll reports data read failures.
 
 	jsonData, err := io.ReadAll(fh)
 	if err != nil {

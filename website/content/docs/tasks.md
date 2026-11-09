@@ -96,6 +96,89 @@ Tasks also have state and logs:
 There are logs for each task attempt and each executor. Notice that the stdout is
 conveniently captured by `logs[0].logs[0].stdout`.
 
+## Output types and patterns
+
+An output can declare `"type": "FILE"` or `"type": "DIRECTORY"`. The Funnel worker
+fails output collection if the declared type does not match the produced path. If
+`type` is omitted, Funnel keeps its existing behavior and inspects the path to
+determine whether to upload a file or the files within a directory.
+
+An output pattern containing `*` that matches no paths produces a warning and
+uploads nothing for that pattern. Other outputs are still collected. This includes
+`abc/*` when `abc` is a file. An empty directory output also produces a warning and
+uploads no files. If a task requires a nonempty result, its executor must check
+for that result and exit with an error when it is missing.
+
+Missing exact output paths, malformed patterns, explicit type mismatches, and
+upload failures remain collection errors. If the executor succeeded, a collection
+error puts the task in `SYSTEM_ERROR`. These checks apply to backends that run the
+Funnel worker. GCP Batch uses a separate output path.
+
+## Container paths and output mounts
+
+Funnel's Docker and Kubernetes workers use filesystem mounts to make task files
+available to executor containers. A file output normally mounts its parent
+directory. A directory output mounts the directory itself. Choose a dedicated
+task directory, such as `/task` or `/outputs`, that does not contain files the
+container image needs or overlap mounts in your executor template.
+
+### Existing image contents
+
+Directory mounts hide any files already present at the destination in the
+container image. For example, an input directory mounted at `/etc` hides the
+image's existing `/etc` contents for that executor. The image's files are not
+deleted, but they are inaccessible beneath the mount. Input files are not merged
+with the image's directory contents. This follows ordinary filesystem mount
+behavior; see [Docker's bind-mount documentation](https://docs.docker.com/engine/storage/bind-mounts/#bind-mounting-over-existing-data).
+
+Funnel does not support automatic merging of input directories with image
+directories. Merging would require policies for conflicting files, permissions,
+and symbolic links. Use a dedicated input path such as `/task/inputs`, and point
+the command at that path. When replacing one configuration file, declare that
+specific file as the input rather than mounting its entire parent directory.
+
+### Root mounts
+
+Mounting over the container root `/` is unsupported. This includes a volume at
+`/`, a directory output at `/`, and ordinary file outputs such as `/result.json`
+whose parent is `/`. Root-level input files can also require a root mount when
+Funnel groups their input directories. Funnel rejects unsupported mappings before
+starting the executor. Move these paths beneath a dedicated directory and update
+the task's commands and path declarations together. Funnel does not rewrite paths
+inside commands or scripts.
+
+For example, capture stdout at `/task/stdout` and publish that same path:
+
+```json
+{
+  "executors": [{
+    "image": "alpine",
+    "command": ["echo", "hello"],
+    "stdout": "/task/stdout"
+  }],
+  "outputs": [{
+    "path": "/task/stdout",
+    "url": "s3://results/stdout.txt",
+    "type": "FILE"
+  }]
+}
+```
+
+Docker has a limited exception for root-level file outputs that exactly match an
+executor's `stdout` or `stderr` path. Funnel mounts those individual files so later
+executors can read them. These paths are taken from the task, not from fixed names
+such as `/stdout`. A container can read and write these files, but cannot unlink
+or replace their file mount points. Input and directory conflicts are rejected.
+
+Kubernetes does not use this exception. Its shared storage can require the
+executor to create stream files itself, so pre-creating a file for a Kubernetes
+file mount is not safe for every supported storage driver. Use stream paths under
+a dedicated directory for tasks that must run on both backends.
+
+These are Funnel storage limitations, not TES requirements. TES does not require
+parent-directory mounts. Rejecting `/` mounts also does not prevent a non-root
+mount from hiding files already present in the container image.
+
 ### Task API
 
 The API lets you create, get, list, and cancel tasks.
@@ -268,6 +351,19 @@ Tasks cannot be modified by the user after creation, with one exception – they
 POST /v1/tasks/b85l8tirl6qkqbhg8vj0:cancel
 ```
 
+
+### Docker resource limits
+
+By default, Funnel does not enforce task CPU and RAM requests on Docker
+containers. To apply them as limits, set `Worker.Container.EnforceResources`
+to `true`. Each specified CPU or RAM request is applied independently. A RAM
+limit also disables container swap. A process that exceeds its RAM limit may
+be killed by the kernel. Existing custom `Worker.Container.RunCommand`
+templates must include the resource flags themselves.
+
+### GPU requests
+
+GPU tasks use backend-specific TES `resources.backend_parameters`. See [GPU tasks]({{< ref "compute/gpus.md" >}}) for supported settings, hardware selection, and deployment requirements.
 
 ### Full task spec
 
@@ -492,3 +588,42 @@ For a full, in-depth spec, read the TES standard's [task_execution.proto](https:
 ```
 
 [alpine]: https://hub.docker.com/_/alpine/
+
+## Task response sizes
+
+Task lists honor the requested TES view. `MINIMAL` returns task IDs and states.
+`BASIC` omits input content and executor stdout/stderr, but includes output-file
+logs. `FULL` includes the full task. The dashboard requests `BASIC` for its list
+and `FULL` for task details.
+
+List pages are limited by both the requested task count and a protobuf response
+byte budget. A page can contain fewer tasks than requested; follow its
+`next_page_token` until it is empty. Tasks are never truncated to fit a page.
+
+Treat continuation tokens as opaque. MongoDB and PostgreSQL tokens encode the
+last returned creation time and ID, matching their deterministic sort order.
+Legacy ID-only tokens remain accepted while their referenced task exists; new
+tokens can resume even after that task is deleted.
+
+The server's gRPC response limit defaults to 4 MiB. List pages account for task records and the continuation token within that
+ceiling. If one task cannot fit, Funnel
+returns `RESOURCE_EXHAUSTED` with its task ID and suggests requesting `MINIMAL`
+or increasing the configured limit. Smaller pages cannot make a single large
+task smaller.
+
+To support larger task responses, configure the server before starting it:
+
+```yaml
+Server:
+  MaxResponseBytes: 8388608
+```
+
+`0` selects the default. The setting
+also controls the receive limit of Funnel's internal HTTP-to-gRPC gateway, so
+HTTP clients such as the dashboard and CLI can receive the supported response.
+External gRPC clients must configure their own receive limit when requesting
+larger responses. `GetTask` is subject to the same response ceiling.
+
+This is a protobuf transport budget, not a JSON-size or process-memory limit.
+JSON encoding can be larger, and the server must still load each candidate task
+before measuring it. Set deployment limits according to available resources.

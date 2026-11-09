@@ -32,7 +32,7 @@ func (db *MongoDB) ReadQueue(n int, after *tes.Task) []*tes.Task {
 		return nil
 	}
 
-	defer cursor.Close(ctx)
+	defer cursor.Close(ctx) //nolint:errcheck // Cursor cleanup cannot change the fully materialized read-only result.
 	var tasks []*tes.Task
 	err = cursor.All(ctx, &tasks)
 	if err != nil {
@@ -115,7 +115,7 @@ func (db *MongoDB) listNodes(ctx context.Context, req *scheduler.ListNodesReques
 	if err != nil {
 		return nil, err
 	}
-	defer cursor.Close(mctx)
+	defer cursor.Close(mctx) //nolint:errcheck // Cursor cleanup cannot change the fully materialized read-only result.
 
 	err = cursor.All(mctx, &records)
 	if err != nil {

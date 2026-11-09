@@ -2,7 +2,9 @@ package fsutil
 
 import (
 	"context"
+	"errors"
 	"io"
+	"os"
 	"time"
 )
 
@@ -18,18 +20,27 @@ func Reader(ctx context.Context, r io.Reader) io.Reader {
 			SetReadDeadline(time.Time) error
 		}
 		if d, ok := r.(deadliner); ok {
-			_ = d.SetReadDeadline(deadline)
+			err := d.SetReadDeadline(deadline)
+			if err != nil {
+				if !errors.Is(err, os.ErrNoDeadline) {
+					return reader{ctx: ctx, r: r, setupErr: err}
+				}
+			}
 		}
 	}
-	return reader{ctx, r}
+	return reader{ctx: ctx, r: r}
 }
 
 type reader struct {
-	ctx context.Context
-	r   io.Reader
+	ctx      context.Context
+	r        io.Reader
+	setupErr error
 }
 
 func (r reader) Read(p []byte) (n int, err error) {
+	if r.setupErr != nil {
+		return 0, r.setupErr
+	}
 	if err = r.ctx.Err(); err != nil {
 		return
 	}
@@ -52,18 +63,27 @@ func Writer(ctx context.Context, w io.Writer) io.Writer {
 			SetWriteDeadline(time.Time) error
 		}
 		if d, ok := w.(deadliner); ok {
-			_ = d.SetWriteDeadline(deadline)
+			err := d.SetWriteDeadline(deadline)
+			if err != nil {
+				if !errors.Is(err, os.ErrNoDeadline) {
+					return writer{ctx: ctx, w: w, setupErr: err}
+				}
+			}
 		}
 	}
-	return writer{ctx, w}
+	return writer{ctx: ctx, w: w}
 }
 
 type writer struct {
-	ctx context.Context
-	w   io.Writer
+	ctx      context.Context
+	w        io.Writer
+	setupErr error
 }
 
 func (w writer) Write(p []byte) (n int, err error) {
+	if w.setupErr != nil {
+		return 0, w.setupErr
+	}
 	if err = w.ctx.Err(); err != nil {
 		return
 	}

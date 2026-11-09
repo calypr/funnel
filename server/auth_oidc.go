@@ -329,7 +329,7 @@ func (c *OidcConfig) isJwtActive(token string) bool {
 			continue
 		}
 
-		defer response.Body.Close()
+		defer response.Body.Close() //nolint:errcheck // Read-only HTTP response cleanup cannot change the decoded token result.
 
 		if response.StatusCode != http.StatusOK {
 			fmt.Printf("[WARN] JWT introspection call gave non-200 HTTP status %d "+
@@ -401,7 +401,7 @@ func fetchJson(url *url.URL) []byte {
 		os.Exit(1)
 	}
 
-	defer res.Body.Close()
+	defer res.Body.Close() //nolint:errcheck // Read-only HTTP response cleanup cannot change the discovery result.
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
 		fmt.Printf("[ERROR] Failed to read the body of the OIDC "+

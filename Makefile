@@ -9,18 +9,19 @@ git_upstream := $(shell git remote get-url $(shell git config branch.$(shell git
 export GIT_BRANCH = $(git_branch)
 export GIT_UPSTREAM = $(git_upstream)
 
-export FUNNEL_VERSION=$(shell git describe --tags --dirty --always)
+FUNNEL_VERSION ?= $(shell version=$$(git describe --tags --exact-match 2>/dev/null || git rev-parse --short HEAD 2>/dev/null || printf unknown); if git rev-parse --verify HEAD >/dev/null 2>&1 && ! git diff-index --quiet HEAD --; then version=$${version}-dirty; fi; printf '%s' "$$version")
+export FUNNEL_VERSION
 
 # LAST_PR_NUMBER is used by the release notes builder to generate notes
 # based on pull requests (PR) up until the last release.
 export LAST_PR_NUMBER = 716
 
 VERSION_LDFLAGS=\
- -X "github.com/ohsu-comp-bio/funnel/version.BuildDate=$(shell date)" \
- -X "github.com/ohsu-comp-bio/funnel/version.GitCommit=$(git_commit)" \
- -X "github.com/ohsu-comp-bio/funnel/version.GitBranch=$(git_branch)" \
- -X "github.com/ohsu-comp-bio/funnel/version.GitUpstream=$(git_upstream)" \
- -X "github.com/ohsu-comp-bio/funnel/version.Version=$(FUNNEL_VERSION)"
+ -X "github.com/calypr/funnel/version.BuildDate=$(shell date)" \
+ -X "github.com/calypr/funnel/version.GitCommit=$(git_commit)" \
+ -X "github.com/calypr/funnel/version.GitBranch=$(git_branch)" \
+ -X "github.com/calypr/funnel/version.GitUpstream=$(git_upstream)" \
+ -X "github.com/calypr/funnel/version.Version=$(FUNNEL_VERSION)"
 
 export CGO_ENABLED=0
 
@@ -218,15 +219,12 @@ bundle-examples:
 full: proto install tidy lint test website webdash
 
 hugo-deps:
-	@cd website && \
-	([ -f go.mod ] || hugo mod init github.com/ohsu-comp-bio/funnel/website) && \
-	hugo mod get -u && \
-	hugo mod tidy
+	@cd website && go mod download
 
 # Build the website
 website: hugo-deps
 	@hugo --source ./website --minify
-	@npx -y pagefind --site docs
+	@npx -y pagefind@1.4.0 --site docs
 
 # Serve the Funnel website on http://localhost:1313
 website-dev: website

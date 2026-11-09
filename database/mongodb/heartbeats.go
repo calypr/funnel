@@ -194,7 +194,7 @@ func (db *MongoDB) overlayHeartbeats(ctx context.Context, nodes []*scheduler.Nod
 	if err != nil {
 		return err
 	}
-	defer cursor.Close(ctx)
+	defer cursor.Close(ctx) //nolint:errcheck // Cursor cleanup cannot change results; decode and iteration errors are returned below.
 	stamps := make(map[string]int64, len(nodes))
 	for cursor.Next(ctx) {
 		var heartbeat nodeHeartbeat

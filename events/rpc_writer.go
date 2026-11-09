@@ -2,6 +2,7 @@ package events
 
 import (
 	"context"
+	"log"
 
 	"github.com/calypr/funnel/config"
 	util "github.com/calypr/funnel/util/rpc"
@@ -34,5 +35,8 @@ func (r *RPCWriter) WriteEvent(ctx context.Context, e *Event) error {
 
 // Close closes the connection.
 func (r *RPCWriter) Close() {
-	r.conn.Close()
+	err := r.conn.Close()
+	if err != nil {
+		log.Printf("close event RPC connection: %v", err)
+	}
 }

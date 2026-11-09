@@ -35,6 +35,7 @@ message Config {
   PubSub PubSub = 16;
   Datastore Datastore = 17;
   Postgres Postgres = 33;
+  string EventFile = 35;
   // Compute
   HPCBackend HTCondor = 18;
   HPCBackend Slurm = 19;
@@ -106,6 +107,7 @@ message Server {
   OidcAuth OidcAuth = 6;
   bool DisableHTTPCache = 7;
   string TaskAccess = 8;
+  uint32 MaxResponseBytes = 9;
 }
 
 // Scheduler contains Funnel's basic scheduler configuration.
@@ -161,6 +163,7 @@ message ContainerConfig {
   string StopCommand = 11;
   bool EnableTags = 12;
   map<string, string> Tags = 13;
+  bool EnforceResources = 14;
   // Note: io.Reader and io.Writer (Stdin, Stdout, Stderr) are omitted as they are not serializable in Protobuf
 }
 
@@ -172,6 +175,7 @@ message HPCBackend {
   google.protobuf.Duration ReconcileRate = 2;
   string Template = 3;
   string TemplateFile = 4;
+  map<string, string> BackendParameters = 5;
 }
 
 // BoltDB describes the configuration for the BoltDB embedded database.
@@ -273,6 +277,7 @@ message GoogleCloudStorage {
 message SSE {
   string CustomerKeyFile = 1;
   string KMSKey = 2;
+  bool S3Managed = 3;
 }
 
 // AmazonS3Storage describes the configuration for the Amazon S3 storage backend.

@@ -17,9 +17,11 @@
     "start": "vite",
     "build": "vite build",
     "build-dev": "NODE_ENV=development vite build --mode development",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:integration": "playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@vitejs/plugin-react": "^6.1.2",
     "jsdom": "^29.1.1",
     "vite": "^8.3.4",

@@ -8,14 +8,20 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
 	"text/template"
 	"time"
+	"unicode"
 
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/events"
 	"github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/tes"
 	"github.com/calypr/funnel/util/fsutil"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // HPCBackend represents an HPCBackend such as HtCondor, Slurm, Grid Engine, etc.
@@ -39,6 +45,75 @@ type HPCBackend struct {
 	ReconcileRate time.Duration
 	Log           *logger.Logger
 	events.Backend
+	backendParameters map[string]*regexp.Regexp
+}
+
+// ConfigureBackendParameters compiles the administrator-defined allowlist.
+func (b *HPCBackend) ConfigureBackendParameters(patterns map[string]string) error {
+	constraints := make(map[string]*regexp.Regexp, len(patterns))
+	for key, pattern := range patterns {
+		canonicalKey := strings.ToLower(key)
+		if canonicalKey == "" {
+			return fmt.Errorf("backend parameter keys cannot be empty")
+		}
+		if _, exists := constraints[canonicalKey]; exists {
+			return fmt.Errorf("backend parameter keys must be unique ignoring case: %q", key)
+		}
+		compiled, err := regexp.Compile("^(?:" + pattern + ")$")
+		if err != nil {
+			return fmt.Errorf("invalid pattern for backend parameter %q: %w", key, err)
+		}
+		constraints[canonicalKey] = compiled
+	}
+	b.backendParameters = constraints
+	return nil
+}
+
+// BackendParameterKeys reports the administrator-configured template keys.
+func (b *HPCBackend) BackendParameterKeys() []string {
+	keys := make([]string, 0, len(b.backendParameters))
+	for key := range b.backendParameters {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func (b *HPCBackend) validatedBackendParameters(task *tes.Task) (map[string]string, error) {
+	resources := task.GetResources()
+	parameters := resources.GetBackendParameters()
+	if len(parameters) == 0 {
+		return nil, nil
+	}
+
+	validated := make(map[string]string, len(parameters))
+	for key, value := range parameters {
+		canonicalKey := strings.ToLower(key)
+		pattern, allowed := b.backendParameters[canonicalKey]
+		if !allowed {
+			if resources.GetBackendParametersStrict() {
+				return nil, status.Errorf(codes.InvalidArgument, "backend parameters not supported: %s", key)
+			}
+			continue
+		}
+		if strings.ContainsFunc(value, unicode.IsControl) {
+			return nil, status.Errorf(codes.InvalidArgument, "backend parameter %q contains a control character", key)
+		}
+		if !pattern.MatchString(value) {
+			return nil, status.Errorf(codes.InvalidArgument, "invalid value for backend parameter %q", key)
+		}
+		if _, duplicate := validated[canonicalKey]; duplicate {
+			return nil, status.Errorf(codes.InvalidArgument, "backend parameter keys must be unique ignoring case: %q", key)
+		}
+		validated[canonicalKey] = value
+	}
+	return validated, nil
+}
+
+// CheckBackendParameterSupport validates parameters before task persistence.
+func (b *HPCBackend) CheckBackendParameterSupport(task *tes.Task) error {
+	_, err := b.validatedBackendParameters(task)
+	return err
 }
 
 // WriteEvent writes an event to the compute backend.
@@ -209,7 +284,10 @@ ReconcileLoop:
 								b.Log.Error("writing system-error log event", "taskID", task.Id, "error", werr)
 							}
 							if t.Remove {
-								_ = exec.Command(b.CancelCmd, t.ID).Run()
+								err := exec.Command(b.CancelCmd, t.ID).Run()
+								if err != nil {
+									b.Log.Error("canceling failed HPC task", "taskID", task.Id, "backendID", t.ID, "error", err)
+								}
 							}
 						}
 					}
@@ -229,11 +307,17 @@ ReconcileLoop:
 // a shared file system. It generates a submission file based on a template for
 // schedulers such as SLURM, HTCondor, SGE, PBS/Torque, etc.
 func (b *HPCBackend) setupTemplatedHPCSubmit(ctx context.Context, task *tes.Task) (string, error) {
-	var err error
+	backendParameters, err := b.validatedBackendParameters(task)
+	if err != nil {
+		return "", err
+	}
 
 	// TODO document that these working dirs need manual cleanup
 	workdir := path.Join(b.Conf.Worker.WorkDir, task.Id)
-	workdir, _ = filepath.Abs(workdir)
+	workdir, err = filepath.Abs(workdir)
+	if err != nil {
+		return "", fmt.Errorf("resolve task working directory: %w", err)
+	}
 	err = fsutil.EnsureDir(workdir)
 	if err != nil {
 		return "", err
@@ -242,11 +326,6 @@ func (b *HPCBackend) setupTemplatedHPCSubmit(ctx context.Context, task *tes.Task
 	submitName := fmt.Sprintf("%s.submit", b.Name)
 
 	submitPath := path.Join(workdir, submitName)
-	f, err := os.Create(submitPath)
-	if err != nil {
-		return "", err
-	}
-
 	submitTpl, err := template.New(submitName).Parse(b.Template)
 	if err != nil {
 		return "", err
@@ -273,19 +352,32 @@ func (b *HPCBackend) setupTemplatedHPCSubmit(ctx context.Context, task *tes.Task
 		}
 		args = fmt.Sprintf("--config %v", configFile)
 	}
-	err = submitTpl.Execute(f, map[string]interface{}{
-		"TaskId":  task.Id,
-		"WorkDir": workdir,
-		"Cpus":    res.GetCpuCores(),
-		"RamGb":   res.GetRamGb(),
-		"DiskGb":  res.GetDiskGb(),
-		"Zone":    zone,
-		"Args":    args,
-	})
+	f, err := os.Create(submitPath)
 	if err != nil {
 		return "", err
 	}
-	f.Close()
+
+	err = submitTpl.Execute(f, map[string]interface{}{
+		"TaskId":            task.Id,
+		"WorkDir":           workdir,
+		"Cpus":              res.GetCpuCores(),
+		"RamGb":             res.GetRamGb(),
+		"DiskGb":            res.GetDiskGb(),
+		"Zone":              zone,
+		"Args":              args,
+		"BackendParameters": backendParameters,
+	})
+	if err != nil {
+		closeErr := f.Close()
+		if closeErr != nil {
+			return "", fmt.Errorf("write submit file: %v; close submit file: %w", err, closeErr)
+		}
+		return "", err
+	}
+	err = f.Close()
+	if err != nil {
+		return "", fmt.Errorf("close submit file: %w", err)
+	}
 
 	return submitPath, nil
 }

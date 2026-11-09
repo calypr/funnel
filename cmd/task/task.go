@@ -1,8 +1,10 @@
 package task
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"strings"
 
@@ -48,14 +50,14 @@ func newCommandHooks() (*cobra.Command, *hooks) {
 	}
 	cmd.SetGlobalNormalizationFunc(util.NormalizeFlags)
 	f := cmd.PersistentFlags()
-	f.StringVarP(&tesServer, "server", "S", tesServer, fmt.Sprintf("(default \"%s\")", defaultTesServer))
+	f.StringVarP(&tesServer, "server", "S", tesServer, fmt.Sprintf("Server address (or FUNNEL_SERVER; default %s)", defaultTesServer))
 
 	create := &cobra.Command{
 		Use:   "create [task.json ...]",
 		Short: "Create one or more tasks to run on the server.",
 		Long:  `Tasks may be piped to stdin, e.g. "python generate_tasks.py | funnel task create"`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return h.Create(tesServer, args, util.StdinPipe(), cmd.OutOrStdout())
+			return connectionHint(h.Create(tesServer, args, util.StdinPipe(), cmd.OutOrStdout()))
 		},
 	}
 
@@ -73,7 +75,7 @@ func newCommandHooks() (*cobra.Command, *hooks) {
 		Use:   "list",
 		Short: "List all tasks.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return h.List(tesServer, listView, pageToken, stateFilter, tagsFilter, namePrefix, pageSize, listAll, cmd.OutOrStdout())
+			return connectionHint(h.List(tesServer, listView, pageToken, stateFilter, tagsFilter, namePrefix, pageSize, listAll, cmd.OutOrStdout()))
 		},
 	}
 
@@ -92,7 +94,7 @@ func newCommandHooks() (*cobra.Command, *hooks) {
 		Short: "Get one or more tasks by ID.",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return h.Get(tesServer, args, getView, cmd.OutOrStdout())
+			return connectionHint(h.Get(tesServer, args, getView, cmd.OutOrStdout()))
 		},
 	}
 
@@ -104,7 +106,7 @@ func newCommandHooks() (*cobra.Command, *hooks) {
 		Short: "Cancel one or more tasks by ID.",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return h.Cancel(tesServer, args, cmd.OutOrStdout())
+			return connectionHint(h.Cancel(tesServer, args, cmd.OutOrStdout()))
 		},
 	}
 
@@ -113,12 +115,20 @@ func newCommandHooks() (*cobra.Command, *hooks) {
 		Short: "Wait for one or more tasks to complete.\n",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return h.Wait(tesServer, args)
+			return connectionHint(h.Wait(tesServer, args))
 		},
 	}
 
 	cmd.AddCommand(create, get, list, cancel, wait)
 	return cmd, h
+}
+
+func connectionHint(err error) error {
+	var op *net.OpError
+	if errors.As(err, &op) && op.Op == "dial" {
+		return fmt.Errorf("%w\nCheck that the server is running and the address is correct; use --server or FUNNEL_SERVER to set it.", err)
+	}
+	return err
 }
 
 type hooks struct {

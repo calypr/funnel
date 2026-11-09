@@ -9,6 +9,10 @@ menu:
 
 `GenericS3.MountedRead` and `GenericS3.MountedWrite` let a Kubernetes worker read inputs or publish outputs through PVC-backed filesystem mounts. Each setting names a configured storage volume. If that volume has multiple worker mounts, use `SubPath` to select the mount whose static Kubernetes `subPath` matches exactly. Read and write routes are optional and can use separate volumes or mount views.
 
+> **Warning:** `MountedWrite` checks only whether an S3 object exists with the expected size. If an older object at the output URL has the same size, Funnel can report the task as complete before the new output is visible in S3. Use the regular S3 API upload path when output URLs can be reused or when you need confirmation that the new content was published. Omit `MountedWrite` to use API uploads.
+
+> Mounted reads also depend on the storage driver presenting a fresh view of the configured bucket and prefix. Funnel cannot verify that the mount matches the S3 URL.
+
 ```yaml
 GenericS3:
   - Disabled: false

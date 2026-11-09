@@ -10,7 +10,14 @@ COPY .github/scripts/download-go-modules.sh /tmp/download-go-modules.sh
 RUN sh /tmp/download-go-modules.sh
 COPY . .
 RUN apk add --no-cache bash build-base git protobuf protobuf-dev
-RUN --mount=type=cache,target=/root/.cache/go-build make build
+ARG FUNNEL_VERSION
+ARG GIT_COMMIT
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    if [ -n "$FUNNEL_VERSION" ]; then \
+      make build FUNNEL_VERSION="$FUNNEL_VERSION" git_commit="$GIT_COMMIT"; \
+    else \
+      make build; \
+    fi
 
 # download nerdctl (Docker-compatible CLI for containerd)
 ARG NERDCTL_VERSION=2.2.1

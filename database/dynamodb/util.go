@@ -410,8 +410,23 @@ func (db *DynamoDB) getContent(ctx context.Context, in map[string]types.Attribut
 			return err
 		}
 		for _, item := range page.Items {
-			i, _ := strconv.ParseInt(item["index"].(*types.AttributeValueMemberN).Value, 10, 64)
-			in["inputs"].(*types.AttributeValueMemberL).Value[i].(*types.AttributeValueMemberM).Value["content"] = item["content"]
+			inputs, ok := in["inputs"].(*types.AttributeValueMemberL)
+			if !ok {
+				return fmt.Errorf("task input content response has no inputs list")
+			}
+			i, err := parseItemIndex(item, "index", len(inputs.Value))
+			if err != nil {
+				return fmt.Errorf("invalid DynamoDB input content index: %w", err)
+			}
+			input, ok := inputs.Value[i].(*types.AttributeValueMemberM)
+			if !ok {
+				return fmt.Errorf("DynamoDB input content index %d does not refer to an input map", i)
+			}
+			content, ok := item["content"]
+			if !ok {
+				return fmt.Errorf("DynamoDB input content record at index %d has no content", i)
+			}
+			input.Value["content"] = content
 		}
 	}
 	return nil
@@ -425,11 +440,32 @@ func (db *DynamoDB) getExecutorOutput(ctx context.Context, in map[string]types.A
 			return err
 		}
 		for _, item := range page.Items {
-			i, _ := strconv.ParseInt(item["index"].(*types.AttributeValueMemberN).Value, 10, 64)
-			a, _ := strconv.ParseInt(item["attempt"].(*types.AttributeValueMemberN).Value, 10, 64)
 			if out, ok := item[val]; ok {
-				attempt := in["logs"].(*types.AttributeValueMemberL).Value[a].(*types.AttributeValueMemberM).Value
-				attempt["logs"].(*types.AttributeValueMemberL).Value[i].(*types.AttributeValueMemberM).Value[val] = out
+				logs, ok := in["logs"].(*types.AttributeValueMemberL)
+				if !ok {
+					return fmt.Errorf("task executor output response has no logs list")
+				}
+				a, err := parseItemIndex(item, "attempt", len(logs.Value))
+				if err != nil {
+					return fmt.Errorf("invalid DynamoDB executor output attempt: %w", err)
+				}
+				attempt, ok := logs.Value[a].(*types.AttributeValueMemberM)
+				if !ok {
+					return fmt.Errorf("DynamoDB executor output attempt %d does not refer to a log map", a)
+				}
+				attemptLogs, ok := attempt.Value["logs"].(*types.AttributeValueMemberL)
+				if !ok {
+					return fmt.Errorf("DynamoDB executor output attempt %d has no executor logs list", a)
+				}
+				i, err := parseItemIndex(item, "index", len(attemptLogs.Value))
+				if err != nil {
+					return fmt.Errorf("invalid DynamoDB executor output index: %w", err)
+				}
+				executorLog, ok := attemptLogs.Value[i].(*types.AttributeValueMemberM)
+				if !ok {
+					return fmt.Errorf("DynamoDB executor output index %d does not refer to an executor log map", i)
+				}
+				executorLog.Value[val] = out
 			}
 		}
 	}
@@ -444,11 +480,41 @@ func (db *DynamoDB) getSystemLogs(ctx context.Context, in map[string]types.Attri
 			return err
 		}
 		for _, item := range page.Items {
-			i, _ := strconv.ParseInt(item["attempt"].(*types.AttributeValueMemberN).Value, 10, 64)
-			in["logs"].(*types.AttributeValueMemberL).Value[i].(*types.AttributeValueMemberM).Value["system_logs"] = item["system_logs"]
+			logs, ok := in["logs"].(*types.AttributeValueMemberL)
+			if !ok {
+				return fmt.Errorf("task system log response has no logs list")
+			}
+			i, err := parseItemIndex(item, "attempt", len(logs.Value))
+			if err != nil {
+				return fmt.Errorf("invalid DynamoDB system log attempt: %w", err)
+			}
+			attempt, ok := logs.Value[i].(*types.AttributeValueMemberM)
+			if !ok {
+				return fmt.Errorf("DynamoDB system log attempt %d does not refer to a log map", i)
+			}
+			systemLogs, ok := item["system_logs"]
+			if !ok {
+				return fmt.Errorf("DynamoDB system log record at attempt %d has no system logs", i)
+			}
+			attempt.Value["system_logs"] = systemLogs
 		}
 	}
 	return nil
+}
+
+func parseItemIndex(item map[string]types.AttributeValue, field string, length int) (int, error) {
+	attribute, ok := item[field].(*types.AttributeValueMemberN)
+	if !ok {
+		return 0, fmt.Errorf("missing numeric %q field", field)
+	}
+	index, err := strconv.Atoi(attribute.Value)
+	if err != nil {
+		return 0, fmt.Errorf("parse %q value %q: %w", field, attribute.Value, err)
+	}
+	if index < 0 || index >= length {
+		return 0, fmt.Errorf("%q value %d is outside [0, %d)", field, index, length)
+	}
+	return index, nil
 }
 
 func encodeJSONTags(options *attributevalue.EncoderOptions) { options.TagKey = "json" }
