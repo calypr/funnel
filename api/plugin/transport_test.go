@@ -7,6 +7,7 @@ import (
 	"net/rpc"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/calypr/funnel/api/config"
 	"github.com/calypr/funnel/api/tes"
@@ -14,6 +15,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 type recordingAuthorizer struct {
@@ -38,8 +40,11 @@ func TestAuthorizeTransports(t *testing.T) {
 				request := &Job{
 					Params:  map[string]string{"task_id": "task-123"},
 					Headers: map[string]*StringList{"X-User": {Values: []string{"alice", "bob"}}},
-					Config:  &config.Config{Server: &config.Server{HTTPPort: "8000"}},
-					Task:    &tes.Task{Id: "task-123"}, Type: Type_GET,
+					Config: &config.Config{Server: &config.Server{HTTPPort: "8000"}, Scheduler: &config.Scheduler{
+						NodeInitTimeout: &config.TimeoutConfig{TimeoutOption: &config.TimeoutConfig_Duration{Duration: durationpb.New(time.Minute)}},
+						NodeDeadTimeout: &config.TimeoutConfig{TimeoutOption: &config.TimeoutConfig_Disabled{Disabled: true}},
+					}},
+					Task: &tes.Task{Id: "task-123"}, Type: Type_GET,
 				}
 				expected := &JobResponse{Code: 200, Message: "authorized", UserId: "alice", Config: request.Config, Task: request.Task}
 				impl := &recordingAuthorizer{requests: make(chan *Job, 1), response: expected}

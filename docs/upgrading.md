@@ -116,8 +116,8 @@ import. Implement `plugin.Authorize`, use `plugin.Handshake`, and choose
 Use your own logger instead of the former `plugins/shared.Logger`.
 
 Rebuild plugin binaries against the upgraded Funnel module and deploy them
-with the upgraded host. Importing `api/plugin` registers S3 mount-view and
-`structpb.Value` oneof wrappers for net/rpc. Importing `api/config` alone does
+with the upgraded host. Importing `api/plugin` registers timeout, S3 mount-view,
+and `structpb.Value` oneof wrappers for net/rpc. Importing `api/config` alone does
 not register Gob types. Host process loading remains internal.
 
 ### Return the complete edited configuration

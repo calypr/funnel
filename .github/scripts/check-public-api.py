@@ -69,6 +69,7 @@ import (
  plugin "github.com/calypr/funnel/api/plugin"
  "google.golang.org/protobuf/proto"
  "google.golang.org/protobuf/types/known/structpb"
+ "google.golang.org/protobuf/types/known/durationpb"
 )
 func TestExternalClient(t *testing.T) {
  server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
@@ -96,6 +97,10 @@ func TestExternalPluginGobContract(t *testing.T) {
  if err!=nil {t.Fatal(err)}
  job:=&plugin.Job{Config:&config.Config{
   Logger:&logger.LoggerConfig{Level:"info"},
+  Scheduler:&config.Scheduler{
+   NodeInitTimeout:&config.TimeoutConfig{TimeoutOption:&config.TimeoutConfig_Duration{Duration:&durationpb.Duration{Seconds:1}}},
+   NodeDeadTimeout:&config.TimeoutConfig{TimeoutOption:&config.TimeoutConfig_Disabled{Disabled:true}},
+  },
   GenericS3:[]*config.GenericS3Storage{{
    MountedRead:&config.S3MountedRead{Volume:"data",MountView:&config.S3MountedRead_SubPath{SubPath:"input"}},
    MountedWrite:&config.S3MountedWrite{Volume:"data",MountView:&config.S3MountedWrite_SubPath{SubPath:""}},

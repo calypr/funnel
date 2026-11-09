@@ -4,12 +4,39 @@ import (
 	"bytes"
 	"encoding/gob"
 	"testing"
+	"time"
 
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	schema "github.com/calypr/funnel/api/config"
 )
+
+func TestTimeoutConfigGobRoundTrip(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		timeout *schema.TimeoutConfig
+	}{
+		{name: "duration", timeout: &schema.TimeoutConfig{TimeoutOption: &schema.TimeoutConfig_Duration{Duration: durationpb.New(time.Minute)}}},
+		{name: "disabled", timeout: &schema.TimeoutConfig{TimeoutOption: &schema.TimeoutConfig_Disabled{Disabled: true}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			want := &Job{Config: &schema.Config{Scheduler: &schema.Scheduler{NodePingTimeout: tc.timeout}}}
+			var wire bytes.Buffer
+			if err := gob.NewEncoder(&wire).Encode(want); err != nil {
+				t.Fatalf("encode plugin configuration: %v", err)
+			}
+			var got Job
+			if err := gob.NewDecoder(&wire).Decode(&got); err != nil {
+				t.Fatalf("decode plugin configuration: %v", err)
+			}
+			if !proto.Equal(want, &got) {
+				t.Fatalf("plugin timeout changed: got %v, want %v", &got, want)
+			}
+		})
+	}
+}
 
 func TestKubernetesStorageGobRoundTrip(t *testing.T) {
 	volume, err := structpb.NewStruct(map[string]any{

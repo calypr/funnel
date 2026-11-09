@@ -16,6 +16,8 @@ import (
 // Gob needs concrete protobuf oneof types registered in both host and plugin
 // processes for the net/rpc transport.
 func init() {
+	gob.Register(&funnelConfig.TimeoutConfig_Duration{})
+	gob.Register(&funnelConfig.TimeoutConfig_Disabled{})
 	gob.Register(&funnelConfig.S3MountedRead_SubPath{})
 	gob.Register(&funnelConfig.S3MountedWrite_SubPath{})
 	gob.Register(&structpb.Value_NullValue{})

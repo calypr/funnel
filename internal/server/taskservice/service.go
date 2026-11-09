@@ -3,7 +3,6 @@ package taskservice
 
 import (
 	"context"
-	"encoding/gob"
 	"fmt"
 	"strings"
 	"sync"
@@ -131,9 +130,6 @@ func (ts *Service) DoPluginAction(ctx context.Context, task *tes.Task, taskType 
 }
 
 func (ts *Service) HandleDoPluginAction(ctx context.Context, task *tes.Task, taskType proto.Type) (*proto.JobResponse, error) {
-	gob.Register(&config.TimeoutConfig_Duration{})
-	gob.Register(&config.TimeoutConfig_Disabled{})
-
 	pluginResponse, err := ts.DoPluginAction(ctx, task, taskType)
 	if err != nil {
 		return pluginResponse, fmt.Errorf("Error loading plugins: %v", err)
