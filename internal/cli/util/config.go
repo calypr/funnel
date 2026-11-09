@@ -2,6 +2,7 @@ package util
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"dario.cat/mergo"
@@ -14,9 +15,13 @@ import (
 // MergeConfigFileWithFlags is a util used by server commands that use flags to set
 // Funnel config values. These commands can also take in the path to a Funnel config file.
 // This function ensures that the config gets set up properly. Flag values override values in
-// the provided config file.
+// the provided config file. FUNNEL_CONFIG supplies the file when none is supplied;
+// FUNNEL_LOG_LEVEL overrides the file's log level, but explicit flags take priority.
 func MergeConfigFileWithFlags(file string, flagConf *config.Config) (*config.Config, error) {
 	conf := appconfig.DefaultConfig()
+	if file == "" {
+		file = os.Getenv("FUNNEL_CONFIG")
+	}
 
 	// Only parse file if it exists
 	if file != "" {
@@ -42,6 +47,10 @@ func MergeConfigFileWithFlags(file string, flagConf *config.Config) (*config.Con
 	err := mergo.Merge(conf, defaults, mergo.WithoutDereference)
 	if err != nil {
 		return conf, err
+	}
+
+	if level := os.Getenv("FUNNEL_LOG_LEVEL"); level != "" {
+		conf.Logger.Level = level
 	}
 
 	// Merge flags into result (flags take priority over everything)

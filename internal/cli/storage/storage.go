@@ -49,7 +49,7 @@ func NewCommand() *cobra.Command {
 	}
 	cmd.SetGlobalNormalizationFunc(cmdutil.NormalizeFlags)
 	f := cmd.PersistentFlags()
-	f.StringVarP(&configFile, "config", "c", configFile, "Config File")
+	f.StringVarP(&configFile, "config", "c", configFile, "Config file (or FUNNEL_CONFIG)")
 
 	statCmd := &cobra.Command{
 		Use:   "stat [url]",

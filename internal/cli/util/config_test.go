@@ -13,6 +13,38 @@ import (
 	"github.com/calypr/funnel/internal/config/configtest"
 )
 
+func TestConfigEnvironmentDefaultsAndOverrides(t *testing.T) {
+	fileConfig := appconfig.EmptyConfig()
+	fileConfig.Server.HTTPPort = "8123"
+	fileConfig.Logger.Level = "warn"
+	file := configtest.WriteFile(t, fileConfig, "environment.yaml")
+	t.Setenv("FUNNEL_CONFIG", file)
+	t.Setenv("FUNNEL_LOG_LEVEL", "debug")
+	got, err := MergeConfigFileWithFlags("", appconfig.EmptyConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Server.HTTPPort != "8123" || got.Logger.Level != "debug" {
+		t.Fatalf("environment configuration not applied: port=%s level=%s", got.Server.HTTPPort, got.Logger.Level)
+	}
+	explicitConfig := appconfig.EmptyConfig()
+	explicitConfig.Server.HTTPPort = "8456"
+	explicitFile := configtest.WriteFile(t, explicitConfig, "explicit.yaml")
+	flags := appconfig.EmptyConfig()
+	flags.Logger.Level = "error"
+	got, err = MergeConfigFileWithFlags(explicitFile, flags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Server.HTTPPort != "8456" || got.Logger.Level != "error" {
+		t.Fatalf("explicit configuration did not win: port=%s level=%s", got.Server.HTTPPort, got.Logger.Level)
+	}
+	t.Setenv("FUNNEL_CONFIG", file+".missing")
+	if _, err := MergeConfigFileWithFlags("", appconfig.EmptyConfig()); err == nil {
+		t.Fatal("missing environment-selected config must return an error")
+	}
+}
+
 func TestHTTPStorageTimeoutDefaultsAndOverrides(t *testing.T) {
 	defaults, err := MergeConfigFileWithFlags("", appconfig.EmptyConfig())
 	if err != nil || !defaults.HTTPStorage.Timeout.GetDisabled() {

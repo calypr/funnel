@@ -11,7 +11,7 @@ import (
 func ServerFlags(flagConf *config.Config, configFile *string) *pflag.FlagSet {
 	f := pflag.NewFlagSet("", pflag.ContinueOnError)
 
-	f.StringVarP(configFile, "config", "c", *configFile, "Config File")
+	f.StringVarP(configFile, "config", "c", *configFile, "Config file (or FUNNEL_CONFIG)")
 
 	f.AddFlagSet(selectorFlags(flagConf))
 	f.AddFlagSet(serverFlags(flagConf))
@@ -30,7 +30,7 @@ func ServerFlags(flagConf *config.Config, configFile *string) *pflag.FlagSet {
 func WorkerFlags(flagConf *config.Config, configFile *string) *pflag.FlagSet {
 	f := pflag.NewFlagSet("", pflag.ContinueOnError)
 
-	f.StringVarP(configFile, "config", "c", *configFile, "Config File")
+	f.StringVarP(configFile, "config", "c", *configFile, "Config file (or FUNNEL_CONFIG)")
 
 	f.AddFlagSet(selectorFlags(flagConf))
 	f.AddFlagSet(serverFlags(flagConf))
@@ -47,7 +47,7 @@ func WorkerFlags(flagConf *config.Config, configFile *string) *pflag.FlagSet {
 // NodeFlags returns a new flag set for configuring a Funnel node
 func NodeFlags(flagConf *config.Config, configFile *string) *pflag.FlagSet {
 	f := pflag.NewFlagSet("", pflag.ContinueOnError)
-	f.StringVarP(configFile, "config", "c", *configFile, "Config File")
+	f.StringVarP(configFile, "config", "c", *configFile, "Config file (or FUNNEL_CONFIG)")
 	f.AddFlagSet(selectorFlags(flagConf))
 	f.AddFlagSet(serverFlags(flagConf))
 	f.AddFlagSet(rpcClientFlags(flagConf))
@@ -124,7 +124,7 @@ func nodeFlags(flagConf *config.Config) *pflag.FlagSet {
 func loggerFlags(flagConf *config.Config) *pflag.FlagSet {
 	f := pflag.NewFlagSet("", pflag.ContinueOnError)
 
-	f.StringVar(&flagConf.Logger.Level, "Logger.Level", flagConf.Logger.Level, "Level of logging")
+	f.StringVar(&flagConf.Logger.Level, "Logger.Level", flagConf.Logger.Level, "Level of logging (or FUNNEL_LOG_LEVEL)")
 	f.StringVar(&flagConf.Logger.OutputFile, "Logger.OutputFile", flagConf.Logger.OutputFile, "File path to write logs to")
 	f.StringVar(&flagConf.Logger.Formatter, "Logger.Formatter", flagConf.Logger.Formatter, "Logs formatter. One of ['text', 'json']")
 

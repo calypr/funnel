@@ -85,7 +85,7 @@ is decoupled from the server lifecycle and multiple replicas do not race.`,
 	}
 
 	f := cmd.Flags()
-	f.StringVarP(&configFile, "config", "c", "", "Path to Funnel config file")
+	f.StringVarP(&configFile, "config", "c", "", "Path to Funnel config file (or FUNNEL_CONFIG)")
 	cmd.SetGlobalNormalizationFunc(cmdutil.NormalizeFlags)
 	f.AddFlagSet(cmdutil.ServerFlags(flagConf, &configFile))
 
