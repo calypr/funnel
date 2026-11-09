@@ -99,8 +99,8 @@ implementation. Makefile and release builds populate it through linker flags.
   source and npm commands remain in `webdash/`.
 
 The public `api/config` and `api/logger` packages contain generated schemas.
-Gob oneof registration lives beside the net/rpc adapters in `api/plugin/rpc.go`;
-importing `api/config` does not register Gob types.
+The net/rpc adapters in `api/plugin` carry complete protobuf messages inside Gob
+to preserve optional fields and oneofs without global type registrations.
 Server address formatting lives in `internal/config`, alongside application
 configuration defaults and loading. `api/plugin` contains the public plugin contract, handshake, and net/rpc and
 gRPC adapters. Host process discovery, launching, and logging stay in

@@ -115,10 +115,12 @@ import. Implement `plugin.Authorize`, use `plugin.Handshake`, and choose
 `plugin.AuthorizePlugin` for net/rpc or `plugin.AuthorizeGRPCPlugin` for gRPC.
 Use your own logger instead of the former `plugins/shared.Logger`.
 
-Rebuild plugin binaries against the upgraded Funnel module and deploy them
-with the upgraded host. Importing `api/plugin` registers timeout, S3 mount-view,
-and `structpb.Value` oneof wrappers for net/rpc. Importing `api/config` alone does
-not register Gob types. Host process loading remains internal.
+Rebuild plugin binaries against the same Funnel module version as the upgraded
+host and deploy them together. The net/rpc adapters now carry complete protobuf
+messages inside Gob. This preserves optional TES fields and configuration
+oneofs without global Gob registrations. The encoding differs from older
+net/rpc binaries, so both peers must be rebuilt. The gRPC wire format is unchanged.
+Host process loading remains internal.
 
 ### Return the complete edited configuration
 

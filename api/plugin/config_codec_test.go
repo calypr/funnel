@@ -50,7 +50,7 @@ func TestKubernetesStorageGobRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := &schema.Config{
+	want := &Job{Config: &schema.Config{
 		GenericS3: []*schema.GenericS3Storage{{
 			MountedRead: &schema.S3MountedRead{Volume: "task-data"},
 			MountedWrite: &schema.S3MountedWrite{
@@ -63,27 +63,27 @@ func TestKubernetesStorageGobRoundTrip(t *testing.T) {
 				Volumes: []*structpb.Struct{volume},
 			},
 		},
-	}
+	}}
 
 	var encoded bytes.Buffer
 	if err := gob.NewEncoder(&encoded).Encode(want); err != nil {
 		t.Fatal("encode config over gob:", err)
 	}
 
-	var got schema.Config
+	var got Job
 	if err := gob.NewDecoder(&encoded).Decode(&got); err != nil {
 		t.Fatal("decode config over gob:", err)
 	}
 	if !proto.Equal(&got, want) {
 		t.Fatalf("gob round-trip mismatch:\n got: %v\nwant: %v", &got, want)
 	}
-	if got.GenericS3[0].MountedRead.MountView != nil {
+	if got.Config.GenericS3[0].MountedRead.MountView != nil {
 		t.Fatal("absent read SubPath became present during gob round-trip")
 	}
-	if got.GenericS3[0].MountedWrite.GetSubPath() != "" {
+	if got.Config.GenericS3[0].MountedWrite.GetSubPath() != "" {
 		t.Fatal("present empty write SubPath did not survive gob round-trip")
 	}
-	if _, present := got.GenericS3[0].MountedWrite.GetMountView().(*schema.S3MountedWrite_SubPath); !present {
+	if _, present := got.Config.GenericS3[0].MountedWrite.GetMountView().(*schema.S3MountedWrite_SubPath); !present {
 		t.Fatal("empty write SubPath lost oneof presence during gob round-trip")
 	}
 }

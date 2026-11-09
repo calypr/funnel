@@ -7,6 +7,7 @@
 ### Fixed
 
 * PostgreSQL initialization cancels stalled network operations when its existing five-minute initialization budget expires.
+* Net/rpc authorization plugins preserve explicitly declared `FILE` output types and other optional protobuf fields in requests and responses. Rebuild the host and plugin binaries together.
 
 ### Breaking changes and upgrade preparation
 

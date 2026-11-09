@@ -1,7 +1,6 @@
 package plugin
 
 import (
-	"encoding/gob"
 	"fmt"
 	"net/rpc"
 
@@ -10,23 +9,7 @@ import (
 	funnelConfig "github.com/calypr/funnel/api/config"
 	"github.com/calypr/funnel/api/tes"
 	googleproto "google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/structpb"
 )
-
-// Gob needs concrete protobuf oneof types registered in both host and plugin
-// processes for the net/rpc transport.
-func init() {
-	gob.Register(&funnelConfig.TimeoutConfig_Duration{})
-	gob.Register(&funnelConfig.TimeoutConfig_Disabled{})
-	gob.Register(&funnelConfig.S3MountedRead_SubPath{})
-	gob.Register(&funnelConfig.S3MountedWrite_SubPath{})
-	gob.Register(&structpb.Value_NullValue{})
-	gob.Register(&structpb.Value_NumberValue{})
-	gob.Register(&structpb.Value_StringValue{})
-	gob.Register(&structpb.Value_BoolValue{})
-	gob.Register(&structpb.Value_StructValue{})
-	gob.Register(&structpb.Value_ListValue{})
-}
 
 // RPCClient is an implementation of Authorize that talks over RPC.
 type RPCClient struct {
