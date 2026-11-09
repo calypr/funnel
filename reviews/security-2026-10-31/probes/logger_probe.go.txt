@@ -1,0 +1,14 @@
+package main
+import (
+ "fmt"
+ "bytes"
+ "github.com/calypr/funnel/logger"
+)
+func main() {
+ var normal bytes.Buffer
+ application := logger.NewLogger("application", logger.DefaultConfig())
+ application.SetOutput(&normal)
+ application.Debug("suppressed-application-marker")
+ logger.Debug("synthetic executor data", "data", map[string]any{"Env": map[string]string{"PASSWORD":"synthetic-secret"}, "Command": []string{"tool", "synthetic-argument"}})
+ fmt.Printf("application_debug_suppressed=%v\n", normal.Len()==0)
+}

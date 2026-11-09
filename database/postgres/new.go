@@ -73,8 +73,12 @@ func (db *Postgres) Init() error {
 }
 
 func (db *Postgres) context() (context.Context, context.CancelFunc) {
+	return db.requestContext(context.Background())
+}
+
+func (db *Postgres) requestContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	// Use a timeout from the configuration
-	return context.WithTimeout(context.Background(), db.conf.GetTimeout().GetDuration().AsDuration())
+	return context.WithTimeout(ctx, db.conf.GetTimeout().GetDuration().AsDuration())
 }
 
 func buildConnStr(host, user, password, database string) string {

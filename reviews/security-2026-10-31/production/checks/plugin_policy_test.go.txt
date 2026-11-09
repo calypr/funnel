@@ -1,0 +1,44 @@
+package server
+
+import (
+	"context"
+	"github.com/calypr/funnel/config"
+	plugin "github.com/calypr/funnel/plugins/proto"
+	"github.com/calypr/funnel/tes"
+	"google.golang.org/grpc/metadata"
+	"testing"
+)
+
+type auditDenyPlugin struct{ calls int }
+
+func (p *auditDenyPlugin) PluginAction(map[string]string, map[string]*plugin.StringList, *config.Config, *tes.Task, plugin.Type) (*plugin.JobResponse, error) {
+	p.calls++
+	return &plugin.JobResponse{Code: 403, Message: "synthetic policy rejection"}, nil
+}
+
+type auditPolicyReader struct{ tes.ReadOnlyServer }
+
+func (auditPolicyReader) GetTask(context.Context, *tes.GetTaskRequest) (*tes.Task, error) {
+	return &tes.Task{Id: "synthetic-task"}, nil
+}
+func (auditPolicyReader) ListTasks(context.Context, *tes.ListTasksRequest) (*tes.ListTasksResponse, error) {
+	return &tes.ListTasksResponse{}, nil
+}
+func TestAuditPluginReadPolicyInvocation(t *testing.T) {
+	policy := &auditDenyPlugin{}
+	conf := config.DefaultConfig()
+	conf.Plugins = &config.Plugins{Path: "synthetic"}
+	svc := &TaskService{Plugin: policy, Config: conf, Read: auditPolicyReader{}}
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("x-audit", "synthetic"))
+	_, getErr := svc.GetTask(ctx, &tes.GetTaskRequest{Id: "synthetic-task"})
+	_, listErr := svc.ListTasks(ctx, &tes.ListTasksRequest{})
+	t.Logf("get_error=%v list_error=%v authorizer_calls_for_reads=%d", getErr, listErr, policy.calls)
+	if policy.calls != 0 || getErr != nil || listErr != nil {
+		t.Fatal("recorded read policy gap not reproduced")
+	}
+	_, createErr := svc.CreateTask(ctx, &tes.Task{})
+	t.Logf("create_rejected=%t authorizer_calls_after_create=%d", createErr != nil, policy.calls)
+	if createErr == nil || policy.calls != 1 {
+		t.Fatal("authorizer control failed")
+	}
+}

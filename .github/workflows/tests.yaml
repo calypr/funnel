@@ -15,6 +15,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  local-storage-permissions:
+    name: Local storage executor permissions
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+    - name: Check out code
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - name: Set up Go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: go.mod
+    - name: Compile storage permission test as runner
+      run: go test -c ./storage -o "$RUNNER_TEMP/storage-permissions.test"
+    - name: Run storage tests with separate executor identities
+      working-directory: storage
+      run: sudo env FUNNEL_TEST_LOCAL_OWNERSHIP=1 "$RUNNER_TEMP/storage-permissions.test" -test.count=1 -test.v -test.timeout=2m
+
   docker-resource-integration:
     name: Docker worker integration tests
     runs-on: ubuntu-latest
@@ -168,7 +185,7 @@ jobs:
   # Preserve the required status context until the stack's ruleset migration.
   required-go-tests:
     name: unitTest
-    needs: [unitTest, scheduler-tests, scheduler-process-tests]
+    needs: [unitTest, scheduler-tests, scheduler-process-tests, local-storage-permissions]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -177,4 +194,5 @@ jobs:
           CHECK_RESULT: ${{ needs.unitTest.result }}
           SCHEDULER_RESULT: ${{ needs.scheduler-tests.result }}
           PROCESS_RESULT: ${{ needs.scheduler-process-tests.result }}
-        run: test "$CHECK_RESULT" = success && test "$SCHEDULER_RESULT" = success && test "$PROCESS_RESULT" = success
+          STORAGE_RESULT: ${{ needs.local-storage-permissions.result }}
+        run: test "$CHECK_RESULT" = success && test "$SCHEDULER_RESULT" = success && test "$PROCESS_RESULT" = success && test "$STORAGE_RESULT" = success

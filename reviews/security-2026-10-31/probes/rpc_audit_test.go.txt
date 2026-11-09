@@ -1,0 +1,11 @@
+package rpc_test
+import("context";"fmt";"net";"testing";"time";"github.com/calypr/funnel/config";"github.com/calypr/funnel/util/rpc";"github.com/calypr/funnel/events";"google.golang.org/grpc";"google.golang.org/grpc/metadata";"google.golang.org/grpc/peer";"google.golang.org/grpc/test/bufconn")
+type auditWriter struct{observation string}
+func(w *auditWriter)WriteEvent(ctx context.Context,e *events.Event)error{md,_:=metadata.FromIncomingContext(ctx);p,_:=peer.FromContext(ctx);w.observation=fmt.Sprintf("credentials_received=%t transport_auth=%v",len(md.Get("authorization"))>0,p.AuthInfo);return nil}
+func(w *auditWriter)Close(){}
+func TestAuditRPCPlaintextCredentials(t *testing.T){
+ lis:=bufconn.Listen(1024*1024);defer lis.Close();w:=&auditWriter{};srv:=grpc.NewServer();events.RegisterEventServiceServer(srv,&events.Service{Writer:w});go srv.Serve(lis);defer srv.Stop()
+ ctx,cancel:=context.WithTimeout(context.Background(),5*time.Second);defer cancel();c:=config.DefaultConfig().RPCClient;c.ServerAddress="remote.invalid:9090";c.Credential=&config.BasicCredential{User:"synthetic",Password:"synthetic"}
+ conn,err:=rpc.Dial(ctx,c,grpc.WithContextDialer(func(context.Context,string)(net.Conn,error){return lis.Dial()}));if err!=nil{t.Fatal(err)};defer conn.Close()
+ _,err=events.NewEventServiceClient(conn).WriteEvent(ctx,events.NewMetadata("synthetic-task",0,map[string]string{"test":"value"}));if err!=nil{t.Fatal(err)};t.Log(w.observation)
+}

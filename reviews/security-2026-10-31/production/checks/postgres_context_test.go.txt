@@ -1,0 +1,31 @@
+package postgres
+
+import (
+	"context"
+	"encoding/base64"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/server"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
+	"testing"
+)
+
+func TestAuditRequestIdentityRetention(t *testing.T) {
+	auth := server.NewAuthentication([]*config.BasicCredential{{User: "synthetic-tenant", Password: "synthetic"}}, nil, server.AccessOwner)
+	request := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte("synthetic-tenant:synthetic"))))
+	_, err := auth.Interceptor(request, nil, &grpc.UnaryServerInfo{FullMethod: "/audit/identity"}, func(incoming context.Context, _ any) (any, error) {
+		db := &Postgres{conf: config.DefaultConfig().Postgres}
+		derived, cancel := db.context()
+		defer cancel()
+		before, after := server.GetUser(incoming), server.GetUser(derived)
+		t.Logf("incoming_user=%s incoming_admin=%t incoming_all_tasks=%t", before.Username, before.IsAdmin, before.CanSeeAllTasks())
+		t.Logf("database_context_user=%s database_admin=%t database_all_tasks=%t", after.Username, after.IsAdmin, after.CanSeeAllTasks())
+		if before.CanSeeAllTasks() || !after.CanSeeAllTasks() {
+			t.Fatal("recorded context failure not reproduced")
+		}
+		return nil, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}

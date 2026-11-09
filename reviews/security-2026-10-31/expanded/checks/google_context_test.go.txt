@@ -1,0 +1,47 @@
+package storage
+
+import (
+	"context"
+	"errors"
+	"google.golang.org/api/option"
+	gcsapi "google.golang.org/api/storage/v1"
+	"net/http"
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+type reviewContextTransport struct {
+	cancel                          context.CancelFunc
+	parent                          context.Context
+	parentCanceled, requestCanceled bool
+	calls                           int
+}
+
+func (r *reviewContextTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	defer req.Body.Close()
+	r.calls++
+	r.cancel()
+	r.parentCanceled = r.parent.Err() != nil
+	r.requestCanceled = req.Context().Err() != nil
+	return nil, errors.New("synthetic request stopped without network")
+}
+func TestReviewGoogleUploadContext(t *testing.T) {
+	parent, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	transport := &reviewContextTransport{cancel: cancel, parent: parent}
+	api, err := gcsapi.NewService(context.Background(), option.WithHTTPClient(&http.Client{Transport: transport}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := &GoogleCloud{svc: api}
+	file := filepath.Join(t.TempDir(), "fixture.txt")
+	if err = os.WriteFile(file, []byte("fixture"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	_, err = backend.Put(parent, "gs://synthetic-bucket/fixture.txt", file)
+	t.Logf("outbound_calls=%d parent_canceled=%t outbound_request_canceled=%t returned_error=%t", transport.calls, transport.parentCanceled, transport.requestCanceled, err != nil)
+	if transport.calls != 1 || !transport.parentCanceled || transport.requestCanceled || err == nil {
+		t.Fatal("recorded request context behavior not reproduced")
+	}
+}

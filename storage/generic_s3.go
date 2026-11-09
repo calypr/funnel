@@ -62,9 +62,6 @@ func NewGenericS3(conf *config.GenericS3Storage) (*GenericS3, error) {
 		region = "us-east-1"
 	}
 
-	logger := logger.NewLogger("GenericS3", logger.DefaultConfig())
-	logger.Debug("generics3: connecting to endpoint", "endpoint", endpoint)
-
 	pathStyle := endpoint != "" && !strings.Contains(endpoint, ".amazonaws.com")
 
 	loadOpts := []func(*awscfg.LoadOptions) error{
@@ -217,7 +214,7 @@ func (s3b *GenericS3) Stat(ctx context.Context, url string) (*Object, error) {
 		Key:    aws.String(u.path),
 	})
 	if err != nil {
-		logger.Debug("genericS3: getting object from s3.client.HeadObject", "url", url, "error", err)
+		logger.Debug("genericS3: getting object from s3.client.HeadObject", "bucket", u.bucket, "path", u.path, "error_type", fmt.Sprintf("%T", err))
 		// the key may represent a directory prefix rather than an object
 		isDir, derr := s3b.isDir(ctx, u.bucket, u.path)
 		if derr == nil && isDir {
@@ -308,7 +305,7 @@ func (s3b *GenericS3) Get(ctx context.Context, url, path string) (*Object, error
 		return obj, err
 	}
 	logger := logger.NewLogger("GenericS3", logger.DefaultConfig())
-	logger.Debug("genericS3: Get called", "url", url, "path", path)
+	logger.Debug("genericS3: Get called", "path", path)
 
 	obj, err := s3b.Stat(ctx, url)
 	if err != nil {

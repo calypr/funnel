@@ -1,0 +1,17 @@
+package main
+import("bytes";"context";"errors";"fmt";"strings";"github.com/calypr/funnel/events";"github.com/calypr/funnel/logger";"github.com/calypr/funnel/tes")
+type failingWriter struct{}
+func(failingWriter) WriteEvent(context.Context,*events.Event)error{return errors.New("synthetic storage failure")}
+func(failingWriter) Close(){}
+func main(){
+ var out bytes.Buffer
+ conf:=logger.DefaultConfig();conf.Level="info"
+ l:=logger.NewLogger("secret-control",conf);l.SetOutput(&out)
+ ev:=events.NewTaskCreated(&tes.Task{Id:"synthetic-task",Executors:[]*tes.Executor{{Image:"synthetic-image",Env:map[string]string{"PASSWORD":"synthetic-executor-secret"}}},Inputs:[]*tes.Input{{Url:"https://example.invalid/input?X-Amz-Signature=synthetic-signature"}}})
+ sink:=&events.Logger{Log:l};if e:=sink.WriteEvent(context.Background(),ev);e!=nil{panic(e)}
+ fmt.Printf("task_created_info_env_retained=%v\ntask_created_info_signed_url_retained=%v\n",strings.Contains(out.String(),"synthetic-executor-secret"),strings.Contains(out.String(),"synthetic-signature"));fmt.Print(out.String());out.Reset()
+ generator:=events.NewTaskWriter("synthetic-task",0,sink);_ = generator.Info("download started","url","https://example.invalid/input?X-Amz-Signature=synthetic-transfer-signature")
+ fmt.Printf("transfer_info_signed_url_retained=%v\n",strings.Contains(out.String(),"synthetic-transfer-signature"));fmt.Print(out.String());out.Reset()
+ l.SetLevel("error");wrapper:=&events.ErrLogger{Writer:failingWriter{},Log:l};_ = wrapper.WriteEvent(context.Background(),ev)
+ fmt.Printf("failed_event_error_env_retained=%v\nfailed_event_error_signed_url_retained=%v\n",strings.Contains(out.String(),"synthetic-executor-secret"),strings.Contains(out.String(),"synthetic-signature"));fmt.Print(out.String())
+}

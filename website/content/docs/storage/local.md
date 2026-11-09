@@ -46,13 +46,16 @@ Files must be absolute paths in `file:///path/to/file.txt` URL form.
 }
 ```
 
-### File hard linking behavior
+### Directory boundaries and file transfers
 
-For efficiency, Funnel will attempt not to copy the input files, instead trying 
-create a hard link to the source file. In some cases this isn't possible. For example, 
-if the source file is on a network file system mount (e.g. NFS) but the Funnel worker's 
-working directory is on the local scratch disk, a hard link would cross a file system 
-boundary, which is not possible. In this case, Funnel will copy the file.
+Funnel checks storage URLs against `AllowedDirs` during reads, writes, and listings.
+Paths and relative symlinks cannot escape the selected allowed directory. Absolute
+symlinks are rejected, including those pointing inside an allowed directory. Use
+relative symlinks for files within that directory.
+
+Local transfers copy files rather than creating hard links. This keeps file access
+within the allowed directory during the transfer, but requires space for the copy.
+The worker's task staging paths are separate from the storage URL allowlist.
 
 ### File ownership behavior
 

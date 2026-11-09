@@ -1,0 +1,29 @@
+package audit
+import (
+ "context"
+ "net"
+ "google.golang.org/grpc/test/bufconn"
+ "google.golang.org/grpc/credentials/insecure"
+ "testing"
+ "github.com/calypr/funnel/server"
+ "github.com/calypr/funnel/config"
+ "github.com/calypr/funnel/database/boltdb"
+ "github.com/calypr/funnel/database/badger"
+ "github.com/calypr/funnel/events"
+ "github.com/calypr/funnel/tes"
+ "github.com/calypr/funnel/compute/scheduler"
+ "google.golang.org/grpc"
+ "google.golang.org/grpc/metadata"
+ "encoding/base64"
+)
+func user(t *testing.T, name string) context.Context { t.Helper(); var out context.Context; a:=server.NewAuthentication([]*config.BasicCredential{{User:name,Password:"synthetic"}},nil,server.AccessOwner); ctx:=metadata.NewIncomingContext(context.Background(),metadata.Pairs("authorization","Basic "+base64.StdEncoding.EncodeToString([]byte(name+":synthetic")))); _,err:=a.Interceptor(ctx,nil,&grpc.UnaryServerInfo{},func(c context.Context,_ interface{})(interface{},error){out=c;return nil,nil});if err!=nil{t.Fatal(err)};return out }
+func TestCrossOwnerEventsAndNodes(t *testing.T){ db,err:=boltdb.NewBoltDB(&config.BoltDB{Path:t.TempDir()+"/db"});if err!=nil{t.Fatal(err)};defer db.Close();if err=db.Init();err!=nil{t.Fatal(err)}; alice,bob:=user(t,"alice"),user(t,"bob");err=db.WriteEvent(alice,events.NewTaskCreated(&tes.Task{Id:"victim",State:tes.Queued,Executors:[]*tes.Executor{{Image:"synthetic"}}}));if err!=nil{t.Fatal(err)}
+ _,readErr:=db.GetTask(bob,&tes.GetTaskRequest{Id:"victim",View:"FULL"});stateErr:=db.WriteEvent(bob,events.NewState("victim",tes.Canceled));svc:=events.Service{Writer:db};_,metaErr:=svc.WriteEvent(bob,events.NewMetadata("victim",0,map[string]string{"audit":"bob-controlled"}));_,stdoutErr:=svc.WriteEvent(bob,events.NewStdout("victim",0,0,"bob-controlled-output"));_,startErr:=svc.WriteEvent(bob,events.NewExitCode("victim",0,0,99)); got,err:=db.GetTask(alice,&tes.GetTaskRequest{Id:"victim",View:"FULL"});if err!=nil{t.Fatal(err)};t.Logf("bob read=%v state=%v metadata=%v stdout=%v exit=%v; alice metadata=%v stdout=%q exit=%d",readErr,stateErr,metaErr,stdoutErr,startErr,got.Logs[0].Metadata,got.Logs[0].Logs[0].Stdout,got.Logs[0].Logs[0].ExitCode)
+ _,err=db.PutNode(alice,&scheduler.Node{Id:"victim-node"});if err!=nil{t.Fatal(err)};_,delErr:=db.DeleteNode(bob,&scheduler.Node{Id:"victim-node"});_,getErr:=db.GetNode(alice,&scheduler.GetNodeRequest{Id:"victim-node"});t.Logf("bob delete node=%v; alice subsequent get=%v",delErr,getErr)
+ if readErr==nil||stateErr==nil||metaErr!=nil||stdoutErr!=nil||got.Logs[0].Metadata["audit"]!="bob-controlled"||delErr!=nil{t.Fatal("unexpected result")}
+}
+func TestExecutionClaimOwnerProtection(t *testing.T){db,err:=boltdb.NewBoltDB(&config.BoltDB{Path:t.TempDir()+"/db"});if err!=nil{t.Fatal(err)};defer db.Close();if err=db.Init();err!=nil{t.Fatal(err)};alice,bob:=user(t,"alice"),user(t,"bob");if err=db.WriteEvent(alice,events.NewTaskCreated(&tes.Task{Id:"victim",State:tes.Queued}));err!=nil{t.Fatal(err)};svc:=events.Service{Writer:db,Claimer:db};b,e:=svc.ClaimExecution(bob,&events.ClaimExecutionRequest{TaskId:"victim"});t.Logf("bob claim=%v error=%v",b,e);if e==nil{t.Fatal("owner guard missing")};a,e:=svc.ClaimExecution(alice,&events.ClaimExecutionRequest{TaskId:"victim"});t.Logf("alice claim=%v error=%v",a,e);if e!=nil||!a.Claimed{t.Fatal("owner failed")}}
+
+func TestBadgerRawCreateTakesOwnership(t *testing.T){db,err:=badger.NewBadger(&config.Badger{Path:t.TempDir()});if err!=nil{t.Fatal(err)};defer db.Close();alice,bob:=user(t,"alice"),user(t,"bob");if err=db.WriteEvent(alice,events.NewTaskCreated(&tes.Task{Id:"victim",State:tes.Queued,Name:"alice-original"}));err!=nil{t.Fatal(err)};_,before:=db.GetTask(bob,&tes.GetTaskRequest{Id:"victim",View:"FULL"});svc:=events.Service{Writer:db};_,overwrite:=svc.WriteEvent(bob,events.NewTaskCreated(&tes.Task{Id:"victim",State:tes.Complete,Name:"bob-overwrite"}));got,after:=db.GetTask(bob,&tes.GetTaskRequest{Id:"victim",View:"FULL"});_,aliceAfter:=db.GetTask(alice,&tes.GetTaskRequest{Id:"victim",View:"FULL"});t.Logf("bob read before=%v overwrite=%v read after=%v name=%s state=%s; alice read after=%v",before,overwrite,after,got.Name,got.State,aliceAfter);if before==nil||overwrite!=nil||after!=nil||aliceAfter==nil{t.Fatal("unexpected result")}}
+
+func TestGRPCCrossOwnerEvent(t *testing.T){db,err:=boltdb.NewBoltDB(&config.BoltDB{Path:t.TempDir()+"/db"});if err!=nil{t.Fatal(err)};defer db.Close();if err=db.Init();err!=nil{t.Fatal(err)};alice:=user(t,"alice");if err=db.WriteEvent(alice,events.NewTaskCreated(&tes.Task{Id:"victim",State:tes.Queued}));err!=nil{t.Fatal(err)};auth:=server.NewAuthentication([]*config.BasicCredential{{User:"bob",Password:"synthetic"}},nil,server.AccessOwner);l:=bufconn.Listen(1024*1024);defer l.Close();gs:=grpc.NewServer(grpc.UnaryInterceptor(auth.Interceptor));events.RegisterEventServiceServer(gs,&events.Service{Writer:db});go gs.Serve(l);defer gs.Stop();conn,e:=grpc.NewClient("passthrough:///audit",grpc.WithTransportCredentials(insecure.NewCredentials()),grpc.WithContextDialer(func(context.Context,string)(net.Conn,error){return l.Dial()}));if e!=nil{t.Fatal(e)};defer conn.Close();ctx:=metadata.NewOutgoingContext(context.Background(),metadata.Pairs("authorization","Basic "+base64.StdEncoding.EncodeToString([]byte("bob:synthetic"))));_,e=events.NewEventServiceClient(conn).WriteEvent(ctx,events.NewMetadata("victim",0,map[string]string{"audit":"bob-via-grpc"}));task,re:=db.GetTask(alice,&tes.GetTaskRequest{Id:"victim",View:"FULL"});t.Logf("authenticated bob GRPC WriteEvent=%v; alice read=%v metadata=%v",e,re,task.Logs[0].Metadata);if e!=nil||re!=nil||task.Logs[0].Metadata["audit"]!="bob-via-grpc"{t.Fatal("unexpected result")}}

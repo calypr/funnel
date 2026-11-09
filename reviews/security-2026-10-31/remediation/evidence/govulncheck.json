@@ -1,0 +1,1205 @@
+{
+  "config": {
+    "protocol_version": "v1.0.0",
+    "scanner_name": "govulncheck",
+    "scanner_version": "v0.0.0",
+    "db": "https://vuln.go.dev",
+    "db_last_modified": "2026-10-27T21:16:18Z",
+    "go_version": "go1.27.3",
+    "scan_level": "symbol",
+    "scan_mode": "source"
+  }
+}
+{
+  "SBOM": {
+    "go_version": "go1.27.3",
+    "modules": [
+      {
+        "path": "github.com/calypr/funnel"
+      },
+      {
+        "path": "cloud.google.com/go",
+        "version": "v0.123.0"
+      },
+      {
+        "path": "cloud.google.com/go/auth",
+        "version": "v0.24.1"
+      },
+      {
+        "path": "cloud.google.com/go/auth/oauth2adapt",
+        "version": "v0.3.0"
+      },
+      {
+        "path": "cloud.google.com/go/batch",
+        "version": "v1.23.0"
+      },
+      {
+        "path": "cloud.google.com/go/compute/metadata",
+        "version": "v0.10.0"
+      },
+      {
+        "path": "cloud.google.com/go/datastore",
+        "version": "v1.27.0"
+      },
+      {
+        "path": "cloud.google.com/go/iam",
+        "version": "v1.14.0"
+      },
+      {
+        "path": "cloud.google.com/go/logging",
+        "version": "v1.20.0"
+      },
+      {
+        "path": "cloud.google.com/go/longrunning",
+        "version": "v1.3.0"
+      },
+      {
+        "path": "cloud.google.com/go/pubsub/v2",
+        "version": "v2.7.0"
+      },
+      {
+        "path": "dario.cat/mergo",
+        "version": "v1.0.2"
+      },
+      {
+        "path": "github.com/IBM/sarama",
+        "version": "v1.61.1"
+      },
+      {
+        "path": "github.com/aws/aws-sdk-go-v2",
+        "version": "v1.47.3"
+      },
+      {
+        "path": "github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream",
+        "version": "v1.7.22"
+      },
+      {
+        "path": "github.com/aws/aws-sdk-go-v2/config",
+        "version": "v1.33.9"
+      },
+      {
+        "path": "github.com/aws/aws-sdk-go-v2/credentials",
+        "version": "v1.20.9"
+      },
+      {
+        "path": "github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue",
+        "version": "v1.21.12"
+      },
+      {
+        "path": "github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression",
+        "version": "v1.10.0"
+      },
+      {
+        "path": "github.com/aws/aws-sdk-go-v2/feature/ec2/imds",
+        "version": "v1.20.3"
+      },
+      {
+        "path": "github.com/aws/aws-sdk-go-v2/feature/s3/manager",
+        "version": "v1.23.14"
+      },
+      {
+        "path": "github.com/aws/aws-sdk-go-v2/internal/configsources",
+        "version": "v1.5.6"
+      },
+      {
+        "path": "github.com/aws/aws-sdk-go-v2/internal/endpoints/v2",
+        "version": "v2.8.6"
+      },
+      {
+        "path": "github.com/aws/aws-sdk-go-v2/internal/v4a",
+        "version": "v1.5.6"
+      },
+      {
+        "path": "github.com/aws/aws-sdk-go-v2/service/batch",
+        "version": "v1.78.3"
+      },
+      {
+        "path": "github.com/aws/aws-sdk-go-v2/service/dynamodb",
+        "version": "v1.70.3"
+      },
+      {
+        "path": "github.com/aws/aws-sdk-go-v2/service/dynamodbstreams",
+        "version": "v1.46.0"
+      },
+      {
+        "path": "github.com/aws/aws-sdk-go-v2/service/ec2",
+        "version": "v1.339.0"
+      },
+      {
+        "path": "github.com/aws/aws-sdk-go-v2/service/iam",
+        "version": "v1.64.4"
+      },
+      {
+        "path": "github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding",
+        "version": "v1.13.21"
+      },
+      {
+        "path": "github.com/aws/aws-sdk-go-v2/service/internal/checksum",
+        "version": "v1.11.7"
+      },
+      {
+        "path": "github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery",
+        "version": "v1.13.6"
+      },
+      {
+        "path": "github.com/aws/aws-sdk-go-v2/service/internal/presigned-url",
+        "version": "v1.14.6"
+      },
+      {
+        "path": "github.com/aws/aws-sdk-go-v2/service/internal/s3shared",
+        "version": "v1.20.6"
+      },
+      {
+        "path": "github.com/aws/aws-sdk-go-v2/service/s3",
+        "version": "v1.114.3"
+      },
+      {
+        "path": "github.com/aws/aws-sdk-go-v2/service/signin",
+        "version": "v1.10.4"
+      },
+      {
+        "path": "github.com/aws/aws-sdk-go-v2/service/sso",
+        "version": "v1.38.4"
+      },
+      {
+        "path": "github.com/aws/aws-sdk-go-v2/service/ssooidc",
+        "version": "v1.43.4"
+      },
+      {
+        "path": "github.com/aws/aws-sdk-go-v2/service/sts",
+        "version": "v1.51.4"
+      },
+      {
+        "path": "github.com/aws/smithy-go",
+        "version": "v1.28.5"
+      },
+      {
+        "path": "github.com/aymanbagabas/go-osc52/v2",
+        "version": "v2.0.1"
+      },
+      {
+        "path": "github.com/beorn7/perks",
+        "version": "v1.0.1"
+      },
+      {
+        "path": "github.com/cenkalti/backoff/v4",
+        "version": "v4.3.0"
+      },
+      {
+        "path": "github.com/cespare/xxhash/v2",
+        "version": "v2.3.0"
+      },
+      {
+        "path": "github.com/charmbracelet/bubbletea",
+        "version": "v1.3.10"
+      },
+      {
+        "path": "github.com/charmbracelet/colorprofile",
+        "version": "v0.4.3"
+      },
+      {
+        "path": "github.com/charmbracelet/lipgloss",
+        "version": "v1.1.0"
+      },
+      {
+        "path": "github.com/charmbracelet/x/ansi",
+        "version": "v0.11.9"
+      },
+      {
+        "path": "github.com/charmbracelet/x/cellbuf",
+        "version": "v0.0.15"
+      },
+      {
+        "path": "github.com/charmbracelet/x/term",
+        "version": "v0.2.2"
+      },
+      {
+        "path": "github.com/clipperhouse/displaywidth",
+        "version": "v0.11.0"
+      },
+      {
+        "path": "github.com/clipperhouse/uax29/v2",
+        "version": "v2.7.0"
+      },
+      {
+        "path": "github.com/containerd/errdefs",
+        "version": "v1.0.0"
+      },
+      {
+        "path": "github.com/containerd/errdefs/pkg",
+        "version": "v0.3.0"
+      },
+      {
+        "path": "github.com/containerd/log",
+        "version": "v0.2.0"
+      },
+      {
+        "path": "github.com/containerd/platforms",
+        "version": "v0.2.1"
+      },
+      {
+        "path": "github.com/cpuguy83/dockercfg",
+        "version": "v0.3.2"
+      },
+      {
+        "path": "github.com/cpuguy83/go-md2man/v2",
+        "version": "v2.0.7"
+      },
+      {
+        "path": "github.com/davecgh/go-spew",
+        "version": "v1.1.2-0.20180830191138-d8f796af33cc"
+      },
+      {
+        "path": "github.com/dgraph-io/badger/v4",
+        "version": "v4.9.6"
+      },
+      {
+        "path": "github.com/dgraph-io/ristretto/v2",
+        "version": "v2.2.0"
+      },
+      {
+        "path": "github.com/distribution/reference",
+        "version": "v0.6.0"
+      },
+      {
+        "path": "github.com/docker/go-connections",
+        "version": "v0.8.2"
+      },
+      {
+        "path": "github.com/docker/go-units",
+        "version": "v0.5.0"
+      },
+      {
+        "path": "github.com/dustin/go-humanize",
+        "version": "v1.1.0"
+      },
+      {
+        "path": "github.com/eapache/go-resiliency",
+        "version": "v1.7.0"
+      },
+      {
+        "path": "github.com/ebitengine/purego",
+        "version": "v0.11.1"
+      },
+      {
+        "path": "github.com/emicklei/go-restful/v3",
+        "version": "v3.14.0"
+      },
+      {
+        "path": "github.com/fatih/color",
+        "version": "v1.19.0"
+      },
+      {
+        "path": "github.com/felixge/httpsnoop",
+        "version": "v1.1.0"
+      },
+      {
+        "path": "github.com/fxamacker/cbor/v2",
+        "version": "v2.9.6"
+      },
+      {
+        "path": "github.com/gabriel-vasile/mimetype",
+        "version": "v1.4.15"
+      },
+      {
+        "path": "github.com/getkin/kin-openapi",
+        "version": "v0.150.0"
+      },
+      {
+        "path": "github.com/go-logr/logr",
+        "version": "v1.4.4"
+      },
+      {
+        "path": "github.com/go-logr/stdr",
+        "version": "v1.2.2"
+      },
+      {
+        "path": "github.com/go-openapi/jsonpointer",
+        "version": "v1.0.2"
+      },
+      {
+        "path": "github.com/go-openapi/jsonreference",
+        "version": "v1.0.3"
+      },
+      {
+        "path": "github.com/go-openapi/swag",
+        "version": "v0.29.2"
+      },
+      {
+        "path": "github.com/go-openapi/swag/cmdutils",
+        "version": "v0.29.2"
+      },
+      {
+        "path": "github.com/go-openapi/swag/conv",
+        "version": "v0.29.2"
+      },
+      {
+        "path": "github.com/go-openapi/swag/fileutils",
+        "version": "v0.29.2"
+      },
+      {
+        "path": "github.com/go-openapi/swag/jsonutils",
+        "version": "v0.29.2"
+      },
+      {
+        "path": "github.com/go-openapi/swag/loading",
+        "version": "v0.29.2"
+      },
+      {
+        "path": "github.com/go-openapi/swag/mangling",
+        "version": "v0.29.2"
+      },
+      {
+        "path": "github.com/go-openapi/swag/netutils",
+        "version": "v0.29.2"
+      },
+      {
+        "path": "github.com/go-openapi/swag/pools",
+        "version": "v0.29.2"
+      },
+      {
+        "path": "github.com/go-openapi/swag/stringutils",
+        "version": "v0.29.2"
+      },
+      {
+        "path": "github.com/go-openapi/swag/typeutils",
+        "version": "v0.29.2"
+      },
+      {
+        "path": "github.com/go-openapi/swag/yamlutils",
+        "version": "v0.29.2"
+      },
+      {
+        "path": "github.com/go-playground/locales",
+        "version": "v0.14.2"
+      },
+      {
+        "path": "github.com/go-playground/universal-translator",
+        "version": "v0.18.2"
+      },
+      {
+        "path": "github.com/go-playground/validator/v10",
+        "version": "v10.30.5"
+      },
+      {
+        "path": "github.com/goccy/go-yaml",
+        "version": "v1.19.2"
+      },
+      {
+        "path": "github.com/golang/protobuf",
+        "version": "v1.5.4"
+      },
+      {
+        "path": "github.com/google/flatbuffers",
+        "version": "v25.2.10+incompatible"
+      },
+      {
+        "path": "github.com/google/gnostic-models",
+        "version": "v0.7.1"
+      },
+      {
+        "path": "github.com/google/s2a-go",
+        "version": "v0.1.11"
+      },
+      {
+        "path": "github.com/google/uuid",
+        "version": "v1.6.0"
+      },
+      {
+        "path": "github.com/googleapis/enterprise-certificate-proxy",
+        "version": "v0.3.23"
+      },
+      {
+        "path": "github.com/googleapis/gax-go/v2",
+        "version": "v2.26.2"
+      },
+      {
+        "path": "github.com/grpc-ecosystem/go-grpc-middleware/v2",
+        "version": "v2.3.4"
+      },
+      {
+        "path": "github.com/grpc-ecosystem/grpc-gateway/v2",
+        "version": "v2.32.0"
+      },
+      {
+        "path": "github.com/hashicorp/go-hclog",
+        "version": "v1.6.3"
+      },
+      {
+        "path": "github.com/hashicorp/go-plugin",
+        "version": "v1.8.0"
+      },
+      {
+        "path": "github.com/hashicorp/go-uuid",
+        "version": "v1.0.4"
+      },
+      {
+        "path": "github.com/hashicorp/yamux",
+        "version": "v0.1.2"
+      },
+      {
+        "path": "github.com/jackc/pgpassfile",
+        "version": "v1.0.0"
+      },
+      {
+        "path": "github.com/jackc/pgservicefile",
+        "version": "v0.0.0-20240606120523-5a60cdf6a761"
+      },
+      {
+        "path": "github.com/jackc/pgx/v5",
+        "version": "v5.11.0"
+      },
+      {
+        "path": "github.com/jackc/puddle/v2",
+        "version": "v2.2.3"
+      },
+      {
+        "path": "github.com/jcmturner/aescts/v2",
+        "version": "v2.0.0"
+      },
+      {
+        "path": "github.com/jcmturner/dnsutils/v2",
+        "version": "v2.0.0"
+      },
+      {
+        "path": "github.com/jcmturner/gofork",
+        "version": "v1.7.6"
+      },
+      {
+        "path": "github.com/jcmturner/gokrb5/v8",
+        "version": "v8.4.4"
+      },
+      {
+        "path": "github.com/jcmturner/rpc/v2",
+        "version": "v2.0.3"
+      },
+      {
+        "path": "github.com/jlaffaye/ftp",
+        "version": "v0.2.4"
+      },
+      {
+        "path": "github.com/json-iterator/go",
+        "version": "v1.1.12"
+      },
+      {
+        "path": "github.com/k0kubun/pp",
+        "version": "v3.0.1+incompatible"
+      },
+      {
+        "path": "github.com/klauspost/compress",
+        "version": "v1.20.3"
+      },
+      {
+        "path": "github.com/leodido/go-urn",
+        "version": "v1.5.0"
+      },
+      {
+        "path": "github.com/lestrrat-go/blackmagic",
+        "version": "v1.0.4"
+      },
+      {
+        "path": "github.com/lestrrat-go/dsig",
+        "version": "v1.4.0"
+      },
+      {
+        "path": "github.com/lestrrat-go/httpcc",
+        "version": "v1.0.1"
+      },
+      {
+        "path": "github.com/lestrrat-go/httprc/v3",
+        "version": "v3.0.6"
+      },
+      {
+        "path": "github.com/lestrrat-go/jwx/v4",
+        "version": "v4.5.0"
+      },
+      {
+        "path": "github.com/lestrrat-go/option/v2",
+        "version": "v2.0.0"
+      },
+      {
+        "path": "github.com/lestrrat-go/option/v3",
+        "version": "v3.0.0-alpha1"
+      },
+      {
+        "path": "github.com/lucasb-eyer/go-colorful",
+        "version": "v1.4.1"
+      },
+      {
+        "path": "github.com/magiconair/properties",
+        "version": "v1.18.12"
+      },
+      {
+        "path": "github.com/mattn/go-colorable",
+        "version": "v0.1.16"
+      },
+      {
+        "path": "github.com/mattn/go-isatty",
+        "version": "v0.0.24"
+      },
+      {
+        "path": "github.com/mattn/go-runewidth",
+        "version": "v0.0.31"
+      },
+      {
+        "path": "github.com/moby/docker-image-spec",
+        "version": "v1.3.1"
+      },
+      {
+        "path": "github.com/moby/go-archive",
+        "version": "v0.3.3"
+      },
+      {
+        "path": "github.com/moby/moby/api",
+        "version": "v1.56.1"
+      },
+      {
+        "path": "github.com/moby/moby/client",
+        "version": "v0.6.2"
+      },
+      {
+        "path": "github.com/moby/patternmatcher",
+        "version": "v0.6.1"
+      },
+      {
+        "path": "github.com/moby/sys/sequential",
+        "version": "v0.7.0"
+      },
+      {
+        "path": "github.com/moby/sys/user",
+        "version": "v0.4.1"
+      },
+      {
+        "path": "github.com/moby/term",
+        "version": "v0.5.2"
+      },
+      {
+        "path": "github.com/modern-go/concurrent",
+        "version": "v0.0.0-20180306012644-bacd9c7ef1dd"
+      },
+      {
+        "path": "github.com/modern-go/reflect2",
+        "version": "v1.0.3-0.20250322232337-35a7c28c31ee"
+      },
+      {
+        "path": "github.com/muesli/ansi",
+        "version": "v0.0.0-20230316100256-276c6243b2f6"
+      },
+      {
+        "path": "github.com/muesli/cancelreader",
+        "version": "v0.2.2"
+      },
+      {
+        "path": "github.com/muesli/termenv",
+        "version": "v0.16.0"
+      },
+      {
+        "path": "github.com/munnerz/goautoneg",
+        "version": "v0.0.0-20191010083416-a7dc8b61c822"
+      },
+      {
+        "path": "github.com/ncw/swift/v2",
+        "version": "v2.0.5"
+      },
+      {
+        "path": "github.com/oasdiff/yaml",
+        "version": "v0.1.1"
+      },
+      {
+        "path": "github.com/oasdiff/yaml3",
+        "version": "v0.0.14"
+      },
+      {
+        "path": "github.com/oklog/run",
+        "version": "v1.2.0"
+      },
+      {
+        "path": "github.com/opencontainers/go-digest",
+        "version": "v1.0.0"
+      },
+      {
+        "path": "github.com/opencontainers/image-spec",
+        "version": "v1.1.1"
+      },
+      {
+        "path": "github.com/pierrec/lz4/v4",
+        "version": "v4.1.33"
+      },
+      {
+        "path": "github.com/prometheus/client_golang",
+        "version": "v1.25.0"
+      },
+      {
+        "path": "github.com/prometheus/client_model",
+        "version": "v0.6.3"
+      },
+      {
+        "path": "github.com/prometheus/common",
+        "version": "v0.72.1"
+      },
+      {
+        "path": "github.com/rcrowley/go-metrics",
+        "version": "v0.0.0-20250401214520-65e299d6c5c9"
+      },
+      {
+        "path": "github.com/rivo/uniseg",
+        "version": "v0.4.7"
+      },
+      {
+        "path": "github.com/russross/blackfriday/v2",
+        "version": "v2.1.0"
+      },
+      {
+        "path": "github.com/santhosh-tekuri/jsonschema/v6",
+        "version": "v6.0.3"
+      },
+      {
+        "path": "github.com/shirou/gopsutil/v4",
+        "version": "v4.26.9"
+      },
+      {
+        "path": "github.com/sirupsen/logrus",
+        "version": "v1.10.2"
+      },
+      {
+        "path": "github.com/spf13/cobra",
+        "version": "v1.10.2"
+      },
+      {
+        "path": "github.com/spf13/pflag",
+        "version": "v1.0.10"
+      },
+      {
+        "path": "github.com/stretchr/objx",
+        "version": "v0.8.0"
+      },
+      {
+        "path": "github.com/stretchr/testify",
+        "version": "v1.12.1"
+      },
+      {
+        "path": "github.com/testcontainers/testcontainers-go",
+        "version": "v0.44.0"
+      },
+      {
+        "path": "github.com/tklauser/go-sysconf",
+        "version": "v0.4.0"
+      },
+      {
+        "path": "github.com/valyala/fastjson",
+        "version": "v1.6.10"
+      },
+      {
+        "path": "github.com/x448/float16",
+        "version": "v0.8.4"
+      },
+      {
+        "path": "github.com/xdg-go/scram",
+        "version": "v1.2.0"
+      },
+      {
+        "path": "github.com/xdg-go/stringprep",
+        "version": "v1.0.4"
+      },
+      {
+        "path": "github.com/xo/terminfo",
+        "version": "v1.0.0"
+      },
+      {
+        "path": "github.com/youmark/pkcs8",
+        "version": "v0.0.0-20240726163527-a2c0da244d78"
+      },
+      {
+        "path": "go.etcd.io/bbolt",
+        "version": "v1.5.0"
+      },
+      {
+        "path": "go.mongodb.org/mongo-driver/v2",
+        "version": "v2.9.2"
+      },
+      {
+        "path": "go.opencensus.io",
+        "version": "v0.24.0"
+      },
+      {
+        "path": "go.opentelemetry.io/auto/sdk",
+        "version": "v1.2.1"
+      },
+      {
+        "path": "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc",
+        "version": "v0.72.0"
+      },
+      {
+        "path": "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp",
+        "version": "v0.72.0"
+      },
+      {
+        "path": "go.opentelemetry.io/otel",
+        "version": "v1.47.0"
+      },
+      {
+        "path": "go.opentelemetry.io/otel/log",
+        "version": "v1.47.0"
+      },
+      {
+        "path": "go.opentelemetry.io/otel/metric",
+        "version": "v1.47.0"
+      },
+      {
+        "path": "go.opentelemetry.io/otel/trace",
+        "version": "v1.47.0"
+      },
+      {
+        "path": "go.yaml.in/yaml/v2",
+        "version": "v2.4.4"
+      },
+      {
+        "path": "go.yaml.in/yaml/v3",
+        "version": "v3.0.5"
+      },
+      {
+        "path": "golang.org/x/crypto",
+        "version": "v0.58.0"
+      },
+      {
+        "path": "golang.org/x/net",
+        "version": "v0.61.0"
+      },
+      {
+        "path": "golang.org/x/oauth2",
+        "version": "v0.37.0"
+      },
+      {
+        "path": "golang.org/x/sync",
+        "version": "v0.24.0"
+      },
+      {
+        "path": "golang.org/x/sys",
+        "version": "v0.49.0"
+      },
+      {
+        "path": "golang.org/x/term",
+        "version": "v0.47.0"
+      },
+      {
+        "path": "golang.org/x/text",
+        "version": "v0.43.0"
+      },
+      {
+        "path": "golang.org/x/time",
+        "version": "v0.16.0"
+      },
+      {
+        "path": "google.golang.org/api",
+        "version": "v0.304.0"
+      },
+      {
+        "path": "google.golang.org/genproto",
+        "version": "v0.0.0-20261012220534-4341edf3f941"
+      },
+      {
+        "path": "google.golang.org/genproto/googleapis/api",
+        "version": "v0.0.0-20261012220534-4341edf3f941"
+      },
+      {
+        "path": "google.golang.org/genproto/googleapis/rpc",
+        "version": "v0.0.0-20261012220534-4341edf3f941"
+      },
+      {
+        "path": "google.golang.org/grpc",
+        "version": "v1.84.0"
+      },
+      {
+        "path": "google.golang.org/protobuf",
+        "version": "v1.36.12"
+      },
+      {
+        "path": "gopkg.in/evanphx/json-patch.v4",
+        "version": "v4.13.0"
+      },
+      {
+        "path": "gopkg.in/inf.v0",
+        "version": "v0.9.1"
+      },
+      {
+        "path": "k8s.io/api",
+        "version": "v0.37.1"
+      },
+      {
+        "path": "k8s.io/apimachinery",
+        "version": "v0.37.1"
+      },
+      {
+        "path": "k8s.io/client-go",
+        "version": "v0.37.1"
+      },
+      {
+        "path": "k8s.io/klog/v2",
+        "version": "v2.140.0"
+      },
+      {
+        "path": "k8s.io/kube-openapi",
+        "version": "v0.0.0-20260721132016-d427ff9ee9ad"
+      },
+      {
+        "path": "k8s.io/utils",
+        "version": "v0.0.0-20260707023825-cf1189d6abe3"
+      },
+      {
+        "path": "mvdan.cc/sh/v3",
+        "version": "v3.14.1"
+      },
+      {
+        "path": "sigs.k8s.io/json",
+        "version": "v0.0.0-20260909141634-11ed52e25bc5"
+      },
+      {
+        "path": "sigs.k8s.io/randfill",
+        "version": "v1.0.0"
+      },
+      {
+        "path": "sigs.k8s.io/structured-merge-diff/v6",
+        "version": "v6.4.2"
+      },
+      {
+        "path": "sigs.k8s.io/yaml",
+        "version": "v1.6.0"
+      },
+      {
+        "path": "stdlib",
+        "version": "v1.27.3"
+      }
+    ],
+    "roots": [
+      "github.com/calypr/funnel/util",
+      "github.com/calypr/funnel/logger",
+      "github.com/calypr/funnel/tes",
+      "github.com/calypr/funnel/config",
+      "github.com/calypr/funnel/cmd/util",
+      "github.com/calypr/funnel/util/aws",
+      "github.com/calypr/funnel/cmd/aws/batch",
+      "github.com/calypr/funnel/cmd/aws",
+      "github.com/calypr/funnel/examples",
+      "github.com/calypr/funnel/cmd/examples",
+      "github.com/calypr/funnel/util/fsutil",
+      "github.com/calypr/funnel/util/s3",
+      "github.com/calypr/funnel/storage",
+      "github.com/calypr/funnel/compute/kubernetes/storageplan",
+      "github.com/calypr/funnel/util/ring",
+      "github.com/calypr/funnel/util/rpc",
+      "github.com/calypr/funnel/events",
+      "github.com/calypr/funnel/compute/scheduler",
+      "github.com/calypr/funnel/plugins/proto",
+      "github.com/calypr/funnel/plugins/shared",
+      "github.com/calypr/funnel/util/server",
+      "github.com/calypr/funnel/version",
+      "github.com/calypr/funnel/webdash",
+      "github.com/calypr/funnel/server",
+      "github.com/calypr/funnel/database/datastore",
+      "github.com/calypr/funnel/database/dynamodb",
+      "github.com/calypr/funnel/database/mongodb",
+      "github.com/calypr/funnel/database/postgres",
+      "github.com/calypr/funnel/compute/kubernetes/resources",
+      "github.com/calypr/funnel/util/k8sutil",
+      "github.com/calypr/funnel/compute/kubernetes",
+      "github.com/calypr/funnel/util/shellwords",
+      "github.com/calypr/funnel/worker",
+      "github.com/calypr/funnel/cmd/worker",
+      "github.com/calypr/funnel/cmd/node",
+      "github.com/calypr/funnel/compute/aws_batch",
+      "github.com/calypr/funnel/compute/gcp_batch",
+      "github.com/calypr/funnel/compute",
+      "github.com/calypr/funnel/compute/gridengine",
+      "github.com/calypr/funnel/compute/htcondor",
+      "github.com/calypr/funnel/compute/local",
+      "github.com/calypr/funnel/compute/noop",
+      "github.com/calypr/funnel/compute/pbs",
+      "github.com/calypr/funnel/compute/slurm",
+      "github.com/calypr/funnel/database/badger",
+      "github.com/calypr/funnel/database/boltdb",
+      "github.com/calypr/funnel/metrics",
+      "github.com/calypr/funnel/cmd/server",
+      "github.com/calypr/funnel/config/gce",
+      "github.com/calypr/funnel/cmd/gce",
+      "github.com/calypr/funnel/cmd/kubernetes",
+      "github.com/calypr/funnel/cmd/run",
+      "github.com/calypr/funnel/cmd/storage",
+      "github.com/calypr/funnel/cmd/task",
+      "github.com/calypr/funnel/cmd/termdash",
+      "github.com/calypr/funnel/cmd/version",
+      "github.com/calypr/funnel/cmd",
+      "github.com/calypr/funnel",
+      "github.com/calypr/funnel/auth",
+      "github.com/calypr/funnel/compute/manual",
+      "github.com/calypr/funnel/util/dockerutil",
+      "github.com/calypr/funnel/tests",
+      "github.com/calypr/funnel/tests/auth",
+      "github.com/calypr/funnel/tests/cmd",
+      "github.com/calypr/funnel/tests/core",
+      "github.com/calypr/funnel/tests/gridengine",
+      "github.com/calypr/funnel/tests/htcondor",
+      "github.com/calypr/funnel/tests/kafka",
+      "github.com/calypr/funnel/tests/kubernetes",
+      "github.com/calypr/funnel/tests/mongotest",
+      "github.com/calypr/funnel/tests/pbs",
+      "github.com/calypr/funnel/tests/perf",
+      "github.com/calypr/funnel/tests/pubsub",
+      "github.com/calypr/funnel/tests/scheduler",
+      "github.com/calypr/funnel/tests/schedulercontract",
+      "github.com/calypr/funnel/tests/schedulerprocess",
+      "github.com/calypr/funnel/tests/server",
+      "github.com/calypr/funnel/tests/slurm",
+      "github.com/calypr/funnel/tests/storage",
+      "github.com/calypr/funnel/util/openapi2proto"
+    ]
+  }
+}
+{
+  "progress": {
+    "message": "Fetching vulnerabilities from the database..."
+  }
+}
+{
+  "osv": {
+    "schema_version": "1.3.1",
+    "id": "GO-2026-5932",
+    "modified": "2026-07-07T22:15:29Z",
+    "published": "2026-07-07T22:15:29Z",
+    "summary": "The golang.org/x/crypto/openpgp package is unmaintained, unsafe by design, and has known security issues",
+    "details": "The golang.org/x/crypto/openpgp package is unsafe by design, has numerous known security issues, is not maintained, and should not be used.\n\nIf you are required to interoperate with OpenPGP systems and need a maintained package, consider github.com/ProtonMail/go-crypto/openpgp which is a maintained fork that aims to be a drop-in replacement for this package.",
+    "affected": [
+      {
+        "package": {
+          "name": "golang.org/x/crypto",
+          "ecosystem": "Go"
+        },
+        "ranges": [
+          {
+            "type": "SEMVER",
+            "events": [
+              {
+                "introduced": "0"
+              }
+            ]
+          }
+        ],
+        "ecosystem_specific": {
+          "imports": [
+            {
+              "path": "golang.org/x/crypto/openpgp"
+            },
+            {
+              "path": "golang.org/x/crypto/openpgp/packet"
+            },
+            {
+              "path": "golang.org/x/crypto/openpgp/armor"
+            },
+            {
+              "path": "golang.org/x/crypto/openpgp/clearsign"
+            },
+            {
+              "path": "golang.org/x/crypto/openpgp/errors"
+            },
+            {
+              "path": "golang.org/x/crypto/openpgp/elgamal"
+            },
+            {
+              "path": "golang.org/x/crypto/openpgp/s2k"
+            }
+          ]
+        }
+      }
+    ],
+    "references": [
+      {
+        "type": "REPORT",
+        "url": "https://go.dev/issue/44226"
+      }
+    ],
+    "database_specific": {
+      "url": "https://pkg.go.dev/vuln/GO-2026-5932",
+      "review_status": "REVIEWED"
+    }
+  }
+}
+{
+  "osv": {
+    "schema_version": "1.3.1",
+    "id": "GO-2026-6860",
+    "modified": "2026-10-27T21:16:18Z",
+    "published": "2026-10-27T21:16:18Z",
+    "aliases": [
+      "CVE-2026-78661"
+    ],
+    "summary": "Avoid quadratic complexity when coalescing text nodes in html in golang.org/x/net",
+    "details": "When coalescing adjacent text nodes in addText and fosterParent, appending to an existing TextNode's Data via string concatenation (n.Data += text) reallocated and copied the accumulated string on every token. Inputs containing many short text runs separated by ignored end tags (such as \"a</x>\") caused O(n^2) allocations and byte copies.\n\nAccumulate coalesced text in per-node byte slices during parsing and materialize Data strings once at the end of parse.",
+    "affected": [
+      {
+        "package": {
+          "name": "golang.org/x/net",
+          "ecosystem": "Go"
+        },
+        "ranges": [
+          {
+            "type": "SEMVER",
+            "events": [
+              {
+                "introduced": "0"
+              },
+              {
+                "fixed": "0.62.0"
+              }
+            ]
+          }
+        ],
+        "ecosystem_specific": {
+          "imports": [
+            {
+              "path": "golang.org/x/net/html",
+              "symbols": [
+                "Parse",
+                "ParseFragment",
+                "ParseFragmentWithOptions",
+                "ParseWithOptions",
+                "parser.addText",
+                "parser.fosterParent",
+                "parser.parse"
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "references": [
+      {
+        "type": "FIX",
+        "url": "https://go.dev/cl/849365"
+      },
+      {
+        "type": "REPORT",
+        "url": "https://go.dev/issue/82224"
+      },
+      {
+        "type": "WEB",
+        "url": "https://groups.google.com/g/golang-announce/c/sqrs2vTx_Xs"
+      }
+    ],
+    "credits": [
+      {
+        "name": "Markus Magnuson"
+      }
+    ],
+    "database_specific": {
+      "url": "https://pkg.go.dev/vuln/GO-2026-6860",
+      "review_status": "REVIEWED"
+    }
+  }
+}
+{
+  "osv": {
+    "schema_version": "1.3.1",
+    "id": "GO-2026-6866",
+    "modified": "2026-10-27T21:16:18Z",
+    "published": "2026-10-27T21:16:18Z",
+    "aliases": [
+      "CVE-2026-97045"
+    ],
+    "summary": "Check all ancestor namespace transitions when rendering raw text in html in golang.org/x/net",
+    "details": "In childTextNodesAreLiteral, walking up the tree previously stopped at the nearest foreign ancestor once an HTML integration point was found. However, that integration point may itself be a descendant of an element that was foster-parented into a foreign namespace (such as <mglyph> or <malignmark> fostered under <mtext>), causing a parser to resolve the subtree in a different foreign namespace upon re-parsing the rendered output.\n\nContinue walking the full ancestor chain and verify that every transition from a non-empty namespace occurs at an HTML integration point before emitting literal text.",
+    "affected": [
+      {
+        "package": {
+          "name": "golang.org/x/net",
+          "ecosystem": "Go"
+        },
+        "ranges": [
+          {
+            "type": "SEMVER",
+            "events": [
+              {
+                "introduced": "0"
+              },
+              {
+                "fixed": "0.62.0"
+              }
+            ]
+          }
+        ],
+        "ecosystem_specific": {
+          "imports": [
+            {
+              "path": "golang.org/x/net/html",
+              "symbols": [
+                "Render",
+                "childTextNodesAreLiteral"
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "references": [
+      {
+        "type": "FIX",
+        "url": "https://go.dev/cl/855121"
+      },
+      {
+        "type": "REPORT",
+        "url": "https://go.dev/issue/82622"
+      },
+      {
+        "type": "WEB",
+        "url": "https://groups.google.com/g/golang-announce/c/sqrs2vTx_Xs"
+      }
+    ],
+    "credits": [
+      {
+        "name": "Ali Sherif (https://www.linkedin.com/in/ali-sherif-13812b276)"
+      }
+    ],
+    "database_specific": {
+      "url": "https://pkg.go.dev/vuln/GO-2026-6866",
+      "review_status": "REVIEWED"
+    }
+  }
+}
+{
+  "progress": {
+    "message": "Checking the code against the vulnerabilities..."
+  }
+}
+{
+  "finding": {
+    "osv": "GO-2026-5932",
+    "trace": [
+      {
+        "module": "golang.org/x/crypto",
+        "version": "v0.58.0"
+      }
+    ]
+  }
+}
+{
+  "finding": {
+    "osv": "GO-2026-6860",
+    "fixed_version": "v0.62.0",
+    "trace": [
+      {
+        "module": "golang.org/x/net",
+        "version": "v0.61.0"
+      }
+    ]
+  }
+}
+{
+  "finding": {
+    "osv": "GO-2026-6866",
+    "fixed_version": "v0.62.0",
+    "trace": [
+      {
+        "module": "golang.org/x/net",
+        "version": "v0.61.0"
+      }
+    ]
+  }
+}

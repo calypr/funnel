@@ -1,0 +1,15 @@
+safe_container_env_retained=true
+safe_swift_auth_url_password_retained=true
+safe_swift_auth_url_query_retained=true
+safe_explicit_password_redacted=true
+safe_plugin_param_redacted=true
+Worker:
+  Container:
+    Env:
+      PASSWORD: synthetic-container-env
+Swift:
+  Password: "***"
+  AuthURL: https://user:synthetic-auth-url@example.invalid/v3?token=synthetic-query
+Plugins:
+  Params:
+    token: "***"

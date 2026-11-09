@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -57,6 +58,70 @@ type Client struct {
 	Password  string
 }
 
+// do applies the credential policy at send time, including redirected requests.
+func (c *Client) do(req *http.Request) (*http.Response, error) {
+	return DoAuthenticatedRequest(c.client, req, c.User, c.Password)
+}
+
+// DoAuthenticatedRequest sends a request with the same credential transport policy
+// as the TES client, including checks on redirected requests.
+func DoAuthenticatedRequest(httpClient *http.Client, req *http.Request, user, password string) (*http.Response, error) {
+	if user != "" || password != "" {
+		req.SetBasicAuth(user, password)
+	}
+	client := *httpClient
+	transport := client.Transport
+	if transport == nil {
+		transport = http.DefaultTransport
+	}
+	client.Transport = credentialTransport{base: transport}
+	checkRedirect := client.CheckRedirect
+	client.CheckRedirect = func(next *http.Request, via []*http.Request) error {
+		hasCredentials := req.Header.Get("Authorization") != "" || req.URL.User != nil || next.Header.Get("Authorization") != "" || next.URL.User != nil
+		if hasCredentials && os.Getenv("FUNNEL_ALLOW_INSECURE_CREDENTIALS") != "true" {
+			if next.URL.Scheme != "https" && via[len(via)-1].URL.Scheme == "https" {
+				return errors.New("tes: refusing credential redirect from HTTPS to HTTP")
+			}
+			err := checkCredentialURL(next.URL)
+			if err != nil {
+				return err
+			}
+		}
+		if checkRedirect != nil {
+			return checkRedirect(next, via)
+		}
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		return nil
+	}
+	return client.Do(req)
+}
+
+type credentialTransport struct{ base http.RoundTripper }
+
+func (t credentialTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.Header.Get("Authorization") != "" || req.URL.User != nil {
+		err := checkCredentialURL(req.URL)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return t.base.RoundTrip(req)
+}
+
+func checkCredentialURL(u *url.URL) error {
+	if u.Scheme == "https" || os.Getenv("FUNNEL_ALLOW_INSECURE_CREDENTIALS") == "true" {
+		return nil
+	}
+	host := u.Hostname()
+	ip := net.ParseIP(host)
+	if u.Scheme == "http" && (strings.EqualFold(host, "localhost") || (ip != nil && ip.IsLoopback())) {
+		return nil
+	}
+	return errors.New("tes: refusing credentials over remote plaintext HTTP; use HTTPS or explicitly set FUNNEL_ALLOW_INSECURE_CREDENTIALS=true for a trusted private deployment")
+}
+
 // GetTask returns the raw bytes from GET /v1/tasks/{id}
 func (c *Client) GetTask(ctx context.Context, req *GetTaskRequest) (*Task, error) {
 	// Send request
@@ -65,8 +130,7 @@ func (c *Client) GetTask(ctx context.Context, req *GetTaskRequest) (*Task, error
 	if err != nil {
 		return nil, fmt.Errorf("tes: creating GET request: %w", err)
 	}
-	hreq.SetBasicAuth(c.User, c.Password)
-	body, err := util.CheckHTTPResponse(c.client.Do(hreq))
+	body, err := util.CheckHTTPResponse(c.do(hreq))
 	if err != nil {
 		return nil, err
 	}
@@ -103,8 +167,7 @@ func (c *Client) ListTasks(ctx context.Context, req *ListTasksRequest) (*ListTas
 	if err != nil {
 		return nil, fmt.Errorf("tes: creating GET request: %w", err)
 	}
-	hreq.SetBasicAuth(c.User, c.Password)
-	body, err := util.CheckHTTPResponse(c.client.Do(hreq))
+	body, err := util.CheckHTTPResponse(c.do(hreq))
 	if err != nil {
 		return nil, err
 	}
@@ -136,8 +199,7 @@ func (c *Client) CreateTask(ctx context.Context, task *Task) (*CreateTaskRespons
 		return nil, fmt.Errorf("tes: creating POST request: %w", err)
 	}
 	hreq.Header.Add("Content-Type", "application/json")
-	hreq.SetBasicAuth(c.User, c.Password)
-	body, err := util.CheckHTTPResponse(c.client.Do(hreq))
+	body, err := util.CheckHTTPResponse(c.do(hreq))
 	if err != nil {
 		return nil, err
 	}
@@ -174,10 +236,8 @@ func (c *Client) CancelTaskWithMessage(ctx context.Context, req *CancelTaskReque
 		return nil, fmt.Errorf("tes: creating POST request: %w", err)
 	}
 	hreq.Header.Add("Content-Type", "application/json")
-	hreq.SetBasicAuth(c.User, c.Password)
-
 	// Execute request and capture response
-	httpResp, err := c.client.Do(hreq)
+	httpResp, err := c.do(hreq)
 	if err != nil {
 		return nil, err
 	}
@@ -223,8 +283,7 @@ func (c *Client) GetServiceInfo(ctx context.Context, req *GetServiceInfoRequest)
 	if err != nil {
 		return nil, fmt.Errorf("tes: creating GET request: %w", err)
 	}
-	hreq.SetBasicAuth(c.User, c.Password)
-	body, err := util.CheckHTTPResponse(c.client.Do(hreq))
+	body, err := util.CheckHTTPResponse(c.do(hreq))
 	if err != nil {
 		return nil, err
 	}

@@ -1,0 +1,12 @@
+[35m[1mdebug[0m   synthetic executor data
+[35m[1mdata[0m    [32mmap[string]interface {}[0m{
+                      [31m[1m"[0m[31mEnv[0m[31m[1m"[0m: [32mmap[string]string[0m{
+                        [31m[1m"[0m[31mPASSWORD[0m[31m[1m"[0m: [31m[1m"[0m[31msynthetic-secret[0m[31m[1m"[0m,
+                      },
+                      [31m[1m"[0m[31mCommand[0m[31m[1m"[0m: [][32mstring[0m{
+                        [31m[1m"[0m[31mtool[0m[31m[1m"[0m,
+                        [31m[1m"[0m[31msynthetic-argument[0m[31m[1m"[0m,
+                      },
+                    }
+[35m[1mtime[0m    2026-10-31T19:33:57-07:00
+

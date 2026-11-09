@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	pathlib "path"
 	"path/filepath"
 	"strings"
 
@@ -35,7 +34,12 @@ func NewLocal(conf *config.LocalStorage) (*Local, error) {
 // Stat returns information about the object at the given storage URL.
 func (local *Local) Stat(ctx context.Context, url string) (*Object, error) {
 	path := getPath(url)
-	info, err := os.Stat(path)
+	root, rel, err := local.openAllowed(path)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close() //nolint:errcheck // Directory handle cleanup cannot affect completed IO.
+	info, err := root.Stat(rel)
 	if err != nil {
 		return nil, err
 	}
@@ -49,7 +53,12 @@ func (local *Local) Stat(ctx context.Context, url string) (*Object, error) {
 
 // List lists the objects at the given url.
 func (local *Local) List(ctx context.Context, url string) ([]*Object, error) {
-	files, err := fsutil.WalkFiles(getPath(url))
+	root, rel, err := local.openAllowed(getPath(url))
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close() //nolint:errcheck // Directory handle cleanup cannot affect completed IO.
+	files, err := localWalk(ctx, root, rel)
 	if err != nil {
 		return nil, err
 	}
@@ -72,34 +81,44 @@ func (local *Local) List(ctx context.Context, url string) ([]*Object, error) {
 
 // Get copies a file from storage into the given hostPath.
 func (local *Local) Get(ctx context.Context, url, path string) (*Object, error) {
-	err := linkFile(ctx, getPath(url), path)
+	root, rel, err := local.openAllowed(getPath(url))
 	if err != nil {
 		return nil, err
 	}
+	defer root.Close() //nolint:errcheck // Directory handle cleanup cannot affect completed IO.
+	err = localTransfer(ctx, localEndpoint{root, rel}, localEndpoint{nil, path})
+	if err != nil {
+		return nil, err
+	}
+
 	return local.Stat(ctx, url)
 }
 
 // Put copies a file from the hostPath into storage.
 func (local *Local) Put(ctx context.Context, url, path string) (*Object, error) {
-	target := getPath(url)
-	err := fsutil.EnsurePath(target)
+	root, rel, err := local.openAllowed(getPath(url))
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close() //nolint:errcheck // Directory handle cleanup cannot affect completed IO.
+	err = localTransfer(ctx, localEndpoint{nil, path}, localEndpoint{root, rel})
 	if err != nil {
 		return nil, err
 	}
 
-	err = linkFile(ctx, path, target)
-	if err != nil {
-		return nil, err
-	}
 	return local.Stat(ctx, url)
 }
 
 // Join joins the given URL with the given subpath.
 func (local *Local) Join(url, path string) (string, error) {
-	if strings.HasPrefix(url, "file://") {
-		return "file://" + pathlib.Join(strings.TrimPrefix(url, "file://"), path), nil
+	result := filepath.Join(getPath(url), path)
+	if len(local.allowedDirs) > 0 && !isAllowed(result, local.allowedDirs) {
+		return "", fmt.Errorf("localStorage: joined path is outside allowed directories: %s", result)
 	}
-	return filepath.Join(url, path), nil
+	if strings.HasPrefix(url, "file://") {
+		return "file://" + result, nil
+	}
+	return result, nil
 }
 
 // UnsupportedOperations describes which operations (Get, Put, etc) are not
@@ -123,8 +142,13 @@ func getPath(rawurl string) string {
 }
 
 func isAllowed(path string, allowedDirs []string) bool {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
 	for _, dir := range allowedDirs {
-		if strings.HasPrefix(path, dir) {
+		rel, err := filepath.Rel(dir, absolute)
+		if err == nil && filepath.IsLocal(rel) {
 			return true
 		}
 	}
@@ -147,9 +171,13 @@ func copyFile(ctx context.Context, source string, dest string) (err error) {
 		return fmt.Errorf("failed to open source file for copying: %v", err)
 	}
 	defer sf.Close() //nolint:errcheck // The copy reports source read failures; closing the input file is cleanup only.
+	info, err := sf.Stat()
+	if err != nil {
+		return fmt.Errorf("failed to stat source file for copying: %w", err)
+	}
 
 	// Create and open dest file for writing
-	df, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0775)
+	df, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, info.Mode().Perm())
 	if err != nil {
 		return fmt.Errorf("failed to create dest file for copying: %v", err)
 	}
@@ -248,11 +276,7 @@ func processFile(ctx context.Context, source string, dest string) error {
 		return nil
 	}
 
-	err = os.Link(parent, dest)
-	if err != nil {
-		return copyFile(ctx, parent, dest)
-	}
-	return nil
+	return copyFile(ctx, parent, dest)
 }
 
 func FilePathWalkDir(root string) ([]string, error) {

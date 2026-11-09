@@ -1,0 +1,62 @@
+package aws_batch
+
+import (
+	"context"
+	"github.com/aws/aws-sdk-go-v2/service/batch"
+	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/logger"
+	"github.com/calypr/funnel/server"
+	"github.com/calypr/funnel/tes"
+	"testing"
+)
+
+type auditCancellationState struct {
+	tes.ReadOnlyServer
+	task *tes.Task
+}
+
+func (s *auditCancellationState) GetTask(context.Context, *tes.GetTaskRequest) (*tes.Task, error) {
+	return s.task, nil
+}
+func (s *auditCancellationState) WriteEvent(_ context.Context, e *events.Event) error {
+	if e.Type == events.Type_TASK_STATE {
+		s.task.State = e.GetState()
+	}
+	return nil
+}
+func (s *auditCancellationState) Close() {}
+func TestAuditCancellationDispatchOrder(t *testing.T) {
+	state := &auditCancellationState{task: &tes.Task{Id: "synthetic-task", State: tes.Queued, Logs: []*tes.TaskLog{{Metadata: map[string]string{"awsbatch_id": "synthetic-provider-job"}}}}}
+	calls := 0
+	mock := &mockClient{CancelJobFunc: func(context.Context, *batch.CancelJobInput) (*batch.CancelJobOutput, error) {
+		calls++
+		return &batch.CancelJobOutput{}, nil
+	}}
+	log := logger.NewLogger("audit", logger.DefaultConfig())
+	log.Discard()
+	backend := &Backend{client: mock, database: state, event: state, log: log}
+	svc := &server.TaskService{Read: state, Event: state, Compute: backend, Config: config.DefaultConfig(), Log: log}
+	_, err := svc.CancelTask(context.Background(), &tes.CancelTaskRequest{Id: "synthetic-task"})
+	t.Logf("cancel_response_error=%v final_task_state=%s provider_cancel_calls=%d", err, state.task.State, calls)
+	if err != nil || calls != 0 || state.task.State != tes.Canceled {
+		t.Fatal("recorded cancellation failure not reproduced")
+	}
+}
+
+// Control verifies the provider stub is reachable before the database state transition.
+func TestAuditQueuedCancelControl(t *testing.T) {
+	calls := 0
+	state := &auditCancellationState{task: &tes.Task{Id: "synthetic-task", State: tes.Queued, Logs: []*tes.TaskLog{{Metadata: map[string]string{"awsbatch_id": "synthetic-provider-job"}}}}}
+	backend := &Backend{client: &mockClient{CancelJobFunc: func(context.Context, *batch.CancelJobInput) (*batch.CancelJobOutput, error) {
+		calls++
+		return &batch.CancelJobOutput{}, nil
+	}}, database: state}
+	if err := backend.Cancel(context.Background(), "synthetic-task"); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("direct_queued_cancel_provider_calls=%d", calls)
+	if calls != 1 {
+		t.Fatal("provider control failed")
+	}
+}
