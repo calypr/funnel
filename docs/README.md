@@ -3,6 +3,9 @@
 Funnel makes distributed, batch processing easier by providing a simple task API and a set of
 components which can easily adapted to a vareity of platforms.
 
+For an existing deployment or Go integration, follow the [Funnel upgrade guide](upgrading.md)
+before moving to the unreleased package and configuration changes.
+
 ### Task
 
 A task defines a unit of work: metadata, input files to download, a sequence of Docker containers + commands to run,

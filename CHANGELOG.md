@@ -2,6 +2,14 @@
 
 ### Breaking changes and upgrade preparation
 
+See the [Funnel upgrade guide](docs/upgrading.md) for import replacements, plugin
+rebuilds, configuration changes, and deployment preparation.
+
+* Public Go contracts now live in `api/tes`, `api/config`, `api/logger`, and `api/plugin`; the REST client lives in `client/tes`. Application implementations are private under `internal/`. Update old imports and rebuild external consumers and plugins. No forwarding packages retain the old APIs.
+* The Go REST client takes explicit credentials and no longer reads process environment variables. The CLI retains its `FUNNEL_SERVER_*` behavior. Replace the removed TES marshaler helpers with protobuf `protojson` calls.
+* Plugin configuration responses can now clear inherited empty values. Plugins must return the complete edited host configuration rather than partial configuration objects.
+* Configurations using retired Kubernetes storage keys must migrate to native objects under `Kubernetes.Storage`. Update mounted routes, rebuild plugins, and finish and clean up Jobs with version 1, 2, or 3 storage plans using a compatible older binary before upgrading. Legacy PV, PVC, and Job templates remain supported when native storage configuration is absent. See the [Kubernetes storage migration](docs/compute/kubernetes-storage.md#ownership-and-upgrades).
+* HPC backends require private, persistent `HPCStateDir` submission records. FTP deployments using configured credentials must set `FTPStorage.Endpoint`. Custom runtime templates using `index .Env` or `index .Tags` must migrate to the documented argument helpers or supported iteration patterns. See the [upgrade guide](docs/upgrading.md#migrate-deployment-configuration).
 * Bundled deployment automation has been removed, including GCE provisioning scripts, VM installers, and systemd service examples. Operators must maintain their own deployment code. Container images and runtime backends remain available.
 * Elasticsearch support has been removed. Remove the entire `Elastic` section from existing configuration files before upgrading, even when another database backend is selected. Older full configurations can contain this unused section; leaving it present causes startup to fail with `unknown field "Elastic"`. Deployments using Elasticsearch must migrate their data to a supported backend before upgrading.
 * MongoDB now requires a replica set or sharded cluster for atomic task assignment and resource release. Standalone servers are rejected at startup. Convert existing standalone deployments before upgrading; a single-node replica set is sufficient for development. See the [MongoDB upgrade guide](docs/databases/mongodb.md#upgrade-an-existing-standalone-server).

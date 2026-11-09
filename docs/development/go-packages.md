@@ -1,6 +1,9 @@
 # Go packages and the TES client
 
-Funnel separates its public Go API into two packages:
+For existing consumers, follow the [Funnel upgrade guide](../upgrading.md) to
+migrate imports, client credentials, and plugins.
+
+Funnel separates TES wire models from the REST client:
 
 - `github.com/calypr/funnel/api/tes`: shared generated TES models, enum conveniences,
   and request filters. It has no HTTP client or server dependencies.
