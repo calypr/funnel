@@ -1,0 +1,12 @@
+diff --git a/gen3-integration-tests/tests/test_gen3_workflow.py b/gen3-integration-tests/tests/test_gen3_workflow.py
+--- a/gen3-integration-tests/tests/test_gen3_workflow.py
++++ b/gen3-integration-tests/tests/test_gen3_workflow.py
+@@ -1451,7 +1451,7 @@ def test_input_output_directory(self, request):
+                 "outputs": [
+                     {
+                         "path": f"/work/{d1}",
+                         "url": f"s3://{s3_path_prefix}/{d1}",
+-                        "type": "FILE",
++                        "type": "DIRECTORY",
+                     }
+                 ],

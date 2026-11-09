@@ -93,6 +93,13 @@ jobs:
           path: gen3-code-vigil
           persist-credentials: false
 
+      - name: Correct pinned directory output fixture
+        shell: bash
+        run: |
+          patch_file="$GITHUB_WORKSPACE/tests/e2e/gen3/directory-output-type.patch"
+          git -C "$TEST_REPO" apply --check "$patch_file"
+          git -C "$TEST_REPO" apply "$patch_file"
+
       - name: Checkout pinned Gen3 GitOps
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
