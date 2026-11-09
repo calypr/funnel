@@ -58,7 +58,8 @@ func TestOutputContractDocker(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			command, err := json.Marshal(tt.command)
+			// The container runs as root; let the host test runner remove its outputs.
+			command, err := json.Marshal("umask 000; " + tt.command)
 			if err != nil {
 				t.Fatal(err)
 			}
