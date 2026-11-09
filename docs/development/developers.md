@@ -102,21 +102,32 @@ mock interfaces in test code, for example, to mock the Google Cloud APIs.
 
 ### Making a release
 
-- Update Makefile, edit `FUNNEL_VERSION` and `LAST_PR_NUMBER`
-  - `LAST_PR_NUMBER` can be found by looking at the previous release notes
-    from the previous release.
-- Run `make website`, which updates the download links and other content.
-  - Check the website locally by running `make website-dev`
-- Commit these changes.
-  - Because goreleaser requires a clean working tree in git
-  - This is a special case where it's easiest to commit to master.
-- Create a git tag: `git tag X.Y.Z`
-- Run `make release`
-  - This will build cross-platform binaries, build release notes,
-    and draft an unpublished GitHub release.
-  - Check the built artifacts by downloading the tarballs from the GitHub draft release
-    and running `funnel version`.
-- `git push origin master` to push your website and release changes.
-- A tagged docker image for the release will be built automatically on [dockerhub](https://hub.docker.com/repository/docker/quay.io/ohsu-comp-bio/funnel).
-- Publish the draft release on GitHub.
-- Copy `build/release/funnel.rb` to the `ohsu-comp-bio/homebrew-formula/Formula/funnel.rb` Homebrew formula repo, and push those changes to master.
+Releases are published by the [Publish Funnel release workflow](https://github.com/calypr/funnel/actions/workflows/release.yaml).
+It runs when a `v*.*.*` tag is pushed, and also supports **Run workflow** or `gh workflow run`.
+The workflow checks out the requested tag, rather than publishing the selected branch.
+
+1. Merge the reviewed PR stack into `develop` and confirm its CI passes.
+2. Review `CHANGELOG.md` and [the upgrade guide](../upgrading.md). Include import migrations, configuration migrations, and the requirement to rebuild net/rpc plugins with the host. No Makefile version edit is needed: release versions come from tags.
+3. Choose an unused version. Check both Git tags and GitHub releases: an existing tag without a release still names older code. Do not move it to new code. In this repository `v0.12.0` already exists.
+4. Before tagging, run `make snapshot` or manually dispatch the **Release packaging** workflow on the candidate branch. Packaging is not a pull-request check. This builds archives and checksums without publishing. Extract the native archive into a temporary directory and check `funnel version`, `funnel --help`, and basic task execution. Check that `docs/upgrading.md` is included. Snapshot versions include a development suffix.
+5. Create an RC tag on the reviewed commit, for example `git tag -a vNEXT-rc.1 -m 'Release candidate'`, replacing `NEXT` with the chosen numeric version. Pushing the tag triggers publication immediately. RC tags become GitHub prereleases.
+6. To validate an existing tag without publishing, select **Run workflow**, enter its tag, and leave **dry_run** enabled. The archives are retained as workflow artifacts. From the CLI:
+
+   ```sh
+   gh workflow run release.yaml --repo calypr/funnel --ref develop \
+     -f tag=vNEXT-rc.1 -F dry_run=true
+   ```
+
+   The workflow must first be available on the repository's default branch for GitHub to offer manual dispatch. For a local tag that has not been pushed, use the local snapshot check instead.
+7. Test the RC using `bash install.sh vNEXT-rc.1 /tmp/funnel-rc-bin` from a temporary working directory. Check the reported version and run a representative task with your deployment configuration.
+8. Tag the validated commit with the final version and push that tag. The release is published automatically, not saved as a draft. If retrying publication for an existing tag manually, set **dry_run** to false. Inspect existing assets first; do not overwrite a published version with different code.
+
+The separate container workflow publishes multi-architecture images to
+`quay.io/ohsu-comp-bio/funnel` on pushes. Stable version tags update `latest`;
+RC tags do not. Verify the image workflow as well as the binary release workflow.
+Manual binary publication does not rerun the container workflow.
+
+`make release` also publishes from a clean tagged checkout using `GITHUB_TOKEN`.
+Prefer the GitHub workflow for publication. Release notes come from the reviewed `Unreleased` section of `CHANGELOG.md`.
+Both local and CI packaging use the
+GoReleaser version pinned in the Makefile and its explicit executable path.

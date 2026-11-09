@@ -9,12 +9,17 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to release (e.g. v0.11.14)'
+        description: 'Existing version tag to release (for example v0.14.0-rc.1)'
+        type: string
         required: true
+      dry_run:
+        description: Build and verify archives without publishing
+        type: boolean
+        default: true
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -23,12 +28,10 @@ jobs:
   release:
     name: Publish release binaries and archives
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     permissions:
       contents: write
-      issues: write
-      pull-requests: write
-      id-token: write
 
     steps:
       - name: Checkout
@@ -37,6 +40,11 @@ jobs:
           ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
           fetch-depth: 0
       
+      - name: Validate release tag
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: .github/scripts/check-release-tag.sh "$RELEASE_TAG"
+
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -48,6 +56,26 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GORELEASER_CURRENT_TAG: ${{ inputs.tag || github.ref_name }}
           BRANCH: ${{ inputs.tag || github.ref_name }}
+          DRY_RUN: ${{ inputs.dry_run || false }}
         run: |
-          export PATH="$HOME/go/bin:$PATH"
-          make release
+          if [[ "$DRY_RUN" == true ]]; then
+            make release-dry-run
+          else
+            make release
+          fi
+
+      - name: Verify release archives and installation
+        run: |
+          .github/scripts/check-release-archives.sh
+          .github/scripts/test-release-install.sh
+
+      - name: Preserve release artifacts
+        if: success() && inputs.dry_run
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          archive: true
+          name: release-${{ inputs.tag }}
+          path: |
+            build/release/*.tar.gz
+            build/release/*checksums.txt
+          if-no-files-found: error

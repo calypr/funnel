@@ -22,6 +22,10 @@ dist: build/release
 release:
   draft: false
   prerelease: auto
+  header: |
+    Read the [upgrade guide](https://github.com/calypr/funnel/blob/{{ .Tag }}/docs/upgrading.md) before upgrading.
+    This release changes Go import paths, plugin transport, and deployment configuration.
+    Rebuild net/rpc plugins and the host together.
 
 checksum:
   name_template: "funnel-{{.Tag}}-checksums.txt"
@@ -31,9 +35,10 @@ archives:
       - tar.gz
     name_template: "{{.ProjectName}}-{{.Os}}-{{.Arch}}-{{.Tag}}"
     files:
-      - LICENSE*
+      - License.txt
       - README*
       - CHANGELOG*
+      - docs/upgrading.md
 
 # Add changelog generation
 changelog:

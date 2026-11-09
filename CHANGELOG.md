@@ -6,6 +6,10 @@
 
 ### Fixed
 
+* The installer supports destination paths containing spaces, extracts in a temporary directory, and fails on HTTP download errors with bounded retries.
+
+* Release packaging uses a pinned GoReleaser executable, includes the license and upgrade guide, and can be verified with the manual Release packaging workflow. Manual release dispatch supports a dry run with downloadable archives and validates the requested tag.
+
 * PostgreSQL initialization cancels stalled network operations when its existing five-minute initialization budget expires.
 * Net/rpc authorization plugins preserve explicitly declared `FILE` output types and other optional protobuf fields in requests and responses. Rebuild the host and plugin binaries together.
 * Manual release dispatch checks out the requested tag instead of the selected branch.

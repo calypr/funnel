@@ -7,14 +7,14 @@ git_commit := $(shell git rev-parse --short HEAD)
 git_branch := $(shell git symbolic-ref -q --short HEAD)
 git_upstream := $(shell git remote get-url $(shell git config branch.$(shell git symbolic-ref -q --short HEAD).remote) 2> /dev/null)
 export GIT_BRANCH = $(git_branch)
+export BRANCH ?= $(shell git symbolic-ref -q --short HEAD 2>/dev/null || git rev-parse --short HEAD)
 export GIT_UPSTREAM = $(git_upstream)
 
 FUNNEL_VERSION ?= $(shell version=$$(git describe --tags --exact-match 2>/dev/null || git rev-parse --short HEAD 2>/dev/null || printf unknown); if git rev-parse --verify HEAD >/dev/null 2>&1 && ! git diff-index --quiet HEAD --; then version=$${version}-dirty; fi; printf '%s' "$$version")
 export FUNNEL_VERSION
 
-# LAST_PR_NUMBER is used by the release notes builder to generate notes
-# based on pull requests (PR) up until the last release.
-export LAST_PR_NUMBER = 716
+GORELEASER_VERSION := v2.12.0
+GORELEASER := $(CURDIR)/build/tools/goreleaser
 
 VERSION_LDFLAGS=\
  -X "github.com/calypr/funnel/version.BuildDate=$(shell date)" \
@@ -200,21 +200,30 @@ webdash:
 
 # Build binaries for all OS/Architectures
 snapshot: release-dep
-	@goreleaser \
-		--clean \
-		--snapshot
+	@"$(GORELEASER)" release --clean --snapshot
 
 # Build a docker container locally
 docker:
 	docker build -t quay.io/ohsu-comp-bio/funnel:latest ./
 
-# Create a release on Github using GoReleaser
-release: release-dep
-	@goreleaser --clean
+# Create a release on GitHub using the reviewed changelog section.
+.PHONY: release release-dry-run release-notes release-dep snapshot
+release-notes:
+	@mkdir -p build
+	@release_ref="$${GORELEASER_CURRENT_TAG:-$$(git rev-parse HEAD)}"; \
+	 awk -v ref="$$release_ref" '/^# Unreleased$$/ { printing=1; next } printing && /^# / { exit } printing { gsub(/\]\(docs\//, "](https://github.com/calypr/funnel/blob/" ref "/docs/"); print }' CHANGELOG.md > build/release-notes.md
+	@test -s build/release-notes.md
+
+release: release-dep release-notes
+	@"$(GORELEASER)" release --clean --release-notes build/release-notes.md
+
+release-dry-run: release-dep release-notes
+	@"$(GORELEASER)" release --clean --release-notes build/release-notes.md --skip=publish,announce
 
 # Install dependencies for release
 release-dep:
-	@go install github.com/goreleaser/goreleaser/v2@latest
+	@mkdir -p "$(CURDIR)/build/tools"
+	@GOBIN="$(CURDIR)/build/tools" go install github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION)
 
 # Generate mocks for testing.
 gen-mocks: gen-mocks-deps
