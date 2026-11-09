@@ -42,8 +42,8 @@ func TestNodeDead(t *testing.T) {
 	}
 	nodes := resp.Nodes
 
-	if len(nodes) < 1 {
-		t.Error("expected node was not returned by ListNodes")
+	if len(nodes) != 1 {
+		t.Fatalf("expected one node from ListNodes, got %d", len(nodes))
 	}
 	if nodes[0].State != scheduler.NodeState_DEAD {
 		t.Log("Node:", nodes[0])
@@ -57,7 +57,7 @@ func TestNodeInitFail(t *testing.T) {
 	ctx := context.Background()
 	conf := nodeTestConfig(testenv.DefaultConfig(t))
 	srv := testenv.NewFunnel(t, conf)
-	srv.StartServer()
+	// Manual health checks keep the DEAD transition observable before deletion.
 
 	_, err := srv.Scheduler.Nodes.PutNode(ctx, &scheduler.Node{
 		Id:    "test-node",
@@ -79,8 +79,8 @@ func TestNodeInitFail(t *testing.T) {
 	}
 	nodes := resp.Nodes
 
-	if len(nodes) < 1 {
-		t.Error("expected node was not returned by ListNodes")
+	if len(nodes) != 1 {
+		t.Fatalf("expected one node from ListNodes, got %d", len(nodes))
 	}
 	if nodes[0].State != scheduler.NodeState_DEAD {
 		t.Log("Node:", nodes[0])
