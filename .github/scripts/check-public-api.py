@@ -113,6 +113,26 @@ func TestExternalPluginGobContract(t *testing.T) {
  if err:=gob.NewDecoder(&buffer).Decode(decoded);err!=nil {t.Fatal(err)}
  if !proto.Equal(job,decoded) {t.Fatal("plugin Gob codec changed values or oneof presence")}
 }
+func TestExternalPluginGobPreservesOptionalPresence(t *testing.T) {
+ task:=&tes.Task{Id:"plugin-task",Outputs:[]*tes.Output{
+  {Path:"/outputs/inferred",Url:"s3://bucket/inferred"},
+  {Path:"/outputs/file",Url:"s3://bucket/file",Type:tes.File.Enum()},
+  {Path:"/outputs/directory",Url:"s3://bucket/directory",Type:tes.Directory.Enum()},
+ }}
+ job:=&plugin.Job{Task:task}
+ var jobWire bytes.Buffer
+ if err:=gob.NewEncoder(&jobWire).Encode(job);err!=nil {t.Fatal(err)}
+ decodedJob:=&plugin.Job{}
+ if err:=gob.NewDecoder(&jobWire).Decode(decodedJob);err!=nil {t.Fatal(err)}
+ if !proto.Equal(job,decodedJob) {t.Fatal("plugin Job Gob round-trip changed optional output type presence")}
+
+ response:=&plugin.JobResponse{Task:task}
+ var responseWire bytes.Buffer
+ if err:=gob.NewEncoder(&responseWire).Encode(response);err!=nil {t.Fatal(err)}
+ decodedResponse:=&plugin.JobResponse{}
+ if err:=gob.NewDecoder(&responseWire).Decode(decodedResponse);err!=nil {t.Fatal(err)}
+ if !proto.Equal(response,decodedResponse) {t.Fatal("plugin JobResponse Gob round-trip changed optional output type presence")}
+}
 
 ''')
         subprocess.run(["go", "mod", "tidy"], cwd=path, env=env, check=True)

@@ -83,6 +83,48 @@ func TestAuthorizeTransports(t *testing.T) {
 	}
 }
 
+func TestAuthorizeTransportsPreserveOptionalProtobufFields(t *testing.T) {
+	zero := int64(0)
+	task := &tes.Task{Outputs: []*tes.Output{
+		{Path: "/outputs/inferred", Url: "s3://bucket/inferred"},
+		{Path: "/outputs/file", Url: "s3://bucket/file", Type: tes.File.Enum()},
+		{Path: "/outputs/directory", Url: "s3://bucket/directory", Type: tes.Directory.Enum()},
+	}}
+	conf := &config.Config{Kubernetes: &config.Kubernetes{Tolerations: []*config.Toleration{{
+		Key: "dedicated", Effect: "NoExecute", TolerationSeconds: &zero,
+	}}}}
+	request := &Job{Config: conf, Task: task, Type: Type_CREATE}
+	response := &JobResponse{Config: conf, Task: task}
+
+	for _, transport := range []string{"grpc", "netrpc"} {
+		t.Run(transport, func(t *testing.T) {
+			impl := &recordingAuthorizer{requests: make(chan *Job, 1), response: response}
+			var client Authorize
+			if transport == "grpc" {
+				client = grpcAuthorizer(t, impl)
+			} else {
+				client = rpcAuthorizer(t, impl)
+			}
+
+			gotResponse, err := client.PluginAction(request.Params, request.Headers, request.Config, request.Task, request.Type)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !proto.Equal(gotResponse, response) {
+				t.Errorf("response changed across %s: got %v, want %v", transport, gotResponse, response)
+			}
+			select {
+			case gotRequest := <-impl.requests:
+				if !proto.Equal(gotRequest, request) {
+					t.Errorf("request changed across %s: got %v, want %v", transport, gotRequest, request)
+				}
+			default:
+				t.Fatal("authorizer was not called")
+			}
+		})
+	}
+}
+
 func grpcAuthorizer(t *testing.T, impl Authorize) Authorize {
 	t.Helper()
 	listener := bufconn.Listen(1024 * 1024)
