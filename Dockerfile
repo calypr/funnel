@@ -22,7 +22,10 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 # download nerdctl (Docker-compatible CLI for containerd)
 ARG NERDCTL_VERSION=2.4.2
 ARG TARGETARCH
-RUN wget -qO /tmp/nerdctl.tgz \
+RUN apk add --no-cache curl && \
+    curl --fail --silent --show-error --location \
+      --retry 4 --retry-max-time 180 --connect-timeout 15 --max-time 60 \
+      --output /tmp/nerdctl.tgz \
       "https://github.com/containerd/nerdctl/releases/download/v${NERDCTL_VERSION}/nerdctl-${NERDCTL_VERSION}-linux-${TARGETARCH}.tar.gz" && \
     tar -xz -C /tmp -f /tmp/nerdctl.tgz nerdctl && \
     test "$(go version -m /tmp/nerdctl | sed -n 's/.*GOARCH=//p')" = "$(go env GOARCH)"

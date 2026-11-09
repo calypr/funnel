@@ -15,6 +15,7 @@ jobs:
   integration_tests:
     name: Gen3 workflow tests (Kind, authentication, and storage)
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     env:
       TEST_REPO: ${{ github.workspace }}/gen3-code-vigil
       TEST_REPO_SHA: 87da170a9a1cb099cfd1aded9402bc323201d6bc
@@ -260,6 +261,7 @@ jobs:
     needs: integration_tests
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 2
     steps:
       - name: Report test result for existing required-check rules
         env:

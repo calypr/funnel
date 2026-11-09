@@ -20,6 +20,7 @@ jobs:
   integration-tests:
     name: Nextflow tasks on Kubernetes (Kind and MinIO)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       NXF_VER: '25.10.4'
  
@@ -124,10 +125,12 @@ jobs:
       - name: Wait for Funnel port-forward
         run: |
           for i in $(seq 1 10); do
-            curl -sf http://localhost:8000/service-info && break
+            curl --fail --silent --show-error --max-time 2 http://localhost:8000/v1/service-info && exit 0
             echo "Waiting for Funnel... ($i/10)"
             sleep 2
           done
+          echo "Port-forward did not become ready" >&2
+          exit 1
 
       - name: Port-forward Minio
         run: kubectl port-forward svc/minio 9000:9000 &
@@ -135,10 +138,12 @@ jobs:
       - name: Wait for Minio port-forward
         run: |
           for i in $(seq 1 10); do
-            curl -sf http://localhost:9000/minio/health/ready && break
+            curl --fail --silent --show-error --max-time 2 http://localhost:9000/minio/health/ready && exit 0
             echo "Waiting for Minio... ($i/10)"
             sleep 2
           done
+          echo "Port-forward did not become ready" >&2
+          exit 1
  
       # ----------------------------
       # 4. Run Nextflow + nf-canary
@@ -152,7 +157,7 @@ jobs:
           
       - name: Install Nextflow
         run: |
-          curl -s https://get.nextflow.io | bash
+          curl --fail --silent --show-error --location --retry 4 --retry-max-time 180 --connect-timeout 15 --max-time 60 https://get.nextflow.io --output nextflow
           chmod +x nextflow
           mkdir -p $HOME/.local/bin
           mv nextflow $HOME/.local/bin/
@@ -203,7 +208,8 @@ jobs:
         run: |
           set -o pipefail
           cd nf-canary
-          nextflow -c funnel.config run main.nf -with-report report.html -w s3://local/work 2>&1 | tee nextflow.log
+          timeout --signal=TERM --kill-after=30s 10m nextflow -c funnel.config run main.nf -with-report report.html -with-trace trace.tsv -w s3://local/work 2>&1 | tee nextflow.log
+          python3 ../.github/scripts/check-nextflow-canary.py trace.tsv
       
       # ------------------------------
       # 5. Upload test logs + reports
@@ -233,5 +239,6 @@ jobs:
             nf-canary/nextflow.log
             nf-canary/report.html
             nf-canary/.nextflow.log
+            nf-canary/trace.tsv
           if-no-files-found: ignore
           include-hidden-files: true

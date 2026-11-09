@@ -357,7 +357,7 @@ build_images() {
   candidate_package_finished=$(date +%s)
 
   mkdir -p "$plugin_context" "$plugin_output"
-  curl --fail --silent --show-error --location --retry 3 --max-time 60 \
+  curl --fail --silent --show-error --location --retry 4 --retry-max-time 180 --connect-timeout 15 --max-time 60 \
     "https://github.com/calypr/funnel-gen3-plugin/archive/${plugin_source_sha}.tar.gz" \
     --output "$plugin_archive"
   tar -xzf "$plugin_archive" --strip-components=1 -C "$plugin_context"

@@ -28,10 +28,15 @@ jobs:
           go-version-file: go.mod
       - name: Check unreachable functions
         run: make deadcode
+      - name: Test CI download and diagnostics helpers
+        run: python3 .github/scripts/test-ci-helpers.py
+      - name: Validate GitHub Actions workflows
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck=
 
   lint:
     name: Go lint (golangci-lint)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Check out code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

@@ -24,7 +24,7 @@ case "$arch" in
   *) echo "Unsupported Docker architecture: $arch" >&2; exit 1 ;;
 esac
 version=${MOUNTPOINT_VERSION:-1.24.0}
-curl -fsSL "https://s3.amazonaws.com/mountpoint-s3-release/$version/$package_arch/mount-s3-$version-$package_arch.deb" -o "$scratch/mount-s3.deb"
+curl -fsSL --retry 4 --retry-max-time 180 --connect-timeout 15 --max-time 60 "https://s3.amazonaws.com/mountpoint-s3-release/$version/$package_arch/mount-s3-$version-$package_arch.deb" -o "$scratch/mount-s3.deb"
 cd "$repo"
 CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go test -c ./internal/storage -o "$scratch/storage.test"
 
