@@ -312,7 +312,12 @@ func (x *GetNodeRequest) GetId() string {
 }
 
 type ListNodesRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Maximum number of nodes to return. Zero uses the default page size of 500.
+	// Values from 1 through 1000 are accepted.
+	PageSize int32 `protobuf:"varint,1,opt,name=page_size,proto3" json:"page_size,omitempty"`
+	// Opaque continuation token from a previous ListNodes response.
+	PageToken     string `protobuf:"bytes,2,opt,name=page_token,proto3" json:"page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -347,9 +352,25 @@ func (*ListNodesRequest) Descriptor() ([]byte, []int) {
 	return file_compute_scheduler_scheduler_proto_rawDescGZIP(), []int{3}
 }
 
+func (x *ListNodesRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListNodesRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
 type ListNodesResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Nodes         []*Node                `protobuf:"bytes,1,rep,name=nodes,proto3" json:"nodes,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Nodes []*Node                `protobuf:"bytes,1,rep,name=nodes,proto3" json:"nodes,omitempty"`
+	// Opaque continuation token. Empty when there are no more nodes.
+	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,proto3" json:"next_page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -389,6 +410,13 @@ func (x *ListNodesResponse) GetNodes() []*Node {
 		return x.Nodes
 	}
 	return nil
+}
+
+func (x *ListNodesResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
 }
 
 type PutNodeResponse struct {
@@ -488,10 +516,15 @@ const file_compute_scheduler_scheduler_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\" \n" +
 	"\x0eGetNodeRequest\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\"\x12\n" +
-	"\x10ListNodesRequest\":\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"P\n" +
+	"\x10ListNodesRequest\x12\x1c\n" +
+	"\tpage_size\x18\x01 \x01(\x05R\tpage_size\x12\x1e\n" +
+	"\n" +
+	"page_token\x18\x02 \x01(\tR\n" +
+	"page_token\"d\n" +
 	"\x11ListNodesResponse\x12%\n" +
-	"\x05nodes\x18\x01 \x03(\v2\x0f.scheduler.NodeR\x05nodes\"\x11\n" +
+	"\x05nodes\x18\x01 \x03(\v2\x0f.scheduler.NodeR\x05nodes\x12(\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\x0fnext_page_token\"\x11\n" +
 	"\x0fPutNodeResponse\"\x14\n" +
 	"\x12DeleteNodeResponse*Z\n" +
 	"\tNodeState\x12\x11\n" +

@@ -20,7 +20,6 @@ import (
 	"github.com/calypr/funnel/database/boltdb"
 	"github.com/calypr/funnel/database/datastore"
 	"github.com/calypr/funnel/database/dynamodb"
-	"github.com/calypr/funnel/database/elastic"
 	"github.com/calypr/funnel/database/mongodb"
 	"github.com/calypr/funnel/database/postgres"
 	"github.com/calypr/funnel/events"
@@ -60,6 +59,7 @@ func NewServer(ctx context.Context, conf *config.Config, log *logger.Logger) (*S
 	var database Database
 	var reader tes.ReadOnlyServer
 	var nodes scheduler.SchedulerServiceServer
+	var atomicAssigner scheduler.AtomicTaskAssigner
 	var sched *scheduler.Scheduler
 	var queue scheduler.TaskQueue
 
@@ -105,17 +105,6 @@ func NewServer(ctx context.Context, conf *config.Config, log *logger.Logger) (*S
 		reader = d
 		writers = append(writers, d)
 
-	case "elastic":
-		e, err := elastic.NewElastic(conf.Elastic)
-		if err != nil {
-			return nil, dberr(err)
-		}
-		database = e
-		reader = e
-		nodes = e
-		queue = e
-		writers = append(writers, e)
-
 	case "mongodb":
 		m, err := mongodb.NewMongoDB(conf.MongoDB)
 		if err != nil {
@@ -141,6 +130,11 @@ func NewServer(ctx context.Context, conf *config.Config, log *logger.Logger) (*S
 	default:
 		return nil, fmt.Errorf("unknown database: '%s'", conf.Database)
 	}
+	if assigner, ok := database.(scheduler.AtomicTaskAssigner); ok {
+		atomicAssigner = assigner
+	}
+
+	executionClaimer, _ := database.(events.ExecutionClaimer)
 
 	// Initialize the Database
 	// Note: This is where Funnel waits until the given database is ready to accept requests.
@@ -173,8 +167,6 @@ func NewServer(ctx context.Context, conf *config.Config, log *logger.Logger) (*S
 			writer, err = badger.NewBadger(conf.Badger)
 		case "dynamodb":
 			writer, err = dynamodb.NewDynamoDB(conf.DynamoDB)
-		case "elastic":
-			writer, err = elastic.NewElastic(conf.Elastic)
 		case "kafka":
 			writer, err = events.NewKafkaWriter(ctx, conf.Kafka)
 		case "pubsub":
@@ -211,12 +203,20 @@ func NewServer(ctx context.Context, conf *config.Config, log *logger.Logger) (*S
 					"a task queue", conf.Database)
 		}
 
+		if atomicAssigner == nil {
+			return nil, fmt.Errorf("database %s does not implement atomic task assignment", conf.Database)
+		}
+		if _, ok := nodes.(scheduler.NodeHealthStore); !ok {
+			return nil, fmt.Errorf("database %s does not implement heartbeat-fenced node state updates", conf.Database)
+		}
+
 		sched = &scheduler.Scheduler{
-			Conf:  conf.Scheduler,
-			Log:   log.Sub("scheduler"),
-			Nodes: nodes,
-			Queue: queue,
-			Event: &events.ErrLogger{Writer: writer, Log: log.Sub("scheduler")},
+			Conf:           conf.Scheduler,
+			Log:            log.Sub("scheduler"),
+			Nodes:          nodes,
+			Queue:          queue,
+			AtomicAssigner: atomicAssigner,
+			Event:          &events.ErrLogger{Writer: writer, Log: log.Sub("scheduler")},
 		}
 		compute = events.Backend{}
 
@@ -302,7 +302,7 @@ func NewServer(ctx context.Context, conf *config.Config, log *logger.Logger) (*S
 				Log:     log,
 				Config:  conf,
 			},
-			Events:  &events.Service{Writer: writer},
+			Events:  &events.Service{Writer: writer, Claimer: executionClaimer},
 			Nodes:   nodes,
 			Plugins: conf.Plugins,
 		},

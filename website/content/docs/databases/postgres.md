@@ -11,7 +11,7 @@ menu:
 >
 > Postgres support is in early development.
 >
-> Production deployments are recommended to use the alternative storage backends available, such as MongoDB, ElasticSearch, DynamoDB, etc.
+> Production deployments are recommended to use the alternative storage backends available, such as MongoDB and DynamoDB.
 
 ## Configuration
 

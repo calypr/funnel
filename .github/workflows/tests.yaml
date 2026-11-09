@@ -2,9 +2,9 @@ name: Go unit and integration tests
 
 on:
   push:
-  pull_request:
     branches:
       - develop
+  pull_request:
 
 permissions:
   contents: read
@@ -15,6 +15,100 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  docker-resource-integration:
+    name: Docker worker integration tests
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - name: Set up Go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: go.mod
+    - name: Pull test container image
+      run: docker pull alpine:latest
+    - name: Test Docker worker execution admission
+      env:
+        FUNNEL_TEST_DOCKER_INTEGRATION: "1"
+      run: go test -v ./worker -run '^TestExecutionAdmissionDockerIntegration$' -count=1 -timeout=3m
+
+  scheduler-tests:
+    name: Scheduler tests (${{ matrix.label }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - backend: boltdb
+            label: BoltDB
+          - backend: postgres
+            label: PostgreSQL
+          - backend: mongodb
+            label: MongoDB
+    env:
+      CGO_ENABLED: "1"
+      FUNNEL_SCHEDULER_TEST_BACKEND: ${{ matrix.backend }}
+    steps:
+    - name: Check out code
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - name: Set up Go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: go.mod
+    - name: Download Go modules
+      run: sh .github/scripts/download-go-modules.sh
+    - name: Install gotestsum
+      run: go install gotest.tools/gotestsum@v1.13.0
+    - name: Run scheduler contract against ${{ matrix.label }}
+      run: gotestsum --format standard-verbose --junitfile=scheduler-tests.xml -- -race ./tests/schedulercontract -run '^TestSchedulerContract$' -count=1 -timeout=5m
+    - name: Upload scheduler test results
+      if: always()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: scheduler-test-results-${{ matrix.backend }}
+        path: scheduler-tests.xml
+        if-no-files-found: warn
+
+  scheduler-process-tests:
+    name: Scheduler process and crash tests (${{ matrix.label }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - backend: postgres
+            label: PostgreSQL
+          - backend: mongodb
+            label: MongoDB
+    env:
+      CGO_ENABLED: "1"
+      FUNNEL_TEST_SCHEDULER_PROCESS_INTEGRATION: "1"
+      FUNNEL_SCHEDULER_TEST_BACKEND: ${{ matrix.backend }}
+    steps:
+    - name: Check out code
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - name: Set up Go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: go.mod
+    - name: Download Go modules
+      run: sh .github/scripts/download-go-modules.sh
+    - name: Install gotestsum
+      run: go install gotest.tools/gotestsum@v1.13.0
+    - name: Pull worker test image
+      run: docker pull alpine:3.21
+    - name: Test independent schedulers and crash recovery
+      run: gotestsum --format standard-verbose --junitfile=scheduler-process-tests.xml -- -race ./tests/schedulerprocess -run '^TestSchedulerProcesses$' -count=1 -timeout=10m
+    - name: Upload process test results
+      if: always()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: scheduler-process-test-results-${{ matrix.backend }}
+        path: scheduler-process-tests.xml
+        if-no-files-found: warn
+
   unitTest:
     name: Go tests (race detector and coverage)
     runs-on: ubuntu-latest
@@ -42,7 +136,7 @@ jobs:
       env:
         CGO_ENABLED: "1"
       run: |
-        gotestsum --junitfile=test-report.xml -- -race ./... -coverprofile=coverage.out
+        gotestsum --junitfile=test-report.xml -- -race ./... -skip '^TestSchedulerContract$' -coverprofile=coverage.out
         go tool cover -func=coverage.out
 
     - name: Test Report
@@ -70,11 +164,13 @@ jobs:
   # Preserve the required status context until the stack's ruleset migration.
   required-go-tests:
     name: unitTest
-    needs: unitTest
+    needs: [unitTest, scheduler-tests, scheduler-process-tests]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Report test result for existing required-check rules
         env:
           CHECK_RESULT: ${{ needs.unitTest.result }}
-        run: test "$CHECK_RESULT" = success
+          SCHEDULER_RESULT: ${{ needs.scheduler-tests.result }}
+          PROCESS_RESULT: ${{ needs.scheduler-process-tests.result }}
+        run: test "$CHECK_RESULT" = success && test "$SCHEDULER_RESULT" = success && test "$PROCESS_RESULT" = success

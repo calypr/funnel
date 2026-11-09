@@ -23,7 +23,7 @@ func TestReadQueue(t *testing.T) {
 	}
 	time.Sleep(time.Second * 5)
 
-	tasks := f.Scheduler.Queue.ReadQueue(10)
+	tasks := f.Scheduler.Queue.ReadQueue(10, nil)
 
 	if len(tasks) != 10 {
 		t.Error("unexpected task count", len(tasks))

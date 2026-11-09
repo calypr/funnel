@@ -18,26 +18,18 @@ var DefaultPredicates = []Predicate{
 // Given a task, list of nodes, and weights, it returns the best Offer or nil.
 func DefaultScheduleAlgorithm(j *tes.Task, nodes []*Node, weights map[string]float32) *Offer {
 
-	offers := []*Offer{}
-	for _, n := range nodes {
-		// Filter out nodes that don't match the task request.
-		// Checks CPU, RAM, disk space, etc.
-		if !Match(n, j, DefaultPredicates) {
+	var best *Offer
+	var bestAverage float32
+	for _, node := range nodes {
+		if !Match(node, j, DefaultPredicates) {
 			continue
 		}
-
-		sc := DefaultScores(n, j)
-		sc = sc.Weighted(weights)
-
-		offer := NewOffer(n, j, sc)
-		offers = append(offers, offer)
+		scores := DefaultScores(node, j).Weighted(weights)
+		average := scores.Average()
+		if best == nil || average < bestAverage {
+			best = NewOffer(node, j, scores)
+			bestAverage = average
+		}
 	}
-
-	// No matching nodes were found.
-	if len(offers) == 0 {
-		return nil
-	}
-
-	SortByAverageScore(offers)
-	return offers[0]
+	return best
 }

@@ -5,4 +5,4 @@ EventWriters:
 
 MongoDB:
   Addrs:
-    - localhost:27000
+    - "mongodb://localhost:27000/?replicaSet=rs0&directConnection=true"

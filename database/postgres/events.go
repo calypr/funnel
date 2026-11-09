@@ -10,17 +10,13 @@ import (
 	"github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/server"
 	"github.com/calypr/funnel/tes"
-	"github.com/calypr/funnel/util"
-
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // WriteEvent creates an event for the server to handle.
 func (db *Postgres) WriteEvent(ctx context.Context, req *events.Event) error {
 	logger := logger.NewLogger("postgres", logger.DefaultConfig())
 
-	ctx, cancel := db.context()
+	ctx, cancel := context.WithTimeout(ctx, db.conf.GetTimeout().GetDuration().AsDuration())
 	defer cancel()
 
 	selector := req.Id
@@ -58,70 +54,7 @@ func (db *Postgres) WriteEvent(ctx context.Context, req *events.Event) error {
 
 	// Task State change
 	case events.Type_TASK_STATE:
-		retrier := util.NewRetrier()
-		retrier.ShouldRetry = func(err error) bool {
-			// Check if it's an InvalidArgument (400) gRPC error
-			if st, ok := status.FromError(err); ok {
-				if st.Code() == codes.InvalidArgument {
-					return false
-				}
-			}
-
-			_, isTransitionError := err.(*tes.TransitionError)
-			shouldRetry := !isTransitionError &&
-				err != tes.ErrNotFound &&
-				err != tes.ErrNotPermitted
-			return shouldRetry
-		}
-
-		return retrier.Retry(ctx, func() error {
-			// Get current state & version
-			state, oldVersion, owner, err := db.findTaskStateAndVersion(ctx, req.Id)
-			if err != nil {
-				return tes.ErrNotFound
-			}
-			if !server.GetUser(ctx).IsAccessible(owner) {
-				return tes.ErrNotPermitted
-			}
-
-			// Validate state transition
-			to := req.GetState()
-			if err = tes.ValidateTransition(state, to); err != nil {
-				return err
-			}
-
-			newVersion := time.Now().UnixNano()
-
-			updateSQL := `
-				UPDATE tasks 
-				SET state = $1, version = $2,
-					data = jsonb_set(data, '{state}', $5::jsonb)
-				WHERE id = $3 AND version = $4
-			`
-			newStateValue := int32(to)
-			newStateJSON, _ := json.Marshal(newStateValue)
-
-			// Working SQL Statement
-			tag, err := db.client.Exec(
-				ctx,
-				updateSQL,
-				to.String(),
-				newVersion,
-				selector,
-				oldVersion,
-				newStateJSON,
-			)
-
-			if err != nil {
-				return fmt.Errorf("failed to update task state: %w", err)
-			}
-
-			if tag.RowsAffected() == 0 {
-				return tes.ErrConcurrentStateChange
-			}
-
-			return nil
-		})
+		return db.transitionReservedTask(ctx, req.Id, req.GetState())
 
 	// Task + Executor Events
 	case events.Type_TASK_START_TIME, events.Type_TASK_END_TIME, events.Type_TASK_OUTPUTS, events.Type_TASK_METADATA,
@@ -266,29 +199,4 @@ func (db *Postgres) insertTask(ctx context.Context, task *tes.Task, owner string
 	)
 
 	return err
-}
-
-func (db *Postgres) findTaskStateAndVersion(ctx context.Context, taskId string) (tes.State, int64, string, error) {
-	selectSQL := `
-		SELECT state, version, owner
-		FROM tasks 
-		WHERE id = $1
-	`
-	var stateStr string
-	var version int64
-	var owner string
-
-	err := db.client.QueryRow(ctx, selectSQL, taskId).Scan(&stateStr, &version, &owner)
-
-	if err != nil {
-		return tes.State_UNKNOWN, 0, "", tes.ErrNotFound
-	}
-
-	// Convert state string to enum
-	state, ok := tes.State_value[stateStr]
-	if !ok {
-		return tes.State_UNKNOWN, 0, "", fmt.Errorf("invalid state stored in database: %s", stateStr)
-	}
-
-	return tes.State(state), version, owner, nil
 }

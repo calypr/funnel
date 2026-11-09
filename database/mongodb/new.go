@@ -2,7 +2,9 @@ package mongodb
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/calypr/funnel/compute/scheduler"
 	"github.com/calypr/funnel/config"
@@ -24,6 +26,10 @@ func NewMongoDB(conf *config.MongoDB) (*MongoDB, error) {
 	opts := options.Client().
 		SetHosts(conf.Addrs).
 		SetAppName("funnel")
+
+	if len(conf.Addrs) == 1 && (strings.HasPrefix(conf.Addrs[0], "mongodb://") || strings.HasPrefix(conf.Addrs[0], "mongodb+srv://")) {
+		opts = options.Client().ApplyURI(conf.Addrs[0]).SetAppName("funnel")
+	}
 
 	if len(conf.Username) > 0 && len(conf.Password) > 0 {
 		opts = opts.SetAuth(options.Credential{
@@ -66,72 +72,55 @@ func (db *MongoDB) tasks() *mongo.Collection {
 	return db.collection("tasks")
 }
 
-func (db *MongoDB) createCollection(name string, indexKeys *bson.D) error {
-	ctx, cancel := db.context()
-	defer cancel()
-
-	err := db.database.CreateCollection(ctx, name, nil)
-	if err != nil {
-		return fmt.Errorf(
-			"error creating collection [%s] in database [%s]: %v",
-			name, db.conf.Database, err)
-	}
-
-	indexModel := mongo.IndexModel{
-		Keys:    indexKeys,
-		Options: options.Index().SetUnique(true).SetSparse(true),
-	}
-
-	ctx, cancel = db.context()
-	defer cancel()
-
-	_, err = db.collection(name).Indexes().CreateOne(ctx, indexModel)
-	return err
-}
-
-func (db *MongoDB) findCollections(names ...string) (map[string]bool, error) {
-	ctx, cancel := db.context()
-	defer cancel()
-
-	filter := bson.M{"name": bson.M{"$in": names}}
-	names, err := db.database.ListCollectionNames(ctx, filter, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	result := make(map[string]bool)
-	for _, name := range names {
-		result[name] = true
-	}
-	return result, nil
-}
-
 // Init creates tables in MongoDB.
 func (db *MongoDB) Init() error {
-	found, err := db.findCollections("tasks", "nodes")
-	if err != nil {
+	ctx, cancel := db.context()
+	defer cancel()
+	if err := db.requireTransactions(ctx); err != nil {
 		return err
 	}
-
-	if !found["tasks"] {
-		indexKeys := &bson.D{
-			{Key: "-id", Value: -1},
-			{Key: "-creationtime", Value: -1},
-		}
-		if err := db.createCollection("tasks", indexKeys); err != nil {
-			return err
+	for _, name := range []string{"tasks", "nodes", "node_heartbeats", "scheduler_migrations"} {
+		if err := db.database.CreateCollection(ctx, name); err != nil {
+			var commandError mongo.CommandError
+			if !errors.As(err, &commandError) || commandError.Code != 48 {
+				return err
+			}
 		}
 	}
-
-	if !found["nodes"] {
-		indexKeys := &bson.D{
-			{Key: "-id", Value: -1},
-		}
-		if err := db.createCollection("nodes", indexKeys); err != nil {
-			return err
-		}
+	if err := db.ensureNodeIDIndex(); err != nil {
+		return err
 	}
+	indexes := []mongo.IndexModel{
+		{Keys: bson.D{{Key: "id", Value: 1}}, Options: options.Index().SetUnique(true)},
+		{Keys: bson.D{{Key: "state", Value: 1}, {Key: "creationtime", Value: 1}, {Key: "id", Value: 1}}},
+		{Keys: bson.D{{Key: "claim_owner", Value: 1}, {Key: "id", Value: 1}}, Options: options.Index().SetPartialFilterExpression(bson.M{"claim_active": true})},
+	}
+	if _, err := db.tasks().Indexes().CreateMany(ctx, indexes); err != nil {
+		return fmt.Errorf("ensuring task identity and scheduler indexes: %w", err)
+	}
+	if err := db.migrateScheduler(ctx); err != nil {
+		return err
+	}
+	if err := db.migrateNodeTaskIDProjection(ctx); err != nil {
+		return err
+	}
+	return db.migrateExecutionClaims(ctx)
+}
 
+func (db *MongoDB) ensureNodeIDIndex() error {
+	ctx, cancel := db.context()
+	defer cancel()
+
+	index := mongo.IndexModel{
+		Keys: bson.D{{Key: "id", Value: 1}},
+		Options: options.Index().
+			SetName("id_1").
+			SetUnique(true).
+			SetCollation(&options.Collation{Locale: "simple"}),
+	}
+	if _, err := db.nodes().Indexes().CreateOne(ctx, index); err != nil {
+		return fmt.Errorf("ensuring unique simple-collation index on nodes.id (duplicate legacy node IDs must be resolved before startup): %w", err)
+	}
 	return nil
 }
 
