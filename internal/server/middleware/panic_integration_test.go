@@ -47,9 +47,9 @@ func TestGRPCServerSurvivesHandlerPanic(t *testing.T) {
 	log, output := middlewareCaptureLogger(t)
 	auth := serverauth.NewAuthentication(nil, nil, identity.AccessAll, log)
 	server := grpc.NewServer(grpc.ChainUnaryInterceptor(
+		DebugInterceptor(log),
 		auth.Interceptor,
 		serverauth.AuditInterceptor(log),
-		DebugInterceptor(log),
 	))
 	tesrpc.RegisterTaskServiceServer(server, panicTaskService{})
 	stopped := make(chan struct{})

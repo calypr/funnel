@@ -14,7 +14,7 @@ import (
 	"google.golang.org/grpc"
 )
 
-// DebugInterceptor logs each unary RPC and recovers handler panics.
+// DebugInterceptor logs each unary RPC and recovers downstream interceptor and handler panics.
 func DebugInterceptor(log *logger.Logger) grpc.UnaryServerInterceptor {
 	// Return a function that is the interceptor.
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo,

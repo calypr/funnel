@@ -80,10 +80,11 @@ func (s *Server) Serve(pctx context.Context) error {
 			PermitWithoutStream: true,             // allow pings when no active RPCs
 		}),
 		grpc.ChainUnaryInterceptor(
+			// Recovery must wrap authentication and all other interceptors.
+			middleware.DebugInterceptor(s.Log),
 			auth.Interceptor,
 			serverauth.AuditInterceptor(s.Log),
 			serverauth.EventWriteInterceptor(s.Tasks),
-			middleware.DebugInterceptor(s.Log),
 		),
 	)
 
