@@ -19,8 +19,8 @@ import (
 	"github.com/calypr/funnel/api/tes"
 	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/retry"
 	"github.com/calypr/funnel/internal/storage"
+	"github.com/cenkalti/backoff/v7"
 )
 
 func workerMountedOutputMux(t *testing.T, root string, timeout time.Duration, handler http.Handler) (*storage.Mux, *httptest.Server) {
@@ -339,12 +339,15 @@ func TestMountedOutputRetryRecordsOneSuccessfulFile(t *testing.T) {
 		w.Header().Set("Content-Length", "7")
 		w.Header().Set("Last-Modified", "Mon, 02 Jan 2006 15:04:05 GMT")
 	}))
-	retry := retry.NewRetrier()
-	retry.InitialInterval, retry.MaxInterval, retry.RandomizationFactor, retry.MaxTries = time.Millisecond, time.Millisecond, 0, 2
+	retrier := &storage.Retrier{
+		Backend:    mux,
+		MaxTries:   2,
+		NewBackOff: func() backoff.BackOff { return backoff.NewConstantBackOff(time.Millisecond) },
+	}
 	writer := &publicationEvents{}
 	output := workerOutputFile(t, "retry.txt", "retried")
 	output.Url = "s3://bucket/outputs/retry.txt"
-	logs, err := UploadOutputs(context.Background(), []*tes.Output{output}, &storage.Retrier{Retrier: retry, Backend: mux}, events.NewTaskWriter("task", 0, writer), 1)
+	logs, err := UploadOutputs(context.Background(), []*tes.Output{output}, retrier, events.NewTaskWriter("task", 0, writer), 1)
 	if err != nil {
 		t.Fatal(err)
 	}

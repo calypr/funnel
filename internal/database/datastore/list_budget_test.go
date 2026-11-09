@@ -9,7 +9,7 @@ import (
 	cloud "cloud.google.com/go/datastore"
 	pb "cloud.google.com/go/datastore/apiv1/datastorepb"
 	"github.com/calypr/funnel/api/tes"
-	"github.com/calypr/funnel/internal/taskmodel"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -66,7 +66,7 @@ func TestDatastoreByteBudgetResumes(t *testing.T) {
 		}
 	})
 	db := &Datastore{client: client}
-	ctx := taskmodel.WithTaskPageBytes(t.Context(), 230)
+	ctx := taskpolicy.WithTaskPageBytes(t.Context(), 230)
 	token := ""
 	for _, want := range []string{"c", "b", "a"} {
 		page, err := db.ListTasks(ctx, &tes.ListTasksRequest{View: "BASIC", PageSize: 3, PageToken: token})
@@ -81,7 +81,7 @@ func TestDatastoreByteBudgetResumes(t *testing.T) {
 	if token != "" {
 		t.Fatalf("unexpected cursor %q", token)
 	}
-	_, err = db.ListTasks(taskmodel.WithTaskPageBytes(t.Context(), 20), &tes.ListTasksRequest{View: "BASIC"})
+	_, err = db.ListTasks(taskpolicy.WithTaskPageBytes(t.Context(), 20), &tes.ListTasksRequest{View: "BASIC"})
 	if status.Code(err) != codes.ResourceExhausted {
 		t.Fatalf("got %v", err)
 	}

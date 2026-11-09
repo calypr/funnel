@@ -17,7 +17,7 @@ import (
 	"github.com/calypr/funnel/internal/compute/kubernetes/storageplan"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
-	"github.com/calypr/funnel/internal/taskmodel"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	googleproto "google.golang.org/protobuf/proto"
@@ -29,11 +29,11 @@ import (
 type Backend struct {
 	client            kubernetes.Interface
 	event             events.Writer
-	database          taskmodel.ReadOnlyServer
+	database          taskpolicy.ReadOnlyServer
 	log               *logger.Logger
 	backendParameters map[string]string
 	conf              *config.Config // Funnel configuration
-	events.Computer
+	compute.Computer
 }
 
 const gpuCountBackendParameter = "gpu_count"
@@ -48,7 +48,7 @@ var supportedBackendParameters = map[string]string{
 }
 
 // NewBackend returns a new K8s Backend instance.
-func NewBackend(ctx context.Context, conf *config.Config, reader taskmodel.ReadOnlyServer, writer events.Writer, log *logger.Logger) (*Backend, error) {
+func NewBackend(ctx context.Context, conf *config.Config, reader taskpolicy.ReadOnlyServer, writer events.Writer, log *logger.Logger) (*Backend, error) {
 	if conf.Kubernetes.WorkerTemplate == "" {
 		return nil, fmt.Errorf("invalid configuration; must provide a kubernetes job template")
 	}
@@ -105,7 +105,7 @@ func (b *Backend) startReconciler(ctx context.Context) {
 }
 
 func (b Backend) CheckBackendParameterSupport(task *tes.Task) error {
-	if _, err := taskmodel.FilterBackendParameters(task.GetResources(), b.BackendParameterKeys()); err != nil {
+	if _, err := taskpolicy.FilterBackendParameters(task.GetResources(), b.BackendParameterKeys()); err != nil {
 		return status.Error(codes.InvalidArgument, err.Error())
 	}
 	options, err := ParseGPUOptions(task.GetResources().GetBackendParameters())

@@ -6,7 +6,7 @@ import (
 
 	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/taskmodel"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 )
 
 func TestListTasksCursorFollowsCreationOrder(t *testing.T) {
@@ -30,7 +30,7 @@ func TestListTasksCursorFollowsCreationOrder(t *testing.T) {
 		t.Fatalf("unbounded count=%d", len(baseline.Tasks))
 	}
 	t.Logf("unbounded page IDs: %v %v", baseline.Tasks[0].Id, baseline.Tasks[1].Id)
-	ctx = taskmodel.WithTaskPageBytes(ctx, 350)
+	ctx = taskpolicy.WithTaskPageBytes(ctx, 350)
 	first, err := db.ListTasks(ctx, &tes.ListTasksRequest{View: "BASIC", PageSize: 10})
 	if err != nil {
 		t.Fatal(err)

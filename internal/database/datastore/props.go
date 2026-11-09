@@ -8,8 +8,8 @@ import (
 	"cloud.google.com/go/datastore"
 	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/server"
-	"github.com/calypr/funnel/internal/taskmodel"
+	"github.com/calypr/funnel/internal/identity"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 )
 
 /*
@@ -130,7 +130,7 @@ func marshalTask(t *tes.Task, ctx context.Context) ([]*datastore.Key, []interfac
 	z := &task{
 		Id:           t.Id,
 		State:        int32(t.State),
-		Owner:        server.GetUsername(ctx),
+		Owner:        identity.GetUsername(ctx),
 		CreationTime: t.CreationTime,
 		Name:         t.Name,
 		Description:  t.Description,
@@ -287,13 +287,13 @@ func unmarshalPart(t *tes.Task, props datastore.PropertyList) error {
 	case contentPart:
 		t.Inputs[e.Index].Content = e.Content
 	case sysLogsPart:
-		taskmodel.
+		taskpolicy.
 			GetTaskLog(t, e.Attempt).SystemLogs = e.SystemLogs
 	case stdoutPart:
-		taskmodel.
+		taskpolicy.
 			GetExecLog(t, e.Attempt, e.Index).Stdout = e.Stdout
 	case stderrPart:
-		taskmodel.
+		taskpolicy.
 			GetExecLog(t, e.Attempt, e.Index).Stderr = e.Stderr
 	}
 	return nil

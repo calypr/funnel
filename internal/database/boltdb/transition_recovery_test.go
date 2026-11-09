@@ -4,6 +4,10 @@ import (
 	"context"
 	"testing"
 
+	"github.com/calypr/funnel/internal/server/taskservice"
+
+	"github.com/calypr/funnel/internal/compute"
+
 	bolt "go.etcd.io/bbolt"
 
 	"github.com/calypr/funnel/api/tes"
@@ -11,7 +15,6 @@ import (
 	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
-	"github.com/calypr/funnel/internal/server"
 )
 
 func TestPersistedLegacyTrapCanBeCanceledOrCleaned(t *testing.T) {
@@ -47,8 +50,8 @@ func TestPersistedLegacyTrapCanBeCanceledOrCleaned(t *testing.T) {
 				if target == tes.State_CANCELED {
 					log := logger.NewLogger("legacy-transition", logger.DefaultConfig())
 					log.Discard()
-					service := &server.TaskService{
-						Read: db, Event: db, Compute: events.Backend{},
+					service := &taskservice.Service{
+						Read: db, Event: db, Compute: compute.Backend{},
 						Config: appconfig.DefaultConfig(), Log: log,
 					}
 					if _, err := service.CancelTask(ctx, &tes.CancelTaskRequest{Id: id}); err != nil {

@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/calypr/funnel/api/tes"
-	"github.com/calypr/funnel/tests/mongotest"
+	"github.com/calypr/funnel/internal/database/mongodb/mongotest"
 )
 
 func TestListTasksNamePrefixTreatsRegexPunctuationLiterally(t *testing.T) {

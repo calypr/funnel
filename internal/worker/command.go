@@ -4,12 +4,13 @@ import (
 	"io"
 
 	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/internal/worker/workspace"
 )
 
 type Command struct {
 	Image        string
 	ShellCommand []string
-	Volumes      []Volume
+	Volumes      []workspace.Volume
 	Workdir      string
 	Env          map[string]string
 	Stdin        io.Reader

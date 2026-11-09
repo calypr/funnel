@@ -6,8 +6,8 @@ import (
 	"fmt"
 
 	"github.com/calypr/funnel/api/tes"
-	"github.com/calypr/funnel/internal/server"
-	"github.com/calypr/funnel/internal/taskmodel"
+	"github.com/calypr/funnel/internal/identity"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	badger "github.com/dgraph-io/badger/v4"
 	"google.golang.org/protobuf/proto"
 )
@@ -27,17 +27,17 @@ func (db *Badger) GetTask(ctx context.Context, req *tes.GetTaskRequest) (*tes.Ta
 
 	switch req.View {
 	case tes.View_MINIMAL.String():
-		task = taskmodel.GetMinimalView(task)
+		task = taskpolicy.GetMinimalView(task)
 	case tes.View_BASIC.String():
-		task = taskmodel.GetBasicView(task)
+		task = taskpolicy.GetBasicView(task)
 	}
 	return task, nil
 }
 
 // ListTasks returns a list of tasks.
 func (db *Badger) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*tes.ListTasksResponse, error) {
-	page := taskmodel.NewTaskPage(ctx)
-	pageSize := taskmodel.GetPageSize(req.GetPageSize())
+	page := taskpolicy.NewTaskPage(ctx)
+	pageSize := taskpolicy.GetPageSize(req.GetPageSize())
 	count := 0
 	byteLimited := false
 
@@ -112,9 +112,9 @@ func (db *Badger) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*te
 
 			switch req.View {
 			case tes.View_MINIMAL.String():
-				task = taskmodel.GetMinimalView(task)
+				task = taskpolicy.GetMinimalView(task)
 			case tes.View_BASIC.String():
-				task = taskmodel.GetBasicView(task)
+				task = taskpolicy.GetBasicView(task)
 			}
 
 			accepted, err := page.Add(task, task.Id)
@@ -142,7 +142,7 @@ func (db *Badger) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*te
 func getTask(txn *badger.Txn, id string, ctx context.Context) (*tes.Task, error) {
 	item, err := txn.Get(taskKey(id))
 	if err == badger.ErrKeyNotFound {
-		return nil, taskmodel.ErrNotFound
+		return nil, taskpolicy.ErrNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("loading item: %w", err)
@@ -152,7 +152,7 @@ func getTask(txn *badger.Txn, id string, ctx context.Context) (*tes.Task, error)
 		return nil, fmt.Errorf("loading owner for task %s: %w", id, err)
 	}
 	if !isAccessible(ctx, taskOwner) {
-		return nil, taskmodel.ErrNotPermitted
+		return nil, taskpolicy.ErrNotPermitted
 	}
 
 	var val []byte
@@ -192,7 +192,7 @@ func getTaskOwner(txn *badger.Txn, ownerKey []byte) (string, error) {
 }
 
 func isAccessible(ctx context.Context, taskOwner string) bool {
-	return server.GetUser(ctx).IsAccessible(taskOwner)
+	return identity.GetUser(ctx).IsAccessible(taskOwner)
 }
 
 func copyBytes(in []byte) []byte {

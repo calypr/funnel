@@ -6,9 +6,11 @@ import (
 	"testing"
 	"time"
 
+	serverauth "github.com/calypr/funnel/internal/server/auth"
+
 	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/server"
+	"github.com/calypr/funnel/internal/identity"
 	"github.com/jackc/pgx/v5"
 	"github.com/testcontainers/testcontainers-go"
 )
@@ -43,7 +45,7 @@ func TestPostgresEventAndPrefixRegressions(t *testing.T) {
 		for _, task := range fixtures {
 			writeCtx := ctx
 			if task.Id == "prefix-other-owner" {
-				writeCtx = context.WithValue(ctx, server.UserInfoKey, &server.UserInfo{Username: "other"})
+				writeCtx = identity.WithUser(ctx, &identity.UserInfo{Username: "other"})
 			}
 			if err := db.WriteEvent(writeCtx, events.NewTaskCreated(task)); err != nil {
 				t.Fatalf("create task %q: %v", task.Id, err)
@@ -307,7 +309,7 @@ func ids(values ...string) map[string]struct{} {
 func postgresQAOwnerContext(t *testing.T) context.Context {
 	t.Helper()
 	var ownerContext context.Context
-	_, err := server.NewAuthentication(nil, nil, server.AccessOwner).Interceptor(context.Background(), nil, nil,
+	_, err := serverauth.NewAuthentication(nil, nil, identity.AccessOwner, nil).Interceptor(context.Background(), nil, nil,
 		func(ctx context.Context, _ interface{}) (interface{}, error) {
 			ownerContext = ctx
 			return nil, nil

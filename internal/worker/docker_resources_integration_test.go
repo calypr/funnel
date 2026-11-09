@@ -13,6 +13,7 @@ import (
 	"github.com/calypr/funnel/api/tes"
 	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/internal/worker/workspace"
 )
 
 func TestDockerResourceLimitsIntegration(t *testing.T) {
@@ -44,7 +45,7 @@ func TestDockerResourceLimitsIntegration(t *testing.T) {
 				Executors: []*tes.Executor{{Image: "alpine:latest", Command: []string{"true"}}},
 			}
 			run := &helper{}
-			w.runExecutors(ctx, events.NewTaskWriter(id, 0, events.Noop{}), NewFileMapper(t.TempDir()), task, run)
+			w.runExecutors(ctx, events.NewTaskWriter(id, 0, events.Noop{}), workspace.NewFileMapper(t.TempDir()), task, run)
 			if !run.ok() {
 				t.Fatalf("worker failed: system=%v executor=%v", run.syserr, run.execerr)
 			}

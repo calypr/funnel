@@ -2,9 +2,9 @@ package storage
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"sync"
-
-	"github.com/calypr/funnel/internal/directory"
 )
 
 // Transfer defines the interface of a single storage upload or download request.
@@ -38,7 +38,7 @@ func Download(ctx context.Context, store Storage, transfers []Transfer, parallel
 			defer func() { <-sem }()
 			x.Started()
 			var obj *Object
-			err := directory.EnsurePath(x.Path())
+			err := os.MkdirAll(filepath.Dir(x.Path()), 0775)
 			if err == nil {
 				obj, err = store.Get(ctx, x.URL(), x.Path())
 			}

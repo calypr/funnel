@@ -2,12 +2,14 @@ package server
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
 	"github.com/calypr/funnel/api/config"
 	appconfig "github.com/calypr/funnel/internal/config"
+	"github.com/calypr/funnel/internal/config/configtest"
+	"github.com/calypr/funnel/internal/database/boltdb"
 	"github.com/calypr/funnel/internal/logger"
-	"github.com/calypr/funnel/tests/configtest"
 )
 
 func TestPersistentPreRun(t *testing.T) {
@@ -48,4 +50,45 @@ func TestPersistentPreRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestServerCloseReleasesBoltDatabase(t *testing.T) {
+	conf := appconfig.DefaultConfig()
+	conf.BoltDB.Path = filepath.Join(t.TempDir(), "tasks.db")
+	parentCtx, cancelParent := context.WithCancel(context.Background())
+	defer cancelParent()
+
+	s, err := NewServer(parentCtx, conf, logger.NewLogger("test", logger.DefaultConfig()))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s.Close()
+	s.Close()
+	if err := parentCtx.Err(); err != nil {
+		t.Fatalf("Close canceled the caller context: %v", err)
+	}
+
+	reopened, err := boltdb.NewBoltDB(conf.BoltDB)
+	if err != nil {
+		t.Fatalf("reopen database after Close: %v", err)
+	}
+	reopened.Close()
+}
+
+func TestNewServerFailureReleasesBoltDatabase(t *testing.T) {
+	conf := appconfig.DefaultConfig()
+	conf.BoltDB.Path = filepath.Join(t.TempDir(), "tasks.db")
+	conf.Compute = "invalid-backend"
+
+	_, err := NewServer(context.Background(), conf, logger.NewLogger("test", logger.DefaultConfig()))
+	if err == nil {
+		t.Fatal("NewServer succeeded with an unknown compute backend")
+	}
+
+	reopened, err := boltdb.NewBoltDB(conf.BoltDB)
+	if err != nil {
+		t.Fatalf("reopen database after NewServer failed: %v", err)
+	}
+	reopened.Close()
 }

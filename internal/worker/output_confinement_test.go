@@ -15,6 +15,7 @@ import (
 	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/storage"
+	"github.com/calypr/funnel/internal/worker/workspace"
 )
 
 func TestProcessOutputsRejectsOutsideWorkspaceSymlink(t *testing.T) {
@@ -36,7 +37,7 @@ func TestProcessOutputsRejectsOutsideWorkspaceSymlink(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mapper := NewFileMapper(t.TempDir())
+	mapper := workspace.NewFileMapper(t.TempDir())
 	task := &tes.Task{Id: "task", Executors: []*tes.Executor{{Image: "alpine", Command: []string{"true"}}}, Outputs: []*tes.Output{{Path: "/outputs/result", Url: endpoint.URL + "/result", Type: tes.File.Enum()}}}
 	if err := mapper.MapTask(task, "docker"); err != nil {
 		t.Fatal(err)
@@ -73,7 +74,7 @@ func (s *replacedOutputStore) Put(_ context.Context, url, path string) (*storage
 }
 
 func TestProcessOutputsSourceReplacementCannotChangePublishedBytes(t *testing.T) {
-	mapper := NewFileMapper(t.TempDir())
+	mapper := workspace.NewFileMapper(t.TempDir())
 	task := &tes.Task{Id: "task", Executors: []*tes.Executor{{Image: "alpine", Command: []string{"true"}}}, Outputs: []*tes.Output{{Path: "/outputs/result", Url: "test://result", Type: tes.File.Enum()}}}
 	if err := mapper.MapTask(task, "docker"); err != nil {
 		t.Fatal(err)
@@ -99,7 +100,7 @@ func TestProcessOutputsSourceReplacementCannotChangePublishedBytes(t *testing.T)
 func TestProcessOutputsPreservesConfinedLinksAndScratch(t *testing.T) {
 	for _, kind := range []string{"relative", "container-absolute", "host-absolute", "directory", "wildcard", "scratch"} {
 		t.Run(kind, func(t *testing.T) {
-			mapper := NewFileMapper(t.TempDir())
+			mapper := workspace.NewFileMapper(t.TempDir())
 			path := "/outputs/result.txt"
 			typeValue := tes.File
 			if kind == "directory" {

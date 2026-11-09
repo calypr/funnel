@@ -14,8 +14,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/aws/smithy-go"
 	"github.com/calypr/funnel/api/tes"
-	"github.com/calypr/funnel/internal/server"
-	"github.com/calypr/funnel/internal/taskmodel"
+	"github.com/calypr/funnel/internal/identity"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 )
 
 func checkCreateErr(err error) error {
@@ -245,7 +245,7 @@ func (db *DynamoDB) waitForTables() error {
 }
 
 func (db *DynamoDB) createTask(ctx context.Context, task *tes.Task) error {
-	taskBasic := taskmodel.GetBasicView(task)
+	taskBasic := taskpolicy.GetBasicView(task)
 	av, err := attributevalue.MarshalMapWithOptions(taskBasic, encodeJSONTags)
 	if err != nil {
 		return fmt.Errorf("failed to DynamoDB marshal Task, %v", err)
@@ -264,7 +264,7 @@ func (db *DynamoDB) createTask(ctx context.Context, task *tes.Task) error {
 	}
 
 	av["owner"] = &types.AttributeValueMemberS{
-		Value: server.GetUsername(ctx),
+		Value: identity.GetUsername(ctx),
 	}
 
 	// Add nil fields to make updates easier
@@ -569,5 +569,5 @@ func isAccessible(ctx context.Context, response *dynamodb.GetItemOutput) bool {
 	if attrValue, ok := response.Item["owner"]; ok {
 		taskOwner = attrValue.(*types.AttributeValueMemberS).Value
 	}
-	return server.GetUser(ctx).IsAccessible(taskOwner)
+	return identity.GetUser(ctx).IsAccessible(taskOwner)
 }

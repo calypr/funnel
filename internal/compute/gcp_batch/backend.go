@@ -22,7 +22,7 @@ import (
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
 	"github.com/calypr/funnel/internal/storage"
-	"github.com/calypr/funnel/internal/taskmodel"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc/codes"
@@ -60,7 +60,7 @@ func (b *Backend) CheckBackendParameterSupport(task *tes.Task) error {
 }
 
 func parseGPUOptions(task *tes.Task) (*gpuOptions, error) {
-	if _, err := taskmodel.FilterBackendParameters(task.GetResources(), backendParameterKeys); err != nil {
+	if _, err := taskpolicy.FilterBackendParameters(task.GetResources(), backendParameterKeys); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	normalized := task.GetResources().GetBackendParameters()
@@ -82,7 +82,7 @@ func parseGPUOptions(task *tes.Task) (*gpuOptions, error) {
 	if typeName == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "%s must not be empty", gpuTypeParameter)
 	}
-	count, err := taskmodel.GPUCount(task.GetResources())
+	count, err := taskpolicy.GPUCount(task.GetResources())
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "%s must be a positive integer", gpuCountParameter)
 	}
@@ -109,14 +109,14 @@ type Backend struct {
 	client             client
 	conf               *config.GCPBatch
 	event              events.Writer
-	database           taskmodel.ReadOnlyServer
+	database           taskpolicy.ReadOnlyServer
 	log                *logger.Logger
 	loggingClient      *logging.Client
 	loggingAdminClient *logadmin.Client
-	events.Backend
+	compute.Backend
 }
 
-func NewBackend(ctx context.Context, conf *config.GCPBatch, reader taskmodel.ReadOnlyServer, writer events.Writer, log *logger.Logger) (*Backend, error) {
+func NewBackend(ctx context.Context, conf *config.GCPBatch, reader taskpolicy.ReadOnlyServer, writer events.Writer, log *logger.Logger) (*Backend, error) {
 	if conf == nil {
 		return nil, fmt.Errorf("GCPBatch configuration is required")
 	}
@@ -281,7 +281,7 @@ func (b *Backend) Submit(task *tes.Task) error {
 	// Options is a provider-parsed string, not an argv API. Reject paths whose
 	// quoting or splitting would depend on an undocumented provider behavior.
 	for _, executor := range task.Executors {
-		if err := taskmodel.ValidateContainerImage(executor.Image); err != nil {
+		if err := taskpolicy.ValidateContainerImage(executor.Image); err != nil {
 			return fmt.Errorf("invalid container image: %w", err)
 		}
 		if executor.Workdir != "" {

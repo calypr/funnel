@@ -20,7 +20,7 @@ import (
 func TestDownloadMountpoint(t *testing.T) {
 	dir := os.Getenv("FUNNEL_MOUNTPOINT_TEST_DIR")
 	if dir == "" {
-		t.Skip("run tests/storage/mountpoint-download.sh with a disposable Mountpoint mount and S3 endpoint")
+		t.Skip("run tests/integration/storage/mountpoint-download.sh with a disposable Mountpoint mount and S3 endpoint")
 	}
 	store, err := NewGenericS3(&config.GenericS3Storage{
 		Endpoint: os.Getenv("FUNNEL_MOUNTPOINT_TEST_ENDPOINT"),

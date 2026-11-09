@@ -6,8 +6,8 @@ import (
 
 	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/server"
-	"github.com/calypr/funnel/internal/taskmodel"
+	"github.com/calypr/funnel/internal/identity"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
@@ -117,7 +117,7 @@ func (db *MongoDB) WriteEvent(ctx context.Context, req *events.Event) error {
 		return err
 	}
 	if result.MatchedCount == 0 {
-		return taskmodel.ErrNotFound
+		return taskpolicy.ErrNotFound
 	}
 	return nil
 }
@@ -126,6 +126,6 @@ func (db *MongoDB) insertTask(ctx context.Context, task *tes.Task) error {
 	mctx, cancel := db.wrap(ctx)
 	defer cancel()
 
-	_, err := db.tasks().InsertOne(mctx, &taskRecord{Task: task, Owner: server.GetUsername(ctx)})
+	_, err := db.tasks().InsertOne(mctx, &taskRecord{Task: task, Owner: identity.GetUsername(ctx)})
 	return err
 }

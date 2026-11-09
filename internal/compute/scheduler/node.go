@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/calypr/funnel/api/config"
-	"github.com/calypr/funnel/internal/directory"
 	"github.com/calypr/funnel/internal/logger"
 	"github.com/calypr/funnel/version"
 	"google.golang.org/grpc/codes"
@@ -24,7 +23,7 @@ func NewNodeProcess(ctx context.Context, conf *config.Config, factory Worker, lo
 		return nil, err
 	}
 
-	err = directory.EnsureDir(conf.Worker.WorkDir)
+	err = os.MkdirAll(conf.Worker.WorkDir, 0775)
 	if err != nil {
 		return nil, err
 	}

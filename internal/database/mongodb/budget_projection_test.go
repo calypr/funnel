@@ -8,9 +8,9 @@ import (
 
 	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/compute/scheduler"
+	"github.com/calypr/funnel/internal/database/mongodb/mongotest"
 	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/server"
-	"github.com/calypr/funnel/tests/mongotest"
+	"github.com/calypr/funnel/internal/identity"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
@@ -78,7 +78,7 @@ func TestReservationAssignmentAndReleaseLeaveNodePayloadUntouched(t *testing.T) 
 	if err := db.Init(); err != nil {
 		t.Fatalf("initialize MongoDB: %v", err)
 	}
-	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), server.UserInfoKey, server.UserInfo{Username: "owner", IsAdmin: true}), 10*time.Second)
+	ctx, cancel := context.WithTimeout(identity.WithUser(context.Background(), &identity.UserInfo{Username: "owner", IsAdmin: true}), 10*time.Second)
 	defer cancel()
 	const nodeID = "budget-projection-node"
 	const taskID = "budget-projection-task"

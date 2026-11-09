@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/calypr/funnel/internal/compute/scheduler"
-	"github.com/calypr/funnel/tests/mongotest"
+	"github.com/calypr/funnel/internal/database/mongodb/mongotest"
 	"go.mongodb.org/mongo-driver/v2/event"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"

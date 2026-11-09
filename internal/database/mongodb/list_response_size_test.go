@@ -6,15 +6,15 @@ import (
 	"testing"
 
 	"github.com/calypr/funnel/api/tes"
-	"github.com/calypr/funnel/internal/taskmodel"
-	"github.com/calypr/funnel/tests/mongotest"
+	"github.com/calypr/funnel/internal/database/mongodb/mongotest"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
 func TestListTasksStopsAtResponseBudgetAndResumes(t *testing.T) {
 	db := newMongoTestDB(t, mongotest.Start(t), "list_response_budget")
-	ctx := taskmodel.WithTaskPageBytes(context.Background(), 700)
+	ctx := taskpolicy.WithTaskPageBytes(context.Background(), 700)
 	for _, task := range []*tes.Task{
 		{Id: "a", CreationTime: "2026-01-01T00:00:00Z", State: tes.State_COMPLETE, Logs: []*tes.TaskLog{{Outputs: []*tes.OutputFileLog{{Path: "/a", Url: strings.Repeat("a", 450)}}}}},
 		{Id: "b", CreationTime: "2026-01-02T00:00:00Z", State: tes.State_COMPLETE, Logs: []*tes.TaskLog{{Outputs: []*tes.OutputFileLog{{Path: "/b", Url: strings.Repeat("b", 450)}}}}},
@@ -45,7 +45,7 @@ func TestListTasksOversizedFirstRecordReturnsResourceExhausted(t *testing.T) {
 	if _, err := db.tasks().InsertOne(context.Background(), taskRecord{Task: task}); err != nil {
 		t.Fatal(err)
 	}
-	_, err := db.ListTasks(taskmodel.WithTaskPageBytes(context.Background(), 512), &tes.ListTasksRequest{View: tes.View_BASIC.String(), PageSize: 10})
+	_, err := db.ListTasks(taskpolicy.WithTaskPageBytes(context.Background(), 512), &tes.ListTasksRequest{View: tes.View_BASIC.String(), PageSize: 10})
 	if status.Code(err) != codes.ResourceExhausted {
 		t.Fatalf("error = %v, want ResourceExhausted", err)
 	}

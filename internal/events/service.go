@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/calypr/funnel/internal/taskmodel"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -38,8 +38,8 @@ func (s *Service) ClaimExecution(ctx context.Context, req *ClaimExecutionRequest
 	}
 	claimed, err := s.Claimer.ClaimExecution(ctx, req.GetTaskId(), req.GetOwner())
 	if err != nil {
-		if errors.Is(err, taskmodel.ErrNotPermitted) {
-			return nil, status.Error(codes.PermissionDenied, taskmodel.ErrNotPermitted.Error())
+		if errors.Is(err, taskpolicy.ErrNotPermitted) {
+			return nil, status.Error(codes.PermissionDenied, taskpolicy.ErrNotPermitted.Error())
 		}
 		return nil, err
 	}

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/internal/worker/workspace"
 )
 
 func TestDockerTemplatePreservesTaskArgumentBoundaries(t *testing.T) {
@@ -21,7 +22,7 @@ func TestDockerTemplatePreservesTaskArgumentBoundaries(t *testing.T) {
 				DriverCommand: driver,
 				Name:          "task --privileged",
 				Workdir:       `/work 'quoted' "double" --privileged`,
-				Volumes:       []Volume{{HostPath: `/host 'quoted' "double"`, ContainerPath: `/input --privileged`, Readonly: true}},
+				Volumes:       []workspace.Volume{{HostPath: `/host 'quoted' "double"`, ContainerPath: `/input --privileged`, Readonly: true}},
 				Command:       Command{Image: "alpine", Env: map[string]string{"X --privileged --env Y": `value 'quoted' "double" $HOME`}},
 			}
 			if err := command.executeCommand(context.Background(), template, false); err != nil {

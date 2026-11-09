@@ -7,7 +7,7 @@ import (
 
 	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/taskmodel"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -31,7 +31,7 @@ func (w *nodeRecoveryWriter) WriteEvent(_ context.Context, event *events.Event) 
 }
 
 func TestGoneNodeRemovedForTerminalOrDeletedTask(t *testing.T) {
-	for _, err := range []error{&taskmodel.TransitionError{From: tes.Complete, To: tes.SystemError}, &taskmodel.TransitionError{From: tes.Canceled, To: tes.SystemError}, taskmodel.ErrNotFound} {
+	for _, err := range []error{&taskpolicy.TransitionError{From: tes.Complete, To: tes.SystemError}, &taskpolicy.TransitionError{From: tes.Canceled, To: tes.SystemError}, taskpolicy.ErrNotFound} {
 		t.Run(err.Error(), func(t *testing.T) {
 			node := &Node{Id: "dead-node", State: NodeState_GONE, TaskIds: []string{"task-1"}}
 			s := newTestScheduler([]*Node{node}, &queueStub{}, &nodeRecoveryWriter{err: err})

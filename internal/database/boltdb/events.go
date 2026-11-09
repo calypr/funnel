@@ -7,8 +7,8 @@ import (
 
 	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/server"
-	"github.com/calypr/funnel/internal/taskmodel"
+	"github.com/calypr/funnel/internal/identity"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	bolt "go.etcd.io/bbolt"
 	"google.golang.org/protobuf/proto"
 )
@@ -51,7 +51,7 @@ func (taskBolt *BoltDB) WriteEvent(ctx context.Context, req *events.Event) error
 			if err := tx.Bucket(TaskState).Put(idBytes, []byte(tes.State_QUEUED.String())); err != nil {
 				return err
 			}
-			if err := tx.Bucket(TaskOwner).Put(idBytes, []byte(server.GetUsername(ctx))); err != nil {
+			if err := tx.Bucket(TaskOwner).Put(idBytes, []byte(identity.GetUsername(ctx))); err != nil {
 				return err
 			}
 			// Queue task in same transaction to avoid double-locking
@@ -208,7 +208,7 @@ func transitionTaskState(tx *bolt.Tx, id string, target tes.State) error {
 	if target == current {
 		return nil
 	}
-	if err := taskmodel.ValidateTransition(current, target); err != nil {
+	if err := taskpolicy.ValidateTransition(current, target); err != nil {
 		return err
 	}
 	if tx.Bucket(TaskClaims).Get(idBytes) != nil && tes.TerminalState(current) && !tes.TerminalState(target) {

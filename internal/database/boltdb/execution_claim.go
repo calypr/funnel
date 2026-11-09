@@ -5,7 +5,7 @@ import (
 
 	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/taskmodel"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	bolt "go.etcd.io/bbolt"
 )
 
@@ -29,7 +29,7 @@ func (db *BoltDB) ClaimExecution(ctx context.Context, taskID string, owner *even
 		}
 		key := []byte(taskID)
 		if tx.Bucket(TaskBucket).Get(key) == nil {
-			return taskmodel.ErrNotFound
+			return taskpolicy.ErrNotFound
 		}
 		if err := checkOwner(tx, taskID, ctx); err != nil {
 			return err

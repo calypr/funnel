@@ -8,8 +8,8 @@ import (
 
 	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/internal/identity"
 	"github.com/calypr/funnel/internal/logger"
-	"github.com/calypr/funnel/internal/server"
 )
 
 // WriteEvent creates an event for the server to handle.
@@ -56,7 +56,7 @@ func (db *Postgres) WriteEvent(ctx context.Context, req *events.Event) error {
 			}
 		}
 
-		return db.insertTask(ctx, task, server.GetUsername(ctx))
+		return db.insertTask(ctx, task, identity.GetUsername(ctx))
 
 	// Task State change
 	case events.Type_TASK_STATE:

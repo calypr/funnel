@@ -24,7 +24,7 @@ import (
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
 	"github.com/calypr/funnel/internal/storage"
-	"github.com/calypr/funnel/internal/taskmodel"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 )
 
 func TestLifecycleCancelRacingPVCreate(t *testing.T) {
@@ -507,7 +507,7 @@ func TestLifecycleOrphanCleanupPropagatesTaskLookupFailure(t *testing.T) {
 	if err == nil || needed {
 		t.Fatalf("task lookup failure authorized orphan cleanup: needed=%t err=%v", needed, err)
 	}
-	for _, notFound := range []error{taskmodel.ErrNotFound, status.Error(codes.NotFound, "missing")} {
+	for _, notFound := range []error{taskpolicy.ErrNotFound, status.Error(codes.NotFound, "missing")} {
 		backend.database = lifecycleErrorDatabase{err: notFound}
 		needed, err = backend.isResourceCleanupNeeded(context.Background(), "missing-task")
 		if err != nil || !needed {

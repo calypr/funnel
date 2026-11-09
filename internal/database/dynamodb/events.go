@@ -15,8 +15,8 @@ import (
 	"github.com/aws/smithy-go"
 	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/retry"
-	"github.com/calypr/funnel/internal/taskmodel"
+	taskpolicy "github.com/calypr/funnel/internal/task"
+	"github.com/cenkalti/backoff/v7"
 )
 
 // WriteEvent creates an event for the server to handle.
@@ -40,19 +40,7 @@ func (db *DynamoDB) WriteEvent(ctx context.Context, e *events.Event) error {
 		return db.createTask(ctx, e.GetTask())
 
 	case events.Type_TASK_STATE:
-		retrier := retry.NewRetrier()
-		retrier.ShouldRetry = func(err error) bool {
-			var aerr smithy.APIError
-			if errors.As(err, &aerr) {
-				if aerr.ErrorCode() == "ConditionalCheckFailedException" ||
-					aerr.ErrorCode() == "ProvisionedThroughputExceededException" {
-					return true
-				}
-			}
-			return false
-		}
-
-		return retrier.Retry(ctx, func() error {
+		updateState := func() error {
 			// get current state & version
 			current := make(map[string]interface{})
 			response, err := db.getBasicView(ctx, e.Id)
@@ -60,10 +48,10 @@ func (db *DynamoDB) WriteEvent(ctx context.Context, e *events.Event) error {
 				return err
 			}
 			if response.Item == nil {
-				return taskmodel.ErrNotFound
+				return taskpolicy.ErrNotFound
 			}
 			if !isAccessible(ctx, response) {
-				return taskmodel.ErrNotPermitted
+				return taskpolicy.ErrNotPermitted
 			}
 
 			err = attributevalue.UnmarshalMapWithOptions(response.Item, &current, decodeJSONTags)
@@ -74,7 +62,7 @@ func (db *DynamoDB) WriteEvent(ctx context.Context, e *events.Event) error {
 			// validate state transition
 			from := tes.State(current["state"].(float64))
 			to := e.GetState()
-			if err := taskmodel.ValidateTransition(from, to); err != nil {
+			if err := taskpolicy.ValidateTransition(from, to); err != nil {
 				return err
 			}
 
@@ -97,7 +85,31 @@ func (db *DynamoDB) WriteEvent(ctx context.Context, e *events.Event) error {
 			// apply update with retries upon version collisions
 			_, err = db.client.UpdateItem(ctx, item)
 			return err
-		})
+		}
+
+		_, err := backoff.Retry(ctx, func() (struct{}, error) {
+			err := updateState()
+			if err != nil {
+				var aerr smithy.APIError
+				if !errors.As(err, &aerr) || (aerr.ErrorCode() != "ConditionalCheckFailedException" && aerr.ErrorCode() != "ProvisionedThroughputExceededException") {
+					return struct{}{}, backoff.Permanent(err)
+				}
+			}
+			return struct{}{}, err
+		},
+			backoff.WithBackOff(backoff.NewExponentialBackOff()),
+			backoff.WithMaxElapsedTime(15*time.Minute),
+			backoff.WithMaxTries(10),
+		)
+		if err == nil {
+			return nil
+		}
+
+		retryErr := backoff.AsRetryError(err)
+		if ctx.Err() != nil && errors.Is(retryErr.Cause, context.Cause(ctx)) {
+			return ctx.Err()
+		}
+		return retryErr.LastErr
 
 	case events.Type_TASK_START_TIME:
 		if err := db.ensureTaskLog(ctx, e.Id, e.Attempt); err != nil {
@@ -355,7 +367,7 @@ func checkErrNotFound(err error) error {
 	var aerr smithy.APIError
 	if errors.As(err, &aerr) {
 		if aerr.ErrorCode() == "ResourceNotFoundException" {
-			return taskmodel.ErrNotFound
+			return taskpolicy.ErrNotFound
 		}
 	}
 	return err

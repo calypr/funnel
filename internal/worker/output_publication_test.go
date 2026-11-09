@@ -17,8 +17,9 @@ import (
 	"github.com/calypr/funnel/api/config"
 	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/retry"
 	"github.com/calypr/funnel/internal/storage"
+	"github.com/calypr/funnel/internal/worker/workspace"
+	"github.com/cenkalti/backoff/v7"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
@@ -137,11 +138,14 @@ func TestUploadOutputsRetriesProduceOneSuccessLog(t *testing.T) {
 		w.Header().Set("ETag", `"retry-receipt"`)
 		w.WriteHeader(http.StatusOK)
 	})
-	retry := retry.NewRetrier()
-	retry.InitialInterval, retry.MaxInterval, retry.RandomizationFactor, retry.MaxTries = time.Millisecond, time.Millisecond, 0, 2
+	retrier := &storage.Retrier{
+		Backend:    store,
+		MaxTries:   2,
+		NewBackOff: func() backoff.BackOff { return backoff.NewConstantBackOff(time.Millisecond) },
+	}
 	writer := &publicationEvents{}
 	output := workerOutputFile(t, "retry.txt", "retried")
-	logs, err := UploadOutputs(context.Background(), []*tes.Output{output}, &storage.Retrier{Retrier: retry, Backend: store}, events.NewTaskWriter("task", 0, writer), 1)
+	logs, err := UploadOutputs(context.Background(), []*tes.Output{output}, retrier, events.NewTaskWriter("task", 0, writer), 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +312,7 @@ func TestDefaultWorkerWaitsForOutputAcknowledgementBeforeCompletion(t *testing.T
 
 func TestWorkerOutputFailureIncludesTaskPathAndOriginalError(t *testing.T) {
 	root := t.TempDir()
-	mapper := NewFileMapper(filepath.Join(root, "work"))
+	mapper := workspace.NewFileMapper(filepath.Join(root, "work"))
 	output := &tes.Output{Url: "file://" + filepath.Join(root, "destination", "result.txt"), Path: "/outputs/result.txt", Type: tes.File.Enum()}
 	if err := mapper.MapTask(&tes.Task{Outputs: []*tes.Output{output}}, "docker"); err != nil {
 		t.Fatal(err)
@@ -351,7 +355,7 @@ func TestProcessOutputsHandlesOutputLogWriteFailures(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			root := t.TempDir()
-			mapper := NewFileMapper(filepath.Join(root, "work"))
+			mapper := workspace.NewFileMapper(filepath.Join(root, "work"))
 			task := &tes.Task{Outputs: []*tes.Output{{
 				Url:  "file://" + filepath.Join(root, "destination", "result.txt"),
 				Path: "/outputs/result.txt",
@@ -409,7 +413,7 @@ func (s failingOutputStore) Put(context.Context, string, string) (*storage.Objec
 
 func TestWorkerOutputFailurePreservesStorageError(t *testing.T) {
 	root := t.TempDir()
-	mapper := NewFileMapper(filepath.Join(root, "work"))
+	mapper := workspace.NewFileMapper(filepath.Join(root, "work"))
 	output := &tes.Output{Url: "s3://bucket/result.txt", Path: "/outputs/result.txt", Type: tes.File.Enum()}
 	if err := mapper.MapTask(&tes.Task{Outputs: []*tes.Output{output}}, "docker"); err != nil {
 		t.Fatal(err)
@@ -463,7 +467,7 @@ func TestProcessOutputsWarnsAndPublishesOtherOutputsForUnmatchedGlob(t *testing.
 			}
 
 			pattern := filepath.Join(workDir, "outputs", "missing-*.txt")
-			mapper := NewFileMapper(workDir)
+			mapper := workspace.NewFileMapper(workDir)
 			mapper.Outputs = []*tes.Output{
 				{Url: "s3://outputs/missing", Path: pattern, PathPrefix: "/outputs", Type: tes.File.Enum()},
 				{Url: "s3://outputs", Path: filepath.Join(globDir, "*.txt"), PathPrefix: "/outputs", Type: tes.File.Enum()},
@@ -533,7 +537,7 @@ func TestProcessOutputsDoesNotWarnBeforeHardResolutionError(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			mapper := NewFileMapper(workDir)
+			mapper := workspace.NewFileMapper(workDir)
 			mapper.Outputs = []*tes.Output{
 				{Url: "s3://outputs/missing", Path: filepath.Join(workDir, "missing-*.txt")},
 				{Url: "gs://outputs/error", Path: filepath.Join(workDir, tc.badPattern)},
@@ -568,7 +572,7 @@ func TestProcessOutputsWarnsWhenGlobParentIsFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mapper := NewFileMapper(workDir)
+	mapper := workspace.NewFileMapper(workDir)
 	mapper.Outputs = []*tes.Output{{Url: "s3://outputs/", Path: filepath.Join(parent, "*"), PathPrefix: "/", Type: tes.File.Enum()}}
 	store := &capturingUploadStorage{uploaded: make(map[string]string)}
 	writer := &publicationEvents{}

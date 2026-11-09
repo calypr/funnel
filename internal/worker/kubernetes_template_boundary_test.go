@@ -8,6 +8,8 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	"sigs.k8s.io/yaml"
+
+	"github.com/calypr/funnel/internal/worker/workspace"
 )
 
 //go:embed testdata/executor-job.yaml
@@ -19,7 +21,7 @@ func TestExecutorTemplatePreservesScalars(t *testing.T) {
 		t.Fatal(err)
 	}
 	image, workdir, mount := "registry.example/tool:tag\ncontinued", "/work\ncontinued", "/data\ncontinued"
-	data := map[string]interface{}{"TaskId": "task-1", "JobId": 0, "Namespace": "test", "JobsNamespace": "test", "Image": image, "Workdir": workdir, "Command": []string{"echo", "ok"}, "ServiceAccountName": "task-account", "Cpus": 1, "RamGb": 1, "DiskGb": 1, "NeedsPVC": true, "Volumes": []Volume{{ContainerPath: mount}}}
+	data := map[string]interface{}{"TaskId": "task-1", "JobId": 0, "Namespace": "test", "JobsNamespace": "test", "Image": image, "Workdir": workdir, "Command": []string{"echo", "ok"}, "ServiceAccountName": "task-account", "Cpus": 1, "RamGb": 1, "DiskGb": 1, "NeedsPVC": true, "Volumes": []workspace.Volume{{ContainerPath: mount}}}
 	var rendered bytes.Buffer
 	if err := tpl.Execute(&rendered, data); err != nil {
 		t.Fatal(err)

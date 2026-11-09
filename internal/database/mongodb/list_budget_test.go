@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/calypr/funnel/api/tes"
-	"github.com/calypr/funnel/internal/taskmodel"
-	"github.com/calypr/funnel/tests/mongotest"
+	"github.com/calypr/funnel/internal/database/mongodb/mongotest"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -21,7 +21,7 @@ func TestMongoListByteBudget(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	ctx := taskmodel.WithTaskPageBytes(context.Background(), 350)
+	ctx := taskpolicy.WithTaskPageBytes(context.Background(), 350)
 	token := ""
 	for _, want := range []string{"c", "b", "a"} {
 		page, err := db.ListTasks(ctx, &tes.ListTasksRequest{View: "BASIC", PageSize: 3, PageToken: token})
@@ -36,7 +36,7 @@ func TestMongoListByteBudget(t *testing.T) {
 	if token != "" {
 		t.Fatalf("unexpected final token %q", token)
 	}
-	_, err := db.ListTasks(taskmodel.WithTaskPageBytes(context.Background(), 20), &tes.ListTasksRequest{View: "BASIC"})
+	_, err := db.ListTasks(taskpolicy.WithTaskPageBytes(context.Background(), 20), &tes.ListTasksRequest{View: "BASIC"})
 	if status.Code(err) != codes.ResourceExhausted {
 		t.Fatalf("got %v", err)
 	}
@@ -44,7 +44,7 @@ func TestMongoListByteBudget(t *testing.T) {
 
 func cursorID(t *testing.T, token string) string {
 	t.Helper()
-	cursor, _, err := taskmodel.DecodeTaskCursor(token)
+	cursor, _, err := taskpolicy.DecodeTaskCursor(token)
 	if err != nil {
 		t.Fatal(err)
 	}

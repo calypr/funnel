@@ -58,7 +58,7 @@ func TestLocalGet(t *testing.T) {
 // Tests List on a local directory.
 func TestLocalListDirectory(t *testing.T) {
 	ctx := context.Background()
-	d, err := filepath.Abs("../../tests/storage/testdata/")
+	d, err := filepath.Abs("../../tests/integration/storage/testdata/")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,11 +67,11 @@ func TestLocalListDirectory(t *testing.T) {
 		allowedDirs: []string{d},
 	}
 
-	stat1, err := os.Stat("../../tests/storage/testdata/test_dir/subdir/test_dir_file1")
+	stat1, err := os.Stat("../../tests/integration/storage/testdata/test_dir/subdir/test_dir_file1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	stat2, err := os.Stat("../../tests/storage/testdata/test_dir/test_dir_file2")
+	stat2, err := os.Stat("../../tests/integration/storage/testdata/test_dir/test_dir_file2")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,20 +122,20 @@ func TestLocalListDirectory(t *testing.T) {
 
 	assert.Equal(t, expected2, list)
 
-	list, gerr = l.List(ctx, "../../tests/storage/testdata/test_dir")
+	list, gerr = l.List(ctx, "../../tests/integration/storage/testdata/test_dir")
 	if gerr != nil {
 		t.Fatal(gerr)
 	}
 
 	expected3 := []*Object{
 		{
-			URL:          "../../tests/storage/testdata/test_dir/subdir/test_dir_file1",
+			URL:          "../../tests/integration/storage/testdata/test_dir/subdir/test_dir_file1",
 			Name:         "subdir/test_dir_file1",
 			LastModified: lm1,
 			Size:         14,
 		},
 		{
-			URL:          "../../tests/storage/testdata/test_dir/test_dir_file2",
+			URL:          "../../tests/integration/storage/testdata/test_dir/test_dir_file2",
 			Name:         "test_dir_file2",
 			LastModified: lm2,
 			Size:         14,

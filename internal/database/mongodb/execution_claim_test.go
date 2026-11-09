@@ -5,16 +5,18 @@ import (
 	"sync"
 	"testing"
 
+	serverauth "github.com/calypr/funnel/internal/server/auth"
+
 	"github.com/calypr/funnel/api/tes"
+	"github.com/calypr/funnel/internal/database/mongodb/mongotest"
 	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/server"
-	"github.com/calypr/funnel/internal/taskmodel"
-	"github.com/calypr/funnel/tests/mongotest"
+	"github.com/calypr/funnel/internal/identity"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 func executionClaimContext(owner string) context.Context {
-	return context.WithValue(context.Background(), server.UserInfoKey, &server.UserInfo{Username: owner})
+	return identity.WithUser(context.Background(), &identity.UserInfo{Username: owner})
 }
 
 func TestMongoClaimExecutionIsDurableAndOneShot(t *testing.T) {
@@ -98,7 +100,7 @@ func TestMongoClaimExecutionIsDurableAndOneShot(t *testing.T) {
 	}
 
 	unauthorized := context.Background()
-	_, err := server.NewAuthentication(nil, nil, server.AccessOwner).Interceptor(unauthorized, nil, nil,
+	_, err := serverauth.NewAuthentication(nil, nil, identity.AccessOwner, nil).Interceptor(unauthorized, nil, nil,
 		func(authCtx context.Context, _ interface{}) (interface{}, error) {
 			unauthorized = authCtx
 			return nil, nil
@@ -106,7 +108,7 @@ func TestMongoClaimExecutionIsDurableAndOneShot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if claimed, err := db.ClaimExecution(unauthorized, "private", nil); err != taskmodel.ErrNotPermitted || claimed {
+	if claimed, err := db.ClaimExecution(unauthorized, "private", nil); err != taskpolicy.ErrNotPermitted || claimed {
 		t.Fatalf("unauthorized claim = %t, %v; want false, not permitted", claimed, err)
 	}
 	assertMongoClaimState(t, db, ctx, "private", tes.State_QUEUED, false)

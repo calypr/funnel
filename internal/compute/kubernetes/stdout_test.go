@@ -75,7 +75,7 @@ func renderCommand(t *testing.T, command []string) ([]string, []string) {
 // backtick.json (requires uname) or curl fixtures (require network) that are
 // not safe to run in a unit test context.
 func TestFixtureStdout(t *testing.T) {
-	fixturesDir, err := filepath.Abs(filepath.Join("..", "..", "..", "tests", "fixtures", "quotes"))
+	fixturesDir, err := filepath.Abs(filepath.Join("..", "..", "..", "tests", "integration", "tasks", "testdata", "quotes"))
 	if err != nil {
 		t.Fatalf("resolve fixtures dir: %v", err)
 	}

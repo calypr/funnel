@@ -16,7 +16,7 @@ import (
 	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
-	"github.com/calypr/funnel/internal/taskmodel"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 )
 
 // mockClient implements the client interface for testing.
@@ -103,7 +103,7 @@ func TestCreateJobc(t *testing.T) {
 }
 
 type batchTaskReader struct {
-	taskmodel.ReadOnlyServer
+	taskpolicy.ReadOnlyServer
 	task *tes.Task
 }
 

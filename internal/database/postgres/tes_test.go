@@ -7,7 +7,7 @@ import (
 
 	"github.com/calypr/funnel/api/config"
 	"github.com/calypr/funnel/api/tes"
-	"github.com/calypr/funnel/internal/taskmodel"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
@@ -32,7 +32,7 @@ func TestGetTaskReturnsQueryError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected GetTask to return the closed pool error")
 	}
-	if errors.Is(err, taskmodel.ErrNotFound) {
+	if errors.Is(err, taskpolicy.ErrNotFound) {
 		t.Fatalf("GetTask returned ErrNotFound for a query failure: %v", err)
 	}
 }

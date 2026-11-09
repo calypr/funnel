@@ -7,10 +7,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/calypr/funnel/internal/server/taskservice"
+
 	"github.com/calypr/funnel/api/tes"
-	"github.com/calypr/funnel/internal/server"
+	"github.com/calypr/funnel/internal/database/mongodb/mongotest"
 	"github.com/calypr/funnel/internal/tesrpc"
-	"github.com/calypr/funnel/tests/mongotest"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
@@ -47,7 +48,7 @@ func TestLegacyNumericOutputSize(t *testing.T) {
 		})
 	}
 	mux := runtime.NewServeMux()
-	if err := tesrpc.RegisterTaskServiceHandlerServer(ctx, mux, &server.TaskService{Read: db}); err != nil {
+	if err := tesrpc.RegisterTaskServiceHandlerServer(ctx, mux, &taskservice.Service{Read: db}); err != nil {
 		t.Fatal(err)
 	}
 	for _, path := range []string{"/v1/tasks/legacy-output", "/tasks/legacy-output", "/v1/tasks", "/v1/tasks/legacy-output?view=FULL", "/v1/tasks?view=BASIC"} {

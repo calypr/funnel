@@ -17,7 +17,7 @@ import (
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
 	"github.com/calypr/funnel/internal/storage"
-	"github.com/calypr/funnel/internal/taskmodel"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	"github.com/calypr/funnel/internal/worker"
 	googleproto "google.golang.org/protobuf/proto"
 )
@@ -186,7 +186,7 @@ func newTaskReader(ctx context.Context, conf *config.Config, opts *Options) (wor
 
 // newDatabaseTaskReader helps create a generic task reader wrapper
 // for the given database backend.
-func newDatabaseTaskReader(taskID, database string, db taskmodel.ReadOnlyServer, err error) (worker.TaskReader, error) {
+func newDatabaseTaskReader(taskID, database string, db taskpolicy.ReadOnlyServer, err error) (worker.TaskReader, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating database task reader: %v", err)
 	}

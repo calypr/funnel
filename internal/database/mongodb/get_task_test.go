@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/calypr/funnel/api/tes"
-	"github.com/calypr/funnel/internal/taskmodel"
-	"github.com/calypr/funnel/tests/mongotest"
+	"github.com/calypr/funnel/internal/database/mongodb/mongotest"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
@@ -26,7 +26,7 @@ func TestGetTaskMalformedDocumentIsNotNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("GetTask returned no error for malformed task document")
 	}
-	if errors.Is(err, taskmodel.ErrNotFound) {
+	if errors.Is(err, taskpolicy.ErrNotFound) {
 		t.Fatalf("GetTask error = %v, want BSON decode error rather than ErrNotFound", err)
 	}
 }
@@ -35,7 +35,7 @@ func TestGetTaskMissingDocumentIsNotFound(t *testing.T) {
 	db := newMongoTestDB(t, mongotest.Start(t), "get_task_missing")
 
 	_, err := db.GetTask(context.Background(), &tes.GetTaskRequest{Id: "missing"})
-	if !errors.Is(err, taskmodel.ErrNotFound) {
+	if !errors.Is(err, taskpolicy.ErrNotFound) {
 		t.Fatalf("GetTask error = %v, want ErrNotFound", err)
 	}
 }

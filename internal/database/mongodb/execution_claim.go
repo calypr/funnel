@@ -6,8 +6,8 @@ import (
 
 	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/server"
-	"github.com/calypr/funnel/internal/taskmodel"
+	"github.com/calypr/funnel/internal/identity"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
@@ -60,13 +60,13 @@ func (db *MongoDB) ClaimExecution(ctx context.Context, taskID string, owner *eve
 			"id": 1, "owner": 1, "state": 1, "execution_claimed": 1,
 		})).Decode(&stored)
 		if err == mongo.ErrNoDocuments {
-			return nil, taskmodel.ErrNotFound
+			return nil, taskpolicy.ErrNotFound
 		}
 		if err != nil {
 			return nil, err
 		}
-		if !server.GetUser(ctx).IsAccessible(stored.Owner) {
-			return nil, taskmodel.ErrNotPermitted
+		if !identity.GetUser(ctx).IsAccessible(stored.Owner) {
+			return nil, taskpolicy.ErrNotPermitted
 		}
 		if stored.ExecutionClaimed || (stored.Task.GetState() != tes.State_QUEUED && stored.Task.GetState() != tes.State_INITIALIZING) {
 			return false, nil

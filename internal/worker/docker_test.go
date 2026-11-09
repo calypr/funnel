@@ -15,6 +15,7 @@ import (
 	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
+	"github.com/calypr/funnel/internal/worker/workspace"
 )
 
 var command = Command{
@@ -74,7 +75,7 @@ func TestDockerStop(t *testing.T) {
 }
 
 func TestFormatVolumeArg(t *testing.T) {
-	volume := Volume{
+	volume := workspace.Volume{
 		HostPath:      "/path/to/source",
 		ContainerPath: "/path/to/destination",
 		Readonly:      true,
@@ -89,15 +90,15 @@ func TestFormatVolumeArg(t *testing.T) {
 func TestDockerNeedsTmpfs(t *testing.T) {
 	cases := []struct {
 		name    string
-		volumes []Volume
+		volumes []workspace.Volume
 		want    bool
 	}{
 		{name: "no volumes", want: true},
-		{name: "explicit tmp", volumes: []Volume{{ContainerPath: "/tmp"}}, want: false},
-		{name: "normalized tmp", volumes: []Volume{{ContainerPath: "/var/../tmp"}}, want: false},
-		{name: "ancestor", volumes: []Volume{{ContainerPath: "/"}}, want: false},
-		{name: "tmp child", volumes: []Volume{{ContainerPath: "/tmp/data"}}, want: true},
-		{name: "segment lookalike", volumes: []Volume{{ContainerPath: "/tmp-files"}}, want: true},
+		{name: "explicit tmp", volumes: []workspace.Volume{{ContainerPath: "/tmp"}}, want: false},
+		{name: "normalized tmp", volumes: []workspace.Volume{{ContainerPath: "/var/../tmp"}}, want: false},
+		{name: "ancestor", volumes: []workspace.Volume{{ContainerPath: "/"}}, want: false},
+		{name: "tmp child", volumes: []workspace.Volume{{ContainerPath: "/tmp/data"}}, want: true},
+		{name: "segment lookalike", volumes: []workspace.Volume{{ContainerPath: "/tmp-files"}}, want: true},
 	}
 
 	for _, tc := range cases {
@@ -130,7 +131,7 @@ func TestDefaultDockerRunCommandTmpfs(t *testing.T) {
 		t.Fatalf("default run command does not provide /tmp tmpfs: %q", got)
 	}
 
-	explicitTmp := DockerCommand{Volumes: []Volume{{HostPath: "/host/tmp", ContainerPath: "/tmp"}}}
+	explicitTmp := DockerCommand{Volumes: []workspace.Volume{{HostPath: "/host/tmp", ContainerPath: "/tmp"}}}
 	if got := render(explicitTmp); strings.Contains(got, "--tmpfs /tmp") {
 		t.Fatalf("explicit /tmp volume should suppress tmpfs: %q", got)
 	}

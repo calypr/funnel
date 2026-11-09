@@ -8,6 +8,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/calypr/funnel/internal/server/middleware"
+	"github.com/calypr/funnel/internal/server/taskservice"
+
+	"github.com/calypr/funnel/internal/compute"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -23,7 +28,7 @@ import (
 func TestDebugInterceptorLogsOnlyMethodAndStatus(t *testing.T) {
 	const secret = "RPC_PAYLOAD_SENTINEL"
 	log, output := serverCaptureLogger(t)
-	interceptor := newDebugInterceptor(log)
+	interceptor := middleware.DebugInterceptor(log)
 	request := &struct{ Authorization string }{Authorization: secret}
 	response := &struct{ Data string }{Data: secret}
 	callErr := errors.New(secret)
@@ -69,7 +74,7 @@ func TestHandleErrorLogsMetadataAndPreservesResponse(t *testing.T) {
 
 func TestDebugInterceptorPanicLogsTypeWithoutPayload(t *testing.T) {
 	log, output := serverCaptureLogger(t)
-	_, err := newDebugInterceptor(log)(t.Context(), nil, &grpc.UnaryServerInfo{FullMethod: "/test/Panic"}, func(context.Context, interface{}) (interface{}, error) {
+	_, err := middleware.DebugInterceptor(log)(t.Context(), nil, &grpc.UnaryServerInfo{FullMethod: "/test/Panic"}, func(context.Context, interface{}) (interface{}, error) {
 		panic("PANIC_PAYLOAD_SENTINEL")
 	})
 	if status.Code(err).String() != "Internal" {
@@ -102,9 +107,9 @@ func TestCreateTaskPluginLogOmitsPayloadAndPreservesTask(t *testing.T) {
 		}},
 	}
 	store := &capturingEventWriter{}
-	service := &TaskService{
+	service := &taskservice.Service{
 		Event:   store,
-		Compute: events.Backend{},
+		Compute: compute.Backend{},
 		Log:     log,
 		Config:  &config.Config{Plugins: &config.Plugins{}},
 		Plugin: testAuthorize{response: &pluginproto.JobResponse{
@@ -140,7 +145,7 @@ func TestHandleDoPluginActionErrorOmitsTaskPayload(t *testing.T) {
 		messageSecret = "PLUGIN_ERROR_MESSAGE_SENTINEL"
 		taskSecret    = "PLUGIN_ERROR_TASK_SENTINEL"
 	)
-	service := &TaskService{
+	service := &taskservice.Service{
 		Config: &config.Config{Plugins: &config.Plugins{}},
 		Plugin: testAuthorize{response: &pluginproto.JobResponse{
 			Code:    400,

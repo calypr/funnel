@@ -15,7 +15,7 @@ import (
 	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
-	"github.com/calypr/funnel/internal/taskmodel"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 )
 
 const reconcileTestNamespace = "worker-jobs"
@@ -72,7 +72,7 @@ func (w *reconcileStateEvents) hasSystemError() bool {
 	return false
 }
 
-func newReconcileTestBackend(client kubernetes.Interface, database taskmodel.ReadOnlyServer, writer events.Writer) *Backend {
+func newReconcileTestBackend(client kubernetes.Interface, database taskpolicy.ReadOnlyServer, writer events.Writer) *Backend {
 	conf := appconfig.DefaultConfig()
 	conf.Kubernetes.Namespace = reconcileTestNamespace
 	conf.Kubernetes.JobsNamespace = reconcileTestNamespace

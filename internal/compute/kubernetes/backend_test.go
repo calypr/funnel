@@ -24,7 +24,7 @@ import (
 	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
-	"github.com/calypr/funnel/internal/taskmodel"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 )
 
 // mockDatabase implements tes.ReadOnlyServer for testing CleanOrphanedResources.
@@ -35,7 +35,7 @@ type mockDatabase struct {
 func (m *mockDatabase) GetTask(_ context.Context, req *tes.GetTaskRequest) (*tes.Task, error) {
 	t, ok := m.tasks[req.Id]
 	if !ok {
-		return nil, taskmodel.ErrNotFound
+		return nil, taskpolicy.ErrNotFound
 	}
 	return t, nil
 }
@@ -831,7 +831,7 @@ func (w *systemErrorSnapshotWriter) WriteEvent(ctx context.Context, ev *events.E
 		return err
 	}
 	if ev.Type == events.Type_TASK_STATE && ev.GetState() == tes.SystemError {
-		w.logsAtTerminal = append([]string(nil), taskmodel.GetTaskLog(w.builder.Task, 0).SystemLogs...)
+		w.logsAtTerminal = append([]string(nil), taskpolicy.GetTaskLog(w.builder.Task, 0).SystemLogs...)
 	}
 	return nil
 }

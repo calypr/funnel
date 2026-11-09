@@ -17,7 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"github.com/calypr/funnel/api/config"
-	"github.com/calypr/funnel/internal/awsclient"
+	awsconfig "github.com/calypr/funnel/internal/config/aws"
 )
 
 // s3Protocol defines the s3 URL protocol
@@ -43,7 +43,7 @@ type AmazonS3 struct {
 
 // NewAmazonS3 creates an AmazonS3 session instance
 func NewAmazonS3(conf *config.AmazonS3Storage) (*AmazonS3, error) {
-	sess, err := awsclient.NewAWSConfig(context.Background(), conf.AWSConfig)
+	sess, err := awsconfig.Load(context.Background(), conf.AWSConfig)
 	if err != nil {
 		return nil, fmt.Errorf("error creating amazon s3 backend: %v", err)
 	}

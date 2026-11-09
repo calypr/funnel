@@ -18,6 +18,7 @@ import (
 	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/storage"
+	"github.com/calypr/funnel/internal/worker/workspace"
 )
 
 func TestTESRequestStagesIdenticallyAcrossStorageBindings(t *testing.T) {
@@ -72,7 +73,7 @@ func TestTESRequestStagesIdenticallyAcrossStorageBindings(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			mapper := NewFileMapper(filepath.Join(conf.Worker.WorkDir, task.Id))
+			mapper := workspace.NewFileMapper(filepath.Join(conf.Worker.WorkDir, task.Id))
 			if err := mapper.MapTask(task, "kubernetes"); err != nil {
 				t.Fatal(err)
 			}

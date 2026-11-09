@@ -4,13 +4,15 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/calypr/funnel/internal/worker/workspace"
 )
 
 func TestCreateHostFileRejectsEscapingSymlink(t *testing.T) {
 	for _, scratch := range []bool{false, true} {
 		for _, parent := range []bool{false, true} {
 			t.Run(logConfinementCaseName(scratch, parent), func(t *testing.T) {
-				mapper := NewFileMapper(t.TempDir())
+				mapper := workspace.NewFileMapper(t.TempDir())
 				base := mapper.WorkDir
 				if scratch {
 					mapper.ScratchDir = t.TempDir()

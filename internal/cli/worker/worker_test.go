@@ -11,10 +11,10 @@ import (
 	"github.com/calypr/funnel/api/config"
 	"github.com/calypr/funnel/api/tes"
 	appconfig "github.com/calypr/funnel/internal/config"
+	"github.com/calypr/funnel/internal/config/configtest"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
 	funnelworker "github.com/calypr/funnel/internal/worker"
-	"github.com/calypr/funnel/tests/configtest"
 )
 
 func TestPersistentPreRun(t *testing.T) {

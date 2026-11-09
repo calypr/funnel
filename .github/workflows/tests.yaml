@@ -77,7 +77,7 @@ jobs:
     - name: Test output contracts through BoltDB and Docker
       env:
         FUNNEL_TEST_DOCKER_INTEGRATION: "1"
-      run: go test -v ./tests/core -run '^(TestRootStreamOutputsDocker|TestOutputContractDocker)$' -count=1 -timeout=3m
+      run: go test -v ./tests/integration/tasks -run '^(TestRootStreamOutputsDocker|TestOutputContractDocker)$' -count=1 -timeout=3m
 
   scheduler-tests:
     name: Scheduler tests (${{ matrix.label }})
@@ -108,7 +108,7 @@ jobs:
     - name: Install gotestsum
       run: go install gotest.tools/gotestsum@v1.13.0
     - name: Run scheduler contract against ${{ matrix.label }}
-      run: gotestsum --format standard-verbose --junitfile=scheduler-tests.xml -- -race ./tests/schedulercontract -run '^TestSchedulerContract$' -count=1 -timeout=5m
+      run: gotestsum --format standard-verbose --junitfile=scheduler-tests.xml -- -race ./tests/integration/schedulercontract -run '^TestSchedulerContract$' -count=1 -timeout=5m
     - name: Upload scheduler test results
       if: always()
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -147,7 +147,7 @@ jobs:
     - name: Pull worker test image
       run: docker pull alpine:3.21
     - name: Test independent schedulers and crash recovery
-      run: gotestsum --format standard-verbose --junitfile=scheduler-process-tests.xml -- -race ./tests/schedulerprocess -run '^TestSchedulerProcesses$' -count=1 -timeout=10m
+      run: gotestsum --format standard-verbose --junitfile=scheduler-process-tests.xml -- -race ./tests/e2e/schedulerprocess -run '^TestSchedulerProcesses$' -count=1 -timeout=10m
     - name: Upload process test results
       if: always()
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

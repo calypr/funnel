@@ -11,6 +11,7 @@ import (
 	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/storage"
+	"github.com/calypr/funnel/internal/worker/workspace"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -147,7 +148,7 @@ func UploadOutputs(ctx context.Context, outputs []*tes.Output, store storage.Sto
 	return uploadOutputs(ctx, outputs, store, ev, parallelLimit, nil)
 }
 
-func uploadOutputs(ctx context.Context, outputs []*tes.Output, store storage.Storage, ev *events.TaskWriter, parallelLimit int, mapper *FileMapper) ([]*tes.OutputFileLog, error) {
+func uploadOutputs(ctx context.Context, outputs []*tes.Output, store storage.Storage, ev *events.TaskWriter, parallelLimit int, mapper *workspace.FileMapper) ([]*tes.OutputFileLog, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -240,7 +241,7 @@ func (u *upload) Failed(err error) {
 }
 
 // resolveWildcards resolves any wildcards/globs in the output paths.
-func resolveWildcards(mapper *FileMapper, store storage.Storage) ([]string, error) {
+func resolveWildcards(mapper *workspace.FileMapper, store storage.Storage) ([]string, error) {
 	var outputs []*tes.Output
 	var unmatched []string
 

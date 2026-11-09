@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/calypr/funnel/api/tes"
-	"github.com/calypr/funnel/internal/taskmodel"
-	"github.com/calypr/funnel/tests/mongotest"
+	"github.com/calypr/funnel/internal/database/mongodb/mongotest"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
@@ -26,7 +26,7 @@ func TestListTasksCursorFollowsCreationOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("unbounded page IDs: %v %v", baseline.Tasks[0].Id, baseline.Tasks[1].Id)
-	ctx := taskmodel.WithTaskPageBytes(context.Background(), 350)
+	ctx := taskpolicy.WithTaskPageBytes(context.Background(), 350)
 	first, err := db.ListTasks(ctx, &tes.ListTasksRequest{View: "BASIC", PageSize: 10})
 	if err != nil {
 		t.Fatal(err)

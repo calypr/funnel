@@ -12,7 +12,7 @@ import (
 	"github.com/calypr/funnel/api/config"
 	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/server"
+	"github.com/calypr/funnel/internal/identity"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -23,13 +23,13 @@ const testTaskID = "example"
 
 // Helper function to create a context with a mock user.
 func getUserContext() context.Context {
-	user := server.UserInfo{
+	user := identity.UserInfo{
 		Username: testUser,
 		IsAdmin:  false,
 		IsPublic: false,
 	}
 
-	ctx := context.WithValue(context.Background(), server.UserInfoKey, user)
+	ctx := identity.WithUser(context.Background(), &user)
 
 	return ctx
 }

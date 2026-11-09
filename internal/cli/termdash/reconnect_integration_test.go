@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/calypr/funnel/internal/server/taskservice"
+
 	"github.com/calypr/funnel/api/tes"
 	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/logger"
@@ -52,7 +54,7 @@ func TestDashboardRecoversAfterFunnelServerRestart(t *testing.T) {
 	start := func() (context.CancelFunc, <-chan error) {
 		ctx, cancel := context.WithCancel(context.Background())
 		done := make(chan error, 1)
-		srv := &server.Server{RPCAddress: fmt.Sprintf("127.0.0.1:%d", rpcPort), HTTPPort: strconv.Itoa(httpPort), Log: log, Tasks: &server.TaskService{Read: reconnectReader{}, Log: log, Config: appconfig.DefaultConfig()}}
+		srv := &server.Server{RPCAddress: fmt.Sprintf("127.0.0.1:%d", rpcPort), HTTPPort: strconv.Itoa(httpPort), Log: log, Tasks: &taskservice.Service{Read: reconnectReader{}, Log: log, Config: appconfig.DefaultConfig()}}
 		go func() { done <- srv.Serve(ctx) }()
 		return cancel, done
 	}

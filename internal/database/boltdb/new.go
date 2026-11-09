@@ -3,6 +3,8 @@ package boltdb
 import (
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"time"
 
 	bolt "go.etcd.io/bbolt"
@@ -10,7 +12,6 @@ import (
 	"github.com/calypr/funnel/api/config"
 	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/compute/scheduler"
-	"github.com/calypr/funnel/internal/directory"
 	"github.com/calypr/funnel/internal/logger"
 )
 
@@ -72,7 +73,7 @@ type BoltDB struct {
 // NewBoltDB returns a new instance of BoltDB, accessing the database at
 // the given path, and including the given ServerConfig.
 func NewBoltDB(conf *config.BoltDB) (*BoltDB, error) {
-	if err := directory.EnsurePath(conf.Path); err != nil {
+	if err := os.MkdirAll(filepath.Dir(conf.Path), 0775); err != nil {
 		return nil, fmt.Errorf("creating boltdb directory: %w", err)
 	}
 	db, err := bolt.Open(conf.Path, 0600, &bolt.Options{

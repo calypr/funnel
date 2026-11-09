@@ -6,12 +6,14 @@ import (
 	"strings"
 	"testing"
 
+	serverauth "github.com/calypr/funnel/internal/server/auth"
+
 	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/compute/scheduler"
+	"github.com/calypr/funnel/internal/database/mongodb/mongotest"
 	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/server"
-	"github.com/calypr/funnel/internal/taskmodel"
-	"github.com/calypr/funnel/tests/mongotest"
+	"github.com/calypr/funnel/internal/identity"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
@@ -27,7 +29,7 @@ func TestMongoReservationTransactions(t *testing.T) {
 		}
 		return db
 	}
-	ctx := context.WithValue(context.Background(), server.UserInfoKey, server.UserInfo{Username: "owner", IsAdmin: true})
+	ctx := identity.WithUser(context.Background(), &identity.UserInfo{Username: "owner", IsAdmin: true})
 	seed := func(t *testing.T, db *MongoDB) (*tes.Task, *scheduler.Node) {
 		t.Helper()
 		task := &tes.Task{Id: "task", State: tes.Queued, Resources: &tes.Resources{CpuCores: 1, RamGb: 1, DiskGb: 1}}
@@ -139,12 +141,12 @@ func TestMongoReservationTransactions(t *testing.T) {
 			t.Fatal(err)
 		}
 		stranger := context.Background()
-		auth := server.NewAuthentication(nil, nil, server.AccessOwner)
+		auth := serverauth.NewAuthentication(nil, nil, identity.AccessOwner, nil)
 		_, authErr := auth.Interceptor(stranger, nil, nil, func(authCtx context.Context, _ interface{}) (interface{}, error) { stranger = authCtx; return nil, nil })
 		if authErr != nil {
 			t.Fatal(authErr)
 		}
-		if err := db.WriteEvent(stranger, events.NewState(task.Id, tes.Complete)); err != taskmodel.ErrNotPermitted {
+		if err := db.WriteEvent(stranger, events.NewState(task.Id, tes.Complete)); err != taskpolicy.ErrNotPermitted {
 			t.Fatalf("unauthorized completion = %v", err)
 		}
 		if got := readNode(t, db); got.Available.Cpus != 1 || len(got.TaskIds) != 1 {

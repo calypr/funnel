@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/calypr/funnel/api/tes"
-	"github.com/calypr/funnel/internal/taskmodel"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/validation"
@@ -28,11 +28,11 @@ type GPUOptions struct {
 func ParseGPUOptions(parameters map[string]string) (GPUOptions, error) {
 	options := GPUOptions{ResourceName: DefaultGPUResource}
 	resources := &tes.Resources{BackendParameters: parameters}
-	if err := taskmodel.NormalizeBackendParameters(resources); err != nil {
+	if err := taskpolicy.NormalizeBackendParameters(resources); err != nil {
 		return GPUOptions{}, err
 	}
 	parameters = resources.BackendParameters
-	count, err := taskmodel.GPUCount(resources)
+	count, err := taskpolicy.GPUCount(resources)
 	if err != nil {
 		return GPUOptions{}, err
 	}

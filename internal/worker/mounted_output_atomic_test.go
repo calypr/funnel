@@ -19,7 +19,7 @@ import (
 	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/storage"
-	"github.com/calypr/funnel/internal/taskmodel"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 )
 
 func TestUploadOutputsReplacesMountedDestinationWithoutChangingAliases(t *testing.T) {
@@ -60,7 +60,7 @@ func TestUploadOutputsReplacesMountedDestinationWithoutChangingAliases(t *testin
 		outputs = append(outputs, &tes.Output{Path: source, Url: "s3://bucket/outputs/shared", Type: tes.File.Enum()})
 	}
 	task := &tes.Task{Id: "task", Executors: []*tes.Executor{{Image: "alpine", Command: []string{"true"}}}, Outputs: outputs}
-	if errs := taskmodel.Validate(task); len(errs) > 0 {
+	if errs := taskpolicy.Validate(task); len(errs) > 0 {
 		t.Fatalf("TES rejected duplicate output URLs: %v", errs)
 	}
 	logs, err := UploadOutputs(context.Background(), outputs, mux, events.NewTaskWriter("task", 0, events.Noop{}), 8)

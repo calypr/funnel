@@ -10,7 +10,7 @@ import (
 	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/compute/kubernetes/resources"
 	"github.com/calypr/funnel/internal/compute/kubernetes/storageplan"
-	"github.com/calypr/funnel/internal/taskmodel"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	batchv1 "k8s.io/api/batch/v1"
@@ -104,7 +104,7 @@ func validateStoragePlanWorker(job *batchv1.Job, containerIndex int, ownership *
 }
 
 func isTaskNotFoundError(err error) bool {
-	return errors.Is(err, taskmodel.ErrNotFound) || status.Code(err) == codes.NotFound
+	return errors.Is(err, taskpolicy.ErrNotFound) || status.Code(err) == codes.NotFound
 }
 
 // cleanResources deletes the resources created for a task.

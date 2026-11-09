@@ -1,36 +1,31 @@
-// Package server contains code for serving the Funnel API, and accessing database backends.
+// Package server owns HTTP/gRPC serving, service registration, and listener lifecycle.
 package server
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
-	"net/http/httptest"
-	"runtime/debug"
-	"strings"
+	"sync"
+
+	serverauth "github.com/calypr/funnel/internal/server/auth"
+	"github.com/calypr/funnel/internal/server/gateway"
+	"github.com/calypr/funnel/internal/server/middleware"
 
 	"time"
 
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
-	"google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/status"
 
 	"github.com/calypr/funnel/api/config"
 	"github.com/calypr/funnel/internal/compute/scheduler"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
-	"github.com/calypr/funnel/internal/taskmodel"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	"github.com/calypr/funnel/internal/tesrpc"
-	"github.com/calypr/funnel/internal/webdash"
-	"github.com/calypr/funnel/version"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
 )
 
@@ -52,102 +47,15 @@ type Server struct {
 	Plugins          *config.Plugins
 }
 
-// Return a new interceptor function that logs all requests at the Debug level
-func newDebugInterceptor(log *logger.Logger) grpc.UnaryServerInterceptor {
-	// Return a function that is the interceptor.
-	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo,
-		handler grpc.UnaryHandler) (resp interface{}, err error) {
-		defer func() {
-			if value := recover(); value != nil {
-				log.Error("caught RPC panic", "panic_type", fmt.Sprintf("%T", value), "method", info.FullMethod, "version", version.Version, "commit", version.GitCommit, "stack", string(debug.Stack()))
-				resp, err = nil, status.Error(codes.Internal, "internal server error")
-			}
-		}()
-		log.Debug("received request", "method", info.FullMethod)
-		resp, err = handler(ctx, req)
-		log.Debug("completed request", "method", info.FullMethod, "status", status.Code(err).String())
-
-		return resp, err
-	}
-}
-
-// customErrorHandler is a custom error handler for the gRPC gateway
-// Returns '400' for invalid backend parameters and '500' for all other errors
-// Required for TES Compliance Tests
-func customErrorHandler(ctx context.Context, mux *runtime.ServeMux, marshaler runtime.Marshaler, w http.ResponseWriter, r *http.Request, err error) {
-	const fallback = `{"error": "failed to process the request"}`
-
-	st, ok := status.FromError(err)
-	if !ok {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(fallback)) //nolint:errcheck // The fallback response cannot be replaced after a client write failure.
-		return
-	}
-
-	switch st.Code() {
-	case codes.InvalidArgument, codes.FailedPrecondition, codes.OutOfRange: // 400
-		w.WriteHeader(http.StatusBadRequest)
-	case codes.Unauthenticated:
-		w.WriteHeader(http.StatusUnauthorized) // 401
-	case codes.PermissionDenied:
-		w.WriteHeader(http.StatusForbidden) // 403
-	case codes.NotFound:
-		w.WriteHeader(http.StatusNotFound) // 404
-	case codes.AlreadyExists, codes.Aborted: // 409
-		w.WriteHeader(http.StatusConflict)
-	case codes.Canceled:
-		w.WriteHeader(499)
-	case codes.DeadlineExceeded: // 504
-		w.WriteHeader(http.StatusGatewayTimeout)
-	case codes.ResourceExhausted: // 429
-		w.WriteHeader(http.StatusTooManyRequests)
-	case codes.Unavailable: // 503
-		w.WriteHeader(http.StatusServiceUnavailable)
-	case codes.Unimplemented: // 501
-		w.WriteHeader(http.StatusNotImplemented)
-	default:
-		w.WriteHeader(http.StatusInternalServerError) // 500
-	}
-
-	// Write the error message
-	jErr := JSONError{Error: st.Message()}
-	jErrBytes, mErr := marshaler.Marshal(jErr)
-	if mErr != nil {
-		_, _ = w.Write([]byte(fallback)) //nolint:errcheck // The fallback response cannot be replaced after a client write failure.
-		return
-	}
-	_, _ = w.Write(jErrBytes) //nolint:errcheck // The error response cannot be replaced after a client write failure.
-}
-
-func healthHandler(w http.ResponseWriter, r *http.Request) {
-	// Include logging metrics in health check
-	stdoutDropped, stderrDropped, total := events.GetLogEventStats()
-
-	health := map[string]interface{}{
-		"status": "OK",
-		"log_metrics": map[string]int64{
-			"stdout_events_dropped": stdoutDropped,
-			"stderr_events_dropped": stderrDropped,
-			"total_events":          total,
-		},
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(health) //nolint:errcheck // Health fields are JSON-compatible; a disconnected client cannot receive another response.
-}
-
-type JSONError struct {
-	Error string `json:"error"`
-}
-
 // Serve starts the server and blocks until its context is canceled or a listener stops.
 func (s *Server) Serve(pctx context.Context) error {
 	ctx, cancel := context.WithCancel(pctx)
 	defer cancel()
-	if s.Tasks.(*TaskService).PluginManager != nil {
-		defer s.Tasks.(*TaskService).PluginManager.Close()
+	closeTasks := func() {}
+	if service, ok := s.Tasks.(interface{ Close() }); ok {
+		closeTasks = sync.OnceFunc(service.Close)
 	}
+	defer closeTasks()
 
 	// Open TCP connection for RPC
 	lis, err := net.Listen("tcp", s.RPCAddress)
@@ -156,12 +64,11 @@ func (s *Server) Serve(pctx context.Context) error {
 	}
 	defer lis.Close() //nolint:errcheck // Listener cleanup is best effort after the server has stopped.
 
-	auth := NewAuthentication(s.BasicAuth, s.OidcAuth, s.TaskAccess)
-	auth.log = s.Log
+	auth := serverauth.NewAuthentication(s.BasicAuth, s.OidcAuth, s.TaskAccess, s.Log)
 
 	maxResponseBytes := s.MaxResponseBytes
 	if maxResponseBytes == 0 {
-		maxResponseBytes = taskmodel.DefaultResponseBytes
+		maxResponseBytes = taskpolicy.DefaultResponseBytes
 	}
 	if maxResponseBytes < 0 {
 		return fmt.Errorf("Server.MaxResponseBytes must be positive")
@@ -174,9 +81,9 @@ func (s *Server) Serve(pctx context.Context) error {
 		}),
 		grpc.ChainUnaryInterceptor(
 			auth.Interceptor,
-			newAuditInterceptor(s.Log),
-			s.authorizeEventWrites,
-			newDebugInterceptor(s.Log),
+			serverauth.AuditInterceptor(s.Log),
+			serverauth.EventWriteInterceptor(s.Tasks),
+			middleware.DebugInterceptor(s.Log),
 		),
 	)
 
@@ -212,72 +119,15 @@ func (s *Server) Serve(pctx context.Context) error {
 	}
 
 	// Set up HTTP proxy of gRPC API
-	mux := http.NewServeMux()
 
-	marsh := NewMarshaler()
+	marsh := gateway.NewMarshaler()
 	grpcMux := runtime.NewServeMux(
 		runtime.WithMarshalerOption(runtime.MIMEWildcard, marsh),
-		runtime.WithForwardResponseRewriter(rewriteTaskViewResponse),
-		runtime.WithErrorHandler(customErrorHandler),
+		runtime.WithForwardResponseRewriter(gateway.RewriteTaskViewResponse),
+		runtime.WithErrorHandler(gateway.ErrorHandler),
 	)
 
-	// m := protojson.MarshalOptions{
-	// 	Indent:          "  ",
-	// 	EmitUnpopulated: true,
-	// 	UseProtoNames:   true,
-	// }
-	// u := protojson.UnmarshalOptions{}
-	// grpcMux := runtime.NewServeMux(runtime.WithMarshalerOption(runtime.MIMEWildcard, &runtime.JSONPb{
-	// 	MarshalOptions:   m,
-	// 	UnmarshalOptions: u,
-	// }))
-
-	//runtime.OtherErrorHandler = s.handleError //TODO: Review effects
-
-	// Web dashboard
-	dashmux := http.NewServeMux()
-	dashmux.Handle("/", webdash.RootHandler())
-	dashfs := webdash.FileServer()
-	mux.Handle("/favicon.ico", dashfs)
-	mux.Handle("/manifest.json", dashfs)
-
-	// Health and metrics
-	mux.Handle("/health.html", dashfs)
-	mux.HandleFunc("/healthz", healthHandler)
-	mux.Handle("/static/", dashfs)
-	mux.Handle("/metrics", promhttp.Handler())
-
-	// Login
-	mux.HandleFunc("/login", auth.LoginHandler)
-	mux.HandleFunc("/login/token", auth.EchoTokenHandler)
-
-	// Root
-	mux.HandleFunc("/", func(resp http.ResponseWriter, req *http.Request) {
-
-		// Pass header to plugin if plugin is enabled
-		if s.Plugins != nil {
-			req = s.addHeadertoCtx(req)
-		}
-		// TODO this doesnt handle all routes
-		if s.OidcAuth != nil && s.OidcAuth.ServiceConfigURL == "" && len(s.BasicAuth) > 0 {
-			resp.Header().Set("WWW-Authenticate", "Basic")
-		}
-		switch negotiate(req) {
-		case "html":
-			// HTML was requested (by the browser)
-			dashmux.ServeHTTP(resp, req)
-		default:
-			// Set "cache-control: no-store" to disable response caching.
-			// Without this, some servers (e.g. GCE) will cache a response from ListTasks, GetTask, etc.
-			// which results in confusion about the stale data.
-			if s.DisableHTTPCache {
-				resp.Header().Set("Cache-Control", "no-store")
-			}
-
-			// Apply message middleware to grpcMux
-			messageHandler(withTaskView(grpcMux)).ServeHTTP(resp, req)
-		}
-	})
+	mux := s.routes(auth, grpcMux)
 
 	// Register TES service
 	if s.Tasks != nil {
@@ -337,7 +187,7 @@ func (s *Server) Serve(pctx context.Context) error {
 	shutdownErr := httpServer.Shutdown(shutdownCtx)
 	shutdownCancel()
 	// Wait for CreateTask's in-flight compute backend submissions.
-	s.Tasks.(*TaskService).Close()
+	closeTasks()
 
 	var serveErr error
 	for range 2 {
@@ -353,84 +203,4 @@ func (s *Server) Serve(pctx context.Context) error {
 		return serveErr
 	}
 	return shutdownErr
-}
-
-func (s *Server) addHeadertoCtx(req *http.Request) *http.Request {
-	md := metadata.New(nil)
-	ctxWithMetadata := req.Context() // Start with the request's context
-	for key, values := range req.Header {
-		for _, value := range values {
-			md.Append(key, value)
-		}
-		ctxWithMetadata = context.WithValue(ctxWithMetadata, key, values)
-
-	}
-	ctxWithMetadata = metadata.NewOutgoingContext(ctxWithMetadata, md) // Create context with metadata
-	return req.WithContext(ctxWithMetadata)
-}
-
-// handleError handles errors in the HTTP stack, logging errors, stack traces,
-// and returning an HTTP error code.
-func (s *Server) handleError(w http.ResponseWriter, req *http.Request, err string, code int) {
-	s.Log.Error("HTTP handler error", "method", req.Method, "status", code)
-	http.Error(w, err, code)
-}
-
-// negotiate determines the response type based on request headers and parameters.
-// Returns either "html" or "json".
-func negotiate(req *http.Request) string {
-	// Allow overriding the type from a URL parameter.
-	// /v1/tasks?json will force a JSON response.
-	q := req.URL.Query()
-	if _, html := q["html"]; html {
-		return "html"
-	}
-	if _, json := q["json"]; json {
-		return "json"
-	}
-	// Content negotiation means that both the dashboard's HTML and the API's JSON
-	// may be served at the same path.
-	// In Go 1.10 we'll be able to move to a core library for this,
-	// https://github.com/golang/go/issues/19307
-	switch negotiateContentType(req, []string{"text/*", "text/html"}, "text/*") {
-	case "text/html":
-		return "html"
-	default:
-		return "json"
-	}
-}
-
-// Wrap the grpcMux with middleware that intercepts responses with custom messages
-func messageHandler(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Match gRPC's default 4 MiB message budget before JSON normalization buffers the body.
-		r.Body = http.MaxBytesReader(w, r.Body, 4<<20)
-		// Create a response recorder to capture the response
-		rec := httptest.NewRecorder()
-		next.ServeHTTP(rec, r)
-
-		// Check for the message header in ANY response
-		if msg := rec.Header().Get("Grpc-Metadata-X-Funnel-Message"); msg != "" {
-			// Write the message as JSON
-			w.Header().Set("Content-Type", "application/json")
-			w.Header().Set("Cache-Control", rec.Header().Get("Cache-Control"))
-			for k, v := range rec.Header() {
-				// Copy headers except the gRPC metadata one
-				if !strings.HasPrefix(k, "Grpc-Metadata-") {
-					w.Header()[k] = v
-				}
-			}
-			w.WriteHeader(rec.Code)
-			response := map[string]string{"message": msg}
-			_ = json.NewEncoder(w).Encode(response) //nolint:errcheck // Decoded JSON is serializable; a disconnected client cannot receive another response.
-			return                                  // Important: return here to prevent writing the original response
-		}
-
-		// No message - copy the original response as-is
-		for k, v := range rec.Header() {
-			w.Header()[k] = v
-		}
-		w.WriteHeader(rec.Code)
-		_, _ = w.Write(rec.Body.Bytes()) //nolint:errcheck // The proxied response is already committed; a client write failure cannot be recovered here.
-	})
 }

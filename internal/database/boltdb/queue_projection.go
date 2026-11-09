@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/calypr/funnel/api/tes"
-	"github.com/calypr/funnel/internal/taskmodel"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	bolt "go.etcd.io/bbolt"
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
@@ -41,7 +41,7 @@ func taskWireProjection(data []byte, selected ...protowire.Number) ([]byte, erro
 func readQueuedTaskProjection(tx *bolt.Tx, id string) (*tes.Task, error) {
 	data := tx.Bucket(TaskBucket).Get([]byte(id))
 	if data == nil {
-		return nil, taskmodel.ErrNotFound
+		return nil, taskpolicy.ErrNotFound
 	}
 	projected, err := taskSchedulingProjection(data)
 	if err != nil {

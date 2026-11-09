@@ -39,7 +39,7 @@ jobs:
           cluster_name: funnel-gen3
 
       - name: Build and load candidate Funnel image
-        run: bash tests/kubernetes/build-and-load-candidate-image.sh
+        run: bash tests/e2e/kubernetes/build-and-load-candidate-image.sh
 
       - name: Install Helm
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
@@ -47,7 +47,7 @@ jobs:
           version: v4.3.1
 
       - name: Install local Funnel image post-renderer
-        run: helm plugin install "$GITHUB_WORKSPACE/tests/gen3"
+        run: helm plugin install "$GITHUB_WORKSPACE/tests/e2e/gen3"
  
       # ---------------------------
       # 2. Install Funnel + MinIO
@@ -95,7 +95,7 @@ jobs:
         run: |
           helm upgrade --install minio oci://registry-1.docker.io/bitnamicharts/minio \
             --version 17.0.21 \
-            --values tests/kubernetes/minio-values.yaml \
+            --values tests/e2e/kubernetes/minio-values.yaml \
             --wait --timeout=5m
 
       - name: Install AWS S3 CSI Driver (for testing S3 mounts in Funnel)
@@ -110,7 +110,7 @@ jobs:
           helm upgrade --install aws-mountpoint-s3-csi-driver aws-mountpoint-s3-csi-driver/aws-mountpoint-s3-csi-driver \
             --namespace kube-system \
             --version 2.8.0 \
-            --values tests/gen3/csi-images.yaml \
+            --values tests/e2e/gen3/csi-images.yaml \
             --wait --timeout=3m \
             --set awsAccessSecret.key_id=example,awsAccessSecret.access_key=example-password
 

@@ -8,11 +8,13 @@ import (
 	"testing"
 	"time"
 
+	serverauth "github.com/calypr/funnel/internal/server/auth"
+
 	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/compute/scheduler"
 	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/server"
-	"github.com/calypr/funnel/internal/taskmodel"
+	"github.com/calypr/funnel/internal/identity"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -198,12 +200,12 @@ func TestUnauthorizedTerminalWritePreservesAllocation(t *testing.T) {
 		t.Fatal(err)
 	}
 	stranger := context.Background()
-	auth := server.NewAuthentication(nil, nil, server.AccessOwner)
+	auth := serverauth.NewAuthentication(nil, nil, identity.AccessOwner, nil)
 	_, authErr := auth.Interceptor(stranger, nil, nil, func(authCtx context.Context, _ interface{}) (interface{}, error) { stranger = authCtx; return nil, nil })
 	if authErr != nil {
 		t.Fatal(authErr)
 	}
-	if err := db.WriteEvent(stranger, events.NewState(task.Id, tes.Complete)); !errors.Is(err, taskmodel.ErrNotPermitted) {
+	if err := db.WriteEvent(stranger, events.NewState(task.Id, tes.Complete)); !errors.Is(err, taskpolicy.ErrNotPermitted) {
 		t.Fatalf("unauthorized terminal write = %v", err)
 	}
 	after, err := db.GetNode(ctx, &scheduler.GetNodeRequest{Id: node.Id})

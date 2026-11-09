@@ -12,9 +12,9 @@ import (
 
 	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/compute/scheduler"
+	"github.com/calypr/funnel/internal/database/mongodb/mongotest"
 	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/server"
-	"github.com/calypr/funnel/tests/mongotest"
+	"github.com/calypr/funnel/internal/identity"
 	"go.mongodb.org/mongo-driver/v2/event"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
@@ -58,8 +58,8 @@ func TestNodeReadReservationSnapshot(t *testing.T) {
 	if err := db.Init(); err != nil {
 		t.Fatalf("initialize MongoDB: %v", err)
 	}
-	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), server.UserInfoKey,
-		server.UserInfo{Username: "node-snapshot-test", IsAdmin: true}), 30*time.Second)
+	ctx, cancel := context.WithTimeout(identity.WithUser(context.Background(),
+		&identity.UserInfo{Username: "node-snapshot-test", IsAdmin: true}), 30*time.Second)
 	defer cancel()
 
 	for _, list := range []bool{false, true} {
@@ -244,8 +244,8 @@ func TestNodeReadQueryBudgetAndCallerCancellation(t *testing.T) {
 	if err := db.Init(); err != nil {
 		t.Fatalf("initialize MongoDB: %v", err)
 	}
-	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), server.UserInfoKey,
-		server.UserInfo{Username: "node-query-budget-test", IsAdmin: true}), 30*time.Second)
+	ctx, cancel := context.WithTimeout(identity.WithUser(context.Background(),
+		&identity.UserInfo{Username: "node-query-budget-test", IsAdmin: true}), 30*time.Second)
 	defer cancel()
 
 	for _, suffix := range []string{"a", "b"} {

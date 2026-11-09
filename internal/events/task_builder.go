@@ -6,7 +6,7 @@ import (
 
 	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/logger"
-	"github.com/calypr/funnel/internal/taskmodel"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 )
 
 // TaskBuilder aggregates events into an in-memory Task object.
@@ -29,56 +29,56 @@ func (tb *TaskBuilder) WriteEvent(ctx context.Context, ev *Event) error {
 	switch ev.Type {
 	case Type_TASK_STATE:
 		to := ev.GetState()
-		if err := taskmodel.ValidateTransition(t.GetState(), ev.GetState()); err != nil {
+		if err := taskpolicy.ValidateTransition(t.GetState(), ev.GetState()); err != nil {
 			logger.Debug("TaskBuilder: invalid state transition", "taskID", t.Id, "from", t.GetState(), "to", ev.GetState(), "error", err)
 			return err
 		}
 		t.State = to
 
 	case Type_SYSTEM_LOG:
-		taskmodel.
-			GetTaskLog(t, attempt).SystemLogs = append(taskmodel.GetTaskLog(t, attempt).SystemLogs, ev.SysLogString())
+		taskpolicy.
+			GetTaskLog(t, attempt).SystemLogs = append(taskpolicy.GetTaskLog(t, attempt).SystemLogs, ev.SysLogString())
 
 	case Type_TASK_START_TIME:
-		taskmodel.
+		taskpolicy.
 			GetTaskLog(t, attempt).StartTime = ev.GetStartTime()
 
 	case Type_TASK_END_TIME:
-		taskmodel.
+		taskpolicy.
 			GetTaskLog(t, attempt).EndTime = ev.GetEndTime()
 
 	case Type_TASK_OUTPUTS:
-		taskmodel.
+		taskpolicy.
 			GetTaskLog(t, attempt).Outputs = ev.GetOutputs().Value
 
 	case Type_TASK_METADATA:
-		if taskmodel.GetTaskLog(t, attempt).Metadata == nil {
-			taskmodel.
+		if taskpolicy.GetTaskLog(t, attempt).Metadata == nil {
+			taskpolicy.
 				GetTaskLog(t, attempt).Metadata = map[string]string{}
 		}
 		for k, v := range ev.GetMetadata().Value {
-			taskmodel.
+			taskpolicy.
 				GetTaskLog(t, attempt).Metadata[k] = v
 		}
 
 	case Type_EXECUTOR_START_TIME:
-		taskmodel.
+		taskpolicy.
 			GetExecLog(t, attempt, index).StartTime = ev.GetStartTime()
 
 	case Type_EXECUTOR_END_TIME:
-		taskmodel.
+		taskpolicy.
 			GetExecLog(t, attempt, index).EndTime = ev.GetEndTime()
 
 	case Type_EXECUTOR_EXIT_CODE:
-		taskmodel.
+		taskpolicy.
 			GetExecLog(t, attempt, index).ExitCode = ev.GetExitCode()
 
 	case Type_EXECUTOR_STDOUT:
-		taskmodel.
+		taskpolicy.
 			GetExecLog(t, attempt, index).Stdout = ev.GetStdout()
 
 	case Type_EXECUTOR_STDERR:
-		taskmodel.
+		taskpolicy.
 			GetExecLog(t, attempt, index).Stderr = ev.GetStderr()
 	}
 

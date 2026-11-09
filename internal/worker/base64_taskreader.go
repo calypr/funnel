@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/calypr/funnel/api/tes"
-	"github.com/calypr/funnel/internal/taskmodel"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 )
 
 // Base64TaskReader reads a task from a base64 encoded string.
@@ -15,12 +15,12 @@ type Base64TaskReader struct {
 
 // NewBase64TaskReader creates a new Base64TaskReader.
 func NewBase64TaskReader(raw string) (*Base64TaskReader, error) {
-	task, err := taskmodel.Base64Decode(raw)
+	task, err := taskpolicy.Base64Decode(raw)
 	if err != nil {
 		return nil, err
 	}
 
-	err = taskmodel.InitTask(task, false)
+	err = taskpolicy.InitTask(task, false)
 	if err != nil {
 		return nil, fmt.Errorf("initializing task: %v", err)
 	}

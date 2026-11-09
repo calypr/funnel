@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/retry"
-	"github.com/calypr/funnel/internal/server"
-	"github.com/calypr/funnel/internal/taskmodel"
+	"github.com/calypr/funnel/internal/identity"
+	taskpolicy "github.com/calypr/funnel/internal/task"
+	"github.com/cenkalti/backoff/v7"
 	badger "github.com/dgraph-io/badger/v4"
 	proto "google.golang.org/protobuf/proto"
 )
@@ -18,28 +18,40 @@ var errTaskExists = errors.New("task already exists")
 
 // WriteEvent creates an event for the server to handle.
 func (db *Badger) WriteEvent(ctx context.Context, req *events.Event) error {
-	r := retry.Retrier{
-		InitialInterval:     1 * time.Millisecond,
-		MaxInterval:         10 * time.Second,
-		MaxElapsedTime:      5 * time.Minute,
-		Multiplier:          1.5,
-		RandomizationFactor: 0.5,
-		MaxTries:            50,
-		ShouldRetry: func(err error) bool {
-			_, isTransitionError := err.(*taskmodel.TransitionError)
-			return !isTransitionError && err != taskmodel.ErrNotFound && err != taskmodel.ErrNotPermitted && err != errTaskExists
-		},
+	b := backoff.NewExponentialBackOff()
+	b.InitialInterval = time.Millisecond
+	b.MaxInterval = 10 * time.Second
+	b.Multiplier = 1.5
+	b.RandomizationFactor = 0.5
+
+	_, err := backoff.Retry(ctx, func() (struct{}, error) {
+		err := db.writeEvent(ctx, req)
+		if err != nil {
+			_, isTransitionError := err.(*taskpolicy.TransitionError)
+			if isTransitionError || err == taskpolicy.ErrNotFound || err == taskpolicy.ErrNotPermitted || err == errTaskExists {
+				return struct{}{}, backoff.Permanent(err)
+			}
+		}
+		return struct{}{}, err
+	},
+		backoff.WithBackOff(b),
+		backoff.WithMaxElapsedTime(5*time.Minute),
+		backoff.WithMaxTries(50),
+	)
+	if err == nil {
+		return nil
 	}
 
-	return r.Retry(ctx, func() error {
-		return db.writeEvent(ctx, req)
-	})
+	retryErr := backoff.AsRetryError(err)
+	if ctx.Err() != nil && errors.Is(retryErr.Cause, context.Cause(ctx)) {
+		return ctx.Err()
+	}
+	return retryErr.LastErr
 }
 
 func (db *Badger) writeEvent(ctx context.Context, req *events.Event) error {
 
-	// It's important this error be returned directly without being wrapped,
-	// because the retrier's ShouldRetry needs to check the error type (above).
+	// Keep terminal errors unwrapped so WriteEvent can classify them directly.
 	return db.db.Update(func(txn *badger.Txn) error {
 
 		// If this event creates a new task, we don't need to update logic below,
@@ -57,7 +69,7 @@ func (db *Badger) writeEvent(ctx context.Context, req *events.Event) error {
 			}
 
 			// Store the username as task owner:
-			err = txn.Set(ownerKey(task.Id), []byte(server.GetUsername(ctx)))
+			err = txn.Set(ownerKey(task.Id), []byte(identity.GetUsername(ctx)))
 			if err != nil {
 				return fmt.Errorf("storing owner info: %s", err)
 			}
@@ -75,26 +87,26 @@ func (db *Badger) writeEvent(ctx context.Context, req *events.Event) error {
 		case events.Type_TASK_STATE:
 			from := task.State
 			to := req.GetState()
-			if err = taskmodel.ValidateTransition(from, to); err != nil {
+			if err = taskpolicy.ValidateTransition(from, to); err != nil {
 				return err
 			}
 			task.State = to
 
 		case events.Type_TASK_START_TIME:
-			taskmodel.
+			taskpolicy.
 				GetTaskLog(task, 0).StartTime = req.GetStartTime()
 
 		case events.Type_TASK_END_TIME:
-			taskmodel.
+			taskpolicy.
 				GetTaskLog(task, 0).EndTime = req.GetEndTime()
 
 		case events.Type_TASK_OUTPUTS:
-			taskmodel.
+			taskpolicy.
 				GetTaskLog(task, 0).Outputs = req.GetOutputs().Value
 
 		case events.Type_TASK_METADATA:
 			meta := req.GetMetadata().Value
-			tl := taskmodel.GetTaskLog(task, 0)
+			tl := taskpolicy.GetTaskLog(task, 0)
 			if tl.Metadata == nil {
 				tl.Metadata = map[string]string{}
 			}
@@ -103,27 +115,27 @@ func (db *Badger) writeEvent(ctx context.Context, req *events.Event) error {
 			}
 
 		case events.Type_EXECUTOR_START_TIME:
-			taskmodel.
+			taskpolicy.
 				GetExecLog(task, 0, int(req.Index)).StartTime = req.GetStartTime()
 
 		case events.Type_EXECUTOR_END_TIME:
-			taskmodel.
+			taskpolicy.
 				GetExecLog(task, 0, int(req.Index)).EndTime = req.GetEndTime()
 
 		case events.Type_EXECUTOR_EXIT_CODE:
-			taskmodel.
+			taskpolicy.
 				GetExecLog(task, 0, int(req.Index)).ExitCode = req.GetExitCode()
 
 		case events.Type_EXECUTOR_STDOUT:
-			taskmodel.
+			taskpolicy.
 				GetExecLog(task, 0, int(req.Index)).Stdout = req.GetStdout()
 
 		case events.Type_EXECUTOR_STDERR:
-			taskmodel.
+			taskpolicy.
 				GetExecLog(task, 0, int(req.Index)).Stderr = req.GetStderr()
 
 		case events.Type_SYSTEM_LOG:
-			tl := taskmodel.GetTaskLog(task, 0)
+			tl := taskpolicy.GetTaskLog(task, 0)
 			tl.SystemLogs = append(tl.SystemLogs, req.SysLogString())
 		}
 

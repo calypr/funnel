@@ -8,8 +8,8 @@ components which can easily adapted to a vareity of platforms.
 A task defines a unit of work: metadata, input files to download, a sequence of Docker containers + commands to run,
 output files to upload, state, and logs. The API allows you to create, get, list, and cancel tasks.
 
-Tasks are accessed via the `funnel task` command. There's an HTTP client in the [client package][clientpkg],
-and a set of utilities and a gRPC client in the [proto/tes package][tespkg].
+Tasks are accessed via the `funnel task` command. Go applications use the
+[REST client][clientpkg] and [TES wire models][tespkg].
 
 There's a lot more you can do with the task API. See the [tasks docs](tasks.md) for more.
 
@@ -18,7 +18,7 @@ There's a lot more you can do with the task API. See the [tasks docs](tasks.md) 
 The server serves the task API, web dashboard, and optionally runs a task scheduler.
 It serves both HTTP/JSON and gRPC/Protobuf.
 
-The server is accessible via the `funnel server` command and the [server package][serverpkg].
+Run the server with `funnel server`. Its implementation lives in `internal/server`.
 
 ### Storage
 
@@ -27,7 +27,7 @@ Tasks define locations where files should be downloaded from and uploaded to. Wo
 the downloading/uploading.
 
 See the [storage docs](storage.md) for more information on configuring storage backends.
-The storage clients are available in the [storage package][storagepkg].
+Storage implementations live in `internal/storage` and are private application code.
 
 ### Worker
 
@@ -47,7 +47,8 @@ Along the way, the worker writes logs to event streams and databases:
 - a list of output files uploaded, with sizes
 - system logs, such as host name, docker command, system error messages, etc.
 
-The worker is accessible via the `funnel worker` command and the [worker package][workerpkg].
+Run a worker with `funnel worker`. Its runtime lives in `internal/worker`, with
+task path mapping in `internal/worker/workspace`.
 
 ### Node Scheduler
 
@@ -63,12 +64,8 @@ these services that doesn't include nodes or scheduling by Funnel.
 
 See [Deploying a cluster](compute/deployment.md) for more information about running a cluster of nodes.
 
-The node is accessible via the `funnel node` command and the [scheduler package][schedpkg].
+Run a node with `funnel node`. Its implementation lives in `internal/compute/scheduler`.
 
 [tes]: https://github.com/ga4gh/task-execution-schemas
-[serverpkg]: https://github.com/ohsu-comp-bio/funnel/tree/master/server
-[workerpkg]: https://github.com/ohsu-comp-bio/funnel/tree/master/worker
-[schedpkg]: https://github.com/ohsu-comp-bio/funnel/tree/master/compute/scheduler
-[clientpkg]: https://github.com/ohsu-comp-bio/funnel/tree/master/client
-[tespkg]: https://github.com/ohsu-comp-bio/funnel/tree/master/proto/tes
-[storagepkg]: https://github.com/ohsu-comp-bio/funnel/tree/master/storage
+[clientpkg]: https://github.com/calypr/funnel/tree/feature/client-server-split/client/tes
+[tespkg]: https://github.com/calypr/funnel/tree/feature/client-server-split/api/tes

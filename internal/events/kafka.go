@@ -2,6 +2,7 @@ package events
 
 import (
 	"log"
+	"sync"
 
 	"context"
 
@@ -11,8 +12,10 @@ import (
 
 // KafkaWriter writes events to a Kafka topic.
 type KafkaWriter struct {
-	conf     *config.Kafka
-	producer sarama.SyncProducer
+	conf      *config.Kafka
+	producer  sarama.SyncProducer
+	shutdown  chan struct{}
+	closeOnce sync.Once
 }
 
 // NewKafkaWriter creates a new event writer for writing events to a Kafka topic.
@@ -21,14 +24,15 @@ func NewKafkaWriter(ctx context.Context, conf *config.Kafka) (*KafkaWriter, erro
 	if err != nil {
 		return nil, err
 	}
+	writer := &KafkaWriter{conf: conf, producer: producer, shutdown: make(chan struct{})}
 	go func() {
-		<-ctx.Done()
-		err := producer.Close()
-		if err != nil {
-			log.Printf("kafka writer close after context cancellation: %v", err)
+		select {
+		case <-ctx.Done():
+			writer.Close()
+		case <-writer.shutdown:
 		}
 	}()
-	return &KafkaWriter{conf, producer}, nil
+	return writer, nil
 }
 
 // WriteEvent writes the event. Events may be sent in batches in the background by the
@@ -55,10 +59,12 @@ func (k *KafkaWriter) WriteEvent(ctx context.Context, ev *Event) error {
 }
 
 func (k *KafkaWriter) Close() {
-	err := k.producer.Close()
-	if err != nil {
-		log.Printf("close kafka writer: %v", err)
-	}
+	k.closeOnce.Do(func() {
+		close(k.shutdown)
+		if err := k.producer.Close(); err != nil {
+			log.Printf("close kafka writer: %v", err)
+		}
+	})
 }
 
 // KafkaReader reads events to a Kafka topic and writes them

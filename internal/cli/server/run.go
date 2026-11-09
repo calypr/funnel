@@ -4,19 +4,24 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
+
+	"github.com/calypr/funnel/internal/server/taskservice"
+
+	"github.com/calypr/funnel/internal/compute"
 
 	"github.com/calypr/funnel/api/config"
 	cmdutil "github.com/calypr/funnel/internal/cli/util"
 	"github.com/calypr/funnel/internal/compute/aws_batch"
 	"github.com/calypr/funnel/internal/compute/gcp_batch"
-	"github.com/calypr/funnel/internal/compute/gridengine"
-	"github.com/calypr/funnel/internal/compute/htcondor"
+	"github.com/calypr/funnel/internal/compute/hpc/gridengine"
+	"github.com/calypr/funnel/internal/compute/hpc/htcondor"
+	"github.com/calypr/funnel/internal/compute/hpc/pbs"
+	"github.com/calypr/funnel/internal/compute/hpc/slurm"
 	"github.com/calypr/funnel/internal/compute/kubernetes"
 	"github.com/calypr/funnel/internal/compute/local"
 	"github.com/calypr/funnel/internal/compute/noop"
-	"github.com/calypr/funnel/internal/compute/pbs"
 	"github.com/calypr/funnel/internal/compute/scheduler"
-	"github.com/calypr/funnel/internal/compute/slurm"
 	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/database/badger"
 	"github.com/calypr/funnel/internal/database/boltdb"
@@ -29,7 +34,7 @@ import (
 	"github.com/calypr/funnel/internal/metrics"
 	"github.com/calypr/funnel/internal/pluginmanager"
 	"github.com/calypr/funnel/internal/server"
-	"github.com/calypr/funnel/internal/taskmodel"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 )
 
 // Run runs the "server run" command.
@@ -46,24 +51,35 @@ func Run(ctx context.Context, conf *config.Config, log *logger.Logger) error {
 type Server struct {
 	*server.Server
 	*scheduler.Scheduler
+	closeOnce      sync.Once
+	cancelLifetime context.CancelFunc
+	writers        events.MultiWriter
+	tasks          *taskservice.Service
 }
 
 // Database represents the base funnel database interface
 type Database interface {
-	taskmodel.ReadOnlyServer
+	taskpolicy.ReadOnlyServer
 	Init() error
 }
 
 // NewServer returns a new Funnel server + scheduler based on the given config.
-func NewServer(ctx context.Context, conf *config.Config, log *logger.Logger) (*Server, error) {
+func NewServer(ctx context.Context, conf *config.Config, log *logger.Logger) (serverResult *Server, returnErr error) {
+	lifetimeCtx, cancelLifetime := context.WithCancel(ctx)
+	var writers events.MultiWriter
+	defer func() {
+		if serverResult == nil {
+			cancelLifetime()
+			writers.Close()
+		}
+	}()
+
 	var database Database
-	var reader taskmodel.ReadOnlyServer
+	var reader taskpolicy.ReadOnlyServer
 	var nodes scheduler.SchedulerServiceServer
 	var atomicAssigner scheduler.AtomicTaskAssigner
 	var sched *scheduler.Scheduler
 	var queue scheduler.TaskQueue
-
-	writers := events.MultiWriter{}
 
 	log.Info("Initializing database", "backend", conf.Database)
 	// Database
@@ -172,9 +188,9 @@ func NewServer(ctx context.Context, conf *config.Config, log *logger.Logger) (*S
 		case "dynamodb":
 			writer, err = dynamodb.NewDynamoDB(conf.DynamoDB)
 		case "kafka":
-			writer, err = events.NewKafkaWriter(ctx, conf.Kafka)
+			writer, err = events.NewKafkaWriter(lifetimeCtx, conf.Kafka)
 		case "pubsub":
-			writer, err = events.NewPubSubWriter(ctx, conf.PubSub)
+			writer, err = events.NewPubSubWriter(lifetimeCtx, conf.PubSub)
 		case "mongodb":
 			writer, err = mongodb.NewMongoDB(conf.MongoDB)
 		case "postgres", "psql":
@@ -193,7 +209,7 @@ func NewServer(ctx context.Context, conf *config.Config, log *logger.Logger) (*S
 	writer = &events.SystemLogFilter{Writer: &writers, Level: conf.Logger.Level}
 
 	// Compute
-	var compute events.Computer
+	var computer compute.Computer
 	switch strings.ToLower(conf.Compute) {
 	case "manual":
 		if nodes == nil {
@@ -222,55 +238,55 @@ func NewServer(ctx context.Context, conf *config.Config, log *logger.Logger) (*S
 			AtomicAssigner: atomicAssigner,
 			Event:          &events.ErrLogger{Writer: writer, Log: log.Sub("scheduler")},
 		}
-		compute = events.Backend{}
+		computer = compute.Backend{}
 
 	case "aws-batch", "aws", "amazon":
-		compute, err = aws_batch.NewBackend(ctx, conf.AWSBatch, reader, writer, log.Sub("aws-batch"))
+		computer, err = aws_batch.NewBackend(lifetimeCtx, conf.AWSBatch, reader, writer, log.Sub("aws-batch"))
 		if err != nil {
 			return nil, err
 		}
 
 	case "gcp-batch", "gcp", "google":
-		compute, err = gcp_batch.NewBackend(ctx, conf.GCPBatch, reader, writer, log.Sub("gcp-batch"))
+		computer, err = gcp_batch.NewBackend(lifetimeCtx, conf.GCPBatch, reader, writer, log.Sub("gcp-batch"))
 		if err != nil {
 			return nil, err
 		}
 
 	case "gridengine":
-		compute, err = gridengine.NewBackend(conf, reader, writer, log.Sub("gridengine"))
+		computer, err = gridengine.NewBackend(conf, reader, writer, log.Sub("gridengine"))
 		if err != nil {
 			return nil, err
 		}
 
 	case "htcondor":
-		compute, err = htcondor.NewBackend(ctx, conf, reader, writer, log.Sub("htcondor"))
+		computer, err = htcondor.NewBackend(lifetimeCtx, conf, reader, writer, log.Sub("htcondor"))
 		if err != nil {
 			return nil, err
 		}
 
 	case "kubernetes", "k8s":
-		compute, err = kubernetes.NewBackend(ctx, conf, reader, writer, log.Sub("kubernetes"))
+		computer, err = kubernetes.NewBackend(lifetimeCtx, conf, reader, writer, log.Sub("kubernetes"))
 		if err != nil {
 			return nil, err
 		}
 
 	case "local":
-		compute, err = local.NewBackend(ctx, conf, log.Sub("local"))
+		computer, err = local.NewBackend(lifetimeCtx, conf, log.Sub("local"))
 		if err != nil {
 			return nil, err
 		}
 
 	case "noop":
-		compute = noop.NewBackend()
+		computer = noop.NewBackend()
 
 	case "pbs":
-		compute, err = pbs.NewBackend(ctx, conf, reader, writer, log.Sub("pbs"))
+		computer, err = pbs.NewBackend(lifetimeCtx, conf, reader, writer, log.Sub("pbs"))
 		if err != nil {
 			return nil, err
 		}
 
 	case "slurm":
-		compute, err = slurm.NewBackend(ctx, conf, reader, writer, log.Sub("slurm"))
+		computer, err = slurm.NewBackend(lifetimeCtx, conf, reader, writer, log.Sub("slurm"))
 		if err != nil {
 			return nil, err
 		}
@@ -282,12 +298,26 @@ func NewServer(ctx context.Context, conf *config.Config, log *logger.Logger) (*S
 	writer = &events.ErrLogger{Writer: writer, Log: log}
 
 	if c, ok := reader.(metrics.TaskStateCounter); ok {
-		go metrics.WatchTaskStates(ctx, c)
+		go metrics.WatchTaskStates(lifetimeCtx, c)
 	}
 
 	if nodes != nil {
-		go metrics.WatchNodes(ctx, nodes)
+		go metrics.WatchNodes(lifetimeCtx, nodes)
 	}
+
+	tasks := &taskservice.Service{
+		Name:    conf.Server.ServiceName,
+		Event:   writer,
+		Compute: computer,
+		Read:    reader,
+		Log:     log,
+		Config:  conf,
+	}
+	defer func() {
+		if returnErr != nil {
+			tasks.Close()
+		}
+	}()
 
 	serverConf := &Server{
 		Server: &server.Server{
@@ -299,38 +329,28 @@ func NewServer(ctx context.Context, conf *config.Config, log *logger.Logger) (*S
 			MaxResponseBytes: appconfig.ResponseBytes(conf.Server),
 			TaskAccess:       conf.Server.TaskAccess,
 			Log:              log,
-			Tasks: &server.TaskService{
-				Name:    conf.Server.ServiceName,
-				Event:   writer,
-				Compute: compute,
-				Read:    reader,
-				Log:     log,
-				Config:  conf,
-			},
-			Events:  &events.Service{Writer: writer, Claimer: executionClaimer},
-			Nodes:   nodes,
-			Plugins: conf.Plugins,
+			Tasks:            tasks,
+			Events:           &events.Service{Writer: writer, Claimer: executionClaimer},
+			Nodes:            nodes,
+			Plugins:          conf.Plugins,
 		},
-		Scheduler: sched,
+		Scheduler:      sched,
+		cancelLifetime: cancelLifetime,
+		writers:        writers,
+		tasks:          tasks,
 	}
 
 	if conf.Plugins != nil {
 		if conf.Plugins.Path == "" {
 			return nil, fmt.Errorf("Plugin config is set but required plugin field 'Path' is not found")
 		}
-		serverConf.Server.Tasks.(*server.TaskService).PluginManager = &pluginmanager.Manager{}
-		if conf.Plugins == nil {
-			return nil, fmt.Errorf("Plugin config is set but no plugins are defined")
-		}
-		if conf.Plugins.Path == "" {
-			return nil, fmt.Errorf("Plugin config is set but required plugin field 'Path' is not found")
-		}
+		tasks.PluginManager = &pluginmanager.Manager{}
 		log.Info("getting plugin client", "path", conf.Plugins.Path)
-		plugin, err := serverConf.Server.Tasks.(*server.TaskService).PluginManager.Client(conf.Plugins.Path)
+		plugin, err := tasks.PluginManager.Client(conf.Plugins.Path)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get plugin client: %w", err)
 		}
-		serverConf.Server.Tasks.(*server.TaskService).Plugin = plugin
+		tasks.Plugin = plugin
 	}
 
 	return serverConf, nil
@@ -340,6 +360,8 @@ func NewServer(ctx context.Context, conf *config.Config, log *logger.Logger) (*S
 // This opens a database, and starts an API server, scheduler and task logger.
 // This blocks indefinitely.
 func (s *Server) Run(ctx context.Context) error {
+	defer s.Close()
+
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -366,6 +388,19 @@ func (s *Server) Run(ctx context.Context) error {
 		}
 	}
 	return firstErr
+}
+
+// Close releases the resources acquired while constructing the server.
+func (s *Server) Close() {
+	s.closeOnce.Do(func() {
+		if s.cancelLifetime != nil {
+			s.cancelLifetime()
+		}
+		if s.tasks != nil {
+			s.tasks.Close()
+		}
+		s.writers.Close()
+	})
 }
 
 func dberr(err error) error {

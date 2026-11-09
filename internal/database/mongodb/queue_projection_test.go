@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/calypr/funnel/api/tes"
+	"github.com/calypr/funnel/internal/database/mongodb/mongotest"
 	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/tests/mongotest"
 )
 
 func TestReadQueueProjectsSchedulingFields(t *testing.T) {

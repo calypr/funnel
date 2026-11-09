@@ -6,8 +6,8 @@ import (
 
 	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/compute/scheduler"
-	"github.com/calypr/funnel/internal/server"
-	"github.com/calypr/funnel/internal/taskmodel"
+	"github.com/calypr/funnel/internal/identity"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
@@ -169,15 +169,15 @@ func (db *MongoDB) transitionReservedTask(ctx context.Context, id string, target
 		var task taskRecord
 		err := db.tasks().FindOne(ctx, bson.M{"id": id}).Decode(&task)
 		if err == mongo.ErrNoDocuments {
-			return nil, taskmodel.ErrNotFound
+			return nil, taskpolicy.ErrNotFound
 		}
 		if err != nil {
 			return nil, err
 		}
-		if !server.GetUser(ctx).IsAccessible(task.Owner) {
-			return nil, taskmodel.ErrNotPermitted
+		if !identity.GetUser(ctx).IsAccessible(task.Owner) {
+			return nil, taskpolicy.ErrNotPermitted
 		}
-		if err := taskmodel.ValidateTransition(task.Task.State, target); err != nil {
+		if err := taskpolicy.ValidateTransition(task.Task.State, target); err != nil {
 			return nil, err
 		}
 		if task.ClaimOwner != "" && tes.TerminalState(task.Task.State) && !tes.TerminalState(target) {

@@ -7,8 +7,8 @@ import (
 
 	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/server"
-	"github.com/calypr/funnel/internal/taskmodel"
+	"github.com/calypr/funnel/internal/identity"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -69,13 +69,13 @@ func (db *Postgres) ClaimExecution(ctx context.Context, taskID string, owner *ev
 	err = tx.QueryRow(ctx, `SELECT state,COALESCE(owner,''),version,execution_claimed FROM tasks WHERE id=$1 FOR UPDATE`, taskID).
 		Scan(&state, &username, &version, &alreadyClaimed)
 	if err == pgx.ErrNoRows {
-		return false, taskmodel.ErrNotFound
+		return false, taskpolicy.ErrNotFound
 	}
 	if err != nil {
 		return false, err
 	}
-	if !server.GetUser(ctx).IsAccessible(username) {
-		return false, taskmodel.ErrNotPermitted
+	if !identity.GetUser(ctx).IsAccessible(username) {
+		return false, taskpolicy.ErrNotPermitted
 	}
 	if alreadyClaimed || (state != tes.State_QUEUED.String() && state != tes.State_INITIALIZING.String()) {
 		return false, nil

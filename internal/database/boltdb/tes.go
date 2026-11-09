@@ -8,8 +8,8 @@ import (
 	"context"
 
 	"github.com/calypr/funnel/api/tes"
-	"github.com/calypr/funnel/internal/server"
-	"github.com/calypr/funnel/internal/taskmodel"
+	"github.com/calypr/funnel/internal/identity"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	bolt "go.etcd.io/bbolt"
 	"google.golang.org/protobuf/proto"
 )
@@ -28,7 +28,7 @@ func getTaskState(tx *bolt.Tx, id string) tes.State {
 func loadTask(tx *bolt.Tx, id string, task *tes.Task, ctx context.Context) error {
 	b := tx.Bucket(TaskBucket).Get([]byte(id))
 	if b == nil {
-		return taskmodel.ErrNotFound
+		return taskpolicy.ErrNotFound
 	}
 
 	if err := checkOwner(tx, id, ctx); err != nil {
@@ -173,7 +173,7 @@ func getTaskView(tx *bolt.Tx, id string, view tes.View, ctx context.Context) (*t
 
 // ListTasks returns a list of taskIDs
 func (taskBolt *BoltDB) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*tes.ListTasksResponse, error) {
-	page := taskmodel.NewTaskPage(ctx)
+	page := taskpolicy.NewTaskPage(ctx)
 	count := 0
 	byteLimited := false
 	// If the tags filter request is non-nil we need the basic or full view
@@ -182,7 +182,7 @@ func (taskBolt *BoltDB) ListTasks(ctx context.Context, req *tes.ListTasksRequest
 		view = tes.View_BASIC.String()
 	}
 	viewMode := tes.View(tes.View_value[view])
-	pageSize := taskmodel.GetPageSize(req.GetPageSize())
+	pageSize := taskpolicy.GetPageSize(req.GetPageSize())
 
 	if err := taskBolt.db.View(func(tx *bolt.Tx) error {
 		c := tx.Bucket(TaskBucket).Cursor()
@@ -255,7 +255,7 @@ func (taskBolt *BoltDB) ListTasks(ctx context.Context, req *tes.ListTasksRequest
 
 func checkOwner(tx *bolt.Tx, taskId string, ctx context.Context) error {
 	// Skip access-check for system-related operations where ctx is undefined:
-	if ctx == nil || server.GetUser(ctx).CanSeeAllTasks() {
+	if ctx == nil || identity.GetUser(ctx).CanSeeAllTasks() {
 		return nil
 	}
 
@@ -264,8 +264,8 @@ func checkOwner(tx *bolt.Tx, taskId string, ctx context.Context) error {
 		taskOwner = string(owner)
 	}
 
-	if server.GetUser(ctx).IsAccessible(taskOwner) {
+	if identity.GetUser(ctx).IsAccessible(taskOwner) {
 		return nil
 	}
-	return taskmodel.ErrNotPermitted
+	return taskpolicy.ErrNotPermitted
 }

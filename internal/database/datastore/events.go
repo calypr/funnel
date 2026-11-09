@@ -7,8 +7,8 @@ import (
 	"cloud.google.com/go/datastore"
 	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/server"
-	"github.com/calypr/funnel/internal/taskmodel"
+	"github.com/calypr/funnel/internal/identity"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 )
 
 // WriteEvent writes a task event to the database.
@@ -48,11 +48,11 @@ func (d *Datastore) taskUpdateInTransaction(ctx context.Context, event *events.E
 		taskKey := taskKey(event.Id)
 
 		if err := tx.Get(taskKey, task); err == datastore.ErrNoSuchEntity {
-			return taskmodel.ErrNotFound
+			return taskpolicy.ErrNotFound
 		} else if err != nil {
 			return err
-		} else if !server.GetUser(ctx).IsAccessible(task.Owner) {
-			return taskmodel.ErrNotPermitted
+		} else if !identity.GetUser(ctx).IsAccessible(task.Owner) {
+			return taskpolicy.ErrNotPermitted
 		}
 
 		if err := update(ctx, task, event); err != nil {
@@ -70,7 +70,7 @@ func (d *Datastore) taskUpdateInTransaction(ctx context.Context, event *events.E
 func updateState(ctx context.Context, task *task, e *events.Event) error {
 	from := tes.State(task.State)
 	to := e.GetState()
-	if err := taskmodel.ValidateTransition(from, to); err != nil {
+	if err := taskpolicy.ValidateTransition(from, to); err != nil {
 		return err
 	}
 	task.State = int32(to.Number())

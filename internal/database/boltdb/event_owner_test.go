@@ -8,11 +8,13 @@ import (
 	"testing"
 	"time"
 
+	serverauth "github.com/calypr/funnel/internal/server/auth"
+
 	"github.com/calypr/funnel/api/config"
 	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/server"
-	"github.com/calypr/funnel/internal/taskmodel"
+	"github.com/calypr/funnel/internal/identity"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
@@ -27,7 +29,7 @@ func TestWriteEventRejectsCrossOwnerUpdates(t *testing.T) {
 	if err := db.Init(); err != nil {
 		t.Fatal(err)
 	}
-	auth := server.NewAuthentication([]*config.BasicCredential{{User: "alice", Password: "fixture"}, {User: "bob", Password: "fixture"}}, nil, server.AccessOwner)
+	auth := serverauth.NewAuthentication([]*config.BasicCredential{{User: "alice", Password: "fixture"}, {User: "bob", Password: "fixture"}}, nil, identity.AccessOwner, nil)
 	userContext := func(name string) context.Context {
 		incoming := metadata.NewIncomingContext(t.Context(), metadata.Pairs("authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(name+":fixture"))))
 		result, err := auth.Interceptor(incoming, nil, &grpc.UnaryServerInfo{}, func(ctx context.Context, _ interface{}) (interface{}, error) { return ctx, nil })
@@ -54,7 +56,7 @@ func TestWriteEventRejectsCrossOwnerUpdates(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := db.WriteEvent(bob, event); !errors.Is(err, taskmodel.ErrNotPermitted) {
+			if err := db.WriteEvent(bob, event); !errors.Is(err, taskpolicy.ErrNotPermitted) {
 				t.Errorf("other owner write error = %v", err)
 			}
 			after, err := db.GetTask(alice, &tes.GetTaskRequest{Id: id, View: "FULL"})

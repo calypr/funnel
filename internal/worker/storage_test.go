@@ -11,6 +11,7 @@ import (
 	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/storage"
+	"github.com/calypr/funnel/internal/worker/workspace"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/protobuf/proto"
 )
@@ -271,7 +272,7 @@ func TestResolveWildcardsJoinsWithStorage(t *testing.T) {
 	ftpDir := filepath.Join(workDir, "outputs", "ftp")
 	httpDir := filepath.Join(workDir, "outputs", "http")
 	localOutDir := filepath.Join(workDir, "outputs", "local")
-	mapper := &FileMapper{
+	mapper := &workspace.FileMapper{
 		WorkDir: workDir,
 		Outputs: []*tes.Output{
 			{Url: "ftp://user:pass@example.com/upload/glob?token=abc", Path: ftpDir + "/*.txt", PathPrefix: "/outputs/ftp"},
@@ -346,7 +347,7 @@ func TestResolveWildcardsReportsAndSkipsUnmatchedPatterns(t *testing.T) {
 			}
 			tc.prepare(t, workDir)
 
-			mapper := &FileMapper{
+			mapper := &workspace.FileMapper{
 				WorkDir: workDir,
 				Outputs: []*tes.Output{
 					{Url: "s3://bucket/matched", Path: filepath.Join(workDir, "matched", "*.txt"), PathPrefix: "/matched"},
@@ -372,7 +373,7 @@ func TestResolveWildcardsReportsAndSkipsUnmatchedPatterns(t *testing.T) {
 
 func TestResolveWildcardsMalformedPatternAfterUnmatchedLeavesOutputsUnchanged(t *testing.T) {
 	workDir := t.TempDir()
-	mapper := &FileMapper{
+	mapper := &workspace.FileMapper{
 		WorkDir: workDir,
 		Outputs: []*tes.Output{
 			{Url: "s3://bucket/missing", Path: filepath.Join(workDir, "missing-*.txt")},
@@ -400,7 +401,7 @@ func TestResolveWildcardsReportsJoinErrorAfterUnmatchedWithoutChangingOutputs(t 
 	if err := os.WriteFile(filepath.Join(workDir, "out.txt"), nil, 0644); err != nil {
 		t.Fatal(err)
 	}
-	mapper := &FileMapper{
+	mapper := &workspace.FileMapper{
 		WorkDir: workDir,
 		Outputs: []*tes.Output{
 			{Url: "gs://bucket/missing", Path: filepath.Join(workDir, "missing-*.txt")},

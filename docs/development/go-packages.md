@@ -60,15 +60,34 @@ implementation. Makefile and release builds populate it through linker flags.
 
 - `internal/cli`: commands and application assembly; root `main.go` remains the
   executable entry point, including `go install github.com/calypr/funnel`.
-- `internal/server`: HTTP, authentication, and task service implementation.
+- `internal/server`: listener lifecycle, service registration, route assembly, and
+  graceful shutdown. It serves generated RPC interfaces rather than concrete task
+  service implementations.
+- `internal/server/auth`: Basic/OIDC authentication, JWKS, audit, and event-write
+  authorization.
+- `internal/server/middleware`: RPC recovery/debug logging and HTTP message/body
+  limits and plugin header forwarding.
+- `internal/server/gateway`: JSON marshaling, task-view presentation, content
+  negotiation, and HTTP error responses.
+- `internal/server/taskservice`: TES task operations, plugin actions, and compute/
+  event coordination. Its Close waits for submissions and closes owned plugin
+  processes once.
+- `internal/identity`: request identity and task-access policy shared by server
+  authentication and database implementations.
 - `internal/compute`, `internal/database`, `internal/worker`, `internal/storage`,
   `internal/events`, and `internal/metrics`: application subsystems.
-- `internal/taskmodel`: task validation, initialization, state transitions,
+- `internal/compute`: shared backend contracts and validation; HPC implementations
+  live under `internal/compute/hpc`.
+- `internal/worker/workspace`: task path mapping, confinement, and mounted volumes.
+- `internal/cli/gce`: the GCE command and its metadata-to-config adapter.
+- `internal/task`: task validation, initialization, state transitions,
   projections, log mutation, and server pagination policy.
 - `internal/tesrpc`: generated gRPC and HTTP gateway service bindings.
 - `internal/pluginmanager`: application plugin loading.
 - `internal/config`: application defaults, YAML loading/writing, templates and
   examples, redaction, and response-limit resolution.
+- `internal/config/aws`: AWS SDK configuration loading shared by AWS consumers;
+  the parent config package does not import it.
 - `internal/logger`: runtime logging, logging defaults, and server interceptors.
 - `internal/storage`: storage enablement and credential/environment selection.
 - `internal/compute/kubernetes/taskresources`: Kubernetes task defaults and limits.
@@ -88,6 +107,11 @@ Application implementation imports such as `funnel/server`, `funnel/worker`,
 and TES server helpers are no longer public Go APIs. External applications should
 use the REST client; application extensions must live inside this module or use
 the plugin contracts. No forwarding packages preserve the former import paths.
+
+The shared integration harness lives in `tests/internal/testenv`. Go restricts its
+imports to the tests tree; individual package fixtures remain beside their owners.
+Directory creation uses `os.MkdirAll` directly, with `filepath.Dir` when creating
+parents for a file. Existing regular files cannot satisfy directory requests.
 
 ## Generation and verification
 

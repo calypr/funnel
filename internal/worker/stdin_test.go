@@ -8,6 +8,7 @@ import (
 
 	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/internal/worker/workspace"
 )
 
 func TestWorkerStdinPreservesMappedInput(t *testing.T) {
@@ -17,7 +18,7 @@ func TestWorkerStdinPreservesMappedInput(t *testing.T) {
 			name = "scratch"
 		}
 		t.Run(name, func(t *testing.T) {
-			mapper := NewFileMapper(t.TempDir())
+			mapper := workspace.NewFileMapper(t.TempDir())
 			base := mapper.WorkDir
 			if scratch {
 				mapper.ScratchDir = t.TempDir()
@@ -67,7 +68,7 @@ func TestWorkerStdinRejectsMissingFileAndEscapingSymlink(t *testing.T) {
 			name = "symlink"
 		}
 		t.Run(name, func(t *testing.T) {
-			mapper := NewFileMapper(t.TempDir())
+			mapper := workspace.NewFileMapper(t.TempDir())
 			input := filepath.Join(mapper.WorkDir, "input.txt")
 			outside := filepath.Join(t.TempDir(), "outside.txt")
 			if symlink {

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/calypr/funnel/internal/taskmodel"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -19,7 +19,7 @@ func (f executionClaimerFunc) ClaimExecution(ctx context.Context, taskID string,
 
 func TestClaimExecutionMapsNotPermitted(t *testing.T) {
 	service := &Service{Claimer: executionClaimerFunc(func(context.Context, string, *ExecutionOwner) (bool, error) {
-		return false, fmt.Errorf("claim database record: %w", taskmodel.ErrNotPermitted)
+		return false, fmt.Errorf("claim database record: %w", taskpolicy.ErrNotPermitted)
 	})}
 
 	_, err := service.ClaimExecution(context.Background(), &ClaimExecutionRequest{TaskId: "private-task"})

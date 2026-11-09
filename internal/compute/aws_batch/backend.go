@@ -15,11 +15,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/batch/types"
 	"github.com/calypr/funnel/api/config"
 	"github.com/calypr/funnel/api/tes"
-	"github.com/calypr/funnel/internal/awsclient"
 	"github.com/calypr/funnel/internal/compute"
+	awsconfig "github.com/calypr/funnel/internal/config/aws"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
-	"github.com/calypr/funnel/internal/taskmodel"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -27,7 +27,7 @@ import (
 const defaultBatchRetryMaxAttempts = 4
 
 // NewBackend returns a new local Backend instance.
-func NewBackend(ctx context.Context, conf *config.AWSBatch, reader taskmodel.ReadOnlyServer, writer events.Writer, log *logger.Logger) (*Backend, error) {
+func NewBackend(ctx context.Context, conf *config.AWSBatch, reader taskpolicy.ReadOnlyServer, writer events.Writer, log *logger.Logger) (*Backend, error) {
 	if conf == nil {
 		return nil, fmt.Errorf("AWSBatch configuration is required")
 	}
@@ -39,7 +39,7 @@ func NewBackend(ctx context.Context, conf *config.AWSBatch, reader taskmodel.Rea
 		return nil, fmt.Errorf("AWSBatch.AWSConfig is required")
 	}
 
-	sess, err := awsclient.NewAWSConfig(ctx, conf.AWSConfig)
+	sess, err := awsconfig.Load(ctx, conf.AWSConfig)
 	if err != nil {
 		return nil, fmt.Errorf("error occurred creating batch client: %v", err)
 	}
@@ -75,9 +75,9 @@ type Backend struct {
 	client   client
 	conf     *config.AWSBatch
 	event    events.Writer
-	database taskmodel.ReadOnlyServer
+	database taskpolicy.ReadOnlyServer
 	log      *logger.Logger
-	events.Backend
+	compute.Backend
 }
 
 // WriteEvent writes an event to the compute backend.
@@ -100,10 +100,10 @@ func (b *Backend) BackendParameterKeys() []string {
 }
 
 func (b *Backend) CheckBackendParameterSupport(task *tes.Task) error {
-	if _, err := taskmodel.FilterBackendParameters(task.GetResources(), b.BackendParameterKeys()); err != nil {
+	if _, err := taskpolicy.FilterBackendParameters(task.GetResources(), b.BackendParameterKeys()); err != nil {
 		return status.Error(codes.InvalidArgument, err.Error())
 	}
-	if _, err := taskmodel.GPUCount(task.GetResources()); err != nil {
+	if _, err := taskpolicy.GPUCount(task.GetResources()); err != nil {
 		return status.Error(codes.InvalidArgument, err.Error())
 	}
 	for _, key := range []string{"job_queue", "job_definition"} {
@@ -130,7 +130,7 @@ func (b *Backend) submit(ctx context.Context, task *tes.Task) error {
 	if err := b.CheckBackendParameterSupport(task); err != nil {
 		return err
 	}
-	gpuCount, err := taskmodel.GPUCount(task.Resources)
+	gpuCount, err := taskpolicy.GPUCount(task.Resources)
 	if err != nil {
 		return status.Error(codes.InvalidArgument, err.Error())
 	}

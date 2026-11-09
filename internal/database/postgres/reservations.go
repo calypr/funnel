@@ -7,8 +7,8 @@ import (
 
 	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/compute/scheduler"
-	"github.com/calypr/funnel/internal/server"
-	"github.com/calypr/funnel/internal/taskmodel"
+	"github.com/calypr/funnel/internal/identity"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -232,20 +232,20 @@ func (db *Postgres) transitionReservedTask(ctx context.Context, id string, targe
 	var held []byte
 	err = tx.QueryRow(ctx, `SELECT state,COALESCE(owner,''),version,COALESCE(claim_owner,''),claim_active,claim_resources FROM tasks WHERE id=$1 FOR UPDATE`, id).Scan(&state, &owner, &version, &claim, &active, &held)
 	if err == pgx.ErrNoRows {
-		return taskmodel.ErrNotFound
+		return taskpolicy.ErrNotFound
 	}
 	if err != nil {
 		return err
 	}
-	if !server.GetUser(ctx).IsAccessible(owner) {
-		return taskmodel.ErrNotPermitted
+	if !identity.GetUser(ctx).IsAccessible(owner) {
+		return taskpolicy.ErrNotPermitted
 	}
 	value, ok := tes.State_value[state]
 	if !ok {
 		return fmt.Errorf("task %q has invalid state %q", id, state)
 	}
 	current := tes.State(value)
-	if err := taskmodel.ValidateTransition(current, target); err != nil {
+	if err := taskpolicy.ValidateTransition(current, target); err != nil {
 		return err
 	}
 	if claim != "" && tes.TerminalState(current) && !tes.TerminalState(target) {

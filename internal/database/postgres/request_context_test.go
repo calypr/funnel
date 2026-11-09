@@ -6,17 +6,17 @@ import (
 	"time"
 
 	appconfig "github.com/calypr/funnel/internal/config"
-	"github.com/calypr/funnel/internal/server"
+	"github.com/calypr/funnel/internal/identity"
 )
 
 func TestRequestContextRetainsUser(t *testing.T) {
 	db := &Postgres{conf: appconfig.DefaultConfig().Postgres}
-	user := &server.UserInfo{Username: "alice"}
-	parent, cancel := context.WithCancel(context.WithValue(t.Context(), server.UserInfoKey, user))
+	user := &identity.UserInfo{Username: "alice"}
+	parent, cancel := context.WithCancel(identity.WithUser(t.Context(), user))
 	defer cancel()
 	ctx, done := db.requestContext(parent)
 	defer done()
-	if server.GetUser(ctx) != user {
+	if identity.GetUser(ctx) != user {
 		t.Error("request context lost authenticated user")
 	}
 	if deadline, ok := ctx.Deadline(); !ok || time.Until(deadline) > 31*time.Second {

@@ -12,7 +12,6 @@ import (
 	"github.com/calypr/funnel/internal/cli/node"
 	"github.com/calypr/funnel/internal/cli/server"
 	appconfig "github.com/calypr/funnel/internal/config"
-	gce "github.com/calypr/funnel/internal/gceconfig"
 	"github.com/calypr/funnel/internal/logger"
 )
 
@@ -36,13 +35,13 @@ var runCmd = &cobra.Command{
 
 		// Check that this is a GCE VM environment.
 		// If not, fail.
-		meta, merr := gce.LoadMetadata()
+		meta, merr := LoadMetadata()
 		if merr != nil {
 			return fmt.Errorf("can't find GCE metadata. This command requires a GCE environment")
 		}
 
 		var err error
-		conf, err = gce.WithMetadataConfig(conf, meta)
+		conf, err = WithMetadataConfig(conf, meta)
 		if err != nil {
 			return err
 		}

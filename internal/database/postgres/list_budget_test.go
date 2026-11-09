@@ -6,7 +6,7 @@ import (
 
 	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/taskmodel"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -22,7 +22,7 @@ func TestPostgresListByteBudget(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	ctx = taskmodel.WithTaskPageBytes(ctx, 350)
+	ctx = taskpolicy.WithTaskPageBytes(ctx, 350)
 	token := ""
 	for _, want := range []string{"c", "b", "a"} {
 		page, err := db.ListTasks(ctx, &tes.ListTasksRequest{View: "BASIC", PageSize: 3, PageToken: token})
@@ -37,7 +37,7 @@ func TestPostgresListByteBudget(t *testing.T) {
 	if token != "" {
 		t.Fatalf("unexpected final token %q", token)
 	}
-	_, err := db.ListTasks(taskmodel.WithTaskPageBytes(ctx, 20), &tes.ListTasksRequest{View: "BASIC"})
+	_, err := db.ListTasks(taskpolicy.WithTaskPageBytes(ctx, 20), &tes.ListTasksRequest{View: "BASIC"})
 	if status.Code(err) != codes.ResourceExhausted {
 		t.Fatalf("got %v", err)
 	}

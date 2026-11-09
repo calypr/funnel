@@ -10,7 +10,7 @@ import (
 
 	"github.com/calypr/funnel/api/config"
 	appconfig "github.com/calypr/funnel/internal/config"
-	"github.com/calypr/funnel/tests/configtest"
+	"github.com/calypr/funnel/internal/config/configtest"
 )
 
 func TestHTTPStorageTimeoutDefaultsAndOverrides(t *testing.T) {

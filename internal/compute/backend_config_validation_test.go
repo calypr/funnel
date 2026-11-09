@@ -9,11 +9,11 @@ import (
 
 	"github.com/calypr/funnel/internal/compute/aws_batch"
 	"github.com/calypr/funnel/internal/compute/gcp_batch"
-	"github.com/calypr/funnel/internal/compute/gridengine"
-	"github.com/calypr/funnel/internal/compute/htcondor"
+	"github.com/calypr/funnel/internal/compute/hpc/gridengine"
+	"github.com/calypr/funnel/internal/compute/hpc/htcondor"
+	"github.com/calypr/funnel/internal/compute/hpc/pbs"
+	"github.com/calypr/funnel/internal/compute/hpc/slurm"
 	"github.com/calypr/funnel/internal/compute/kubernetes"
-	"github.com/calypr/funnel/internal/compute/pbs"
-	"github.com/calypr/funnel/internal/compute/slurm"
 	appconfig "github.com/calypr/funnel/internal/config"
 )
 

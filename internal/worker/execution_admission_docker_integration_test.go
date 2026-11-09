@@ -18,7 +18,7 @@ import (
 	"github.com/calypr/funnel/internal/database/boltdb"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/storage"
-	"github.com/calypr/funnel/internal/taskmodel"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	"github.com/calypr/funnel/internal/worker"
 )
 
@@ -81,7 +81,7 @@ func TestExecutionAdmissionDockerIntegration(t *testing.T) {
 }
 
 type admissionSnapshotReader struct {
-	db        taskmodel.ReadOnlyServer
+	db        taskpolicy.ReadOnlyServer
 	task      *tes.Task
 	snapshots *sync.WaitGroup
 }

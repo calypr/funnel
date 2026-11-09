@@ -56,7 +56,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      # Required to access the tests config files (e.g. tests/postgres.config.yml)
+      # Required to access the tests config files (e.g. tests/testdata/config/postgres.config.yml)
       # Perhaps uploading it as an artifact would be more efficient?
       - name: Check out code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -79,7 +79,7 @@ jobs:
               sleep 1
               [ $i -eq 30 ] && { echo "Postgres did not become ready in time"; exit 1; }
             done
-            cat `pwd`/tests/postgres.config.yml >> config.yml
+            cat `pwd`/tests/testdata/config/postgres.config.yml >> config.yml
           fi
 
           if [ ${{ matrix.storage }} = "s3" ]; then
@@ -89,7 +89,7 @@ jobs:
                        -v /tmp/data:/data \
                        -v /tmp/config:/root/.minio \
                        minio/minio server /data
-            cat `pwd`/tests/minio-s3.config.yml >> config.yml
+            cat `pwd`/tests/testdata/config/minio-s3.config.yml >> config.yml
           fi
 
           if [ ${{ matrix.compute }} = "kubernetes" ]; then

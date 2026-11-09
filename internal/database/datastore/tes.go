@@ -5,8 +5,8 @@ import (
 
 	"cloud.google.com/go/datastore"
 	"github.com/calypr/funnel/api/tes"
-	"github.com/calypr/funnel/internal/server"
-	"github.com/calypr/funnel/internal/taskmodel"
+	"github.com/calypr/funnel/internal/identity"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	"google.golang.org/api/iterator"
 )
 
@@ -17,20 +17,20 @@ func (d *Datastore) GetTask(ctx context.Context, req *tes.GetTaskRequest) (*tes.
 
 	err := d.client.Get(ctx, key, entity)
 	if err == datastore.ErrNoSuchEntity {
-		return nil, taskmodel.ErrNotFound
+		return nil, taskpolicy.ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	if !server.GetUser(ctx).IsAccessible(entity.Owner) {
-		return nil, taskmodel.ErrNotPermitted
+	if !identity.GetUser(ctx).IsAccessible(entity.Owner) {
+		return nil, taskpolicy.ErrNotPermitted
 	}
 
 	task := entity.unmarshal()
 
 	switch req.View {
 	case tes.View_MINIMAL.String():
-		task = taskmodel.GetMinimalView(task)
+		task = taskpolicy.GetMinimalView(task)
 	case tes.View_FULL.String():
 		// Determine the keys needed to load the various parts of the full view.
 		parts := viewPartKeys(task)
@@ -76,7 +76,7 @@ func (d *Datastore) getFullView(ctx context.Context, keys []*datastore.Key, task
 func (d *Datastore) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*tes.ListTasksResponse, error) {
 
 	page := req.PageToken
-	size := taskmodel.GetPageSize(req.GetPageSize())
+	size := taskpolicy.GetPageSize(req.GetPageSize())
 	q := datastore.NewQuery("Task").Limit(size).Order("-CreationTime")
 
 	if page != "" {
@@ -87,7 +87,7 @@ func (d *Datastore) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*
 		q = q.Start(c)
 	}
 
-	if userInfo := server.GetUser(ctx); !userInfo.CanSeeAllTasks() {
+	if userInfo := identity.GetUser(ctx); !userInfo.CanSeeAllTasks() {
 		q = q.FilterField("Owner", "=", userInfo.Username)
 	}
 
@@ -99,7 +99,7 @@ func (d *Datastore) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*
 		q = q.FilterField("TagStrings", "=", encodeKV(k, v))
 	}
 
-	pageResult := taskmodel.NewTaskPage(ctx)
+	pageResult := taskpolicy.NewTaskPage(ctx)
 	hasMore := false
 	accepted := 0
 
@@ -119,7 +119,7 @@ func (d *Datastore) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*
 		// output logs would evade the limit and fail later during gRPC encoding.
 		switch req.View {
 		case tes.View_MINIMAL.String():
-			task = taskmodel.GetMinimalView(task)
+			task = taskpolicy.GetMinimalView(task)
 		case tes.View_FULL.String():
 			if err := d.getFullView(ctx, viewPartKeys(task), map[string]*tes.Task{task.Id: task}); err != nil {
 				return nil, err

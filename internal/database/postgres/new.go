@@ -9,7 +9,7 @@ import (
 
 	"github.com/calypr/funnel/api/config"
 	"github.com/calypr/funnel/internal/compute/scheduler"
-	"github.com/calypr/funnel/internal/retry"
+	"github.com/cenkalti/backoff/v7"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -41,20 +41,21 @@ func NewPostgres(conf *config.Postgres) (*Postgres, error) {
 func (db *Postgres) Init() error {
 	ctx := context.Background()
 
-	retrier := retry.NewRetrier()
-	retrier.MaxElapsedTime = time.Second * 300
-
-	err := retrier.Retry(ctx, func() error {
+	_, err := backoff.Retry(ctx, func() (struct{}, error) {
 		// Check/create resources (Roles/DBs)
 		if err := ensureDatabaseExists(ctx, db.conf); err != nil {
-			return err
+			return struct{}{}, err
 		}
 
 		// Create Tables and Indices
-		return db.createTables(ctx)
-	})
+		return struct{}{}, db.createTables(ctx)
+	},
+		backoff.WithBackOff(backoff.NewExponentialBackOff()),
+		backoff.WithMaxElapsedTime(300*time.Second),
+		backoff.WithMaxTries(10),
+	)
 	if err != nil {
-		return err
+		return backoff.AsRetryError(err).LastErr
 	}
 	if err := db.migrateTaskClaims(ctx); err != nil {
 		return err

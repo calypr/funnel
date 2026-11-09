@@ -10,8 +10,8 @@ import (
 	"encoding/json"
 
 	"github.com/calypr/funnel/api/tes"
-	"github.com/calypr/funnel/internal/server"
-	"github.com/calypr/funnel/internal/taskmodel"
+	"github.com/calypr/funnel/internal/identity"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	"github.com/jackc/pgx/v5"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -46,9 +46,9 @@ type TaskCore struct {
 func taskView(view string) (func(*tes.Task) *tes.Task, error) {
 	switch view {
 	case "", tes.View_MINIMAL.String():
-		return taskmodel.GetMinimalView, nil
+		return taskpolicy.GetMinimalView, nil
 	case tes.View_BASIC.String():
-		return taskmodel.GetBasicView, nil
+		return taskpolicy.GetBasicView, nil
 	case tes.View_FULL.String():
 		return func(task *tes.Task) *tes.Task { return task }, nil
 	default:
@@ -82,14 +82,14 @@ func (db *Postgres) GetTask(ctx context.Context, req *tes.GetTaskRequest) (*tes.
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, taskmodel.ErrNotFound
+			return nil, taskpolicy.ErrNotFound
 		}
 		return nil, err
 	}
 
 	// Authorization Check
-	if !server.GetUser(ctx).IsAccessible(core.Owner) {
-		return nil, taskmodel.ErrNotPermitted
+	if !identity.GetUser(ctx).IsAccessible(core.Owner) {
+		return nil, taskpolicy.ErrNotPermitted
 	}
 
 	var task tes.Task
@@ -116,7 +116,7 @@ func (db *Postgres) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*
 	dbctx, cancel := db.requestContext(ctx)
 	defer cancel()
 
-	pageSize := taskmodel.GetPageSize(req.GetPageSize())
+	pageSize := taskpolicy.GetPageSize(req.GetPageSize())
 
 	var args []interface{}
 	var whereClauses []string
@@ -139,7 +139,7 @@ func (db *Postgres) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*
 	}
 
 	// Authorization filter
-	if userInfo := server.GetUser(ctx); !userInfo.CanSeeAllTasks() {
+	if userInfo := identity.GetUser(ctx); !userInfo.CanSeeAllTasks() {
 		whereClauses = append(whereClauses, fmt.Sprintf("owner = $%d", paramCount))
 		args = append(args, userInfo.Username)
 		paramCount++
@@ -161,7 +161,7 @@ func (db *Postgres) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*
 	}
 
 	if req.PageToken != "" {
-		position, legacy, err := taskmodel.DecodeTaskCursor(req.PageToken)
+		position, legacy, err := taskpolicy.DecodeTaskCursor(req.PageToken)
 		if err != nil {
 			return nil, err
 		}
@@ -201,7 +201,7 @@ func (db *Postgres) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*
 	}
 	defer rows.Close()
 
-	page := taskmodel.NewTaskPage(ctx)
+	page := taskpolicy.NewTaskPage(ctx)
 	taskCount := 0
 	hasMore := false
 	for rows.Next() {
@@ -221,7 +221,7 @@ func (db *Postgres) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*
 		trimUnusedExecutorLogs(&task)
 
 		projected := project(&task)
-		accepted, err := page.Add(projected, taskmodel.EncodeTaskCursor(created.UTC().Format(time.RFC3339Nano), projected.Id))
+		accepted, err := page.Add(projected, taskpolicy.EncodeTaskCursor(created.UTC().Format(time.RFC3339Nano), projected.Id))
 		if err != nil {
 			return nil, err
 		}

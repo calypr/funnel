@@ -4,6 +4,8 @@ package noop
 import (
 	"context"
 
+	"github.com/calypr/funnel/internal/compute"
+
 	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/events"
 )
@@ -16,7 +18,7 @@ func NewBackend() *Backend {
 // Backend is a scheduler backend that doesn't do anything
 // which is useful for testing.
 type Backend struct {
-	events.Computer
+	compute.Computer
 }
 
 func (b Backend) CheckBackendParameterSupport(task *tes.Task) error {

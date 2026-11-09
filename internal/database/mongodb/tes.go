@@ -7,8 +7,8 @@ import (
 	"regexp"
 
 	"github.com/calypr/funnel/api/tes"
-	"github.com/calypr/funnel/internal/server"
-	"github.com/calypr/funnel/internal/taskmodel"
+	"github.com/calypr/funnel/internal/identity"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
@@ -47,7 +47,7 @@ func (db *MongoDB) GetTask(ctx context.Context, req *tes.GetTaskRequest) (*tes.T
 		// Only a missing document is a 404; transport and server errors
 		// must surface as failures, not as missing tasks.
 		if errors.Is(result.Err(), mongo.ErrNoDocuments) {
-			return nil, taskmodel.ErrNotFound
+			return nil, taskpolicy.ErrNotFound
 		}
 		return nil, fmt.Errorf("mongo get task: %w", result.Err())
 	}
@@ -58,8 +58,8 @@ func (db *MongoDB) GetTask(ctx context.Context, req *tes.GetTaskRequest) (*tes.T
 		// authorization check below.
 		return nil, fmt.Errorf("mongo get task owner: %w", err)
 	}
-	if !server.GetUser(ctx).IsAccessible(owner.Owner) {
-		return nil, taskmodel.ErrNotPermitted
+	if !identity.GetUser(ctx).IsAccessible(owner.Owner) {
+		return nil, taskpolicy.ErrNotPermitted
 	}
 
 	var task tes.Task
@@ -71,12 +71,12 @@ func (db *MongoDB) GetTask(ctx context.Context, req *tes.GetTaskRequest) (*tes.T
 
 // ListTasks returns a list of taskIDs
 func (db *MongoDB) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*tes.ListTasksResponse, error) {
-	pageSize := taskmodel.GetPageSize(req.GetPageSize())
+	pageSize := taskpolicy.GetPageSize(req.GetPageSize())
 
 	var query = bson.M{}
 	var err error
 	if req.PageToken != "" {
-		position, legacy, decodeErr := taskmodel.DecodeTaskCursor(req.PageToken)
+		position, legacy, decodeErr := taskpolicy.DecodeTaskCursor(req.PageToken)
 		if decodeErr != nil {
 			return nil, decodeErr
 		}
@@ -107,7 +107,7 @@ func (db *MongoDB) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*t
 		query["name"] = bson.M{"$regex": fmt.Sprintf("^%s", regexp.QuoteMeta(req.NamePrefix))}
 	}
 
-	if userInfo := server.GetUser(ctx); !userInfo.CanSeeAllTasks() {
+	if userInfo := identity.GetUser(ctx); !userInfo.CanSeeAllTasks() {
 		query["owner"] = bson.M{"$eq": userInfo.Username}
 	}
 
@@ -141,7 +141,7 @@ func (db *MongoDB) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*t
 	mctx, cancel = db.wrap(ctx)
 	defer cancel()
 
-	page := taskmodel.NewTaskPage(ctx)
+	page := taskpolicy.NewTaskPage(ctx)
 	taskCount := 0
 	hasMore := false
 	for cursor.Next(mctx) {
@@ -149,10 +149,10 @@ func (db *MongoDB) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*t
 		if err := cursor.Decode(&task); err != nil {
 			return nil, fmt.Errorf("mongo decode listed task: %w", err)
 		}
-		position := taskmodel.EncodeTaskCursor(task.CreationTime, task.Id)
+		position := taskpolicy.EncodeTaskCursor(task.CreationTime, task.Id)
 		projected := &task
 		if req.View == tes.View_MINIMAL.String() {
-			projected = taskmodel.GetMinimalView(&task)
+			projected = taskpolicy.GetMinimalView(&task)
 		}
 		accepted, err := page.Add(projected, position)
 		if err != nil {

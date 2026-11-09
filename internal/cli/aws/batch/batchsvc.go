@@ -13,7 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/batch/types"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
-	"github.com/calypr/funnel/internal/awsclient"
+	awsconfig "github.com/calypr/funnel/internal/config/aws"
 )
 
 const defaultBatchRetryMaxAttempts = 4
@@ -25,7 +25,7 @@ func (e errResourceExists) Error() string {
 }
 
 func newBatchSvc(conf *Config) (*batchsvc, error) {
-	sess, err := awsclient.NewAWSConfig(context.Background(), conf.AWSConfig)
+	sess, err := awsconfig.Load(context.Background(), conf.AWSConfig)
 	if err != nil {
 		return nil, fmt.Errorf("error occurred creating aws session: %v", err)
 	}

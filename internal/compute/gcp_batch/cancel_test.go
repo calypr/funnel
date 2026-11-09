@@ -9,7 +9,7 @@ import (
 	"cloud.google.com/go/batch/apiv1/batchpb"
 	"github.com/calypr/funnel/api/config"
 	"github.com/calypr/funnel/api/tes"
-	"github.com/calypr/funnel/internal/taskmodel"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	"github.com/googleapis/gax-go/v2"
 )
 
@@ -23,7 +23,7 @@ func (c *cancelingClient) CancelJob(ctx context.Context, req *batchpb.CancelJobR
 }
 
 type cancelTaskReader struct {
-	taskmodel.ReadOnlyServer
+	taskpolicy.ReadOnlyServer
 	task *tes.Task
 	err  error
 }

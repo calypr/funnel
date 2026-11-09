@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/calypr/funnel/internal/server/taskservice"
+
 	"github.com/calypr/funnel/internal/logger"
 )
 
@@ -104,7 +106,7 @@ func newTestServer(rpcAddress, httpPort string) *Server {
 	return &Server{
 		RPCAddress: rpcAddress,
 		HTTPPort:   httpPort,
-		Tasks:      &TaskService{},
+		Tasks:      &taskservice.Service{},
 		Log:        log,
 	}
 }

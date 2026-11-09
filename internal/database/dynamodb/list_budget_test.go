@@ -13,7 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	awsdb "github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/calypr/funnel/api/tes"
-	"github.com/calypr/funnel/internal/taskmodel"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 )
 
 func TestListTasksByteBudgetResumes(t *testing.T) {
@@ -35,7 +35,7 @@ func TestListTasksByteBudgetResumes(t *testing.T) {
 	})}
 	cfg := aws.Config{BaseEndpoint: aws.String("http://dynamodb.test"), Region: "us-east-1", Credentials: credentials.NewStaticCredentialsProvider("test", "secret", ""), HTTPClient: client, RetryMaxAttempts: 1}
 	db := &DynamoDB{client: awsdb.NewFromConfig(cfg), partitionKey: "hid", partitionValue: "0", taskTable: "tasks"}
-	ctx := taskmodel.WithTaskPageBytes(context.Background(), 90)
+	ctx := taskpolicy.WithTaskPageBytes(context.Background(), 90)
 	token := ""
 	for _, want := range []string{"c", "b", "a"} {
 		result, err := db.ListTasks(ctx, &tes.ListTasksRequest{View: "BASIC", PageSize: 3, PageToken: token})

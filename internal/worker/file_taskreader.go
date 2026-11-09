@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"github.com/calypr/funnel/api/tes"
-	"github.com/calypr/funnel/internal/taskmodel"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
@@ -36,7 +36,7 @@ func NewFileTaskReader(path string) (*FileTaskReader, error) {
 		return nil, fmt.Errorf("unmarshaling task from JSON: %v", err)
 	}
 
-	err = taskmodel.InitTask(task, false)
+	err = taskpolicy.InitTask(task, false)
 	if err != nil {
 		return nil, fmt.Errorf("initializing task: %v", err)
 	}

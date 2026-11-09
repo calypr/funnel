@@ -23,7 +23,7 @@ import (
 	"github.com/calypr/funnel/internal/database/postgres"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
-	"github.com/calypr/funnel/internal/taskmodel"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 )
 
 // Cmd is the root "funnel kubernetes" command.
@@ -93,7 +93,7 @@ is decoupled from the server lifecycle and multiple replicas do not race.`,
 }
 
 // openReader opens a read-only connection to the configured Funnel database.
-func openReader(ctx context.Context, conf *config.Config) (taskmodel.ReadOnlyServer, error) {
+func openReader(ctx context.Context, conf *config.Config) (taskpolicy.ReadOnlyServer, error) {
 	switch strings.ToLower(conf.Database) {
 	case "boltdb":
 		return boltdb.NewBoltDB(conf.BoltDB)

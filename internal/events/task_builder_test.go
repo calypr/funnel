@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/calypr/funnel/api/tes"
-	"github.com/calypr/funnel/internal/taskmodel"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 )
 
 func TestTaskBuilderConcurrentEvents(t *testing.T) {
@@ -27,11 +27,11 @@ func TestTaskBuilderConcurrentEvents(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	if got := len(taskmodel.GetTaskLog(builder.Task, 0).SystemLogs); got != 512 {
+	if got := len(taskpolicy.GetTaskLog(builder.Task, 0).SystemLogs); got != 512 {
 		t.Fatalf("system logs = %d, want 512", got)
 	}
 	for i := range 32 {
-		if got := taskmodel.GetExecLog(builder.Task, 0, i).Stdout; got != "complete output" {
+		if got := taskpolicy.GetExecLog(builder.Task, 0, i).Stdout; got != "complete output" {
 			t.Errorf("executor %d stdout = %q, want complete output", i, got)
 		}
 	}

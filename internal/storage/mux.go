@@ -241,7 +241,7 @@ func (mux *Mux) UnsupportedOperations(url string) UnsupportedOperations {
 func (mux *Mux) AttachLogger(log *logger.Logger) {
 	for _, b := range mux.Backends {
 		if r, ok := b.(*Retrier); ok {
-			r.Retrier.Notify = func(err error, sleep time.Duration) {
+			r.Notify = func(err error, sleep time.Duration) {
 				log.Warn("Retrying", "error", err, "sleep", sleep)
 			}
 		}

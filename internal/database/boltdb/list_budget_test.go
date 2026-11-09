@@ -8,7 +8,7 @@ import (
 	"github.com/calypr/funnel/api/config"
 	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/events"
-	"github.com/calypr/funnel/internal/taskmodel"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 )
 
 func TestListTasksStopsAtResponseBudgetWithoutSkipping(t *testing.T) {
@@ -29,7 +29,7 @@ func TestListTasksStopsAtResponseBudgetWithoutSkipping(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	ctx := taskmodel.WithTaskPageBytes(context.Background(), 110)
+	ctx := taskpolicy.WithTaskPageBytes(context.Background(), 110)
 	first, err := db.ListTasks(ctx, &tes.ListTasksRequest{View: tes.View_BASIC.String(), PageSize: 3})
 	if err != nil {
 		t.Fatal(err)

@@ -18,14 +18,15 @@ import (
 	tes "github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/shellwords"
-	"github.com/calypr/funnel/internal/taskmodel"
+	taskpolicy "github.com/calypr/funnel/internal/task"
+	"github.com/calypr/funnel/internal/worker/workspace"
 )
 
 // DockerCommand is responsible for configuring and running a docker container.
 type DockerCommand struct {
 	Id               string
 	Name             string
-	Volumes          []Volume
+	Volumes          []workspace.Volume
 	Workdir          string
 	RemoveContainer  bool
 	Event            *events.ExecutorWriter
@@ -78,13 +79,13 @@ func (docker DockerCommand) GPUArgs() (string, error) {
 			case "", "all", "none", "void":
 				return "", nil
 			}
-			devices, err := taskmodel.ParseGPUDevices(allocation, 0)
+			devices, err := taskpolicy.ParseGPUDevices(allocation, 0)
 			if err != nil {
 				return "", fmt.Errorf("invalid AWS Batch NVIDIA_VISIBLE_DEVICES allocation: %w", err)
 			}
 			return gpuDeviceArgs(devices), nil
 		}
-		devices, err := taskmodel.ParseGPUDevices(os.Getenv("NVIDIA_VISIBLE_DEVICES"), request.count)
+		devices, err := taskpolicy.ParseGPUDevices(os.Getenv("NVIDIA_VISIBLE_DEVICES"), request.count)
 		if err != nil {
 			return "", fmt.Errorf("AWS Batch GPU request requires NVIDIA_VISIBLE_DEVICES allocation: %w", err)
 		}
@@ -101,7 +102,7 @@ func (docker DockerCommand) GPUArgs() (string, error) {
 		if !hasSlurmAllocation {
 			return "", fmt.Errorf("Slurm GPU request requires FUNNEL_GPU_DEVICES with assigned physical device IDs")
 		}
-		devices, err := taskmodel.ParseGPUDevices(allocation, request.count)
+		devices, err := taskpolicy.ParseGPUDevices(allocation, request.count)
 		if err != nil {
 			return "", fmt.Errorf("invalid FUNNEL_GPU_DEVICES allocation: %w", err)
 		}
@@ -131,12 +132,12 @@ func dockerGPURequestFromResources(resources *tes.Resources) (dockerGPURequest, 
 	if resources == nil {
 		return dockerGPURequest{}, nil
 	}
-	count, err := taskmodel.GPUCount(resources)
+	count, err := taskpolicy.GPUCount(resources)
 	if err != nil {
 		return dockerGPURequest{}, err
 	}
 	request := dockerGPURequest{count: count}
-	devices, err := taskmodel.GPUDevices(resources, request.count)
+	devices, err := taskpolicy.GPUDevices(resources, request.count)
 	if err != nil {
 		return dockerGPURequest{}, fmt.Errorf("invalid %s: %w", gpuDevicesBackendParameter, err)
 	}
@@ -251,7 +252,7 @@ func (docker DockerCommand) Stop() error {
 
 func (docker DockerCommand) executeCommand(ctx context.Context, commandTemplate string, enableIO bool) error {
 	if docker.Image != "" {
-		if err := taskmodel.ValidateContainerImage(docker.Image); err != nil {
+		if err := taskpolicy.ValidateContainerImage(docker.Image); err != nil {
 			return fmt.Errorf("invalid container image: %w", err)
 		}
 	}
@@ -334,7 +335,7 @@ func (docker DockerCommand) executeCommand(ctx context.Context, commandTemplate 
 	return cmd.Run()
 }
 
-func formatVolumeArg(v Volume) string {
+func formatVolumeArg(v workspace.Volume) string {
 	// `o` is structed as "HostPath:ContainerPath:Mode".
 	mode := "rw"
 	if v.Readonly {

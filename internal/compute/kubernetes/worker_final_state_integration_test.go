@@ -26,7 +26,7 @@ import (
 	"github.com/calypr/funnel/internal/database/boltdb"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
-	"github.com/calypr/funnel/internal/taskmodel"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	"github.com/calypr/funnel/internal/tesrpc"
 )
 
@@ -39,7 +39,7 @@ type rejectCompletionRPC struct {
 
 type taskReaderRPC struct {
 	tesrpc.UnimplementedTaskServiceServer
-	database taskmodel.ReadOnlyServer
+	database taskpolicy.ReadOnlyServer
 }
 
 func (s *taskReaderRPC) GetTask(ctx context.Context, req *tes.GetTaskRequest) (*tes.Task, error) {

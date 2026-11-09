@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/calypr/funnel/internal/compute"
+
 	"dario.cat/mergo"
 	"github.com/calypr/funnel/api/config"
 	proto "github.com/calypr/funnel/api/plugin"
@@ -13,7 +15,7 @@ import (
 	workerCmd "github.com/calypr/funnel/internal/cli/worker"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
-	"github.com/calypr/funnel/internal/taskmodel"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	protobuf "google.golang.org/protobuf/proto"
 
 	"google.golang.org/grpc/codes"
@@ -30,7 +32,7 @@ type Backend struct {
 	conf              *config.Config
 	log               *logger.Logger
 	backendParameters map[string]string
-	events.Computer
+	compute.Computer
 }
 
 func (b Backend) BackendParameterKeys() []string {
@@ -43,14 +45,14 @@ func (b Backend) BackendParameterKeys() []string {
 }
 
 func (b Backend) CheckBackendParameterSupport(task *tes.Task) error {
-	if _, err := taskmodel.FilterBackendParameters(task.GetResources(), b.BackendParameterKeys()); err != nil {
+	if _, err := taskpolicy.FilterBackendParameters(task.GetResources(), b.BackendParameterKeys()); err != nil {
 		return status.Error(codes.InvalidArgument, err.Error())
 	}
-	count, err := taskmodel.GPUCount(task.GetResources())
+	count, err := taskpolicy.GPUCount(task.GetResources())
 	if err != nil {
 		return status.Error(codes.InvalidArgument, err.Error())
 	}
-	if _, err := taskmodel.GPUDevices(task.GetResources(), count); err != nil {
+	if _, err := taskpolicy.GPUDevices(task.GetResources(), count); err != nil {
 		return status.Error(codes.InvalidArgument, err.Error())
 	}
 	return nil

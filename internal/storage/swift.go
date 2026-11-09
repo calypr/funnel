@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/calypr/funnel/api/config"
-	"github.com/calypr/funnel/internal/retry"
+	"github.com/cenkalti/backoff/v7"
 	"github.com/ncw/swift/v2"
 )
 
@@ -63,15 +63,16 @@ func NewSwiftRetrier(conf *config.SwiftStorage) (*Retrier, error) {
 		return nil, err
 	}
 	return &Retrier{
-		Backend: b,
-		Retrier: &retry.Retrier{
-			MaxTries:            int(conf.MaxRetries),
-			InitialInterval:     500 * time.Millisecond,
-			MaxInterval:         5 * time.Minute,
-			Multiplier:          2.0,
-			RandomizationFactor: 0.5,
-			MaxElapsedTime:      0,
-			ShouldRetry:         shouldRetry,
+		Backend:     b,
+		MaxTries:    uint(conf.MaxRetries),
+		ShouldRetry: shouldRetry,
+		NewBackOff: func() backoff.BackOff {
+			return &backoff.ExponentialBackOff{
+				InitialInterval:     500 * time.Millisecond,
+				MaxInterval:         5 * time.Minute,
+				Multiplier:          2.0,
+				RandomizationFactor: 0.5,
+			}
 		},
 	}, nil
 }

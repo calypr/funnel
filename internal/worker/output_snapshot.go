@@ -13,12 +13,13 @@ import (
 	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/storage"
+	"github.com/calypr/funnel/internal/worker/workspace"
 	"google.golang.org/protobuf/proto"
 )
 
 // snapshotTaskOutputs copies through confined descriptors into a private sibling
 // directory. Uploaders can reopen these paths without racing task-owned links.
-func snapshotTaskOutputs(ctx context.Context, mapper *FileMapper, event *events.TaskWriter) (_ *FileMapper, cleanup func(), retErr error) {
+func snapshotTaskOutputs(ctx context.Context, mapper *workspace.FileMapper, event *events.TaskWriter) (_ *workspace.FileMapper, cleanup func(), retErr error) {
 	if len(mapper.Outputs) == 0 {
 		return mapper, func() {}, nil
 	}

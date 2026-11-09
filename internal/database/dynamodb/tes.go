@@ -12,8 +12,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/calypr/funnel/api/tes"
-	"github.com/calypr/funnel/internal/server"
-	"github.com/calypr/funnel/internal/taskmodel"
+	"github.com/calypr/funnel/internal/identity"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 )
 
 // GetTask gets a task, which describes a running task
@@ -34,10 +34,10 @@ func (db *DynamoDB) GetTask(ctx context.Context, req *tes.GetTaskRequest) (*tes.
 		return nil, err
 	}
 	if response.Item == nil {
-		return nil, taskmodel.ErrNotFound
+		return nil, taskpolicy.ErrNotFound
 	}
 	if !isAccessible(ctx, response) {
-		return nil, taskmodel.ErrNotPermitted
+		return nil, taskpolicy.ErrNotPermitted
 	}
 
 	err = attributevalue.UnmarshalMapWithOptions(response.Item, &task, decodeJSONTags)
@@ -53,7 +53,7 @@ func (db *DynamoDB) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*
 
 	filters := []expression.ConditionBuilder{}
 
-	if userInfo := server.GetUser(ctx); !userInfo.CanSeeAllTasks() {
+	if userInfo := identity.GetUser(ctx); !userInfo.CanSeeAllTasks() {
 		filters = append(filters, expression.Name("owner").Equal(expressionValue(userInfo.Username)))
 	}
 
@@ -90,7 +90,7 @@ func (db *DynamoDB) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*
 		return nil, err
 	}
 
-	pageSize := taskmodel.GetPageSize(req.GetPageSize())
+	pageSize := taskpolicy.GetPageSize(req.GetPageSize())
 	query := &dynamodb.QueryInput{
 		TableName:                 aws.String(db.taskTable),
 		Limit:                     aws.Int32(int32(pageSize)),
@@ -114,7 +114,7 @@ func (db *DynamoDB) ListTasks(ctx context.Context, req *tes.ListTasksRequest) (*
 		}
 	}
 
-	page := taskmodel.NewTaskPage(ctx)
+	page := taskpolicy.NewTaskPage(ctx)
 	accepted := 0
 	var more bool
 	for {

@@ -13,7 +13,7 @@ import (
 	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
-	"github.com/calypr/funnel/internal/taskmodel"
+	taskpolicy "github.com/calypr/funnel/internal/task"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -117,8 +117,8 @@ func (s *Scheduler) checkNodes(ctx context.Context, nodes []*Node) error {
 			stateWriteFailed := false
 			for _, tid := range node.TaskIds {
 				if err := s.Event.WriteEvent(ctx, events.NewState(tid, tes.State_SYSTEM_ERROR)); err != nil {
-					var transitionErr *taskmodel.TransitionError
-					if !errors.Is(err, taskmodel.ErrNotFound) && !(errors.As(err, &transitionErr) && tes.TerminalState(transitionErr.From)) {
+					var transitionErr *taskpolicy.TransitionError
+					if !errors.Is(err, taskpolicy.ErrNotFound) && !(errors.As(err, &transitionErr) && tes.TerminalState(transitionErr.From)) {
 						stateWriteFailed = true
 						s.Log.Error("writing dead-node task state", "taskID", tid, "error", err)
 					}

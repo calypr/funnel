@@ -2,60 +2,73 @@ package storage
 
 import (
 	"context"
+	"errors"
 
-	"github.com/calypr/funnel/internal/retry"
+	"github.com/cenkalti/backoff/v7"
 )
 
-// Retrier wraps a storage backend with logic which will retry on error,
-// with a configurable backoff strategy.
+// Retrier retries operations on a storage backend using a fresh backoff per call.
 type Retrier struct {
-	*retry.Retrier
-	Backend Storage
+	Backend    Storage
+	NewBackOff func() backoff.BackOff
+	// MaxTries counts total attempts; zero still makes one attempt.
+	MaxTries    uint
+	ShouldRetry func(error) bool
+	Notify      backoff.Notify
 }
 
-// Stat returns metadata about the given url, such as checksum.
-func (r *Retrier) Stat(ctx context.Context, url string) (obj *Object, err error) {
-	err = r.Retry(ctx, func() error {
-		obj, err = r.Backend.Stat(ctx, url)
-		return err
-	})
-	return
+func retryStorage[T any](ctx context.Context, r *Retrier, operation func() (T, error)) (T, error) {
+	options := []backoff.RetryOption{
+		backoff.WithMaxTries(max(1, r.MaxTries)),
+		backoff.WithMaxElapsedTime(0),
+		backoff.WithNotify(r.Notify),
+	}
+	if r.NewBackOff != nil {
+		options = append(options, backoff.WithBackOff(r.NewBackOff()))
+	}
+	result, err := backoff.Retry(ctx, func() (T, error) {
+		result, err := operation()
+		if err != nil && r.ShouldRetry != nil && !r.ShouldRetry(err) {
+			return result, backoff.Permanent(err)
+		}
+		return result, err
+	}, options...)
+	if failure := backoff.AsRetryError(err); failure != nil {
+		// Storage callers receive backend errors, not retry-engine metadata.
+		if ctx.Err() != nil && !errors.Is(failure.Cause, backoff.ErrPermanent) && !errors.Is(failure.Cause, backoff.ErrExhausted) && !errors.Is(failure.Cause, backoff.ErrMaxElapsedTime) {
+			return result, ctx.Err()
+		}
+		return result, failure.LastErr
+	}
+	return result, err
 }
 
-// List lists the objects at the given url.
-func (r *Retrier) List(ctx context.Context, url string) (objects []*Object, err error) {
-	err = r.Retry(ctx, func() error {
-		objects, err = r.Backend.List(ctx, url)
-		return err
-	})
-	return
+// Stat returns metadata about the given URL.
+func (r *Retrier) Stat(ctx context.Context, url string) (*Object, error) {
+	return retryStorage(ctx, r, func() (*Object, error) { return r.Backend.Stat(ctx, url) })
 }
 
-// Get copies an object from S3 to the host path.
-func (r *Retrier) Get(ctx context.Context, url, path string) (obj *Object, err error) {
-	err = r.Retry(ctx, func() error {
-		obj, err = r.Backend.Get(ctx, url, path)
-		return err
-	})
-	return
+// List lists the objects at the given URL.
+func (r *Retrier) List(ctx context.Context, url string) ([]*Object, error) {
+	return retryStorage(ctx, r, func() ([]*Object, error) { return r.Backend.List(ctx, url) })
 }
 
-// Put copies an object (file) from the host path to S3.
-func (r *Retrier) Put(ctx context.Context, url, path string) (obj *Object, err error) {
-	err = r.Retry(ctx, func() error {
-		obj, err = r.Backend.Put(ctx, url, path)
-		return err
-	})
-	return
+// Get copies an object from storage to a local path.
+func (r *Retrier) Get(ctx context.Context, url, path string) (*Object, error) {
+	return retryStorage(ctx, r, func() (*Object, error) { return r.Backend.Get(ctx, url, path) })
 }
 
-// UnsupportedOperations describes which operations (Get, Put, etc) are not
-// supported for the given URL.
+// Put copies an object from a local path to storage.
+func (r *Retrier) Put(ctx context.Context, url, path string) (*Object, error) {
+	return retryStorage(ctx, r, func() (*Object, error) { return r.Backend.Put(ctx, url, path) })
+}
+
+// UnsupportedOperations describes which operations are supported for the URL.
 func (r *Retrier) UnsupportedOperations(url string) UnsupportedOperations {
 	return r.Backend.UnsupportedOperations(url)
 }
 
-// Join joins the given URL with the given subpath.
+// Join joins a directory URL with the given subpath.
 func (r *Retrier) Join(url, path string) (string, error) {
 	return r.Backend.Join(url, path)
 }

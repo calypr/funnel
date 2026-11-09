@@ -14,6 +14,7 @@ import (
 	"github.com/calypr/funnel/internal/compute/kubernetes/storageplan"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/storage"
+	"github.com/calypr/funnel/internal/worker/workspace"
 	"github.com/calypr/funnel/version"
 )
 
@@ -83,7 +84,7 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 	// - run the steps (docker)
 	// - upload the outputs
 	var event *events.TaskWriter
-	var mapper *FileMapper
+	var mapper *workspace.FileMapper
 	var run helper
 	var task *tes.Task
 
@@ -139,7 +140,7 @@ func (r *DefaultWorker) Run(pctx context.Context) (runerr error) {
 
 	// set up task specific utilities
 	event = events.NewTaskWriter(task.GetId(), 0, r.EventWriter)
-	mapper = NewFileMapper(filepath.Join(r.Conf.WorkDir, task.GetId()))
+	mapper = workspace.NewFileMapper(filepath.Join(r.Conf.WorkDir, task.GetId()))
 	if r.Conf.ScratchPath != "" {
 		scratchAbsDir, err := filepath.Abs(r.Conf.ScratchPath)
 		if err != nil {
@@ -290,7 +291,7 @@ func (r *DefaultWorker) Close() {
 }
 
 // openLogs opens/creates the logs files for a step and updates those fields.
-func (r *DefaultWorker) openStepLogs(mapper *FileMapper, s *stepWorker, d *tes.Executor) error {
+func (r *DefaultWorker) openStepLogs(mapper *workspace.FileMapper, s *stepWorker, d *tes.Executor) error {
 
 	var stdin *os.File
 	var stdout *os.File
@@ -331,7 +332,7 @@ func (r *DefaultWorker) openStepLogs(mapper *FileMapper, s *stepWorker, d *tes.E
 }
 
 // Validate the downloads/uploads.
-func (r *DefaultWorker) validate(mapper *FileMapper) error {
+func (r *DefaultWorker) validate(mapper *workspace.FileMapper) error {
 	// TODO need to switch on directory type and check list as well.
 	for _, input := range mapper.Inputs {
 		if err := storage.CheckGet(r.Store, input.Url); err != nil {
@@ -382,7 +383,7 @@ func (r *DefaultWorker) pollForCancel(pctx context.Context) (context.Context, fu
 // runExecutors builds and runs each executor in the task. Kubernetes and
 // Docker executors are constructed differently; failures are recorded on run
 // and checked with run.ok() between executors.
-func (r *DefaultWorker) runExecutors(ctx context.Context, event *events.TaskWriter, mapper *FileMapper, task *tes.Task, run *helper) {
+func (r *DefaultWorker) runExecutors(ctx context.Context, event *events.TaskWriter, mapper *workspace.FileMapper, task *tes.Task, run *helper) {
 	var resources = task.GetResources()
 	if resources == nil {
 		resources = &tes.Resources{}
@@ -511,7 +512,7 @@ func (r *DefaultWorker) runExecutors(ctx context.Context, event *events.TaskWrit
 // outputs. Upload runs even after an executor error — the output files are
 // how a user diagnoses the failure — but is skipped on system errors where the
 // worker itself is in a bad state.
-func (r *DefaultWorker) processOutputs(ctx context.Context, event *events.TaskWriter, mapper *FileMapper, run *helper) {
+func (r *DefaultWorker) processOutputs(ctx context.Context, event *events.TaskWriter, mapper *workspace.FileMapper, run *helper) {
 	outputsAvailable := true
 	publicationMapper := mapper
 	if run.syserr == nil {

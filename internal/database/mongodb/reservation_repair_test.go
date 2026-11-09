@@ -9,10 +9,10 @@ import (
 	"github.com/calypr/funnel/api/tes"
 	"github.com/calypr/funnel/internal/compute/scheduler"
 	appconfig "github.com/calypr/funnel/internal/config"
+	"github.com/calypr/funnel/internal/database/mongodb/mongotest"
 	"github.com/calypr/funnel/internal/events"
+	"github.com/calypr/funnel/internal/identity"
 	"github.com/calypr/funnel/internal/logger"
-	"github.com/calypr/funnel/internal/server"
-	"github.com/calypr/funnel/tests/mongotest"
 )
 
 func TestEmptyNodeUsageMigrationRepairsIdleResidue(t *testing.T) {
@@ -21,7 +21,7 @@ func TestEmptyNodeUsageMigrationRepairsIdleResidue(t *testing.T) {
 	if err := db.Init(); err != nil {
 		t.Fatal(err)
 	}
-	ctx := context.WithValue(context.Background(), server.UserInfoKey, server.UserInfo{Username: "owner", IsAdmin: true})
+	ctx := identity.WithUser(context.Background(), &identity.UserInfo{Username: "owner", IsAdmin: true})
 	for _, node := range []*scheduler.Node{
 		{Id: "idle", State: scheduler.NodeState_ALIVE, Resources: &scheduler.Resources{Cpus: 4, RamGb: 2, DiskGb: 2}},
 		{Id: "active", State: scheduler.NodeState_ALIVE, Resources: &scheduler.Resources{Cpus: 2, RamGb: 2, DiskGb: 2}},
