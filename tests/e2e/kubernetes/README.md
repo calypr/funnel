@@ -1,5 +1,11 @@
 # Kubernetes storage end-to-end test
 
+The Nextflow canary uses `nextflow-post-renderer.sh` to apply the candidate image
+and a native `standard` PVC for task scratch space. Nextflow still uses MinIO for
+its S3 work bucket and Funnel transfers inputs and outputs through GenericS3.
+S3 Mountpoint is exercised by the dedicated mounted-storage checks; it is not a
+POSIX scratch filesystem for arbitrary task commands.
+
 Run `tests/e2e/kubernetes/run.sh` from a machine with Go, Docker, k3d,
 kubectl and Python 3. The script creates and deletes its own cluster.
 Set `FUNNEL_E2E_OUTPUT_DIR` to retain task JSON, server logs, and cluster

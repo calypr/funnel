@@ -115,3 +115,17 @@ if FUNNEL_CI_BOOTSTRAP_RENDER=false bash "$script_dir/gen3-post-renderer.sh" <"$
 fi
 grep -q 'executor template can overwrite native task fixtures' "$tmp/rejected.log"
 printf 'PASS: changed executor templates fail before cluster startup\n'
+
+FUNNEL_CI_PLUGIN_IMAGE_REF= FUNNEL_CI_BOOTSTRAP_RENDER=false \
+  bash "$script_dir/../kubernetes/nextflow-post-renderer.sh" <"$tmp/input.yaml" >"$tmp/nextflow.yaml"
+yq -r 'select(.kind == "ConfigMap" and .metadata.name == "funnel-server-config") | .data."funnel-server.yaml"' \
+  "$tmp/nextflow.yaml" >"$tmp/nextflow-config.yaml"
+yq -e '
+  .Worker.WorkDir == "/opt/funnel/funnel-work-dir" and
+  .Kubernetes.Storage.WorkspaceVolume == "workspace" and
+  (.Kubernetes.Storage.volumeClaimTemplates | length) == 1 and
+  .Kubernetes.Storage.volumeClaimTemplates[0].metadata.name == "workspace" and
+  .Kubernetes.Storage.volumeClaimTemplates[0].spec.storageClassName == "standard" and
+  .Kubernetes.PVTemplate == "" and .Kubernetes.PVCTemplate == ""
+' "$tmp/nextflow-config.yaml" >/dev/null
+printf 'PASS: Nextflow scratch uses native PVC storage instead of S3 Mountpoint\n'

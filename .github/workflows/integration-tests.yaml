@@ -1,6 +1,7 @@
 name: Nextflow Kubernetes integration tests
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - develop
@@ -48,7 +49,10 @@ jobs:
           version: v4.3.1
 
       - name: Install local Funnel image post-renderer
-        run: helm plugin install "$GITHUB_WORKSPACE/tests/e2e/gen3"
+        run: |
+          kubectl get storageclass standard
+          bash tests/e2e/gen3/test-post-renderer.sh
+          helm plugin install "$GITHUB_WORKSPACE/tests/e2e/kubernetes"
  
       # ---------------------------
       # 2. Install Funnel + MinIO
@@ -83,7 +87,7 @@ jobs:
 
           helm repo add calypr https://calypr.org/helm-charts
           helm repo update
-          helm upgrade --install funnel calypr/funnel --wait --timeout=60s --version 0.1.99-rc.35 --values values.yaml --post-renderer funnel-ci-image
+          helm upgrade --install funnel calypr/funnel --wait --timeout=60s --version 0.1.99-rc.35 --values values.yaml --post-renderer funnel-ci-native-workspace
 
       - name: Debug Funnel pods (on failure)
         if: failure()
@@ -98,22 +102,6 @@ jobs:
             --version 17.0.21 \
             --values tests/e2e/kubernetes/minio-values.yaml \
             --wait --timeout=5m
-
-      - name: Install AWS S3 CSI Driver (for testing S3 mounts in Funnel)
-        run: |
-          kubectl create secret generic aws-secret \
-            --namespace kube-system \
-            --from-literal "key_id=example" \
-            --from-literal "access_key=example-password"
-
-          helm repo add aws-mountpoint-s3-csi-driver https://awslabs.github.io/mountpoint-s3-csi-driver
-          helm repo update
-          helm upgrade --install aws-mountpoint-s3-csi-driver aws-mountpoint-s3-csi-driver/aws-mountpoint-s3-csi-driver \
-            --namespace kube-system \
-            --version 2.8.0 \
-            --values tests/e2e/gen3/csi-images.yaml \
-            --wait --timeout=3m \
-            --set awsAccessSecret.key_id=example,awsAccessSecret.access_key=example-password
 
       # -------------------------------------
       # 3. Expose services for local testing
