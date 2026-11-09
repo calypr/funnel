@@ -48,7 +48,9 @@ func TestRESTClientOptionsOverrideEnvironmentCredentials(t *testing.T) {
 		if !ok || user != "explicit-user" || password != "explicit-password" {
 			t.Error("explicit credentials did not override environment defaults")
 		}
-		_, _ = io.WriteString(w, `{}`)
+		if _, err := io.WriteString(w, `{}`); err != nil {
+			t.Error(err)
+		}
 	}))
 	defer server.Close()
 	c, err := tesclient.NewClient(server.URL, func(c *tesclient.Client) {

@@ -52,3 +52,36 @@ func TestProcessOutputsPublishesOverlappingReadOnlyFiles(t *testing.T) {
 		})
 	}
 }
+
+func TestProcessOutputsDoesNotReusePartiallyPreparedDirectories(t *testing.T) {
+	mapper := workspace.NewFileMapper(t.TempDir())
+	outputs := []*tes.Output{
+		{Path: "/outputs/results", Url: "test://first-directory", Type: tes.Directory.Enum()},
+		{Path: "/outputs/results", Url: "test://second-directory", Type: tes.Directory.Enum()},
+		{Path: "/outputs/results/a-good.txt", Url: "test://diagnostic", Type: tes.File.Enum()},
+	}
+	if err := mapper.MapTask(&tes.Task{Outputs: outputs}, "docker"); err != nil {
+		t.Fatal(err)
+	}
+	good := filepath.Join(mapper.WorkDir, "outputs", "results", "a-good.txt")
+	if err := os.WriteFile(good, []byte("allowed diagnostic"), 0444); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(t.TempDir(), "outside")
+	if err := os.WriteFile(outside, []byte("outside marker"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(filepath.Dir(good), "z-escape")); err != nil {
+		t.Fatal(err)
+	}
+	store := &capturingUploadStorage{uploaded: make(map[string]string)}
+	run := &helper{}
+	worker := &DefaultWorker{Conf: &config.Worker{MaxParallelTransfers: 1}, Store: store}
+	worker.processOutputs(t.Context(), events.NewTaskWriter("task", 0, events.Noop{}), mapper, run)
+	if run.syserr == nil {
+		t.Fatal("escaping directory entry was accepted")
+	}
+	if len(store.uploaded) != 1 || store.uploaded["test://diagnostic"] != "allowed diagnostic" {
+		t.Fatalf("failed directory was published or valid diagnostic was lost: %v", store.uploaded)
+	}
+}
