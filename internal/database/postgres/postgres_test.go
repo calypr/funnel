@@ -56,6 +56,7 @@ func newTestTask(id, name, owner string) *tes.Task {
 }
 
 func getTestPostgres(t *testing.T) (*Postgres, testcontainers.Container) {
+	t.Helper()
 	conf := &config.Postgres{
 		Host:     "localhost:5432",
 		Database: "funnel",
@@ -81,6 +82,7 @@ func getTestPostgres(t *testing.T) (*Postgres, testcontainers.Container) {
 	)
 
 	if err != nil {
+		terminateTestContainer(t, postgresContainer)
 		t.Fatalf("Failed to start PostgreSQL container: %v", err)
 	}
 
@@ -92,6 +94,7 @@ func getTestPostgres(t *testing.T) (*Postgres, testcontainers.Container) {
 
 	port, err := postgresContainer.MappedPort(ctx, "5432")
 	if err != nil {
+		terminateTestContainer(t, postgresContainer)
 		t.Fatalf("Failed to get mapped port: %v", err)
 	}
 
@@ -104,7 +107,7 @@ func getTestPostgres(t *testing.T) (*Postgres, testcontainers.Container) {
 		t.Fatalf("Failed to create Postgres instance: %v", err)
 	}
 
-	if err := db.Init(); err != nil {
+	if err := db.init(ctx); err != nil {
 		db.Close()
 		terminateTestContainer(t, postgresContainer)
 		t.Fatalf("Failed to initialize database schema: %v", err)

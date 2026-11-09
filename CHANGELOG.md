@@ -4,6 +4,10 @@
 
 * CLI configuration loading supports `FUNNEL_CONFIG` for the default config file path and `FUNNEL_LOG_LEVEL` to override the configured log level. Explicit flags take precedence.
 
+### Fixed
+
+* PostgreSQL initialization cancels stalled network operations when its existing five-minute initialization budget expires.
+
 ### Breaking changes and upgrade preparation
 
 See the [Funnel upgrade guide](docs/upgrading.md) for import replacements, plugin

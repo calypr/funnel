@@ -39,8 +39,12 @@ func NewPostgres(conf *config.Postgres) (*Postgres, error) {
 }
 
 func (db *Postgres) Init() error {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
+	defer cancel()
+	return db.init(ctx)
+}
 
+func (db *Postgres) init(ctx context.Context) error {
 	_, err := backoff.Retry(ctx, func() (struct{}, error) {
 		// Check/create resources (Roles/DBs)
 		if err := ensureDatabaseExists(ctx, db.conf); err != nil {
