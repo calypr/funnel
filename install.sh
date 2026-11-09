@@ -19,7 +19,7 @@ list_tags() {
 	RELEASES_URL="https://api.github.com/repos/calypr/funnel/releases"
 
 	# Get all releases and extract tag names
-	RELEASES_JSON=$(curl -s "$RELEASES_URL")
+	RELEASES_JSON=$(curl -fsSL --retry 3 --connect-timeout 15 --max-time 180 "$RELEASES_URL")
 
 	echo "$RELEASES_JSON" | grep '"tag_name":' | cut -d '"' -f 4 | head -20 | while read -r tag; do
 		echo "$tag"
@@ -84,7 +84,7 @@ get_release_url() {
 	if [ -z "$VERSION" ]; then
 		echo "No version specified. Fetching the latest release..."
 		RELEASE_URL="https://api.github.com/repos/calypr/funnel/releases/latest"
-		VERSION=$(curl -s $RELEASE_URL | grep '"tag_name":' | cut -d '"' -f 4)
+		VERSION=$(curl -fsSL --retry 3 --connect-timeout 15 --max-time 180 "$RELEASE_URL" | grep '"tag_name":' | cut -d '"' -f 4)
 	else
 		echo "Fetching release for version $VERSION..."
 		RELEASE_URL="https://api.github.com/repos/calypr/funnel/releases/tags/$VERSION"
@@ -108,7 +108,7 @@ get_os_arch() {
 
 get_assets() {
 	# Fetch the release assets URLs
-	RELEASE_JSON=$(curl -s $RELEASE_URL)
+	RELEASE_JSON=$(curl -fsSL --retry 3 --connect-timeout 15 --max-time 180 "$RELEASE_URL")
 
 	if echo "$RELEASE_JSON" | grep -q '"status": "404"'; then
 		echo "Release $VERSION not found."
@@ -139,13 +139,13 @@ download() {
 			TAR_URL="$asset"
 			TAR_NAME="$asset_name"
 			echo " ➜ $TAR_NAME"
-			curl -L --progress-bar -o "$TAR_NAME" "$TAR_URL"
+			curl -fL --retry 3 --connect-timeout 15 --max-time 180 --progress-bar -o "$TAR_NAME" "$TAR_URL"
 
 		# Checksums
 		elif [[ "$asset_name" == *checksums* ]]; then
 			CHECKSUM_FILE="$asset_name"
 			echo " ➜ $CHECKSUM_FILE"
-			curl -L --progress-bar -o "$CHECKSUM_FILE" "$asset"
+			curl -fL --retry 3 --connect-timeout 15 --max-time 180 --progress-bar -o "$CHECKSUM_FILE" "$asset"
 		fi
 	done
 }
@@ -153,8 +153,8 @@ download() {
 verify() {
 	# Verify checksum
 	echo "Verifying checksum..."
-	CHECKSUM_EXPECTED=$(grep $TAR_NAME $CHECKSUM_FILE | awk '{print $1}')
-	CHECKSUM_ACTUAL=$(shasum -a 256 $TAR_NAME | awk '{print $1}')
+	CHECKSUM_EXPECTED=$(grep -F -- "$TAR_NAME" "$CHECKSUM_FILE" | awk '{print $1}')
+	CHECKSUM_ACTUAL=$(shasum -a 256 "$TAR_NAME" | awk '{print $1}')
 
 	if [ "$CHECKSUM_EXPECTED" != "$CHECKSUM_ACTUAL" ]; then
 		echo "Checksum verification failed for $TAR_NAME. Exiting..."
@@ -165,27 +165,34 @@ verify() {
 install() {
 	# Extract and install the package
 	echo "Extracting the package..."
-	tar -xzf $TAR_NAME
+	tar -xzf "$TAR_NAME"
 
 	# Determine where to install the Funnel binary
 	if [ -z "$DEST" ]; then
-		DEST=$HOME/.local/bin
+		DEST="$HOME/.local/bin"
 	fi
 	echo "Installing Funnel to $DEST..."
-	mkdir -p $DEST
-	mv funnel $DEST
+	mkdir -p "$DEST"
+	mv funnel "$DEST/"
 
 	# Clean up
-	rm $TAR_NAME $CHECKSUM_FILE
+	rm "$TAR_NAME" "$CHECKSUM_FILE"
 
 	echo "Installation successful: $DEST/funnel"
 	echo
-	$DEST/funnel version
+	"$DEST/funnel" version
 	echo
 	echo "Run '$DEST/funnel --help' for more info"
 }
 
 main() {
+	# Preserve relative destinations before extracting into a private directory.
+	if [[ -n "$DEST" && "$DEST" != /* ]]; then
+		DEST="$PWD/$DEST"
+	fi
+	install_work_dir=$(mktemp -d)
+	trap 'rm -rf "$install_work_dir"' EXIT
+	cd "$install_work_dir"
 	get_release_url
 	get_os_arch
 	get_assets
