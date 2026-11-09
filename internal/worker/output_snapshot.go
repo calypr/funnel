@@ -49,6 +49,7 @@ func snapshotTaskOutputs(ctx context.Context, mapper *workspace.FileMapper, even
 	copyMapper := *mapper
 	copyMapper.WorkDir, copyMapper.ScratchDir, copyMapper.Outputs = stage, "", nil
 	var preparationErrors []error
+	copied := make(map[string]struct{})
 	for _, output := range mapper.Outputs {
 		if err := ctx.Err(); err != nil {
 			return nil, nil, err
@@ -57,7 +58,7 @@ func snapshotTaskOutputs(ctx context.Context, mapper *workspace.FileMapper, even
 		if err != nil || !filepath.IsLocal(rel) {
 			return nil, nil, fmt.Errorf("output is outside task workspace")
 		}
-		if err := snapshotOutput(ctx, root, rel, stage, base, mapper.WorkDir); err != nil {
+		if err := snapshotOutput(ctx, root, rel, stage, copied, base, mapper.WorkDir); err != nil {
 			wrapped := fmt.Errorf("prepare output %s: %w", output.Path, err)
 			_ = event.Error("upload failed", "path", mapper.ContainerPath(output.Path), "url", output.Url, "error", wrapped) //nolint:errcheck // The preparation error is returned to the worker.
 			if errors.Is(err, path.ErrBadPattern) {
@@ -74,9 +75,9 @@ func snapshotTaskOutputs(ctx context.Context, mapper *workspace.FileMapper, even
 	return &copyMapper, cleanup, errors.Join(preparationErrors...)
 }
 
-func snapshotOutput(ctx context.Context, root *os.Root, rel, stage string, hostRoots ...string) error {
+func snapshotOutput(ctx context.Context, root *os.Root, rel, stage string, copied map[string]struct{}, hostRoots ...string) error {
 	if !strings.Contains(rel, "*") {
-		return copyOutputTree(ctx, root, rel, filepath.Join(stage, rel), hostRoots, nil)
+		return copyOutputTree(ctx, root, rel, filepath.Join(stage, rel), hostRoots, copied, nil)
 	}
 	prefix := filepath.Dir(rel[:strings.IndexByte(rel, '*')])
 	resolved, err := resolveOutputSource(root, prefix, hostRoots...)
@@ -96,7 +97,7 @@ func snapshotOutput(ctx context.Context, root *os.Root, rel, stage string, hostR
 		if err != nil {
 			return err
 		}
-		if err := copyOutputTree(ctx, root, filepath.FromSlash(match), filepath.Join(stage, prefix, suffix), hostRoots, nil); err != nil {
+		if err := copyOutputTree(ctx, root, filepath.FromSlash(match), filepath.Join(stage, prefix, suffix), hostRoots, copied, nil); err != nil {
 			return err
 		}
 	}
@@ -164,9 +165,12 @@ func resolveOutputSource(root *os.Root, path string, hostRoots ...string) (strin
 	return filepath.Join(resolved...), nil
 }
 
-func copyOutputTree(ctx context.Context, root *os.Root, source, destination string, hostRoots []string, ancestors []os.FileInfo) error {
+func copyOutputTree(ctx context.Context, root *os.Root, source, destination string, hostRoots []string, copied map[string]struct{}, ancestors []os.FileInfo) error {
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+	if _, complete := copied[destination]; complete {
+		return nil
 	}
 	rel, err := resolveOutputSource(root, source, hostRoots...)
 	if err != nil {
@@ -202,7 +206,7 @@ func copyOutputTree(ctx context.Context, root *os.Root, source, destination stri
 		}
 		ancestors = append(ancestors, actual)
 		for _, entry := range entries {
-			if err := copyOutputTree(ctx, root, filepath.Join(rel, entry.Name()), filepath.Join(destination, entry.Name()), hostRoots, ancestors); err != nil {
+			if err := copyOutputTree(ctx, root, filepath.Join(rel, entry.Name()), filepath.Join(destination, entry.Name()), hostRoots, copied, ancestors); err != nil {
 				return err
 			}
 		}
@@ -228,5 +232,9 @@ func copyOutputTree(ctx context.Context, root *os.Root, source, destination stri
 	}
 	_, copyErr := io.Copy(out, sourceFile)
 	modeErr := out.Chmod(info.Mode().Perm())
-	return errors.Join(copyErr, modeErr, out.Close(), sourceFile.Close(), ctx.Err())
+	err = errors.Join(copyErr, modeErr, out.Close(), sourceFile.Close(), ctx.Err())
+	if err == nil {
+		copied[destination] = struct{}{}
+	}
+	return err
 }
