@@ -81,15 +81,15 @@
     "quay.io/cdis/nginx:master": {
       "platforms": {
         "amd64": {
-          "config": "sha256:63952b40c869d36ed1148b3188ef0d9d068fa2b31a1cc40f2318c4c6a894dad8",
-          "manifest": "sha256:07d4b6968837435e2ba26a7fa9754743ec4c8f74fc48d84a45ab809b9e9960d5"
+          "config": "sha256:b1632c452f03425f461a8d2f8a8a8e4fb42a23d02c4590ea42f1ffb89d6e64e6",
+          "manifest": "sha256:4992406e49e44008a39258c2cadf7ab6541a706d31d908eb0f78f35b04784343"
         },
         "arm64": {
-          "config": "sha256:bde27e0c002f4743fdbd4548779b44b808831974aa3ee2e65d95dcf6f01a107a",
-          "manifest": "sha256:64a967e1f563efba965aa700a2ad0dfd2efc7ef664f55be22fbdd67cd79bbcd0"
+          "config": "sha256:61fa294e4785efbe6009543df66aef6dec2ba939dff3c3a376b8db099226b72b",
+          "manifest": "sha256:64d02149f8e97792a460fdb72948c32fab8e656d0fca1e58f1454d6f7107bf80"
         }
       },
-      "reference": "quay.io/cdis/nginx:master@sha256:001b5218ca30cbbb82646b05c23c644f2ace427147edaef58b6c4c238279cd1e"
+      "reference": "quay.io/cdis/nginx:master@sha256:2eca0bf5879da6cf4e2d01749a38702283d85ce9a8cfc8a70ca131bb5c92c08b"
     }
   }
 }
