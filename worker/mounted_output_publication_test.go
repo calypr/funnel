@@ -15,9 +15,9 @@ import (
 
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/internal/retry"
 	"github.com/calypr/funnel/storage"
 	"github.com/calypr/funnel/tes"
-	"github.com/calypr/funnel/util"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
@@ -337,7 +337,7 @@ func TestMountedOutputRetryRecordsOneSuccessfulFile(t *testing.T) {
 		w.Header().Set("Content-Length", "7")
 		w.Header().Set("Last-Modified", "Mon, 02 Jan 2006 15:04:05 GMT")
 	}))
-	retry := util.NewRetrier()
+	retry := retry.NewRetrier()
 	retry.InitialInterval, retry.MaxInterval, retry.RandomizationFactor, retry.MaxTries = time.Millisecond, time.Millisecond, 0, 2
 	writer := &publicationEvents{}
 	output := workerOutputFile(t, "retry.txt", "retried")

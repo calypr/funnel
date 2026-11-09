@@ -3,13 +3,13 @@ package storage
 import (
 	"context"
 
-	"github.com/calypr/funnel/util"
+	"github.com/calypr/funnel/internal/retry"
 )
 
 // Retrier wraps a storage backend with logic which will retry on error,
 // with a configurable backoff strategy.
 type Retrier struct {
-	*util.Retrier
+	*retry.Retrier
 	Backend Storage
 }
 

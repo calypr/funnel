@@ -17,9 +17,9 @@ import (
 
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/internal/directory"
 	"github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/tes"
-	"github.com/calypr/funnel/util/fsutil"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -135,6 +135,12 @@ func (b *HPCBackend) Close() {}
 
 // Submit submits a task via "qsub", "condor_submit", "sbatch", etc.
 func (b *HPCBackend) Submit(ctx context.Context, task *tes.Task) error {
+	if _, err := b.validatedBackendParameters(task); err != nil {
+		return err
+	}
+	if _, err := b.bindingDirectory(task.Id); err != nil {
+		return err
+	}
 	submitPath, err := b.setupTemplatedHPCSubmit(ctx, task)
 	if err != nil {
 		return err
@@ -164,7 +170,10 @@ func (b *HPCBackend) Submit(ctx context.Context, task *tes.Task) error {
 		return err
 	}
 
-	backendID := b.ExtractID(stdout.String())
+	backendID := strings.TrimSpace(b.ExtractID(stdout.String()))
+	if err := b.saveJobBinding(task.Id, backendID); err != nil {
+		return fmt.Errorf("persist trusted scheduler binding: %w", err)
+	}
 
 	return b.Event.WriteEvent(
 		ctx,
@@ -174,16 +183,16 @@ func (b *HPCBackend) Submit(ctx context.Context, task *tes.Task) error {
 
 // Cancel cancels a task via "qdel", "condor_rm", "scancel", etc.
 func (b *HPCBackend) Cancel(ctx context.Context, taskID string) error {
-	task, err := b.Database.GetTask(
+	_, err := b.Database.GetTask(
 		ctx, &tes.GetTaskRequest{Id: taskID, View: tes.View_BASIC.String()},
 	)
 	if err != nil {
 		return err
 	}
 
-	backendID := getBackendTaskID(task, b.Name)
-	if backendID == "" {
-		return fmt.Errorf("no %s_id found in metadata for task %s", b.Name, taskID)
+	backendID, err := b.loadJobBinding(taskID)
+	if err != nil {
+		return err
 	}
 
 	cmd := exec.Command(b.CancelCmd, backendID)
@@ -239,7 +248,11 @@ ReconcileLoop:
 					tmap := make(map[string]*tes.Task)
 					ids := []string{}
 					for _, t := range lresp.Tasks {
-						bid := getBackendTaskID(t, b.Name)
+						bid, bindingErr := b.loadJobBinding(t.Id)
+						if bindingErr != nil {
+							b.Log.Warn("skipping task without trusted scheduler binding", "taskID", t.Id)
+							continue
+						}
 						if bid != "" {
 							tmap[bid] = t
 							ids = append(ids, bid)
@@ -318,7 +331,7 @@ func (b *HPCBackend) setupTemplatedHPCSubmit(ctx context.Context, task *tes.Task
 	if err != nil {
 		return "", fmt.Errorf("resolve task working directory: %w", err)
 	}
-	err = fsutil.EnsureDir(workdir)
+	err = directory.EnsureDir(workdir)
 	if err != nil {
 		return "", err
 	}
@@ -380,15 +393,6 @@ func (b *HPCBackend) setupTemplatedHPCSubmit(ctx context.Context, task *tes.Task
 	}
 
 	return submitPath, nil
-}
-
-func getBackendTaskID(task *tes.Task, backend string) string {
-	logs := task.GetLogs()
-	if len(logs) > 0 {
-		metadata := logs[0].GetMetadata()
-		return metadata[backend+"_id"]
-	}
-	return ""
 }
 
 // HPCTaskState is a structure used by Reconcile to represent the state of a task in Funnel

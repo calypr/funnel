@@ -83,11 +83,6 @@ func TestifyConfig(conf *config.Config) *config.Config {
 	return conf
 }
 
-// RandomPort returns an available port selected by the operating system.
-func RandomPort() string {
-	return randomPorts(1)[0]
-}
-
 // RandomPortConfig returns a modified config with random HTTP and RPC ports.
 func RandomPortConfig(conf *config.Config) *config.Config {
 	ports := randomPorts(2)

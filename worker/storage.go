@@ -7,13 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 
 	"github.com/calypr/funnel/events"
 	"github.com/calypr/funnel/storage"
 	"github.com/calypr/funnel/tes"
-	"github.com/calypr/funnel/util"
-	"github.com/calypr/funnel/util/fsutil"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -78,7 +75,7 @@ func DownloadInputs(pctx context.Context, inputs []*tes.Input, store storage.Sto
 
 	storage.Download(ctx, store, downloads, parallelLimit)
 
-	var errs util.MultiError
+	var errs []error
 	for _, x := range downloads {
 		down := x.(*download)
 		if down.err != nil {
@@ -86,7 +83,7 @@ func DownloadInputs(pctx context.Context, inputs []*tes.Input, store storage.Sto
 		}
 	}
 
-	return errs.ToError()
+	return errors.Join(errs...)
 }
 
 // FlattenOutputs flattens output directories into a list of files.
@@ -121,7 +118,7 @@ func FlattenOutputs(ctx context.Context, outputs []*tes.Output, store storage.St
 			}
 		}
 
-		list, err := fsutil.WalkFiles(output.Path)
+		list, err := storage.WalkFiles(output.Path)
 		if err != nil {
 			return nil, fmt.Errorf("walking directory: %s", err)
 		}
@@ -240,82 +237,6 @@ func (u *upload) Finished(obj *storage.Object) {
 func (u *upload) Failed(err error) {
 	u.err = err
 	_ = u.ev.Error("upload failed", "path", u.outputPath, "url", u.out.Url, "error", err) //nolint:errcheck // The transfer error is retained in u.err; logging must not replace it.
-}
-
-// fixLinks walks the output paths, fixing cases where a symlink is
-// broken because it's pointing to a path inside a container volume.
-func fixLinks(mapper *FileMapper, basepath string) error {
-	err := filepath.Walk(basepath, func(p string, f os.FileInfo, err error) error {
-		if err != nil {
-			if errors.Is(err, os.ErrNotExist) || (p == basepath && strings.Contains(basepath, "*") && errors.Is(err, syscall.ENOTDIR)) {
-				return nil
-			}
-			return err
-		}
-
-		// Only bother to check symlinks
-		if f.Mode()&os.ModeSymlink != 0 {
-			// Test if the file can be opened because it doesn't exist
-			fh, rerr := os.Open(p)
-			if rerr == nil {
-				return fh.Close()
-			}
-
-			if errors.Is(rerr, os.ErrNotExist) {
-
-				// Get symlink source path
-				src, err := os.Readlink(p)
-				if err != nil {
-					if errors.Is(err, os.ErrNotExist) {
-						return nil
-					}
-					return fmt.Errorf("read output symlink %s: %w", p, err)
-				}
-				// Map symlink source (possible container path) to host path
-				mapped, err := mapper.HostPath(src)
-				if err != nil {
-					// Links outside the work directory are left as the task created them.
-					return nil
-				}
-
-				// Check whether the mapped path exists
-				fh, err := os.Open(mapped)
-				if errors.Is(err, os.ErrNotExist) {
-					return nil
-				}
-				if err != nil {
-					return fmt.Errorf("open mapped output symlink target %s: %w", mapped, err)
-				}
-				err = fh.Close()
-				if err != nil {
-					return fmt.Errorf("close mapped output symlink target %s: %w", mapped, err)
-				}
-
-				// Replace the broken link only after confirming its target exists.
-				err = os.Remove(p)
-				if err != nil {
-					if errors.Is(err, os.ErrNotExist) {
-						return nil
-					}
-					return fmt.Errorf("remove broken output symlink %s: %w", p, err)
-				}
-				err = os.Symlink(mapped, p)
-				if err != nil {
-					return fmt.Errorf("create output symlink %s: %w", p, err)
-				}
-			} else {
-				return fmt.Errorf("open output symlink %s: %w", p, rerr)
-			}
-		}
-		return nil
-	})
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("walking output path %s: %w", basepath, err)
-	}
-	return nil
 }
 
 // resolveWildcards resolves any wildcards/globs in the output paths.

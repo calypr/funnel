@@ -1,13 +1,12 @@
 package server
 
 import (
+	"context"
 	"encoding/gob"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
-
-	"context"
 
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/events"
@@ -15,14 +14,12 @@ import (
 	"github.com/calypr/funnel/plugins/proto"
 	"github.com/calypr/funnel/plugins/shared"
 	"github.com/calypr/funnel/tes"
-	"github.com/calypr/funnel/util/server"
 	"github.com/calypr/funnel/version"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	googleproto "google.golang.org/protobuf/proto"
-
-	"google.golang.org/grpc"
 )
 
 // TaskService is a wrapper which handles common TES Task Service operations,
@@ -143,7 +140,7 @@ func (ts *TaskService) CreateTask(ctx context.Context, task *tes.Task) (*tes.Cre
 		pluginResponse, err := ts.HandleDoPluginAction(ctx, task, proto.Type_CREATE)
 		if err != nil {
 			if pluginResponse != nil && pluginResponse.Code != 0 {
-				return nil, status.Errorf(server.GRPCCodeFromHTTPStatus(int(pluginResponse.Code)), "%v", err.Error())
+				return nil, status.Errorf(grpcCodeFromHTTPStatus(int(pluginResponse.Code)), "%v", err.Error())
 			} else {
 				return nil, err
 			}
@@ -317,7 +314,7 @@ func (ts *TaskService) CancelTask(ctx context.Context, req *tes.CancelTaskReques
 		pluginResponse, err := ts.HandleDoPluginAction(ctx, nil, proto.Type_CANCEL)
 		if err != nil {
 			if pluginResponse != nil && pluginResponse.Code != 0 {
-				return nil, status.Errorf(server.GRPCCodeFromHTTPStatus(int(pluginResponse.Code)), "%v", err.Error())
+				return nil, status.Errorf(grpcCodeFromHTTPStatus(int(pluginResponse.Code)), "%v", err.Error())
 			} else {
 				return nil, err
 			}

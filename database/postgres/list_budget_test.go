@@ -41,12 +41,3 @@ func TestPostgresListByteBudget(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
-
-func cursorID(t *testing.T, token string) string {
-	t.Helper()
-	cursor, _, err := tes.DecodeTaskCursor(token)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return cursor.ID
-}

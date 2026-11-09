@@ -226,6 +226,7 @@ func TestFTPStorageConfigAuth(t *testing.T) {
 
 	conf.FTPStorage.User = "bob"
 	conf.FTPStorage.Password = "bob"
+	conf.FTPStorage.Endpoint = "ftp://localhost:8021"
 
 	fun := tests.NewFunnel(conf)
 	fun.StartServer()

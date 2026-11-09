@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path"
 	"strings"
+	"unicode"
 )
 
 // isForbiddenPath reports whether path is, or is nested under, any of the
@@ -63,8 +64,8 @@ func ValidateWithForbiddenPathPrefixes(t *Task, forbiddenPathPrefixes []string) 
 	}
 
 	for i, exec := range t.Executors {
-		if exec.Image == "" {
-			errs.add("Task.Executors[%d].Image: required, but empty", i)
+		if err := ValidateContainerImage(exec.Image); err != nil {
+			errs.add("Task.Executors[%d].Image: %v", i, err)
 		}
 
 		if len(exec.Command) == 0 {
@@ -147,4 +148,19 @@ func ValidateWithForbiddenPathPrefixes(t *Task, forbiddenPathPrefixes []string) 
 	}
 
 	return errs
+}
+
+// ValidateContainerImage checks that an image is a nonempty runtime argument,
+// rather than an option or a sequence of command-line words. Reference resolution
+// remains the container runtime's responsibility.
+func ValidateContainerImage(image string) error {
+	if image == "" {
+		return fmt.Errorf("required, but empty")
+	}
+	if strings.HasPrefix(image, "-") || strings.IndexFunc(image, func(r rune) bool {
+		return unicode.IsSpace(r) || unicode.IsControl(r)
+	}) >= 0 {
+		return fmt.Errorf("must be a single image identifier, not runtime options")
+	}
+	return nil
 }

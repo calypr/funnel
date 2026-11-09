@@ -5,7 +5,7 @@ import (
 	"log"
 
 	"github.com/calypr/funnel/config"
-	util "github.com/calypr/funnel/util/rpc"
+	"github.com/calypr/funnel/internal/rpcclient"
 	"google.golang.org/grpc"
 )
 
@@ -17,7 +17,7 @@ type RPCWriter struct {
 
 // NewRPCWriter returns a new RPCWriter instance.
 func NewRPCWriter(ctx context.Context, conf *config.RPCClient) (*RPCWriter, error) {
-	conn, err := util.Dial(ctx, conf)
+	conn, err := rpcclient.Dial(ctx, conf)
 	if err != nil {
 		return nil, err
 	}

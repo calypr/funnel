@@ -7,6 +7,11 @@ Database: boltdb
 # Available backends: local, htcondor, slurm, pbs, gridengine, manual, aws-batch, kubernetes
 Compute: local
 
+# Required for HPC backends: private persistent controller state, outside task
+# directories and LocalStorage.AllowedDirs. See docs/compute/deployment.md.
+HPCStateDir: ""
+
+
 # The name of the active event writer backend(s).
 # Available backends: log, boltdb, badger, datastore, dynamodb, mongodb, kafka
 EventWriters:
@@ -167,7 +172,7 @@ Worker:
       {{if .NeedsTmpfs}}--tmpfs /tmp{{end}}
       {{if .RemoveContainer}}--rm{{end}}
       {{.GetEnvArgs}}
-      {{range $k, $v := .Tags}}--label "{{$k}}={{$v}}" {{end}}
+      {{.GetTagArgs}}
       {{if .Name}}--name "{{.Name}}"{{end}}
       {{if .Workdir}}--workdir "{{.Workdir}}"{{end}}
       {{range .Volumes}}--volume "{{.HostPath}}:{{.ContainerPath}}:{{if .Readonly}}ro{{else}}rw{{end}}" {{end}}
@@ -251,8 +256,8 @@ HTCondor:
   Template: |
     universe = vanilla
     getenv = True
-    executable = {{.Executable}}
-    arguments = worker run --config {{.Config}} --task-id {{.TaskId}}
+    executable = funnel
+    arguments = worker run {{.Args}} --taskID {{.TaskId}}
     log = {{.WorkDir}}/condor-event-log
     error = {{.WorkDir}}/funnel-stderr
     output = {{.WorkDir}}/funnel-stdout
@@ -294,7 +299,7 @@ PBS:
     {{printf "#PBS -l file=%.0fgb" .DiskGb}}
     {{- end}}
 
-    {{.Executable}} worker run --config {{.Config}} --taskID {{.TaskId}}
+    funnel worker run {{.Args}} --taskID {{.TaskId}}
 
 GridEngine:
   TemplateFile: ""
@@ -314,7 +319,7 @@ GridEngine:
     {{printf "#$ -l h_fsize=%.0fG" .DiskGb}}
     {{- end}}
 
-    {{.Executable}} worker run --config {{.Config}} --taskID {{.TaskId}}
+    funnel worker run {{.Args}} --taskID {{.TaskId}}
 
 Slurm:
   # Turn off task state reconciler. When enabled, Funnel communicates with the HPC
@@ -341,7 +346,7 @@ Slurm:
     {{printf "#SBATCH --tmp %.0fGB" .DiskGb}}
     {{- end}}
 
-    {{.Executable}} worker run --config {{.Config}} --taskID {{.TaskId}}
+    funnel worker run {{.Args}} --taskID {{.TaskId}}
 
 # AWSBatch describes the configuration for the AWS Batch compute backend.
 AWSBatch:
@@ -500,6 +505,8 @@ Swift:
   ChunkSizeBytes: 500000000
 
 FTPStorage:
+  # Required for credentials other than the public anonymous defaults.
+  Endpoint: ""
   Disabled: false
   Timeout:
     duration: 10s

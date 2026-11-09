@@ -187,6 +187,7 @@ func storageFlags(flagConf *config.Config) *pflag.FlagSet {
 	f.Var(&TimeoutConfigValue{&flagConf.HTTPStorage.Timeout}, "HTTPStorage.Timeout", "Timeout in seconds for request")
 
 	// FTP storage
+	f.StringVar(&flagConf.FTPStorage.Endpoint, "FTPStorage.Endpoint", flagConf.FTPStorage.Endpoint, "Trusted FTP origin for configured credentials")
 	f.BoolVar(&flagConf.FTPStorage.Disabled, "FTPStorage.Disabled", flagConf.FTPStorage.Disabled, "Disable storage backend")
 	f.Var(&TimeoutConfigValue{&flagConf.FTPStorage.Timeout}, "FTPStorage.Timeout", "Timeout in seconds for request")
 
@@ -195,6 +196,7 @@ func storageFlags(flagConf *config.Config) *pflag.FlagSet {
 
 func computeFlags(flagConf *config.Config) *pflag.FlagSet {
 	f := pflag.NewFlagSet("", pflag.ContinueOnError)
+	f.StringVar(&flagConf.HPCStateDir, "HPCStateDir", flagConf.HPCStateDir, "Private persistent controller directory for trusted HPC job bindings")
 
 	// AWS Batch
 	f.StringVar(&flagConf.AWSBatch.AWSConfig.Region, "AWSBatch.Region", flagConf.AWSBatch.AWSConfig.Region, "AWS region of Batch resources")

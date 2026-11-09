@@ -8,9 +8,8 @@ import (
 	"time"
 
 	"github.com/calypr/funnel/config"
+	"github.com/calypr/funnel/internal/directory"
 	"github.com/calypr/funnel/logger"
-	"github.com/calypr/funnel/util"
-	"github.com/calypr/funnel/util/fsutil"
 	"github.com/calypr/funnel/version"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -25,7 +24,7 @@ func NewNodeProcess(ctx context.Context, conf *config.Config, factory Worker, lo
 		return nil, err
 	}
 
-	err = fsutil.EnsureDir(conf.Worker.WorkDir)
+	err = directory.EnsureDir(conf.Worker.WorkDir)
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +35,7 @@ func NewNodeProcess(ctx context.Context, conf *config.Config, factory Worker, lo
 		log.Error("error detecting resources", "error", derr)
 	}
 
-	timeout := util.NewIdleTimeout(conf.Node.Timeout.GetDuration().AsDuration())
+	timeout := newIdleTimeout(conf.Node.Timeout.GetDuration().AsDuration())
 	state := NodeState_UNINITIALIZED
 
 	return &NodeProcess{
@@ -61,7 +60,7 @@ type NodeProcess struct {
 	resources     *Resources
 	workerRun     Worker
 	workers       *runSet
-	timeout       util.IdleTimeout
+	timeout       idleTimeout
 	state         NodeState
 	drained       chan struct{}
 	drainRequests chan struct{}

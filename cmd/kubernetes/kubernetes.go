@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/calypr/funnel/cmd/lifecycle"
 	cmdutil "github.com/calypr/funnel/cmd/util"
 	k8sbackend "github.com/calypr/funnel/compute/kubernetes"
 	"github.com/calypr/funnel/config"
@@ -20,7 +21,6 @@ import (
 	"github.com/calypr/funnel/events"
 	"github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/tes"
-	"github.com/calypr/funnel/util"
 	"github.com/spf13/cobra"
 )
 
@@ -57,7 +57,7 @@ is decoupled from the server lifecycle and multiple replicas do not race.`,
 			log := logger.NewLogger("kubernetes-cleanup", conf.Logger)
 
 			ctx, cancel := context.WithCancel(context.Background())
-			ctx = util.SignalContext(ctx, time.Millisecond*500, syscall.SIGINT, syscall.SIGTERM)
+			ctx = lifecycle.SignalContext(ctx, time.Millisecond*500, syscall.SIGINT, syscall.SIGTERM)
 			defer cancel()
 
 			// Open only the database — no HTTP/gRPC server needed.

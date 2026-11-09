@@ -277,6 +277,20 @@ func detectPathCollisions(inputs []*tes.Input, outputs []*tes.Output) error {
 }
 
 func (b *Backend) Submit(task *tes.Task) error {
+	// Options is a provider-parsed string, not an argv API. Reject paths whose
+	// quoting or splitting would depend on an undocumented provider behavior.
+	for _, executor := range task.Executors {
+		if err := tes.ValidateContainerImage(executor.Image); err != nil {
+			return fmt.Errorf("invalid container image: %w", err)
+		}
+		if executor.Workdir != "" {
+			if !strings.HasPrefix(executor.Workdir, "/") || strings.IndexFunc(executor.Workdir, func(r rune) bool {
+				return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("/._-", r))
+			}) >= 0 {
+				return fmt.Errorf("GCP Batch workdir must be an absolute path containing only letters, digits, /, ., _, or -")
+			}
+		}
+	}
 	ctx := context.Background()
 	gpu, err := parseGPUOptions(task)
 	if err != nil {
@@ -715,29 +729,4 @@ ReconcileLoop:
 			}
 		}
 	}
-}
-
-// Retreives Batch Job ID from Task metadata (created in #Submit) stored in Funnel Database
-func (b *Backend) getTaskID(task *tes.Task) string {
-	if task.Logs != nil && len(task.Logs) > 0 {
-
-		if task.Logs[0].Metadata != nil {
-			uid := task.Logs[0].Metadata["gcpbatch_uid"]
-
-			if uid == "" {
-				b.log.Debug("No gcpbatch_uid found for task", "taskID", task.Id)
-				return ""
-			}
-
-			b.log.Debug("Retrieved gcpbatch_uid from task", "taskID", task.Id, "gcpbatch_uid", uid)
-			return uid
-		}
-
-		b.log.Debug("No Metadata found for task", "taskID", task.Id)
-		return ""
-
-	}
-
-	b.log.Debug("No Logs found for task", "taskID", task.Id)
-	return ""
 }

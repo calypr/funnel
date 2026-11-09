@@ -243,3 +243,32 @@ running without this guard. Datastore, DynamoDB, and Badger do not currently
 implement execution admission; use BoltDB, PostgreSQL, or MongoDB for remote
 workers with this version. Custom callers of `DefaultWorker` must supply an
 `ExecutionClaimer` for non-local task readers.
+
+## Container command templates
+
+Task-provided image, name, workdir, volume paths, and environment or label entries are bound as literal runtime arguments. Quoted and unquoted scalar placeholders both preserve spaces and quotes in task values. Runtime flags belong in the administrator's template, rather than in task fields. Image identifiers cannot start with `-` or contain whitespace or control characters. Docker volume paths cannot contain `:` or NUL.
+
+Use `{{.GetEnvArgs}}` and `{{.GetTagArgs}}` to expand environment variables and opted-in task labels. Direct `range` loops over `Env` and `Tags` are also supported. These maps use protected string keys; custom templates using `index .Env "KEY"` or `index .Tags "KEY"` must migrate to the helpers or a `range` with `eq`. Avoid applying string truncation or serialization to runtime argument placeholders. Task command arrays continue to be forwarded separately.
+
+### Trusted HPC submission records
+
+Slurm, PBS, HTCondor, and Grid Engine require `HPCStateDir`, an absolute path to
+private, persistent controller storage (mode `0700`). Keep it outside
+`Worker.WorkDir`, `Worker.ScratchPath`, and every enabled
+`LocalStorage.AllowedDirs` root. Use a bounded local-storage allowlist, or disable
+local storage. For example, use `/var/lib/funnel/controller` for `HPCStateDir`
+and `/var/lib/funnel/tasks` for task data.
+
+The controller records the scheduler job ID returned by submission there.
+Cancellation and reconciliation use that record; provider IDs in task logs are
+for display. Controllers managing the same jobs must share this directory, and
+it must survive restarts. Do not mount it into executor containers.
+
+Jobs submitted before this upgrade have no trusted record. Cancel those jobs
+with the scheduler's own command before upgrading; Funnel will refuse to use
+legacy task metadata as cancellation authority. Preserve the records while jobs
+can still be managed. Back up this directory with the task database.
+
+Output publication copies confined task files into a private temporary snapshot
+before uploading. Allow local disk space and I/O for an additional copy of the
+outputs during publication.

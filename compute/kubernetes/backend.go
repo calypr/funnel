@@ -9,9 +9,6 @@ import (
 	"time"
 
 	"dario.cat/mergo"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
-
 	"github.com/calypr/funnel/compute"
 	"github.com/calypr/funnel/compute/kubernetes/resources"
 	"github.com/calypr/funnel/compute/kubernetes/storageplan"
@@ -20,11 +17,11 @@ import (
 	"github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/plugins/proto"
 	"github.com/calypr/funnel/tes"
-	"github.com/calypr/funnel/util/k8sutil"
-	googleproto "google.golang.org/protobuf/proto"
-
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	googleproto "google.golang.org/protobuf/proto"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 )
 
 // Backend represents the K8s backend.
@@ -68,7 +65,7 @@ func NewBackend(ctx context.Context, conf *config.Config, reader tes.ReadOnlySer
 		conf.Kubernetes.JobsNamespace = conf.Kubernetes.Namespace
 	}
 
-	clientset, err := k8sutil.NewK8sClient(conf)
+	clientset, err := NewClient()
 	if err != nil {
 		return nil, fmt.Errorf("creating kubernetes client: %v", err)
 	}

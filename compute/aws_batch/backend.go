@@ -16,9 +16,9 @@ import (
 	"github.com/calypr/funnel/compute"
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/internal/awsclient"
 	"github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/tes"
-	util "github.com/calypr/funnel/util/aws"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -38,7 +38,7 @@ func NewBackend(ctx context.Context, conf *config.AWSBatch, reader tes.ReadOnlyS
 		return nil, fmt.Errorf("AWSBatch.AWSConfig is required")
 	}
 
-	sess, err := util.NewAWSConfig(ctx, conf.AWSConfig)
+	sess, err := awsclient.NewAWSConfig(ctx, conf.AWSConfig)
 	if err != nil {
 		return nil, fmt.Errorf("error occurred creating batch client: %v", err)
 	}

@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/internal/retry"
 	"github.com/calypr/funnel/server"
 	"github.com/calypr/funnel/tes"
-	"github.com/calypr/funnel/util"
 	badger "github.com/dgraph-io/badger/v4"
 	proto "google.golang.org/protobuf/proto"
 )
@@ -18,7 +18,7 @@ var errTaskExists = errors.New("task already exists")
 
 // WriteEvent creates an event for the server to handle.
 func (db *Badger) WriteEvent(ctx context.Context, req *events.Event) error {
-	r := util.Retrier{
+	r := retry.Retrier{
 		InitialInterval:     1 * time.Millisecond,
 		MaxInterval:         10 * time.Second,
 		MaxElapsedTime:      5 * time.Minute,

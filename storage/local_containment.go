@@ -10,8 +10,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-
-	"github.com/calypr/funnel/util/fsutil"
 )
 
 // openAllowed selects a lexical boundary, then uses descriptor-relative IO for
@@ -172,7 +170,7 @@ func localTransferTree(ctx context.Context, source, dest localEndpoint, ancestor
 	if err != nil {
 		return err
 	}
-	_, err = io.Copy(df, fsutil.Reader(ctx, sf))
+	_, err = io.Copy(df, contextReader(ctx, sf))
 	if err != nil {
 		return err
 	}
@@ -184,8 +182,8 @@ func localTransferTree(ctx context.Context, source, dest localEndpoint, ancestor
 	return df.Close()
 }
 
-func localWalk(ctx context.Context, root *os.Root, path string) ([]fsutil.Hostfile, error) {
-	var files []fsutil.Hostfile
+func localWalk(ctx context.Context, root *os.Root, path string) ([]Hostfile, error) {
+	var files []Hostfile
 	var walk func(string, string, []os.FileInfo) error
 	walk = func(name, rel string, ancestors []os.FileInfo) error {
 		if err := ctx.Err(); err != nil {
@@ -204,7 +202,7 @@ func localWalk(ctx context.Context, root *os.Root, path string) ([]fsutil.Hostfi
 			if !info.Mode().IsRegular() {
 				return fmt.Errorf("localStorage: listed path is not a regular file: %s", name)
 			}
-			files = append(files, fsutil.Hostfile{Rel: rel, LastModified: info.ModTime(), Size: info.Size()})
+			files = append(files, Hostfile{Rel: rel, LastModified: info.ModTime(), Size: info.Size()})
 			return nil
 		}
 		for _, ancestor := range ancestors {

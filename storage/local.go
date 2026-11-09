@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/calypr/funnel/config"
-	"github.com/calypr/funnel/util/fsutil"
 )
 
 // Local provides access to a local-disk storage system.
@@ -182,7 +181,7 @@ func copyFile(ctx context.Context, source string, dest string) (err error) {
 		return fmt.Errorf("failed to create dest file for copying: %v", err)
 	}
 
-	_, copyErr := io.Copy(df, fsutil.Reader(ctx, sf))
+	_, copyErr := io.Copy(df, contextReader(ctx, sf))
 	closeErr := df.Close()
 	if copyErr != nil {
 		return fmt.Errorf("copying file: %v", copyErr)
@@ -277,17 +276,6 @@ func processFile(ctx context.Context, source string, dest string) error {
 	}
 
 	return copyFile(ctx, parent, dest)
-}
-
-func FilePathWalkDir(root string) ([]string, error) {
-	var files []string
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if !info.IsDir() {
-			files = append(files, path)
-		}
-		return nil
-	})
-	return files, err
 }
 
 func sameFile(source string, dest string) (bool, error) {

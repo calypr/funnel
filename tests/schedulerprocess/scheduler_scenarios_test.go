@@ -14,9 +14,9 @@ import (
 	"github.com/calypr/funnel/compute/scheduler"
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/events"
+	"github.com/calypr/funnel/internal/rpcclient"
 	"github.com/calypr/funnel/server"
 	"github.com/calypr/funnel/tes"
-	"github.com/calypr/funnel/util/rpc"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
@@ -308,7 +308,7 @@ func submitTask(t *testing.T, port, id, markers string, hold bool) (string, erro
 	conf.RPCClient.Timeout = &config.TimeoutConfig{TimeoutOption: &config.TimeoutConfig_Duration{Duration: durationpb.New(10 * time.Second)}}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	conn, err := rpc.Dial(ctx, conf.RPCClient)
+	conn, err := rpcclient.Dial(ctx, conf.RPCClient)
 	if err != nil {
 		return "", fmt.Errorf("dial scheduler server: %w", err)
 	}

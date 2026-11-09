@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -17,7 +18,6 @@ import (
 	"github.com/calypr/funnel/logger"
 	"github.com/calypr/funnel/storage"
 	"github.com/calypr/funnel/tes"
-	"github.com/calypr/funnel/util"
 	"github.com/calypr/funnel/worker"
 	googleproto "google.golang.org/protobuf/proto"
 )
@@ -211,7 +211,7 @@ func (r *databaseTaskReader) ClaimExecution(ctx context.Context, taskID string, 
 // eventWriterBuilder is a helper for building a set of event writers,
 // collecting errors, de-duplicating config, etc.
 type eventWriterBuilder struct {
-	errors  util.MultiError
+	errors  []error
 	writers events.MultiWriter
 	// seen tracks which event writers have already been built,
 	// so we don't build the same one twice.
@@ -220,7 +220,7 @@ type eventWriterBuilder struct {
 
 // Writers gets all the event writers and errors collected by multiple calls to Add().
 func (e *eventWriterBuilder) Writer() (events.Writer, error) {
-	return &e.writers, e.errors.ToError()
+	return &e.writers, errors.Join(e.errors...)
 }
 
 // Add creates a new event writer by name and adds it to the builder.

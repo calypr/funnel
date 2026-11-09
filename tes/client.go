@@ -2,6 +2,7 @@ package tes
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,9 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"context"
-
-	"github.com/calypr/funnel/util"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
@@ -137,7 +135,7 @@ func (c *Client) GetTask(ctx context.Context, req *GetTaskRequest) (*Task, error
 	if err != nil {
 		return nil, fmt.Errorf("tes: creating GET request: %w", err)
 	}
-	body, err := util.CheckHTTPResponse(c.do(hreq))
+	body, err := CheckHTTPResponse(c.do(hreq))
 	if err != nil {
 		return nil, err
 	}
@@ -174,7 +172,7 @@ func (c *Client) ListTasks(ctx context.Context, req *ListTasksRequest) (*ListTas
 	if err != nil {
 		return nil, fmt.Errorf("tes: creating GET request: %w", err)
 	}
-	body, err := util.CheckHTTPResponse(c.do(hreq))
+	body, err := CheckHTTPResponse(c.do(hreq))
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +204,7 @@ func (c *Client) CreateTask(ctx context.Context, task *Task) (*CreateTaskRespons
 		return nil, fmt.Errorf("tes: creating POST request: %w", err)
 	}
 	hreq.Header.Add("Content-Type", "application/json")
-	body, err := util.CheckHTTPResponse(c.do(hreq))
+	body, err := CheckHTTPResponse(c.do(hreq))
 	if err != nil {
 		return nil, err
 	}
@@ -250,7 +248,7 @@ func (c *Client) CancelTaskWithMessage(ctx context.Context, req *CancelTaskReque
 	}
 	defer httpResp.Body.Close() //nolint:errcheck // The response body is read-only cleanup after response handling.
 
-	body, err := util.CheckHTTPResponse(httpResp, err)
+	body, err := CheckHTTPResponse(httpResp, err)
 	if err != nil {
 		return nil, err
 	}
@@ -290,7 +288,7 @@ func (c *Client) GetServiceInfo(ctx context.Context, req *GetServiceInfoRequest)
 	if err != nil {
 		return nil, fmt.Errorf("tes: creating GET request: %w", err)
 	}
-	body, err := util.CheckHTTPResponse(c.do(hreq))
+	body, err := CheckHTTPResponse(c.do(hreq))
 	if err != nil {
 		return nil, err
 	}

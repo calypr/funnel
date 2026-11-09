@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/calypr/funnel/internal/shellwords"
 	"github.com/calypr/funnel/tes"
-	"github.com/calypr/funnel/util/shellwords"
 	"github.com/spf13/cobra"
 )
 

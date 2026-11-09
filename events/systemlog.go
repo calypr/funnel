@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/calypr/funnel/util"
+	"github.com/calypr/funnel/logger"
 )
 
 // SystemLogGenerator is a type that emulates the logger interface
@@ -68,7 +68,7 @@ func (sle *SystemLogWriter) Warn(msg string, args ...interface{}) error {
 // ("key", value, "key2", value2) => {"key": value, "key2", value2}
 func fields(args ...interface{}) map[string]string {
 	ss := make(map[string]string)
-	si := util.ArgListToMap(args...)
+	si := logger.ArgListToMap(args...)
 	for k, v := range si {
 		ss[k] = fmt.Sprintf("%+v", v)
 	}

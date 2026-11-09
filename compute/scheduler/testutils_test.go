@@ -8,7 +8,6 @@ import (
 
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/logger"
-	"github.com/calypr/funnel/util"
 	"github.com/stretchr/testify/mock"
 	"google.golang.org/grpc"
 )
@@ -41,7 +40,7 @@ func newTestNode(conf *config.Config, t *testing.T) testNode {
 		resources:     res,
 		workerRun:     NoopWorker,
 		workers:       newRunSet(),
-		timeout:       util.NewIdleTimeout(conf.Node.Timeout.GetDuration().AsDuration()),
+		timeout:       newIdleTimeout(conf.Node.Timeout.GetDuration().AsDuration()),
 		state:         NodeState_ALIVE,
 		drained:       make(chan struct{}),
 		drainRequests: make(chan struct{}, 1),

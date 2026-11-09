@@ -6,10 +6,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/calypr/funnel/cmd/lifecycle"
 	cmdutil "github.com/calypr/funnel/cmd/util"
 	"github.com/calypr/funnel/config"
 	"github.com/calypr/funnel/logger"
-	"github.com/calypr/funnel/util"
 	"github.com/spf13/cobra"
 )
 
@@ -61,7 +61,7 @@ func newCommandHooks() (*cobra.Command, *hooks) {
 			log := logger.NewLogger("server", conf.Logger)
 			logger.SetGRPCLogger(log.Sub("server-grpc"))
 			ctx, cancel := context.WithCancel(context.Background())
-			ctx = util.SignalContext(ctx, time.Millisecond*500, syscall.SIGINT, syscall.SIGTERM)
+			ctx = lifecycle.SignalContext(ctx, time.Millisecond*500, syscall.SIGINT, syscall.SIGTERM)
 			defer cancel()
 			return hooks.Run(ctx, conf, log)
 		},
