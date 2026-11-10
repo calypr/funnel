@@ -394,9 +394,11 @@ func (x *Config) GetPlugins() *Plugins {
 
 // This config matches the funnel plugins repo protobuf
 type Plugins struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Path          string                 `protobuf:"bytes,1,opt,name=Path,proto3" json:"Path,omitempty"`
-	Params        map[string]string      `protobuf:"bytes,2,rep,name=Params,proto3" json:"Params,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Path   string                 `protobuf:"bytes,1,opt,name=Path,proto3" json:"Path,omitempty"`
+	Params map[string]string      `protobuf:"bytes,2,rep,name=Params,proto3" json:"Params,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// Use the plugin to authenticate bearer tokens before checking task access.
+	Authenticate  bool `protobuf:"varint,3,opt,name=Authenticate,proto3" json:"Authenticate,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -443,6 +445,13 @@ func (x *Plugins) GetParams() map[string]string {
 		return x.Params
 	}
 	return nil
+}
+
+func (x *Plugins) GetAuthenticate() bool {
+	if x != nil {
+		return x.Authenticate
+	}
+	return false
 }
 
 // BasicCredential describes a username and password for use with Funnel's basic auth.
@@ -3529,10 +3538,11 @@ const file_config_config_proto_rawDesc = "" +
 	"\n" +
 	"FTPStorage\x18\x1f \x01(\v2\x12.config.FTPStorageR\n" +
 	"FTPStorage\x12)\n" +
-	"\aPlugins\x18  \x01(\v2\x0f.config.PluginsR\aPluginsJ\x04\b\r\x10\x0eJ\x04\b\"\x10#R\aElasticR\rMountedInputs\"\x8d\x01\n" +
+	"\aPlugins\x18  \x01(\v2\x0f.config.PluginsR\aPluginsJ\x04\b\r\x10\x0eJ\x04\b\"\x10#R\aElasticR\rMountedInputs\"\xb1\x01\n" +
 	"\aPlugins\x12\x12\n" +
 	"\x04Path\x18\x01 \x01(\tR\x04Path\x123\n" +
-	"\x06Params\x18\x02 \x03(\v2\x1b.config.Plugins.ParamsEntryR\x06Params\x1a9\n" +
+	"\x06Params\x18\x02 \x03(\v2\x1b.config.Plugins.ParamsEntryR\x06Params\x12\"\n" +
+	"\fAuthenticate\x18\x03 \x01(\bR\fAuthenticate\x1a9\n" +
 	"\vParamsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"W\n" +

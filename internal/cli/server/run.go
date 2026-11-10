@@ -351,6 +351,7 @@ func NewServer(ctx context.Context, conf *config.Config, log *logger.Logger) (se
 			return nil, fmt.Errorf("failed to get plugin client: %w", err)
 		}
 		tasks.Plugin = plugin
+		serverConf.Server.AuthPlugin = plugin
 	}
 
 	return serverConf, nil

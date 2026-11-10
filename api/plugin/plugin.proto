@@ -12,6 +12,8 @@ enum Type {
     CREATE = 0;
     GET    = 1;
     CANCEL = 2;
+    // Verify the bearer header and return the authenticated subject in userId.
+    AUTHENTICATE = 3;
 }
 
 message Job {

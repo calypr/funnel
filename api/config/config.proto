@@ -64,6 +64,8 @@ message Config {
 message Plugins {
   string                  Path     = 1;
   map<string, string>     Params  = 2;
+  // Use the plugin to authenticate bearer tokens before checking task access.
+  bool Authenticate = 3;
 }
 
 // BasicCredential describes a username and password for use with Funnel's basic auth.

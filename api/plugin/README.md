@@ -10,6 +10,14 @@ Implement `plugin.Authorize` and supply the implementation through
 HashiCorp go-plugin on both sides. Host executable discovery and process lifecycle
 management remain internal to Funnel.
 
+When `Plugins.Authenticate` is enabled, Funnel sends the bearer header in a
+`Type_AUTHENTICATE` action before running the requested RPC. This action receives
+plugin parameters but no task or server configuration. Return HTTP status 200
+and a stable, verified subject in `JobResponse.UserId`. Funnel uses that subject
+for task access checks and does not grant administrator privileges. Keep
+project or task authorization in the existing task actions. This mode is
+separate from Funnel's built-in Basic and OIDC authentication.
+
 ## Task configuration
 
 Plugins receive the complete server configuration in `PluginAction`. Return that

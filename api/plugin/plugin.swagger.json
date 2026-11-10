@@ -719,6 +719,10 @@
           "additionalProperties": {
             "type": "string"
           }
+        },
+        "Authenticate": {
+          "type": "boolean",
+          "description": "Use the plugin to authenticate bearer tokens before checking task access."
         }
       },
       "title": "This config matches the funnel plugins repo protobuf"
@@ -1144,9 +1148,11 @@
       "enum": [
         "CREATE",
         "GET",
-        "CANCEL"
+        "CANCEL",
+        "AUTHENTICATE"
       ],
-      "default": "CREATE"
+      "default": "CREATE",
+      "description": " - AUTHENTICATE: Verify the bearer header and return the authenticated subject in userId."
     },
     "protobufAny": {
       "type": "object",

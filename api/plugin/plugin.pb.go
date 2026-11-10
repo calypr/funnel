@@ -29,6 +29,8 @@ const (
 	Type_CREATE Type = 0
 	Type_GET    Type = 1
 	Type_CANCEL Type = 2
+	// Verify the bearer header and return the authenticated subject in userId.
+	Type_AUTHENTICATE Type = 3
 )
 
 // Enum value maps for Type.
@@ -37,11 +39,13 @@ var (
 		0: "CREATE",
 		1: "GET",
 		2: "CANCEL",
+		3: "AUTHENTICATE",
 	}
 	Type_value = map[string]int32{
-		"CREATE": 0,
-		"GET":    1,
-		"CANCEL": 2,
+		"CREATE":       0,
+		"GET":          1,
+		"CANCEL":       2,
+		"AUTHENTICATE": 3,
 	}
 )
 
@@ -330,13 +334,14 @@ const file_plugin_plugin_proto_rawDesc = "" +
 	"\x06config\x18\x03 \x01(\v2\x0e.config.ConfigR\x06config\x12\x1d\n" +
 	"\x04task\x18\x04 \x01(\v2\t.tes.TaskR\x04task\x12\x16\n" +
 	"\x06userId\x18\a \x01(\tR\x06userId\"\a\n" +
-	"\x05Empty*'\n" +
+	"\x05Empty*9\n" +
 	"\x04Type\x12\n" +
 	"\n" +
 	"\x06CREATE\x10\x00\x12\a\n" +
 	"\x03GET\x10\x01\x12\n" +
 	"\n" +
-	"\x06CANCEL\x10\x022;\n" +
+	"\x06CANCEL\x10\x02\x12\x10\n" +
+	"\fAUTHENTICATE\x10\x032;\n" +
 	"\tAuthorize\x12.\n" +
 	"\fPluginAction\x12\n" +
 	".proto.Job\x1a\x12.proto.JobResponseB,Z*github.com/calypr/funnel/api/plugin;pluginb\x06proto3"

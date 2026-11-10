@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/calypr/funnel/api/config"
+	pluginapi "github.com/calypr/funnel/api/plugin"
 	"github.com/calypr/funnel/internal/identity"
 	"github.com/calypr/funnel/internal/logger"
 	"github.com/calypr/funnel/internal/tesrpc"
@@ -24,6 +25,15 @@ type Authentication struct {
 	oidc       *OidcConfig
 	accessMode identity.AccessMode
 	log        *logger.Logger
+	plugin     pluginapi.Authorize
+	params     map[string]string
+}
+
+// UsePlugin enables bearer authentication through the configured plugin.
+// Call it before serving requests.
+func (a *Authentication) UsePlugin(plugin pluginapi.Authorize, params map[string]string) {
+	a.plugin = plugin
+	a.params = params
 }
 
 var (
@@ -77,7 +87,7 @@ func (a *Authentication) Interceptor(
 	info *grpc.UnaryServerInfo,
 	handler grpc.UnaryHandler) (interface{}, error) {
 
-	if (len(a.basic) == 0 && a.oidc == nil) || info.FullMethod == tesrpc.TaskService_GetServiceInfo_FullMethodName {
+	if (len(a.basic) == 0 && a.oidc == nil && a.plugin == nil) || info.FullMethod == tesrpc.TaskService_GetServiceInfo_FullMethodName {
 		userInfo := identity.UserInfo{IsPublic: true, AccessMode: a.accessMode}
 		ctx = identity.WithUser(ctx, &userInfo)
 		return handler(ctx, req)
@@ -108,6 +118,18 @@ func (a *Authentication) Interceptor(
 			isAdmin := a.admins[username]
 			ctx = identity.WithUser(ctx,
 				&identity.UserInfo{Username: username, IsAdmin: isAdmin, AccessMode: a.accessMode})
+		}
+	} else if a.plugin != nil && len(values) == 1 && strings.HasPrefix(authorization, "Bearer ") {
+		authErr = errInvalidBearerToken
+		response, err := a.plugin.PluginAction(a.params, map[string]*pluginapi.StringList{
+			"authorization": {Values: values},
+		}, nil, nil, pluginapi.Type_AUTHENTICATE)
+		switch {
+		case err != nil, response == nil, response.GetCode() >= 500:
+			authErr = status.Error(codes.Unavailable, "Bearer authentication service unavailable")
+		case response.GetCode() == http.StatusOK && strings.TrimSpace(response.GetUserId()) != "":
+			ctx = identity.WithUser(ctx, &identity.UserInfo{Username: response.GetUserId(), AccessMode: a.accessMode})
+			authorized = true
 		}
 	} else if a.oidc != nil && strings.HasPrefix(authorization, "Bearer ") {
 		authErr = errInvalidBearerToken

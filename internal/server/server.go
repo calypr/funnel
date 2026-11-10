@@ -19,6 +19,7 @@ import (
 	"google.golang.org/grpc/keepalive"
 
 	"github.com/calypr/funnel/api/config"
+	pluginapi "github.com/calypr/funnel/api/plugin"
 	"github.com/calypr/funnel/internal/compute/scheduler"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
@@ -47,6 +48,7 @@ type Server struct {
 	MaxResponseBytes int
 	Log              *logger.Logger
 	Plugins          *config.Plugins
+	AuthPlugin       pluginapi.Authorize
 }
 
 // Serve starts the server and blocks until its context is canceled or a listener stops.
@@ -78,7 +80,18 @@ func (s *Server) Serve(pctx context.Context) error {
 	}
 	defer httpLis.Close() //nolint:errcheck // Listener cleanup is best effort after HTTP shutdown.
 
+	if s.Plugins.GetAuthenticate() {
+		if s.AuthPlugin == nil {
+			return fmt.Errorf("Plugins.Authenticate requires a loaded authorization plugin")
+		}
+		if len(s.BasicAuth) != 0 || s.OidcAuth.GetServiceConfigURL() != "" {
+			return fmt.Errorf("Plugins.Authenticate cannot be combined with BasicAuth or OidcAuth")
+		}
+	}
 	auth := serverauth.NewAuthentication(s.BasicAuth, s.OidcAuth, s.TaskAccess, s.Log)
+	if s.Plugins.GetAuthenticate() {
+		auth.UsePlugin(s.AuthPlugin, s.Plugins.GetParams())
+	}
 
 	maxResponseBytes := s.MaxResponseBytes
 	if maxResponseBytes == 0 {
