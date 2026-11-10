@@ -108,6 +108,7 @@ func (a *Authentication) Interceptor(
 	authorized := false
 	authErr := errTokenRequired
 	authorization := values[0]
+	scheme, _, _ := strings.Cut(authorization, " ")
 
 	if strings.HasPrefix(authorization, "Basic ") {
 		authErr = errInvalidBasicToken
@@ -119,7 +120,7 @@ func (a *Authentication) Interceptor(
 			ctx = identity.WithUser(ctx,
 				&identity.UserInfo{Username: username, IsAdmin: isAdmin, AccessMode: a.accessMode})
 		}
-	} else if a.plugin != nil && len(values) == 1 && strings.HasPrefix(authorization, "Bearer ") {
+	} else if a.plugin != nil && len(values) == 1 && strings.EqualFold(scheme, "Bearer") {
 		authErr = errInvalidBearerToken
 		response, err := a.plugin.PluginAction(a.params, map[string]*pluginapi.StringList{
 			"authorization": {Values: values},

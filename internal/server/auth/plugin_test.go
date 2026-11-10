@@ -29,6 +29,7 @@ func TestPluginBearerIdentity(t *testing.T) {
 		code  codes.Code
 	}{
 		{"owner", "Bearer alice", codes.OK},
+		{"owner with proxy bearer scheme", "bearer alice", codes.OK},
 		{"another user", "Bearer bob", codes.PermissionDenied},
 		{"missing token", "", codes.Unauthenticated},
 		{"rejected token", "Bearer invalid", codes.Unauthenticated},
@@ -42,7 +43,7 @@ func TestPluginBearerIdentity(t *testing.T) {
 					t.Fatal("unexpected authentication request")
 				}
 				switch headers["authorization"].GetValues()[0] {
-				case "Bearer alice":
+				case "Bearer alice", "bearer alice":
 					return &pluginapi.JobResponse{Code: 200, UserId: "alice"}, nil
 				case "Bearer bob":
 					return &pluginapi.JobResponse{Code: 200, UserId: "bob"}, nil
