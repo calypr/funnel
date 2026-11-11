@@ -73,6 +73,9 @@ func TestTaskGatewayPermissionDeniedOnInitialRead(t *testing.T) {
 			request := httptest.NewRequest(tt.method, tt.path, nil)
 			handler.ServeHTTP(response, request)
 
+			if response.Header().Get("Content-Type") != "application/json" {
+				t.Fatalf("error Content-Type = %q, want application/json", response.Header().Get("Content-Type"))
+			}
 			if response.Code != http.StatusForbidden {
 				t.Fatalf("HTTP status = %d, want %d; body: %s", response.Code, http.StatusForbidden, response.Body)
 			}
