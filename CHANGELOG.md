@@ -3,7 +3,8 @@
 ### Added
 
 * CLI configuration loading supports `FUNNEL_CONFIG` for the default config file path and `FUNNEL_LOG_LEVEL` to override the configured log level. Explicit flags take precedence.
-* The optional `Server.ServiceInfo` section sets the `id`, `description`, `organization`, `contactUrl`, `documentationUrl`, `environment`, `createdAt`, and `storage` that `GET /service-info` reports. Empty fields keep the built-in values, and the server refuses to start if a configured value violates the GA4GH service-info specification. An empty `Server.ServiceName` now reports `Funnel` instead of an empty `name`, and a whitespace-only one stops the server from starting. Service info is public. See the [service info docs](docs/service-info.md).
+* The optional `Server.ServiceInfo` section sets the `id`, `description`, `organization`, `contactUrl`, `documentationUrl`, `environment`, `createdAt`, and `storage` that `GET /service-info` reports. Empty fields keep the built-in values, and the server refuses to start if a configured value is invalid: values are checked against the GA4GH service-info specification, and URLs must be `http(s)` (or `mailto:` for `contactUrl`) without credentials. Service info is public. See the [service info docs](docs/service-info.md).
+* An empty `Server.ServiceName` now reports `Funnel` as the service-info `name` instead of an empty string, and a whitespace-only `Server.ServiceName` stops the server from starting.
 
 ### Fixed
 

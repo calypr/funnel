@@ -179,6 +179,8 @@ func TestValidateServiceInfoAcceptsValidValues(t *testing.T) {
 			Storage:          []string{"s3://example-bucket", "file:///data"},
 		},
 		"https contact":       {ContactUrl: "https://example.org/contact"},
+		"mailto with subject": {ContactUrl: "mailto:admin@example.org?subject=Hi%20there"},
+		"mailto to header":    {ContactUrl: "mailto:?to=admin@example.org"},
 		"http documentation":  {DocumentationUrl: "http://docs.example.org:8080/tes?lang=en#config"},
 		"percent-encoded url": {DocumentationUrl: "https://example.org/my%20docs"},
 		"ipv6 host":           {Organization: &config.ServiceInfoOrganization{Name: "Example Org", Url: "https://[2001:db8::1]/"}},
@@ -233,6 +235,9 @@ func TestValidateServiceInfoRejectsInvalidValues(t *testing.T) {
 		"empty host with port":      {info: &config.ServiceInfo{ContactUrl: "https://:443/contact"}, field: "Server.ServiceInfo.ContactUrl"},
 		"non-ascii host":            {info: &config.ServiceInfo{DocumentationUrl: "https://exämple.org"}, field: "Server.ServiceInfo.DocumentationUrl"},
 		"brace in path":             {info: &config.ServiceInfo{DocumentationUrl: "https://example.org/{x}"}, field: "Server.ServiceInfo.DocumentationUrl"},
+		"mailto without address":    {info: &config.ServiceInfo{ContactUrl: "mailto:notanemail"}, field: "Server.ServiceInfo.ContactUrl"},
+		"credentials in url":        {info: &config.ServiceInfo{DocumentationUrl: "https://user:secret@example.org/docs"}, field: "Server.ServiceInfo.DocumentationUrl"},
+		"malformed percent-escape":  {info: &config.ServiceInfo{DocumentationUrl: "https://example.org/%zz"}, field: "Server.ServiceInfo.DocumentationUrl"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			serviceName := tc.serviceName

@@ -89,8 +89,10 @@ naming every invalid key:
   with the characters [RFC 3986][rfc3986] allows (percent-encode others, and
   use the ASCII form of internationalized domain names). `ContactUrl` may also
   be an email address as a `mailto:` URI (`mailto:admin@example.org`), as the
-  specification suggests. Clients show these values as links, so other schemes,
-  such as `javascript:` or `data:`, are rejected.
+  specification suggests. Clients show these values as links, so Funnel is
+  stricter here than the specification's `format: uri`: other schemes, such as
+  `javascript:`, `data:` or `tel:`, are rejected, and so are URLs that contain
+  credentials (`https://user:password@...`).
 - `CreatedAt` must be an [RFC 3339][rfc3339] timestamp with a time zone, such
   as `2026-01-01T00:00:00Z`. Leap seconds (`:60`) aren't accepted.
 - `Storage` entries must not be empty or consist only of whitespace. The TES

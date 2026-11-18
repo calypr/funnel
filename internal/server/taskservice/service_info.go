@@ -80,8 +80,8 @@ func ValidateServiceInfo(name string, info *config.ServiceInfo) error {
 		validateText("Server.ServiceInfo.Id", info.Id, false),
 		validateText("Server.ServiceInfo.Description", info.Description, false),
 		validateText("Server.ServiceInfo.Environment", info.Environment, false),
-		validateURL("Server.ServiceInfo.ContactUrl", info.ContactUrl, false, contactSchemes),
-		validateURL("Server.ServiceInfo.DocumentationUrl", info.DocumentationUrl, false, webSchemes),
+		validateURL("Server.ServiceInfo.ContactUrl", info.ContactUrl, false, contactURL),
+		validateURL("Server.ServiceInfo.DocumentationUrl", info.DocumentationUrl, false, webURL),
 		validateDateTime("Server.ServiceInfo.CreatedAt", info.CreatedAt),
 	)
 
@@ -89,7 +89,7 @@ func ValidateServiceInfo(name string, info *config.ServiceInfo) error {
 		// The specification requires both name and url in organization.
 		errs = append(errs,
 			validateText("Server.ServiceInfo.Organization.Name", org.Name, true),
-			validateURL("Server.ServiceInfo.Organization.Url", org.Url, true, webSchemes),
+			validateURL("Server.ServiceInfo.Organization.Url", org.Url, true, webURL),
 		)
 	}
 
@@ -111,19 +111,32 @@ func validateText(field, value string, required bool) error {
 	return nil
 }
 
+// urlKind lists the schemes a URL field accepts and how errors describe it.
+type urlKind struct {
+	schemes  []string
+	expected string
+}
+
 var (
-	// webSchemes are allowed for website and documentation URLs.
-	webSchemes = []string{"http", "https"}
-	// contactSchemes also allow an email address (RFC 2368/6068), which the
+	// webURL is accepted for website and documentation URLs.
+	webURL = urlKind{
+		schemes:  []string{"http", "https"},
+		expected: "an absolute http(s) URL (RFC 3986), such as https://example.org",
+	}
+	// contactURL also accepts an email address (RFC 2368/6068), which the
 	// specification suggests for contactUrl.
-	contactSchemes = []string{"http", "https", "mailto"}
+	contactURL = urlKind{
+		schemes:  []string{"http", "https", "mailto"},
+		expected: "an absolute http(s) URL or mailto: URI (RFC 3986), such as https://example.org/contact or mailto:admin@example.org",
+	}
 )
 
-// validateURL accepts absolute URIs (RFC 3986) with one of the given
-// schemes. Service info is public and clients render these values as links,
-// so other schemes (such as javascript: or data:) are rejected. HTTP(S) URLs
-// must name a host; mailto: URIs must name an address.
-func validateURL(field, value string, required bool, schemes []string) error {
+// validateURL accepts absolute URIs (RFC 3986) with one of the schemes of
+// kind. Service info is public and clients render these values as links,
+// so other schemes (such as javascript: or data:) are rejected. This is
+// stricter than the specification's "format: uri". HTTP(S) URLs must name a
+// host and must not contain credentials; mailto: URIs must name an address.
+func validateURL(field, value string, required bool, kind urlKind) error {
 	if value == "" {
 		if required {
 			return fmt.Errorf("%s must be set", field)
@@ -131,24 +144,22 @@ func validateURL(field, value string, required bool, schemes []string) error {
 		return nil
 	}
 	u, err := url.Parse(value)
-	valid := err == nil && onlyURICharacters(value) && slices.Contains(schemes, u.Scheme)
+	valid := err == nil && onlyURICharacters(value) && slices.Contains(kind.schemes, u.Scheme)
 	if valid && u.Scheme == "mailto" {
-		valid = u.Opaque != ""
+		// RFC 6068 allows the address before "?" or in a "to" header field.
+		address := u.Opaque
+		if address == "" {
+			address = u.Query().Get("to")
+		}
+		valid = strings.Contains(address, "@")
 	} else if valid {
-		valid = u.Hostname() != ""
+		// Service info is public, so URLs must not carry credentials.
+		valid = u.Hostname() != "" && u.User == nil
 	}
 	if !valid {
-		return fmt.Errorf("%s must be an absolute %s URL (RFC 3986), such as https://example.org%s; got %q",
-			field, strings.Join(schemes, ", "), mailtoExample(schemes), value)
+		return fmt.Errorf("%s must be %s; got %q", field, kind.expected, value)
 	}
 	return nil
-}
-
-func mailtoExample(schemes []string) string {
-	if slices.Contains(schemes, "mailto") {
-		return " or mailto:admin@example.org"
-	}
-	return ""
 }
 
 // onlyURICharacters reports whether value consists only of characters that

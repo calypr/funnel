@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/calypr/funnel/api/config"
+	"github.com/calypr/funnel/api/tes"
 	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/config/configtest"
 	"github.com/calypr/funnel/internal/database/boltdb"
@@ -14,20 +15,62 @@ import (
 )
 
 func TestNewServerRejectsInvalidServiceInfo(t *testing.T) {
+	for name, tc := range map[string]struct {
+		serviceName string
+		info        *config.ServiceInfo
+		field       string
+	}{
+		"invalid contact url":       {serviceName: "Funnel", info: &config.ServiceInfo{ContactUrl: "admin@example.org"}, field: "Server.ServiceInfo.ContactUrl"},
+		"whitespace-only name":      {serviceName: " ", field: "Server.ServiceName"},
+		"organization without name": {serviceName: "Funnel", info: &config.ServiceInfo{Organization: &config.ServiceInfoOrganization{Url: "https://example.org"}}, field: "Server.ServiceInfo.Organization.Name"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			conf := appconfig.DefaultConfig()
+			conf.BoltDB.Path = filepath.Join(t.TempDir(), "tasks.db")
+			conf.Server.ServiceName = tc.serviceName
+			conf.Server.ServiceInfo = tc.info
+
+			s, err := NewServer(context.Background(), conf, logger.NewLogger("test", logger.DefaultConfig()))
+			if err == nil {
+				s.Close()
+				t.Fatalf("NewServer succeeded with an invalid %s", tc.field)
+			}
+			if s != nil {
+				t.Fatal("NewServer returned a server along with the error")
+			}
+			if !strings.Contains(err.Error(), tc.field) {
+				t.Fatalf("NewServer error = %q, want it to name %s", err, tc.field)
+			}
+		})
+	}
+}
+
+func TestNewServerServesConfiguredServiceInfo(t *testing.T) {
 	conf := appconfig.DefaultConfig()
 	conf.BoltDB.Path = filepath.Join(t.TempDir(), "tasks.db")
-	conf.Server.ServiceInfo = &config.ServiceInfo{ContactUrl: "admin@example.org"}
+	conf.Server.ServiceName = "Example TES"
+	conf.Server.ServiceInfo = &config.ServiceInfo{
+		Id:           "org.example.tes",
+		Organization: &config.ServiceInfoOrganization{Name: "Example Org", Url: "https://example.org"},
+		Environment:  "prod",
+	}
 
 	s, err := NewServer(context.Background(), conf, logger.NewLogger("test", logger.DefaultConfig()))
-	if err == nil {
-		s.Close()
-		t.Fatal("NewServer succeeded with an invalid Server.ServiceInfo.ContactUrl")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if s != nil {
-		t.Fatal("NewServer returned a server along with the error")
+	defer s.Close()
+
+	info, err := s.Tasks.GetServiceInfo(context.Background(), &tes.GetServiceInfoRequest{})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(err.Error(), "Server.ServiceInfo.ContactUrl") {
-		t.Fatalf("NewServer error = %q, want it to name Server.ServiceInfo.ContactUrl", err)
+	if info.Name != "Example TES" || info.Id != "org.example.tes" || info.Environment != "prod" ||
+		info.Organization["name"] != "Example Org" || info.Organization["url"] != "https://example.org" {
+		t.Fatalf("service info = %+v, want the configured name, id, environment and organization", info)
+	}
+	if info.DocumentationUrl != "https://github.com/calypr/funnel" {
+		t.Fatalf("documentationUrl = %q, want the built-in value", info.DocumentationUrl)
 	}
 }
 
