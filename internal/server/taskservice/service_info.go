@@ -3,7 +3,9 @@ package taskservice
 import (
 	"errors"
 	"fmt"
+	"net/mail"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -147,11 +149,7 @@ func validateURL(field, value string, required bool, kind urlKind) error {
 	valid := err == nil && onlyURICharacters(value) && slices.Contains(kind.schemes, u.Scheme)
 	if valid && u.Scheme == "mailto" {
 		// RFC 6068 allows the address before "?" or in a "to" header field.
-		address := u.Opaque
-		if address == "" {
-			address = u.Query().Get("to")
-		}
-		valid = strings.Contains(address, "@")
+		valid = validMailtoAddress(u)
 	} else if valid {
 		// Service info is public, so URLs must not carry credentials.
 		valid = u.Hostname() != "" && u.User == nil
@@ -160,6 +158,46 @@ func validateURL(field, value string, required bool, kind urlKind) error {
 		return fmt.Errorf("%s must be %s; got %q", field, kind.expected, value)
 	}
 	return nil
+}
+
+func validMailtoAddress(u *url.URL) bool {
+	if u.Host != "" || u.Path != "" || u.Fragment != "" {
+		return false
+	}
+	address, err := url.PathUnescape(u.Opaque)
+	if err != nil || (address != "" && !validMailtoRecipients(address)) {
+		return false
+	}
+	// In mailto URIs a literal '+' is part of the address.
+	headers, err := url.ParseQuery(strings.ReplaceAll(u.RawQuery, "+", "%2B"))
+	if err != nil {
+		return false
+	}
+	hasRecipient := address != ""
+	for name, values := range headers {
+		if !strings.EqualFold(name, "to") {
+			continue
+		}
+		for _, value := range values {
+			if !validMailtoRecipients(value) {
+				return false
+			}
+			hasRecipient = true
+		}
+	}
+	return hasRecipient
+}
+
+// Only allow bare addresses. Quoted local parts and domain literals can
+// contain punctuation that otherwise marks a group, display name or comment.
+var mailtoRecipientList = regexp.MustCompile(`^(?:[^"<>():;\[\]\\]|"(?:[^"\\]|\\.)*"|\[[^\[\]]*\])+$`)
+
+func validMailtoRecipients(value string) bool {
+	if !mailtoRecipientList.MatchString(value) {
+		return false
+	}
+	recipients, err := mail.ParseAddressList(value)
+	return err == nil && len(recipients) != 0
 }
 
 // onlyURICharacters reports whether value consists only of characters that
@@ -177,6 +215,10 @@ func onlyURICharacters(value string) bool {
 	return true
 }
 
+// time.Parse also accepts single-digit hours, comma fractions and out-of-range
+// offsets. Check the timestamp's shape as well as the calendar date.
+var rfc3339DateTime = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}[Tt][0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?([Zz]|[+-]([01][0-9]|2[0-3]):[0-5][0-9])$`)
+
 // validateDateTime accepts RFC 3339 timestamps with a time zone. RFC 3339
 // allows lower-case "t" and "z", which Go's parser doesn't, so the value is
 // upper-cased before parsing.
@@ -184,7 +226,7 @@ func validateDateTime(field, value string) error {
 	if value == "" {
 		return nil
 	}
-	if _, err := time.Parse(time.RFC3339Nano, strings.ToUpper(value)); err != nil {
+	if _, err := time.Parse(time.RFC3339Nano, strings.ToUpper(value)); err != nil || !rfc3339DateTime.MatchString(value) {
 		return fmt.Errorf("%s must be an RFC 3339 timestamp, such as 2026-01-01T00:00:00Z; got %q", field, value)
 	}
 	return nil

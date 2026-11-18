@@ -3,7 +3,6 @@ USER 0
 ARG TARGETARCH
 WORKDIR /go/src/github.com/uc-cdis/arborist
 RUN case "$TARGETARCH" in amd64|arm64) ;; *) echo "unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; esac && \
-    test "$(git -c safe.directory="$PWD" rev-parse HEAD)" = ccf67c19c381edc72a13fea58adc42b83af003e8 && \
     GITCOMMIT=$(git -c safe.directory="$PWD" rev-parse HEAD) && \
     GITVERSION=$(git -c safe.directory="$PWD" describe --always --tags) && \
     git config --global --add safe.directory "$PWD" && \
