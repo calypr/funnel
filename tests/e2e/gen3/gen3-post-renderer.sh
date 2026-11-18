@@ -137,7 +137,7 @@ EOF
   fi
 fi
 
-# Freeze public fixture services while leaving candidate and executor images intact.
+# Use the locally built helpers for the Gen3 workflow fixture.
 if [[ -n "$FUNNEL_CI_PLUGIN_IMAGE_REF" ]]; then
 yq eval '
   (.. | select(tag == "!!map" and has("image")) |
@@ -151,12 +151,15 @@ yq eval '
 ' -i "$output"
 fi
 
-FIXTURE_IMAGE_LOCK="$fixture_dir/fixture-images.json" yq eval '
-  load(strenv(FIXTURE_IMAGE_LOCK)).images as $images |
-  (.. | select(tag == "!!map" and has("image")) | .image | select(tag == "!!str")) |=
-    (. as $reference | $images[$reference].reference // $reference)
-' "$output" >"$render_dir/pinned.yaml"
-mv "$render_dir/pinned.yaml" "$output"
+FIXTURE_IMAGES="$fixture_dir/fixture-images.json" yq eval '
+  load(strenv(FIXTURE_IMAGES)).images as $images |
+  (.. | select(tag == "!!map" and has("image")) |
+    select(.image | tag == "!!str") |
+    (.image | sub("[:@].*$", "")) as $repository |
+    select($images[$repository] != null)) |=
+      (.image = $images[(.image | sub("[:@].*$", ""))] |
+       select(.image | test(":master$")).imagePullPolicy = "Always")
+' -i "$output"
 
 actual_image=$(yq eval-all -r 'select(.kind == "Deployment" and .metadata.name == "funnel-server") | .spec.template.spec.containers[] | select(.name == "funnel") | .image' "$output")
 actual_plugin=$(yq eval-all -r 'select(.kind == "Deployment" and .metadata.name == "funnel-server") | .spec.template.spec.initContainers[] | select(.name == "plugin") | .image' "$output")

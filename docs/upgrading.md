@@ -236,7 +236,7 @@ Update scripts that refer to the former repository layout:
 - Update custom linker flags to use `github.com/calypr/funnel/version`.
 - Remove calls to the retired `bundle-examples` Make target.
 
-The source build currently requires Go 1.27.3, as declared in `go.mod`.
+The source build currently requires Go 1.27.4, as declared in `go.mod`.
 Integration tests clean up generated files by default. Pass
 `-funnel-keep-artifacts` when retaining them for debugging. Resources still close
 when files are retained. See [developer test instructions](development/developers.md#go-tests)

@@ -50,7 +50,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="funnel-public-api-") as directory:
         path = Path(directory)
         path.joinpath("go.mod").write_text(
-            "module example.com/funnel-consumer\n\ngo 1.27.3\n\n"
+            "module example.com/funnel-consumer\n\ngo 1.27.4\n\n"
             f"require {MODULE} v0.0.0\nreplace {MODULE} => {json.dumps(str(ROOT))}\n"
         )
         path.joinpath("public_test.go").write_text('''package consumer_test

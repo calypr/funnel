@@ -156,12 +156,12 @@ jobs:
             funnel-gen3-deps-${{ runner.os }}-${{ runner.arch }}-${{ env.TEST_REPO_SHA }}-${{ hashFiles('gen3-code-vigil/gen3-integration-tests/poetry.lock') }}-
             funnel-gen3-deps-${{ runner.os }}-${{ runner.arch }}-${{ env.TEST_REPO_SHA }}-
 
-      - name: Restore immutable fixture images
+      - name: Restore fixture images
         id: restore-fixtures
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.FUNNEL_CI_FIXTURE_CACHE_DIR }}
-          key: gen3-fixtures-v4-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tests/e2e/gen3/fixture-images.json', 'tests/e2e/gen3/csi-images.yaml', 'tests/e2e/gen3/csi-images-arm64.yaml', 'tests/e2e/gen3/values-ci.yaml') }}
+          key: gen3-fixtures-v5-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tests/e2e/gen3/fixture-images.json', 'tests/e2e/gen3/csi-images.yaml', 'tests/e2e/gen3/csi-images-arm64.yaml', 'tests/e2e/gen3/values-ci.yaml') }}
 
       - name: Restore native task images
         id: restore-test-images
@@ -244,14 +244,14 @@ jobs:
             ${{ runner.temp }}/gen3-nextflow-cache
           key: funnel-gen3-deps-${{ runner.os }}-${{ runner.arch }}-${{ env.TEST_REPO_SHA }}-${{ hashFiles('gen3-code-vigil/gen3-integration-tests/poetry.lock') }}-${{ env.FUNNEL_CI_BUILD_PLATFORM }}-${{ hashFiles('Dockerfile', 'tests/e2e/gen3/image-build/Dockerfile', 'go.mod', 'go.sum') }}-py${{ env.GEN3_PYTHON_VERSION }}
 
-      - name: Save immutable fixture images
+      - name: Save fixture images
         if: always() && steps.lifecycle.outputs.fixture_cache_ready == 'true' && steps.restore-fixtures.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         timeout-minutes: 1
         continue-on-error: true
         with:
           path: ${{ env.FUNNEL_CI_FIXTURE_CACHE_DIR }}
-          key: gen3-fixtures-v4-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tests/e2e/gen3/fixture-images.json', 'tests/e2e/gen3/csi-images.yaml', 'tests/e2e/gen3/csi-images-arm64.yaml', 'tests/e2e/gen3/values-ci.yaml') }}
+          key: gen3-fixtures-v5-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tests/e2e/gen3/fixture-images.json', 'tests/e2e/gen3/csi-images.yaml', 'tests/e2e/gen3/csi-images-arm64.yaml', 'tests/e2e/gen3/values-ci.yaml') }}
 
       - name: Save native task images
         if: always() && steps.lifecycle.outputs.test_images_ready == 'true' && steps.restore-test-images.outputs.cache-hit != 'true'

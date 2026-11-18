@@ -1,4 +1,4 @@
-FROM quay.io/cdis/arborist:4.1.2@sha256:70675dd573ce31cab098e45d60e6c5983ebf089faa39015a17002db81ea9778a
+FROM quay.io/cdis/arborist:master
 USER 0
 ARG TARGETARCH
 WORKDIR /go/src/github.com/uc-cdis/arborist
