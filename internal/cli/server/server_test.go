@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/calypr/funnel/api/config"
@@ -11,6 +12,21 @@ import (
 	"github.com/calypr/funnel/internal/database/boltdb"
 	"github.com/calypr/funnel/internal/logger"
 )
+
+func TestNewServerRejectsInvalidServiceInfo(t *testing.T) {
+	conf := appconfig.DefaultConfig()
+	dbPath := filepath.Join(t.TempDir(), "tasks.db")
+	conf.BoltDB.Path = dbPath
+	conf.Server.ServiceInfo = &config.ServiceInfo{ContactUrl: "admin@example.org"}
+
+	_, err := NewServer(context.Background(), conf, logger.NewLogger("test", logger.DefaultConfig()))
+	if err == nil {
+		t.Fatal("NewServer succeeded with an invalid Server.ServiceInfo.ContactUrl")
+	}
+	if !strings.Contains(err.Error(), "Server.ServiceInfo.ContactUrl") {
+		t.Fatalf("NewServer error = %q, want it to name Server.ServiceInfo.ContactUrl", err)
+	}
+}
 
 func TestPersistentPreRun(t *testing.T) {
 	host := "test"

@@ -382,24 +382,11 @@ func (ts *Service) CancelTask(ctx context.Context, req *tes.CancelTaskRequest) (
 	return result, nil
 }
 
-// GetServiceInfo returns service metadata.
+// GetServiceInfo returns service metadata. Server.ServiceName and
+// Server.ServiceInfo override the built-in identity values; type and version
+// always describe this Funnel build.
 func (ts *Service) GetServiceInfo(ctx context.Context, info *tes.GetServiceInfoRequest) (*tes.ServiceInfo, error) {
 	resp := &tes.ServiceInfo{
-		CreatedAt:        "2016-03-21T16:27:49-07:00",
-		ContactUrl:       "https://github.com/calypr/",
-		Description:      "Funnel is a toolkit for distributed task execution via a simple, standard API.",
-		DocumentationUrl: "https://github.com/calypr/funnel",
-		Environment:      "development",
-		Id:               "org.ga4gh.funnel",
-		Name:             ts.Name,
-		Organization: map[string]string{
-			"name": "CALYPR Data Platform",
-			"url":  "https://github.com/calypr/",
-		},
-		Storage: []string{
-			"file:///path/to/local/funnel-storage",
-			"s3://ohsu-compbio-funnel/storage",
-		},
 		TesResourcesBackendParameters: []string{},
 		Type: &tes.ServiceType{
 			Artifact: "tes",
@@ -409,6 +396,7 @@ func (ts *Service) GetServiceInfo(ctx context.Context, info *tes.GetServiceInfoR
 		UpdatedAt: time.Now().Format(time.RFC3339),
 		Version:   version.Version,
 	}
+	applyServiceInfo(resp, ts.Name, ts.Config.GetServer().GetServiceInfo())
 
 	if backend, ok := ts.Compute.(interface{ BackendParameterKeys() []string }); ok {
 		resp.TesResourcesBackendParameters = backend.BackendParameterKeys()
