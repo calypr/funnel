@@ -3,6 +3,7 @@
 ### Added
 
 * CLI configuration loading supports `FUNNEL_CONFIG` for the default config file path and `FUNNEL_LOG_LEVEL` to override the configured log level. Explicit flags take precedence.
+* The optional `Server.ServiceInfo` section sets the `id`, `description`, `organization`, `contactUrl`, `documentationUrl`, `environment`, `createdAt`, and `storage` that `GET /service-info` reports. Empty fields keep the built-in values, and the server refuses to start if a configured value violates the GA4GH service-info specification. Service info is public. See the [service info docs](docs/service-info.md).
 
 ### Fixed
 
