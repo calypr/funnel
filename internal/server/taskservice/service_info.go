@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -70,78 +71,109 @@ func valueOr(value, fallback string) string {
 // built-in values. All invalid fields are reported together.
 func ValidateServiceInfo(name string, info *config.ServiceInfo) error {
 	var errs []error
-	errs = append(errs, validateNotBlank("Server.ServiceName", name))
+	errs = append(errs, validateText("Server.ServiceName", name, false))
 	if info == nil {
 		return errors.Join(errs...)
 	}
 
 	errs = append(errs,
-		validateNotBlank("Server.ServiceInfo.Id", info.Id),
-		validateNotBlank("Server.ServiceInfo.Description", info.Description),
-		validateNotBlank("Server.ServiceInfo.Environment", info.Environment),
-		validateURI("Server.ServiceInfo.ContactUrl", info.ContactUrl),
-		validateURI("Server.ServiceInfo.DocumentationUrl", info.DocumentationUrl),
+		validateText("Server.ServiceInfo.Id", info.Id, false),
+		validateText("Server.ServiceInfo.Description", info.Description, false),
+		validateText("Server.ServiceInfo.Environment", info.Environment, false),
+		validateURL("Server.ServiceInfo.ContactUrl", info.ContactUrl, false, contactSchemes),
+		validateURL("Server.ServiceInfo.DocumentationUrl", info.DocumentationUrl, false, webSchemes),
 		validateDateTime("Server.ServiceInfo.CreatedAt", info.CreatedAt),
 	)
 
 	if org := info.Organization; org.GetName() != "" || org.GetUrl() != "" {
 		// The specification requires both name and url in organization.
 		errs = append(errs,
-			validateRequired("Server.ServiceInfo.Organization.Name", org.Name),
-			validateNotBlank("Server.ServiceInfo.Organization.Name", org.Name),
-			validateRequired("Server.ServiceInfo.Organization.Url", org.Url),
-			validateURI("Server.ServiceInfo.Organization.Url", org.Url),
+			validateText("Server.ServiceInfo.Organization.Name", org.Name, true),
+			validateURL("Server.ServiceInfo.Organization.Url", org.Url, true, webSchemes),
 		)
 	}
 
 	for i, location := range info.Storage {
-		field := fmt.Sprintf("Server.ServiceInfo.Storage[%d]", i)
-		errs = append(errs, validateRequired(field, location), validateNotBlank(field, location))
+		errs = append(errs, validateText(fmt.Sprintf("Server.ServiceInfo.Storage[%d]", i), location, true))
 	}
 
 	return errors.Join(errs...)
 }
 
-func validateRequired(field, value string) error {
-	if value == "" {
+// validateText rejects whitespace-only values and, if required, empty ones.
+func validateText(field, value string, required bool) error {
+	switch {
+	case value == "" && required:
 		return fmt.Errorf("%s must be set", field)
-	}
-	return nil
-}
-
-func validateNotBlank(field, value string) error {
-	if value != "" && strings.TrimSpace(value) == "" {
+	case value != "" && strings.TrimSpace(value) == "":
 		return fmt.Errorf("%s must not consist only of whitespace", field)
 	}
 	return nil
 }
 
-// validateURI accepts absolute URIs (RFC 3986), including mailto: URIs
-// (RFC 2368/6068). HTTP(S) URIs must name a host.
-func validateURI(field, value string) error {
+var (
+	// webSchemes are allowed for website and documentation URLs.
+	webSchemes = []string{"http", "https"}
+	// contactSchemes also allow an email address (RFC 2368/6068), which the
+	// specification suggests for contactUrl.
+	contactSchemes = []string{"http", "https", "mailto"}
+)
+
+// validateURL accepts absolute URIs (RFC 3986) with one of the given
+// schemes. Service info is public and clients render these values as links,
+// so other schemes (such as javascript: or data:) are rejected. HTTP(S) URLs
+// must name a host; mailto: URIs must name an address.
+func validateURL(field, value string, required bool, schemes []string) error {
 	if value == "" {
+		if required {
+			return fmt.Errorf("%s must be set", field)
+		}
 		return nil
 	}
 	u, err := url.Parse(value)
-	valid := err == nil &&
-		!strings.ContainsAny(value, " \t\r\n") &&
-		u.Scheme != "" &&
-		(u.Host != "" || u.Opaque != "" || u.Path != "")
-	if valid && (u.Scheme == "http" || u.Scheme == "https") {
-		valid = u.Host != ""
+	valid := err == nil && onlyURICharacters(value) && slices.Contains(schemes, u.Scheme)
+	if valid && u.Scheme == "mailto" {
+		valid = u.Opaque != ""
+	} else if valid {
+		valid = u.Hostname() != ""
 	}
 	if !valid {
-		return fmt.Errorf("%s must be an absolute URI (RFC 3986), such as https://example.org or mailto:admin@example.org; got %q", field, value)
+		return fmt.Errorf("%s must be an absolute %s URL (RFC 3986), such as https://example.org%s; got %q",
+			field, strings.Join(schemes, ", "), mailtoExample(schemes), value)
 	}
 	return nil
 }
 
-// validateDateTime accepts RFC 3339 timestamps with a time zone.
+func mailtoExample(schemes []string) string {
+	if slices.Contains(schemes, "mailto") {
+		return " or mailto:admin@example.org"
+	}
+	return ""
+}
+
+// onlyURICharacters reports whether value consists only of characters that
+// RFC 3986 allows in a URI: unreserved and reserved characters, and "%" for
+// percent-encoding.
+func onlyURICharacters(value string) bool {
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case strings.ContainsRune("-._~:/?#[]@!$&'()*+,;=%", r):
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// validateDateTime accepts RFC 3339 timestamps with a time zone. RFC 3339
+// allows lower-case "t" and "z", which Go's parser doesn't, so the value is
+// upper-cased before parsing.
 func validateDateTime(field, value string) error {
 	if value == "" {
 		return nil
 	}
-	if _, err := time.Parse(time.RFC3339Nano, value); err != nil {
+	if _, err := time.Parse(time.RFC3339Nano, strings.ToUpper(value)); err != nil {
 		return fmt.Errorf("%s must be an RFC 3339 timestamp, such as 2026-01-01T00:00:00Z; got %q", field, value)
 	}
 	return nil

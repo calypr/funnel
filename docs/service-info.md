@@ -14,8 +14,10 @@ use it to tell deployments apart and to show who runs them.
 
 ## Configuration
 
-`Server.ServiceName` sets `name`. The optional `Server.ServiceInfo` section sets
-the identity of the deployment:
+`Server.ServiceName` (also available as the `--Server.ServiceName` flag) sets
+`name`. The optional `Server.ServiceInfo` section of the configuration file
+sets the identity of the deployment; it has no command-line flags. The HTTP and
+gRPC endpoints report the same values.
 
 ```yaml
 Server:
@@ -82,12 +84,15 @@ naming every invalid key:
 
 - `ServiceName`, `Id`, `Description`, `Environment`, and `Organization.Name`
   must not consist only of whitespace.
-- `Organization.Url`, `ContactUrl`, and `DocumentationUrl` must be absolute URIs
-  ([RFC 3986][rfc3986]), such as `https://example.org`. `http` and `https` URIs
-  must name a host. `ContactUrl` may also be an email address as a `mailto:` URI
-  (`mailto:admin@example.org`), as the specification suggests.
+- `Organization.Url`, `ContactUrl`, and `DocumentationUrl` must be absolute
+  `http` or `https` URLs with a host, such as `https://example.org`, written
+  with the characters [RFC 3986][rfc3986] allows (percent-encode others, and
+  use the ASCII form of internationalized domain names). `ContactUrl` may also
+  be an email address as a `mailto:` URI (`mailto:admin@example.org`), as the
+  specification suggests. Clients show these values as links, so other schemes,
+  such as `javascript:` or `data:`, are rejected.
 - `CreatedAt` must be an [RFC 3339][rfc3339] timestamp with a time zone, such
-  as `2026-01-01T00:00:00Z`.
+  as `2026-01-01T00:00:00Z`. Leap seconds (`:60`) aren't accepted.
 - `Storage` entries must not be empty or consist only of whitespace. The TES
   specification allows any string; URIs such as `s3://example-bucket` are the
   convention.
@@ -95,6 +100,6 @@ naming every invalid key:
 `Environment` is free text. The specification suggests `prod`, `test`, `dev`,
 and `staging`, but doesn't enforce them.
 
-[service-info]: https://github.com/ga4gh-discovery/ga4gh-service-info
+[service-info]: https://github.com/ga4gh-discovery/ga4gh-service-info/blob/v1.0.0/service-info.yaml
 [rfc3986]: https://www.rfc-editor.org/rfc/rfc3986
 [rfc3339]: https://www.rfc-editor.org/rfc/rfc3339

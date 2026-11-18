@@ -34,6 +34,8 @@ func TestServiceInfoReportsVersionAndOrganization(t *testing.T) {
 }
 
 // builtinServiceInfo lists the values Funnel reports when nothing is configured.
+// It deliberately repeats the literals instead of using the constants, so that
+// it pins the values Funnel reported before they became configurable.
 var builtinServiceInfo = &tes.ServiceInfo{
 	Name:             "Funnel",
 	Id:               "org.ga4gh.funnel",
@@ -177,7 +179,11 @@ func TestValidateServiceInfoAcceptsValidValues(t *testing.T) {
 			Storage:          []string{"s3://example-bucket", "file:///data"},
 		},
 		"https contact":       {ContactUrl: "https://example.org/contact"},
+		"http documentation":  {DocumentationUrl: "http://docs.example.org:8080/tes?lang=en#config"},
+		"percent-encoded url": {DocumentationUrl: "https://example.org/my%20docs"},
+		"ipv6 host":           {Organization: &config.ServiceInfoOrganization{Name: "Example Org", Url: "https://[2001:db8::1]/"}},
 		"fractional seconds":  {CreatedAt: "2026-01-01T00:00:00.5Z"},
+		"lower-case t and z":  {CreatedAt: "2026-01-01t00:00:00z"},
 		"empty organization":  {Organization: &config.ServiceInfoOrganization{}},
 		"free environment":    {Environment: "staging-eu"},
 		"non-reverse-dns id":  {Id: "example-tes-1"},
@@ -219,6 +225,14 @@ func TestValidateServiceInfoRejectsInvalidValues(t *testing.T) {
 		"date without time":         {info: &config.ServiceInfo{CreatedAt: "2026-01-01"}, field: "Server.ServiceInfo.CreatedAt"},
 		"time without zone":         {info: &config.ServiceInfo{CreatedAt: "2026-01-01T00:00:00"}, field: "Server.ServiceInfo.CreatedAt"},
 		"blank storage entry":       {info: &config.ServiceInfo{Storage: []string{"s3://example-bucket", ""}}, field: "Server.ServiceInfo.Storage[1]"},
+		"whitespace storage entry":  {info: &config.ServiceInfo{Storage: []string{" "}}, field: "Server.ServiceInfo.Storage[0]"},
+		"javascript documentation":  {info: &config.ServiceInfo{DocumentationUrl: "javascript:alert(1)"}, field: "Server.ServiceInfo.DocumentationUrl"},
+		"data organization url":     {info: &config.ServiceInfo{Organization: &config.ServiceInfoOrganization{Name: "Example Org", Url: "data:text/html,hi"}}, field: "Server.ServiceInfo.Organization.Url"},
+		"mailto documentation":      {info: &config.ServiceInfo{DocumentationUrl: "mailto:admin@example.org"}, field: "Server.ServiceInfo.DocumentationUrl"},
+		"ftp contact":               {info: &config.ServiceInfo{ContactUrl: "ftp://example.org/contact"}, field: "Server.ServiceInfo.ContactUrl"},
+		"empty host with port":      {info: &config.ServiceInfo{ContactUrl: "https://:443/contact"}, field: "Server.ServiceInfo.ContactUrl"},
+		"non-ascii host":            {info: &config.ServiceInfo{DocumentationUrl: "https://exämple.org"}, field: "Server.ServiceInfo.DocumentationUrl"},
+		"brace in path":             {info: &config.ServiceInfo{DocumentationUrl: "https://example.org/{x}"}, field: "Server.ServiceInfo.DocumentationUrl"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			serviceName := tc.serviceName
@@ -237,11 +251,23 @@ func TestValidateServiceInfoRejectsInvalidValues(t *testing.T) {
 }
 
 func TestValidateServiceInfoReportsAllInvalidFields(t *testing.T) {
-	err := ValidateServiceInfo("Funnel", &config.ServiceInfo{Id: " ", CreatedAt: "yesterday"})
+	err := ValidateServiceInfo(" ", &config.ServiceInfo{
+		Id:           " ",
+		CreatedAt:    "yesterday",
+		Organization: &config.ServiceInfoOrganization{Name: " ", Url: "example.org"},
+		Storage:      []string{""},
+	})
 	if err == nil {
 		t.Fatal("ValidateServiceInfo() = nil, want an error")
 	}
-	for _, field := range []string{"Server.ServiceInfo.Id", "Server.ServiceInfo.CreatedAt"} {
+	for _, field := range []string{
+		"Server.ServiceName",
+		"Server.ServiceInfo.Id",
+		"Server.ServiceInfo.CreatedAt",
+		"Server.ServiceInfo.Organization.Name",
+		"Server.ServiceInfo.Organization.Url",
+		"Server.ServiceInfo.Storage[0]",
+	} {
 		if !strings.Contains(err.Error(), field) {
 			t.Errorf("ValidateServiceInfo() = %q, want it to name %s", err, field)
 		}
