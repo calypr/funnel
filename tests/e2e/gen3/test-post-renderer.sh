@@ -110,8 +110,11 @@ for mode in plain gen3; do
   else
     [[ "$arborist" == quay.io/cdis/arborist:master ]]
   fi
-  indexd=$(yq -r 'select(.metadata.name == "indexd-deployment") | .spec.template.spec.containers[0] | [.image, .imagePullPolicy] | join(" ")' "$tmp/$mode.yaml")
-  [[ "$indexd" == 'quay.io/cdis/indexd:master Always' ]]
+  indexd=$(yq eval-all -N -r 'select(.metadata.name == "indexd-deployment") | .spec.template.spec.containers[0] | [.image, .imagePullPolicy] | join(" ")' "$tmp/$mode.yaml")
+  if [[ "$indexd" != 'quay.io/cdis/indexd:master Always' ]]; then
+    printf 'Unexpected Indexd image or pull policy for %s chart: %s\n' "$mode" "$indexd" >&2
+    exit 1
+  fi
   usersync_helper=$(yq -r 'select(.kind == "CronJob" and .metadata.name == "usersync") | .spec.jobTemplate.spec.template.spec.initContainers[0].image' "$tmp/$mode.yaml")
   expected_usersync_helper=$registry_helper
   if [[ "$mode" == gen3 ]]; then expected_usersync_helper=funnel-gen3-awshelper:ci; fi
