@@ -71,3 +71,82 @@ func TestPluginBearerIdentity(t *testing.T) {
 		})
 	}
 }
+
+func TestPluginAuthenticationFollowsReportedCapabilities(t *testing.T) {
+	for _, test := range []struct {
+		name         string
+		capabilities *pluginapi.JobResponse
+		err          error
+		oidc         bool
+		wantErr      bool
+		wantPlugin   bool
+	}{
+		{name: "reports authenticate", capabilities: &pluginapi.JobResponse{Code: 200, Capabilities: []pluginapi.Type{pluginapi.Type_AUTHENTICATE}}, wantPlugin: true},
+		{name: "rejects failed capability response", capabilities: &pluginapi.JobResponse{Code: 503, Capabilities: []pluginapi.Type{pluginapi.Type_AUTHENTICATE}}},
+		{name: "reports nothing", capabilities: &pluginapi.JobResponse{}},
+		{name: "predates capabilities", err: errors.New("unsupported task type: CAPABILITIES")},
+		{name: "conflicts with oidc", capabilities: &pluginapi.JobResponse{Code: 200, Capabilities: []pluginapi.Type{pluginapi.Type_AUTHENTICATE}}, oidc: true, wantErr: true},
+		{name: "task-only plugin with oidc", capabilities: &pluginapi.JobResponse{}, oidc: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			auth := NewAuthentication(nil, nil, identity.AccessOwner, nil)
+			if test.oidc {
+				auth.oidc = &OidcConfig{}
+			}
+			plugin := testAuthorizer(func(params map[string]string, headers map[string]*pluginapi.StringList, conf *config.Config, task *tes.Task, action pluginapi.Type) (*pluginapi.JobResponse, error) {
+				if action != pluginapi.Type_CAPABILITIES || params["key"] != "value" || headers != nil || conf != nil || task != nil {
+					t.Fatalf("unexpected startup request: %v", action)
+				}
+				return test.capabilities, test.err
+			})
+			err := auth.UsePluginIfSupported(plugin, map[string]string{"key": "value"})
+			if (err != nil) != test.wantErr {
+				t.Fatalf("error = %v, want error %v", err, test.wantErr)
+			}
+			if (auth.ValidateTaskAccess() == nil) != (test.wantPlugin || test.oidc) {
+				t.Fatalf("owner access validation = %v", auth.ValidateTaskAccess())
+			}
+			if (auth.plugin != nil) != test.wantPlugin {
+				t.Fatalf("plugin enabled = %v, want %v", auth.plugin != nil, test.wantPlugin)
+			}
+		})
+	}
+}
+
+func TestBasicCredentialsWorkAlongsidePluginAuthentication(t *testing.T) {
+	auth := NewAuthentication([]*config.BasicCredential{{User: "worker", Password: "secret"}}, nil, identity.AccessOwner, nil)
+	auth.UsePlugin(testAuthorizer(func(_ map[string]string, headers map[string]*pluginapi.StringList, _ *config.Config, _ *tes.Task, action pluginapi.Type) (*pluginapi.JobResponse, error) {
+		if action != pluginapi.Type_AUTHENTICATE {
+			t.Fatalf("unexpected action %v", action)
+		}
+		return &pluginapi.JobResponse{Code: 200, UserId: "alice"}, nil
+	}), nil)
+	for header, want := range map[string]string{
+		"Basic d29ya2VyOnNlY3JldA==": "worker",
+		"Bearer token":               "alice",
+	} {
+		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", header))
+		_, err := auth.Interceptor(ctx, nil, &grpc.UnaryServerInfo{FullMethod: tesrpc.TaskService_GetTask_FullMethodName}, func(ctx context.Context, _ any) (any, error) {
+			if got := identity.GetUserID(ctx); got != want {
+				t.Fatalf("%s authenticated as %q, want %q", header, got, want)
+			}
+			return nil, nil
+		})
+		if err != nil {
+			t.Fatalf("%s: %v", header, err)
+		}
+	}
+}
+
+func TestOwnerAccessRequiresAuthentication(t *testing.T) {
+	for _, mode := range []string{identity.AccessOwner, identity.AccessOwnerOrAdmin, identity.AccessAll} {
+		auth := NewAuthentication(nil, nil, mode, nil)
+		if got := auth.ValidateTaskAccess() != nil; got != (mode != identity.AccessAll) {
+			t.Errorf("%s rejected without credentials = %t", mode, got)
+		}
+		auth = NewAuthentication([]*config.BasicCredential{{User: "worker", Password: "fixture"}}, nil, mode, nil)
+		if err := auth.ValidateTaskAccess(); err != nil {
+			t.Errorf("%s rejected with Basic credentials: %v", mode, err)
+		}
+	}
+}

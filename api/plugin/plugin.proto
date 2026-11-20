@@ -14,6 +14,10 @@ enum Type {
     CANCEL = 2;
     // Verify the bearer header and return the authenticated subject in userId.
     AUTHENTICATE = 3;
+    // Report the optional actions the plugin implements in capabilities.
+    // Funnel asks once at startup. Plugins that predate this action are
+    // treated as implementing no optional actions.
+    CAPABILITIES = 4;
 }
 
 message Job {
@@ -30,6 +34,7 @@ message JobResponse {
     config.Config         config  = 3;
     tes.Task              task    = 4;
     string                userId  = 7;
+    repeated Type         capabilities = 8;
 }
 
 service Authorize {

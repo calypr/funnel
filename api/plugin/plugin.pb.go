@@ -31,6 +31,10 @@ const (
 	Type_CANCEL Type = 2
 	// Verify the bearer header and return the authenticated subject in userId.
 	Type_AUTHENTICATE Type = 3
+	// Report the optional actions the plugin implements in capabilities.
+	// Funnel asks once at startup. Plugins that predate this action are
+	// treated as implementing no optional actions.
+	Type_CAPABILITIES Type = 4
 )
 
 // Enum value maps for Type.
@@ -40,12 +44,14 @@ var (
 		1: "GET",
 		2: "CANCEL",
 		3: "AUTHENTICATE",
+		4: "CAPABILITIES",
 	}
 	Type_value = map[string]int32{
 		"CREATE":       0,
 		"GET":          1,
 		"CANCEL":       2,
 		"AUTHENTICATE": 3,
+		"CAPABILITIES": 4,
 	}
 )
 
@@ -203,6 +209,7 @@ type JobResponse struct {
 	Config        *config.Config         `protobuf:"bytes,3,opt,name=config,proto3" json:"config,omitempty"`
 	Task          *tes.Task              `protobuf:"bytes,4,opt,name=task,proto3" json:"task,omitempty"`
 	UserId        string                 `protobuf:"bytes,7,opt,name=userId,proto3" json:"userId,omitempty"`
+	Capabilities  []Type                 `protobuf:"varint,8,rep,packed,name=capabilities,proto3,enum=proto.Type" json:"capabilities,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -272,6 +279,13 @@ func (x *JobResponse) GetUserId() string {
 	return ""
 }
 
+func (x *JobResponse) GetCapabilities() []Type {
+	if x != nil {
+		return x.Capabilities
+	}
+	return nil
+}
+
 type Empty struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -327,21 +341,23 @@ const file_plugin_plugin_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x11.proto.StringListR\x05value:\x028\x01\x1a9\n" +
 	"\vParamsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x9a\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xcb\x01\n" +
 	"\vJobResponse\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\x03R\x04code\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\x12&\n" +
 	"\x06config\x18\x03 \x01(\v2\x0e.config.ConfigR\x06config\x12\x1d\n" +
 	"\x04task\x18\x04 \x01(\v2\t.tes.TaskR\x04task\x12\x16\n" +
-	"\x06userId\x18\a \x01(\tR\x06userId\"\a\n" +
-	"\x05Empty*9\n" +
+	"\x06userId\x18\a \x01(\tR\x06userId\x12/\n" +
+	"\fcapabilities\x18\b \x03(\x0e2\v.proto.TypeR\fcapabilities\"\a\n" +
+	"\x05Empty*K\n" +
 	"\x04Type\x12\n" +
 	"\n" +
 	"\x06CREATE\x10\x00\x12\a\n" +
 	"\x03GET\x10\x01\x12\n" +
 	"\n" +
 	"\x06CANCEL\x10\x02\x12\x10\n" +
-	"\fAUTHENTICATE\x10\x032;\n" +
+	"\fAUTHENTICATE\x10\x03\x12\x10\n" +
+	"\fCAPABILITIES\x10\x042;\n" +
 	"\tAuthorize\x12.\n" +
 	"\fPluginAction\x12\n" +
 	".proto.Job\x1a\x12.proto.JobResponseB,Z*github.com/calypr/funnel/api/plugin;pluginb\x06proto3"
@@ -372,21 +388,22 @@ var file_plugin_plugin_proto_goTypes = []any{
 	(*tes.Task)(nil),      // 8: tes.Task
 }
 var file_plugin_plugin_proto_depIdxs = []int32{
-	5, // 0: proto.Job.headers:type_name -> proto.Job.HeadersEntry
-	6, // 1: proto.Job.params:type_name -> proto.Job.ParamsEntry
-	7, // 2: proto.Job.config:type_name -> config.Config
-	8, // 3: proto.Job.task:type_name -> tes.Task
-	0, // 4: proto.Job.type:type_name -> proto.Type
-	7, // 5: proto.JobResponse.config:type_name -> config.Config
-	8, // 6: proto.JobResponse.task:type_name -> tes.Task
-	1, // 7: proto.Job.HeadersEntry.value:type_name -> proto.StringList
-	2, // 8: proto.Authorize.PluginAction:input_type -> proto.Job
-	3, // 9: proto.Authorize.PluginAction:output_type -> proto.JobResponse
-	9, // [9:10] is the sub-list for method output_type
-	8, // [8:9] is the sub-list for method input_type
-	8, // [8:8] is the sub-list for extension type_name
-	8, // [8:8] is the sub-list for extension extendee
-	0, // [0:8] is the sub-list for field type_name
+	5,  // 0: proto.Job.headers:type_name -> proto.Job.HeadersEntry
+	6,  // 1: proto.Job.params:type_name -> proto.Job.ParamsEntry
+	7,  // 2: proto.Job.config:type_name -> config.Config
+	8,  // 3: proto.Job.task:type_name -> tes.Task
+	0,  // 4: proto.Job.type:type_name -> proto.Type
+	7,  // 5: proto.JobResponse.config:type_name -> config.Config
+	8,  // 6: proto.JobResponse.task:type_name -> tes.Task
+	0,  // 7: proto.JobResponse.capabilities:type_name -> proto.Type
+	1,  // 8: proto.Job.HeadersEntry.value:type_name -> proto.StringList
+	2,  // 9: proto.Authorize.PluginAction:input_type -> proto.Job
+	3,  // 10: proto.Authorize.PluginAction:output_type -> proto.JobResponse
+	10, // [10:11] is the sub-list for method output_type
+	9,  // [9:10] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_plugin_plugin_proto_init() }

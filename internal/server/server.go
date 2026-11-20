@@ -80,17 +80,15 @@ func (s *Server) Serve(pctx context.Context) error {
 	}
 	defer httpLis.Close() //nolint:errcheck // Listener cleanup is best effort after HTTP shutdown.
 
-	if s.Plugins.GetAuthenticate() {
-		if s.AuthPlugin == nil {
-			return fmt.Errorf("Plugins.Authenticate requires a loaded authorization plugin")
-		}
-		if len(s.BasicAuth) != 0 || s.OidcAuth.GetServiceConfigURL() != "" {
-			return fmt.Errorf("Plugins.Authenticate cannot be combined with BasicAuth or OidcAuth")
+	auth := serverauth.NewAuthentication(s.BasicAuth, s.OidcAuth, s.TaskAccess, s.Log)
+	if s.AuthPlugin != nil {
+		if err := auth.UsePluginIfSupported(s.AuthPlugin, s.Plugins.GetParams()); err != nil {
+			return err
 		}
 	}
-	auth := serverauth.NewAuthentication(s.BasicAuth, s.OidcAuth, s.TaskAccess, s.Log)
-	if s.Plugins.GetAuthenticate() {
-		auth.UsePlugin(s.AuthPlugin, s.Plugins.GetParams())
+
+	if err := auth.ValidateTaskAccess(); err != nil {
+		return err
 	}
 
 	maxResponseBytes := s.MaxResponseBytes

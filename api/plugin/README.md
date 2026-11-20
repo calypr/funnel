@@ -10,13 +10,25 @@ Implement `plugin.Authorize` and supply the implementation through
 HashiCorp go-plugin on both sides. Host executable discovery and process lifecycle
 management remain internal to Funnel.
 
-When `Plugins.Authenticate` is enabled, Funnel sends the bearer header in a
-`Type_AUTHENTICATE` action before running the requested RPC. This action receives
-plugin parameters but no task or server configuration. Return HTTP status 200
-and a stable, verified subject in `JobResponse.UserId`. Funnel uses that subject
-for task access checks and does not grant administrator privileges. Keep
-project or task authorization in the existing task actions. This mode is
-separate from Funnel's built-in Basic and OIDC authentication.
+## Bearer authentication
+
+At startup Funnel sends one `Type_CAPABILITIES` action. A plugin that
+authenticates bearer tokens returns `Type_AUTHENTICATE` in
+`JobResponse.Capabilities`. Plugins that return an error or an empty list keep
+their task-only behavior, so existing plugins need no change.
+
+When the plugin reports `Type_AUTHENTICATE`, Funnel sends the bearer header in
+a `Type_AUTHENTICATE` action before running each requested RPC. This action
+receives plugin parameters but no task or server configuration. Return HTTP
+status 200 and a stable, verified subject in `JobResponse.UserId`. Funnel uses
+that subject for task access checks and does not grant administrator
+privileges. Keep project or task authorization in the existing task actions.
+
+Basic credentials keep working alongside plugin authentication, for example for
+workers. Funnel refuses to start if `Server.OidcAuth` is also configured,
+because both would claim the same bearer tokens.
+
+Owner-restricted task access requires an active authenticator. Funnel refuses to start when no configured authentication method is available.
 
 ## Task configuration
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/calypr/funnel/api/config"
@@ -34,6 +35,35 @@ type Authentication struct {
 func (a *Authentication) UsePlugin(plugin pluginapi.Authorize, params map[string]string) {
 	a.plugin = plugin
 	a.params = params
+}
+
+// UsePluginIfSupported asks the plugin once whether it authenticates bearer
+// tokens and, if so, enables it. Plugins that predate CAPABILITIES answer with
+// an error or an empty list, and keep their existing task-only behavior.
+// Basic credentials continue to work alongside the plugin. OIDC cannot, because
+// both would claim the same bearer tokens.
+func (a *Authentication) UsePluginIfSupported(plugin pluginapi.Authorize, params map[string]string) error {
+	response, err := plugin.PluginAction(params, nil, nil, nil, pluginapi.Type_CAPABILITIES)
+	if err != nil {
+		a.log.Warn("Plugin did not report its capabilities; bearer tokens will not be sent to it", "error", err)
+		return nil
+	}
+	if response.GetCode() != http.StatusOK || !slices.Contains(response.GetCapabilities(), pluginapi.Type_AUTHENTICATE) {
+		return nil
+	}
+	if a.oidc != nil {
+		return fmt.Errorf("the plugin authenticates bearer tokens, so Server.OidcAuth must not be configured")
+	}
+	a.UsePlugin(plugin, params)
+	a.log.Info("Plugin authenticates bearer tokens")
+	return nil
+}
+
+func (a *Authentication) ValidateTaskAccess() error {
+	if a.accessMode != identity.AccessAll && len(a.basic) == 0 && a.oidc == nil && a.plugin == nil {
+		return fmt.Errorf("Server.TaskAccess %s requires an active authenticator", a.accessMode)
+	}
+	return nil
 }
 
 var (
