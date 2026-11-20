@@ -11,7 +11,7 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 helm_bin=${HELM_BIN:-helm}
 kubectl_bin=${KUBECTL_BIN:-kubectl}
 aws_bin=${AWS_BIN:-aws}
-minio_image=${FUNNEL_CI_MINIO_IMAGE:-$(jq -er '.images["quay.io/cdis/minio:chainguard-latest-2026-09-25"].reference' "$script_dir/fixture-images.json")}
+minio_image=${FUNNEL_CI_MINIO_IMAGE:-$(jq -er '.images["quay.io/cdis/minio"]' "$script_dir/fixture-images.json")}
 
 command -v "$helm_bin" >/dev/null || { printf 'helm is required\n' >&2; exit 2; }
 command -v "$kubectl_bin" >/dev/null || { printf 'kubectl is required\n' >&2; exit 2; }

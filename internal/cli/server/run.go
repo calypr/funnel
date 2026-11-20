@@ -65,6 +65,10 @@ type Database interface {
 
 // NewServer returns a new Funnel server + scheduler based on the given config.
 func NewServer(ctx context.Context, conf *config.Config, log *logger.Logger) (serverResult *Server, returnErr error) {
+	if err := taskservice.ValidateServiceInfo(conf.GetServer().GetServiceName(), conf.GetServer().GetServiceInfo()); err != nil {
+		return nil, fmt.Errorf("invalid service info configuration: %w", err)
+	}
+
 	lifetimeCtx, cancelLifetime := context.WithCancel(ctx)
 	var writers events.MultiWriter
 	defer func() {

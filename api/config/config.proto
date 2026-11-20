@@ -110,6 +110,27 @@ message Server {
   bool DisableHTTPCache = 7;
   string TaskAccess = 8;
   uint32 MaxResponseBytes = 9;
+  // Optional overrides for the public GA4GH service-info response.
+  ServiceInfo ServiceInfo = 10;
+}
+
+// ServiceInfo overrides fields of the public GA4GH service-info response.
+// Empty fields keep Funnel's built-in values.
+message ServiceInfo {
+  string Id = 1;
+  string Description = 2;
+  ServiceInfoOrganization Organization = 3;
+  string ContactUrl = 4;
+  string DocumentationUrl = 5;
+  string Environment = 6;
+  string CreatedAt = 7;
+  repeated string Storage = 8;
+}
+
+// ServiceInfoOrganization describes the organization providing the service.
+message ServiceInfoOrganization {
+  string Name = 1;
+  string Url = 2;
 }
 
 // Scheduler contains Funnel's basic scheduler configuration.

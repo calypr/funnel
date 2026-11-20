@@ -1,95 +1,11 @@
 {
   "images": {
-    "quay.io/cdis/arborist:master": {
-      "platforms": {
-        "amd64": {
-          "config": "sha256:cb78778a1710d4e17c127903ac3dbf3150488cded6495c01ab4adcb25d981c41",
-          "manifest": "sha256:cc8035fecc635ec08ecec9d58ea266d495e5235a816681a96f594f36392336e9"
-        },
-        "arm64": {
-          "config": "sha256:893bf1a6bbb681fed7f4a48f6ce4ffd3b69f53922b43f960b9ae1d278dc78d6d",
-          "manifest": "sha256:910b75a38f2fa93e2dddec572c01d9ec6dba879ce18ffb062f6eba0b71ba83bf"
-        }
-      },
-      "reference": "quay.io/cdis/arborist:4.1.2@sha256:70675dd573ce31cab098e45d60e6c5983ebf089faa39015a17002db81ea9778a"
-    },
-    "quay.io/cdis/docker-bitnami-pgvector:master": {
-      "platforms": {
-        "amd64": {
-          "config": "sha256:639ffbaca5886053f901a39e49984ce122fa588bf3f312cda201d652d17a699f",
-          "manifest": "sha256:d5ea367193c31574ec5a368033632cf89aa17a9e7223ee389c375ba528081c80"
-        },
-        "arm64": {
-          "config": "sha256:511193b84e1ddc98a948771886759b4c2e80255a2c6b471f2edebc978709f685",
-          "manifest": "sha256:66be600be7cca3fcebf77ee6aab3c7bdb3957e36ad1626acc7d3994da06891fa"
-        }
-      },
-      "reference": "quay.io/cdis/docker-bitnami-pgvector:master@sha256:40a7a2a864f4acf9583f33b3e615b02815497e7637a2de148f81e21033b5d724"
-    },
-    "quay.io/cdis/fence:master": {
-      "platforms": {
-        "amd64": {
-          "config": "sha256:9aa15bbf3509474896732bd4a1837dc150e6259cd01625e1324b44d1ac641ead",
-          "manifest": "sha256:784efbeb800404e49ff7464a994a3fcf5a52ec1d81fa4a88dcc0348ab051fc22"
-        },
-        "arm64": {
-          "config": "sha256:d6047d8f91d7a3ee55db3a709323d3cdd91000341a71b9423296d4f67eb04a52",
-          "manifest": "sha256:183be9928f608dde2a99d6338e4ffd15493ce5c3f472b7413bebd1bea3f75876"
-        }
-      },
-      "reference": "quay.io/cdis/fence:master@sha256:12ca758de0b091b7e3d18eb3b96ed6f42ce77d819a2f812e6f13a8e6ff7a9c68"
-    },
-    "quay.io/cdis/gen3-workflow:master": {
-      "platforms": {
-        "amd64": {
-          "config": "sha256:e0585d27cde8d03624eab7eebcc4ac5cf5d5e3fd23cff5b04d9acfabb94b7fcd",
-          "manifest": "sha256:037d633c66308a3313efdaed7cd4318b860acafbe75e92ffda6625cad117291d"
-        },
-        "arm64": {
-          "config": "sha256:0dd0e982df3ae56b38e30c12f3afcb07940bf1285d2e3672542d75ba3fe3b6e5",
-          "manifest": "sha256:2053ff4f58e682da20de251e273a6e49f8d3f781eb96e0a7b770ce175318cc31"
-        }
-      },
-      "reference": "quay.io/cdis/gen3-workflow:master@sha256:0ff97e2bb37a9b6d637314e200097e4312795277d65799d83582285fc4d4cf9b"
-    },
-    "quay.io/cdis/indexd:master": {
-      "platforms": {
-        "amd64": {
-          "config": "sha256:db0cd39f5eac1d6ce03de86711a7a8ba5b9e3c0e503de9cac8e8ce21d2621cb3",
-          "manifest": "sha256:6148fc35e73919363a9dc11b39d6a83889acfd306d7a58c0b5b238a906e1e627"
-        },
-        "arm64": {
-          "config": "sha256:94bc9eb0b0186cbad9e7b1af8b22429434e2c2d469932aa367effe2f2d21d6e0",
-          "manifest": "sha256:5cf773d45d420484887c69591a3bac9499cac14fe2d7e60a1c0a2504baf3ef93"
-        }
-      },
-      "reference": "quay.io/cdis/indexd:master@sha256:3dc95871e775e1f2463b01ffa66ba55277b156592dd58446e88f416f6c0ae3f0"
-    },
-    "quay.io/cdis/minio:chainguard-latest-2026-09-25": {
-      "platforms": {
-        "amd64": {
-          "config": "sha256:88fcecc769990da46b6b946369516bf4469bd8e9866f4f0e640080c5ff66fd56",
-          "manifest": "sha256:b53ebd7a1df35c4b56462089ec8f0d6ab6f3ca06d7e7ce2ecf0d3911f973aa95"
-        },
-        "arm64": {
-          "config": "sha256:af9fc26ae2f878c8644ffe91e2c33169a216e431a389671fca47eefd6875b7c4",
-          "manifest": "sha256:0837d326f399ce4d1e0b5cedbf2fe2976f027102c7f9af3c754578c2c58cdacc"
-        }
-      },
-      "reference": "quay.io/cdis/minio:chainguard-latest-2026-09-25@sha256:a05a4497e8dce3cb7a7a1bf1872ba5d30ea988f1e8c22c9e0920503761c4b5f1"
-    },
-    "quay.io/cdis/nginx:master": {
-      "platforms": {
-        "amd64": {
-          "config": "sha256:b1632c452f03425f461a8d2f8a8a8e4fb42a23d02c4590ea42f1ffb89d6e64e6",
-          "manifest": "sha256:4992406e49e44008a39258c2cadf7ab6541a706d31d908eb0f78f35b04784343"
-        },
-        "arm64": {
-          "config": "sha256:61fa294e4785efbe6009543df66aef6dec2ba939dff3c3a376b8db099226b72b",
-          "manifest": "sha256:64d02149f8e97792a460fdb72948c32fab8e656d0fca1e58f1454d6f7107bf80"
-        }
-      },
-      "reference": "quay.io/cdis/nginx:master@sha256:2eca0bf5879da6cf4e2d01749a38702283d85ce9a8cfc8a70ca131bb5c92c08b"
-    }
+    "quay.io/cdis/arborist": "quay.io/cdis/arborist:master",
+    "quay.io/cdis/docker-bitnami-pgvector": "quay.io/cdis/docker-bitnami-pgvector:master",
+    "quay.io/cdis/fence": "quay.io/cdis/fence:master",
+    "quay.io/cdis/gen3-workflow": "quay.io/cdis/gen3-workflow:master",
+    "quay.io/cdis/indexd": "quay.io/cdis/indexd:master",
+    "quay.io/cdis/minio": "quay.io/cdis/minio:chainguard-latest-2026-09-25",
+    "quay.io/cdis/nginx": "quay.io/cdis/nginx:master"
   }
 }

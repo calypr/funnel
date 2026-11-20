@@ -22,6 +22,8 @@ The server serves the task API, web dashboard, and optionally runs a task schedu
 It serves both HTTP/JSON and gRPC/Protobuf.
 
 Run the server with `funnel server`. Its implementation lives in `internal/server`.
+See the [service info docs](service-info.md) to configure how a deployment
+identifies itself in `GET /service-info`.
 
 ### Storage
 

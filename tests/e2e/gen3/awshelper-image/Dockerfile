@@ -1,4 +1,4 @@
-FROM quay.io/cdis/awshelper:2026.11@sha256:24d0c7ac0ca3e26abb70f63c08ff8d75dd2863eb8efdc8b4d5136e0f9cfab075
+FROM quay.io/cdis/awshelper:master
 USER root
 ARG TARGETARCH
 RUN case "$TARGETARCH" in \

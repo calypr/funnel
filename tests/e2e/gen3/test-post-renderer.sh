@@ -49,6 +49,18 @@ spec:
         - name: arborist
           image: quay.io/cdis/arborist:master
 ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: indexd-deployment
+spec:
+  template:
+    spec:
+      containers:
+        - name: indexd
+          image: quay.io/cdis/indexd:master@sha256:3dc95871e775e1f2463b01ffa66ba55277b156592dd58446e88f416f6c0ae3f0
+          imagePullPolicy: IfNotPresent
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -96,7 +108,12 @@ for mode in plain gen3; do
   if [[ "$mode" == gen3 ]]; then
     [[ "$arborist" == funnel-gen3-arborist:ci ]]
   else
-    [[ "$arborist" == quay.io/cdis/arborist:*@sha256:* ]]
+    [[ "$arborist" == quay.io/cdis/arborist:master ]]
+  fi
+  indexd=$(yq eval-all -N -r 'select(.metadata.name == "indexd-deployment") | .spec.template.spec.containers[0] | [.image, .imagePullPolicy] | join(" ")' "$tmp/$mode.yaml")
+  if [[ "$indexd" != 'quay.io/cdis/indexd:master Always' ]]; then
+    printf 'Unexpected Indexd image or pull policy for %s chart: %s\n' "$mode" "$indexd" >&2
+    exit 1
   fi
   usersync_helper=$(yq -r 'select(.kind == "CronJob" and .metadata.name == "usersync") | .spec.jobTemplate.spec.template.spec.initContainers[0].image' "$tmp/$mode.yaml")
   expected_usersync_helper=$registry_helper
