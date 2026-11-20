@@ -165,8 +165,12 @@ func negotiateContentType(r *http.Request, offers []string, defaultOffer string)
 }
 
 // ResponseType determines whether the request should receive HTML or JSON.
-// URL parameters can override the Accept header.
+// Versioned API routes always return JSON. Other routes allow URL parameters
+// to override the Accept header for the dashboard.
 func ResponseType(req *http.Request) string {
+	if strings.HasPrefix(req.URL.Path, "/v1/") || strings.HasPrefix(req.URL.Path, "/ga4gh/tes/v1/") {
+		return "json"
+	}
 	q := req.URL.Query()
 	if _, html := q["html"]; html {
 		return "html"

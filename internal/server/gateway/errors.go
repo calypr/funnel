@@ -15,6 +15,7 @@ import (
 // Required for TES Compliance Tests
 func ErrorHandler(ctx context.Context, mux *runtime.ServeMux, marshaler runtime.Marshaler, w http.ResponseWriter, r *http.Request, err error) {
 	const fallback = `{"error": "failed to process the request"}`
+	w.Header().Set("Content-Type", "application/json")
 
 	st, ok := status.FromError(err)
 	if !ok {

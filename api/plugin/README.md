@@ -10,6 +10,26 @@ Implement `plugin.Authorize` and supply the implementation through
 HashiCorp go-plugin on both sides. Host executable discovery and process lifecycle
 management remain internal to Funnel.
 
+## Bearer authentication
+
+At startup Funnel sends one `Type_CAPABILITIES` action. A plugin that
+authenticates bearer tokens returns `Type_AUTHENTICATE` in
+`JobResponse.Capabilities`. Plugins that return an error or an empty list keep
+their task-only behavior, so existing plugins need no change.
+
+When the plugin reports `Type_AUTHENTICATE`, Funnel sends the bearer header in
+a `Type_AUTHENTICATE` action before running each requested RPC. This action
+receives plugin parameters but no task or server configuration. Return HTTP
+status 200 and a stable, verified subject in `JobResponse.UserId`. Funnel uses
+that subject for task access checks and does not grant administrator
+privileges. Keep project or task authorization in the existing task actions.
+
+Basic credentials keep working alongside plugin authentication, for example for
+workers. Funnel refuses to start if `Server.OidcAuth` is also configured,
+because both would claim the same bearer tokens.
+
+Funnel waits up to 20 seconds for capability discovery and bearer verification. A discovery timeout stops startup. A verification timeout returns Unavailable. Task actions have a separate 60-second limit. A net/rpc timeout closes the shared plugin connection because net/rpc lacks per-call cancellation. Client disconnects do not shorten the net/rpc verification timeout. Restart Funnel to reconnect the plugin.
+
 ## Task configuration
 
 Plugins receive the complete server configuration in `PluginAction`. Return that

@@ -1174,6 +1174,12 @@
         },
         "userId": {
           "type": "string"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/protoType"
+          }
         }
       }
     },
@@ -1193,9 +1199,12 @@
       "enum": [
         "CREATE",
         "GET",
-        "CANCEL"
+        "CANCEL",
+        "AUTHENTICATE",
+        "CAPABILITIES"
       ],
-      "default": "CREATE"
+      "default": "CREATE",
+      "description": " - AUTHENTICATE: Verify the bearer header and return the authenticated subject in userId.\n - CAPABILITIES: Report the optional actions the plugin implements in capabilities.\nFunnel asks once at startup. Plugins that predate this action are\ntreated as implementing no optional actions."
     },
     "protobufAny": {
       "type": "object",

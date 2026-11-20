@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -19,69 +20,56 @@ import (
 )
 
 func TestHTTP(t *testing.T) {
-	store, err := NewHTTP(&config.HTTPStorage{
-		Timeout: &config.TimeoutConfig{
-			TimeoutOption: &config.TimeoutConfig_Duration{
-				Duration: durationpb.New(time.Second * 2),
-			},
-		},
-	})
+	const content = "HTTPS storage fixture"
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/private" {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		switch r.Method {
+		case http.MethodGet:
+			writeTestResponse(t, w, []byte(content))
+		case http.MethodHead:
+			w.Header().Set("Content-Length", strconv.Itoa(len(content)))
+			w.WriteHeader(http.StatusOK)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	defer server.Close()
+
+	store, err := NewHTTP(appconfig.DefaultConfig().HTTPStorage)
 	if err != nil {
-		t.Fatal("Error creating HTTP backend:", err)
+		t.Fatal(err)
+	}
+	store.client.Transport.(*http.Transport).TLSClientConfig = server.Client().Transport.(*http.Transport).TLSClientConfig.Clone()
+	ctx := t.Context()
+	url := server.URL + "/object"
+	unsupported := store.UnsupportedOperations(url)
+	if unsupported.Get != nil || unsupported.Stat != nil || unsupported.Put != nil {
+		t.Fatalf("unexpected unsupported HTTPS operations: %+v", unsupported)
 	}
 
-	// test Get is supported
-	err = store.UnsupportedOperations("https://google.com").Get
-	if err != nil {
-		t.Error("Unexpected error for unsupported.Get call:", err)
+	path := filepath.Join(t.TempDir(), "download")
+	if _, err := store.Get(ctx, url, path); err != nil {
+		t.Fatal(err)
 	}
-
-	// test Stat is supported
-	err = store.UnsupportedOperations("https://google.com").Stat
-	if err != nil {
-		t.Error("Unexpected error for unsupported.Stat call:", err)
+	data, err := os.ReadFile(path)
+	if err != nil || string(data) != content {
+		t.Fatalf("download = %q, %v", data, err)
 	}
-
-	// test Get succeeds
-	_, err = store.Get(context.Background(), "https://google.com", "_test_download/test_https_download.html")
-	if err != nil {
-		t.Error("Unexpected error for Get call:", err)
+	obj, err := store.Stat(ctx, url)
+	if err != nil || obj.Size != int64(len(content)) {
+		t.Fatalf("stat = %+v, %v", obj, err)
 	}
-
-	// test Stat succeeds
-	_, err = store.Stat(context.Background(), "https://google.com")
-	if err != nil {
-		t.Error("Unexpected error for Stat call:", err)
+	if _, err := store.Get(ctx, server.URL+"/private", filepath.Join(t.TempDir(), "private")); err == nil {
+		t.Error("GET unexpectedly succeeded for a private object")
 	}
-
-	// test Get on file that requires auth; expect error
-	_, err = store.Get(context.Background(), "https://s3.amazonaws.com/private", "_test_download/test_https_download_private.html")
-	if err == nil {
-		t.Error("Expected error for Get call")
+	if _, err := store.List(ctx, url); err == nil {
+		t.Error("List unexpectedly succeeded")
 	}
-
-	// test client timeout
-	_, err = store.Stat(context.Background(), "https://fakeurl1234.com")
-	if err == nil {
-		t.Error("Expected timeout error")
-	}
-
-	// test List not supported
-	_, err = store.List(context.Background(), "https://google.com")
-	if err == nil {
-		t.Error("Expected error for List call")
-	}
-
-	// test Put is supported
-	err = store.UnsupportedOperations("https://google.com").Put
-	if err != nil {
-		t.Error("Unexpected error for unsupported.Put call:", err)
-	}
-
-	// test Put to an unreachable host fails
-	_, err = store.Put(context.Background(), "https://fakeurl1234.com", "_test_download/test_https_download.html")
-	if err == nil {
-		t.Error("Expected error for Put call")
+	if _, err := store.Put(ctx, url, path); err == nil || !strings.Contains(err.Error(), "status code: 405") {
+		t.Errorf("PUT rejection = %v, want HTTP 405", err)
 	}
 }
 

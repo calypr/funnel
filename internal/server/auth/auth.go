@@ -3,12 +3,16 @@ package auth
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/calypr/funnel/api/config"
+	pluginapi "github.com/calypr/funnel/api/plugin"
 	"github.com/calypr/funnel/internal/identity"
 	"github.com/calypr/funnel/internal/logger"
 	"github.com/calypr/funnel/internal/tesrpc"
@@ -24,6 +28,59 @@ type Authentication struct {
 	oidc       *OidcConfig
 	accessMode identity.AccessMode
 	log        *logger.Logger
+	plugin     pluginapi.Authorize
+	params     map[string]string
+}
+
+// UsePlugin enables bearer authentication through the configured plugin.
+// Call it before serving requests.
+func (a *Authentication) UsePlugin(plugin pluginapi.Authorize, params map[string]string) {
+	a.plugin = plugin
+	a.params = params
+}
+
+// UsePluginIfSupported asks the plugin once whether it authenticates bearer
+// tokens and, if so, enables it. Plugins that predate CAPABILITIES answer with
+// an error or an empty list, and keep their existing task-only behavior.
+// Basic credentials continue to work alongside the plugin. OIDC cannot, because
+// both would claim the same bearer tokens.
+func (a *Authentication) UsePluginIfSupported(ctx context.Context, plugin pluginapi.Authorize, params map[string]string) error {
+	response, err := callAuthPlugin(ctx, plugin, &pluginapi.Job{Params: params, Type: pluginapi.Type_CAPABILITIES})
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return fmt.Errorf("discover authorization plugin capabilities: %w", err)
+	}
+	if err != nil {
+		a.log.Warn("Plugin did not report its capabilities; bearer tokens will not be sent to it", "error", err)
+		return nil
+	}
+	if response.GetCode() != http.StatusOK || !slices.Contains(response.GetCapabilities(), pluginapi.Type_AUTHENTICATE) {
+		return nil
+	}
+	if a.oidc != nil {
+		return fmt.Errorf("the plugin authenticates bearer tokens, so Server.OidcAuth must not be configured")
+	}
+	a.UsePlugin(plugin, params)
+	a.log.Info("Plugin authenticates bearer tokens")
+	return nil
+}
+
+const authPluginTimeout = 20 * time.Second
+
+func callAuthPlugin(ctx context.Context, plugin pluginapi.Authorize, req *pluginapi.Job) (*pluginapi.JobResponse, error) {
+	if client, ok := plugin.(interface {
+		PluginActionContext(context.Context, *pluginapi.Job) (*pluginapi.JobResponse, error)
+	}); ok {
+		if req.Type == pluginapi.Type_AUTHENTICATE {
+			if _, legacy := plugin.(*pluginapi.RPCClient); legacy {
+				// Only the server's time limit may disconnect the shared net/rpc transport.
+				ctx = context.WithoutCancel(ctx)
+			}
+		}
+		ctx, cancel := context.WithTimeout(ctx, authPluginTimeout)
+		defer cancel()
+		return client.PluginActionContext(ctx, req)
+	}
+	return plugin.PluginAction(req.Params, req.Headers, req.Config, req.Task, req.Type)
 }
 
 var (
@@ -77,7 +134,7 @@ func (a *Authentication) Interceptor(
 	info *grpc.UnaryServerInfo,
 	handler grpc.UnaryHandler) (interface{}, error) {
 
-	if (len(a.basic) == 0 && a.oidc == nil) || info.FullMethod == tesrpc.TaskService_GetServiceInfo_FullMethodName {
+	if (len(a.basic) == 0 && a.oidc == nil && a.plugin == nil) || info.FullMethod == tesrpc.TaskService_GetServiceInfo_FullMethodName {
 		userInfo := identity.UserInfo{IsPublic: true, AccessMode: a.accessMode}
 		ctx = identity.WithUser(ctx, &userInfo)
 		return handler(ctx, req)
@@ -98,6 +155,7 @@ func (a *Authentication) Interceptor(
 	authorized := false
 	authErr := errTokenRequired
 	authorization := values[0]
+	scheme, _, _ := strings.Cut(authorization, " ")
 
 	if strings.HasPrefix(authorization, "Basic ") {
 		authErr = errInvalidBasicToken
@@ -108,6 +166,20 @@ func (a *Authentication) Interceptor(
 			isAdmin := a.admins[username]
 			ctx = identity.WithUser(ctx,
 				&identity.UserInfo{Username: username, IsAdmin: isAdmin, AccessMode: a.accessMode})
+		}
+	} else if a.plugin != nil && len(values) == 1 && strings.EqualFold(scheme, "Bearer") {
+		authErr = errInvalidBearerToken
+		response, err := callAuthPlugin(ctx, a.plugin, &pluginapi.Job{
+			Params:  a.params,
+			Headers: map[string]*pluginapi.StringList{"authorization": {Values: values}},
+			Type:    pluginapi.Type_AUTHENTICATE,
+		})
+		switch {
+		case err != nil, response == nil, response.GetCode() >= 500:
+			authErr = status.Error(codes.Unavailable, "Bearer authentication service unavailable")
+		case response.GetCode() == http.StatusOK && strings.TrimSpace(response.GetUserId()) != "":
+			ctx = identity.WithUser(ctx, &identity.UserInfo{Username: response.GetUserId(), AccessMode: a.accessMode})
+			authorized = true
 		}
 	} else if a.oidc != nil && strings.HasPrefix(authorization, "Bearer ") {
 		authErr = errInvalidBearerToken

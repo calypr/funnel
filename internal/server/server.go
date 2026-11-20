@@ -19,6 +19,7 @@ import (
 	"google.golang.org/grpc/keepalive"
 
 	"github.com/calypr/funnel/api/config"
+	pluginapi "github.com/calypr/funnel/api/plugin"
 	"github.com/calypr/funnel/internal/compute/scheduler"
 	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
@@ -47,6 +48,7 @@ type Server struct {
 	MaxResponseBytes int
 	Log              *logger.Logger
 	Plugins          *config.Plugins
+	AuthPlugin       pluginapi.Authorize
 }
 
 // Serve starts the server and blocks until its context is canceled or a listener stops.
@@ -79,6 +81,11 @@ func (s *Server) Serve(pctx context.Context) error {
 	defer httpLis.Close() //nolint:errcheck // Listener cleanup is best effort after HTTP shutdown.
 
 	auth := serverauth.NewAuthentication(s.BasicAuth, s.OidcAuth, s.TaskAccess, s.Log)
+	if s.AuthPlugin != nil {
+		if err := auth.UsePluginIfSupported(pctx, s.AuthPlugin, s.Plugins.GetParams()); err != nil {
+			return err
+		}
+	}
 
 	maxResponseBytes := s.MaxResponseBytes
 	if maxResponseBytes == 0 {
