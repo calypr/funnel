@@ -14,7 +14,9 @@ func TestBrowserAPIRequestsReceiveJSON(t *testing.T) {
 	auth := serverauth.NewAuthentication(nil, nil, "", nil)
 	handler := s.routes(auth, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"id":"fixture","state":"EXECUTOR_ERROR"}`))
+		if _, err := w.Write([]byte(`{"id":"fixture","state":"EXECUTOR_ERROR"}`)); err != nil {
+			t.Errorf("write response: %v", err)
+		}
 	}))
 	for _, path := range []string{
 		"/v1/tasks/fixture",
