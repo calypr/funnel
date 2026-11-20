@@ -426,7 +426,7 @@ func (ts *Service) GetServiceInfo(ctx context.Context, info *tes.GetServiceInfoR
 
 func (ts *Service) responseBytes() int {
 	if ts.Config == nil {
-		return taskpolicy.DefaultResponseBytes
+		return appconfig.DefaultResponseBytes
 	}
 	return appconfig.ResponseBytes(ts.Config.Server)
 }

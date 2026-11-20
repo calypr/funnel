@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/calypr/funnel/api/config"
+	appconfig "github.com/calypr/funnel/internal/config"
 	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/retry"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -49,6 +50,8 @@ func Dial(pctx context.Context, conf *config.RPCClient, opts ...grpc.DialOption)
 		defaultOpts = append(defaultOpts, grpc.WithPerRPCCredentials(&plaintextLoginCreds{loginCreds{User: user, Password: password}}))
 	}
 	opts = append(opts, defaultOpts...)
+	// Apply the receive default before caller options so callers can override it.
+	opts = append([]grpc.DialOption{grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(appconfig.DefaultResponseBytes))}, opts...)
 	opts = append(
 		opts,
 		grpc.WithUnaryInterceptor(grpc_retry.UnaryClientInterceptor(
