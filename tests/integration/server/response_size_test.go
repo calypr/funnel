@@ -22,7 +22,6 @@ import (
 
 	"github.com/calypr/funnel/api/config"
 	"github.com/calypr/funnel/api/tes"
-	tesclient "github.com/calypr/funnel/client/tes"
 	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/database/boltdb"
 	"github.com/calypr/funnel/internal/events"
@@ -72,6 +71,7 @@ func TestListTasksLargeResponses(t *testing.T) {
 			listener := bufconn.Listen(1024 * 1024)
 			rpc := grpc.NewServer(grpc.MaxSendMsgSize(8*1024*1024), grpc.UnaryInterceptor(serverauth.NewAuthentication(nil, nil, identity.AccessAll, nil).Interceptor))
 			serviceConf := appconfig.DefaultConfig()
+			serviceConf.Server.MaxResponseBytes = 4 * 1024 * 1024
 			tesrpc.RegisterTaskServiceServer(rpc, &taskservice.Service{Read: db, Config: serviceConf})
 			serveDone := make(chan error, 1)
 			go func() { serveDone <- rpc.Serve(listener) }()
@@ -114,7 +114,7 @@ func TestListTasksLargeResponses(t *testing.T) {
 							t.Fatalf("expected bounded GetTask error, got %v", getErr)
 						}
 						serviceConf.Server.MaxResponseBytes = 8 * 1024 * 1024
-						defer func() { serviceConf.Server.MaxResponseBytes = 0 }()
+						defer func() { serviceConf.Server.MaxResponseBytes = 4 * 1024 * 1024 }()
 						response, err = client.ListTasks(ctx, req, grpc.MaxCallRecvMsgSize(8*1024*1024))
 						if _, getErr := client.GetTask(ctx, &tes.GetTaskRequest{Id: "large-task", View: view}, grpc.MaxCallRecvMsgSize(8*1024*1024)); getErr != nil {
 							t.Fatalf("configured GetTask failed: %v", getErr)
@@ -132,7 +132,7 @@ func TestListTasksLargeResponses(t *testing.T) {
 	}
 }
 
-func TestLargeListThroughConfiguredHTTPGateway(t *testing.T) {
+func TestLargeTaskResponsesWithDefaultLimits(t *testing.T) {
 	db, err := boltdb.NewBoltDB(&config.BoltDB{Path: filepath.Join(t.TempDir(), "tasks.db")})
 	if err != nil {
 		t.Fatal(err)
@@ -151,20 +151,39 @@ func TestLargeListThroughConfiguredHTTPGateway(t *testing.T) {
 	conf := testenv.DefaultConfig(t)
 	conf.Compute = "manual"
 	f := testenv.NewFunnel(t, conf)
-	f.Conf.Server.MaxResponseBytes = 8 * 1024 * 1024
-	f.Server.MaxResponseBytes = appconfig.ResponseBytes(f.Conf.Server)
 	f.Server.Tasks = &taskservice.Service{Read: db, Config: f.Conf}
 	t.Cleanup(f.Cleanup)
 	f.StartServer()
-	client, err := tesclient.NewClient(appconfig.HTTPAddress(f.Conf.Server))
-	if err != nil {
-		t.Fatal(err)
-	}
-	response, err := client.ListTasks(t.Context(), &tes.ListTasksRequest{View: "BASIC", PageSize: 1})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(response.Tasks) != 1 || len(response.Tasks[0].Logs[0].Outputs[0].Url) != 5*1024*1024 {
-		t.Fatal("gateway did not preserve large task")
+	for _, transport := range []string{"HTTP", "gRPC"} {
+		t.Run(transport, func(t *testing.T) {
+			ctx := t.Context()
+			listReq := &tes.ListTasksRequest{View: "BASIC", PageSize: 1}
+			getReq := &tes.GetTaskRequest{Id: task.Id, View: "BASIC"}
+			var response *tes.ListTasksResponse
+			var fetched *tes.Task
+			var err error
+			if transport == "HTTP" {
+				response, err = f.HTTP.ListTasks(ctx, listReq)
+			} else {
+				response, err = f.RPC.ListTasks(ctx, listReq)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(response.Tasks) != 1 || proto.Size(response.Tasks[0]) <= 4*1024*1024 {
+				t.Fatal("expected a task larger than 4 MiB in the list response")
+			}
+			if transport == "HTTP" {
+				fetched, err = f.HTTP.GetTask(ctx, getReq)
+			} else {
+				fetched, err = f.RPC.GetTask(ctx, getReq)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !proto.Equal(fetched, response.Tasks[0]) {
+				t.Fatal("GetTask and ListTasks returned different task data")
+			}
+		})
 	}
 }

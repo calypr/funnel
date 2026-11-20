@@ -597,24 +597,25 @@ last returned creation time and ID, matching their deterministic sort order.
 Legacy ID-only tokens remain accepted while their referenced task exists; new
 tokens can resume even after that task is deleted.
 
-The server's gRPC response limit defaults to 4 MiB. List pages account for task records and the continuation token within that
-ceiling. If one task cannot fit, Funnel
+The server's gRPC response limit defaults to 64 MiB. List pages account for task
+records and the continuation token within that ceiling. If one task cannot fit, Funnel
 returns `RESOURCE_EXHAUSTED` with its task ID and suggests requesting `MINIMAL`
 or increasing the configured limit. Smaller pages cannot make a single large
 task smaller.
 
-To support larger task responses, configure the server before starting it:
+Set `Server.MaxResponseBytes` before starting Funnel to change the limit. For
+example, the following configuration limits responses to 32 MiB.
 
 ```yaml
 Server:
-  MaxResponseBytes: 8388608
+  MaxResponseBytes: 33554432
 ```
 
-`0` selects the default. The setting
-also controls the receive limit of Funnel's internal HTTP-to-gRPC gateway, so
+`0` selects the default. The setting also controls the receive limit of Funnel's internal HTTP-to-gRPC gateway, so
 HTTP clients such as the dashboard and CLI can receive the supported response.
-External gRPC clients must configure their own receive limit when requesting
-larger responses. `GetTask` is subject to the same response ceiling.
+Funnel's internal RPC clients default to a 64 MiB receive limit. External gRPC
+clients must configure a receive limit large enough for the responses they
+request. `GetTask` is subject to the same response ceiling.
 
 This is a protobuf transport budget, not a JSON-size or process-memory limit.
 JSON encoding can be larger, and the server must still load each candidate task
