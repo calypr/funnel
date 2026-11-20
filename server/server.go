@@ -24,6 +24,7 @@ import (
 	"github.com/ohsu-comp-bio/funnel/events"
 	"github.com/ohsu-comp-bio/funnel/logger"
 	"github.com/ohsu-comp-bio/funnel/tes"
+	"github.com/ohsu-comp-bio/funnel/util/rpc"
 	"github.com/ohsu-comp-bio/funnel/webdash"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -182,6 +183,9 @@ func (s *Server) Serve(pctx context.Context) error {
 
 	dialOpts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		// The gateway is a gRPC *client* of the internal server; its 4MB
+		// default receive limit rejects large GetTask/ListTasks responses.
+		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(rpc.MaxRecvMessageSize)),
 		// Keep the internal gateway→gRPC connection alive so idle periods
 		// don't cause the server to send GOAWAY and drop the next request.
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{

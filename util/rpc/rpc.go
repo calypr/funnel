@@ -13,6 +13,12 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
+// MaxRecvMessageSize is the maximum size, in bytes, of a single gRPC
+// response a Funnel client will accept, overriding gRPC's 4MB default.
+// Tasks with thousands of outputs accumulate large system logs, so a
+// single GetTask/ListTasks response can exceed 4MB.
+const MaxRecvMessageSize = 64 * 1024 * 1024
+
 // PerRPCPassword returns a new gRPC DialOption which includes a basic auth.
 // password header in each RPC request.
 func PerRPCPassword(user, password string) grpc.DialOption {
@@ -47,6 +53,10 @@ func Dial(pctx context.Context, conf *config.RPCClient, opts ...grpc.DialOption)
 	defaultOpts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		PerRPCPassword(conf.Credential.User, conf.Credential.Password),
+		// Workers read the FULL task (including prior attempts' system
+		// logs) on each attempt, which can exceed gRPC's 4MB receive limit.
+		// See RPCTaskReader.Task in worker/rpc_taskreader.go.
+		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(MaxRecvMessageSize)),
 	}
 	opts = append(opts, defaultOpts...)
 	opts = append(
