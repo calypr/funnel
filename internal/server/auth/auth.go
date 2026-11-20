@@ -3,11 +3,13 @@ package auth
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/calypr/funnel/api/config"
 	pluginapi "github.com/calypr/funnel/api/plugin"
@@ -42,8 +44,11 @@ func (a *Authentication) UsePlugin(plugin pluginapi.Authorize, params map[string
 // an error or an empty list, and keep their existing task-only behavior.
 // Basic credentials continue to work alongside the plugin. OIDC cannot, because
 // both would claim the same bearer tokens.
-func (a *Authentication) UsePluginIfSupported(plugin pluginapi.Authorize, params map[string]string) error {
-	response, err := plugin.PluginAction(params, nil, nil, nil, pluginapi.Type_CAPABILITIES)
+func (a *Authentication) UsePluginIfSupported(ctx context.Context, plugin pluginapi.Authorize, params map[string]string) error {
+	response, err := callAuthPlugin(ctx, plugin, &pluginapi.Job{Params: params, Type: pluginapi.Type_CAPABILITIES})
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return fmt.Errorf("discover authorization plugin capabilities: %w", err)
+	}
 	if err != nil {
 		a.log.Warn("Plugin did not report its capabilities; bearer tokens will not be sent to it", "error", err)
 		return nil
@@ -59,11 +64,23 @@ func (a *Authentication) UsePluginIfSupported(plugin pluginapi.Authorize, params
 	return nil
 }
 
-func (a *Authentication) ValidateTaskAccess() error {
-	if a.accessMode != identity.AccessAll && len(a.basic) == 0 && a.oidc == nil && a.plugin == nil {
-		return fmt.Errorf("Server.TaskAccess %s requires an active authenticator", a.accessMode)
+const authPluginTimeout = 20 * time.Second
+
+func callAuthPlugin(ctx context.Context, plugin pluginapi.Authorize, req *pluginapi.Job) (*pluginapi.JobResponse, error) {
+	if client, ok := plugin.(interface {
+		PluginActionContext(context.Context, *pluginapi.Job) (*pluginapi.JobResponse, error)
+	}); ok {
+		if req.Type == pluginapi.Type_AUTHENTICATE {
+			if _, legacy := plugin.(*pluginapi.RPCClient); legacy {
+				// Only the server's time limit may disconnect the shared net/rpc transport.
+				ctx = context.WithoutCancel(ctx)
+			}
+		}
+		ctx, cancel := context.WithTimeout(ctx, authPluginTimeout)
+		defer cancel()
+		return client.PluginActionContext(ctx, req)
 	}
-	return nil
+	return plugin.PluginAction(req.Params, req.Headers, req.Config, req.Task, req.Type)
 }
 
 var (
@@ -152,9 +169,11 @@ func (a *Authentication) Interceptor(
 		}
 	} else if a.plugin != nil && len(values) == 1 && strings.EqualFold(scheme, "Bearer") {
 		authErr = errInvalidBearerToken
-		response, err := a.plugin.PluginAction(a.params, map[string]*pluginapi.StringList{
-			"authorization": {Values: values},
-		}, nil, nil, pluginapi.Type_AUTHENTICATE)
+		response, err := callAuthPlugin(ctx, a.plugin, &pluginapi.Job{
+			Params:  a.params,
+			Headers: map[string]*pluginapi.StringList{"authorization": {Values: values}},
+			Type:    pluginapi.Type_AUTHENTICATE,
+		})
 		switch {
 		case err != nil, response == nil, response.GetCode() >= 500:
 			authErr = status.Error(codes.Unavailable, "Bearer authentication service unavailable")

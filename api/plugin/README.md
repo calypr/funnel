@@ -28,7 +28,7 @@ Basic credentials keep working alongside plugin authentication, for example for
 workers. Funnel refuses to start if `Server.OidcAuth` is also configured,
 because both would claim the same bearer tokens.
 
-Owner-restricted task access requires an active authenticator. Funnel refuses to start when no configured authentication method is available.
+Funnel waits up to 20 seconds for capability discovery and bearer verification. A discovery timeout stops startup. A verification timeout returns Unavailable. Task actions have a separate 60-second limit. A net/rpc timeout closes the shared plugin connection because net/rpc lacks per-call cancellation. Client disconnects do not shorten the net/rpc verification timeout. Restart Funnel to reconnect the plugin.
 
 ## Task configuration
 

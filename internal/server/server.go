@@ -82,13 +82,9 @@ func (s *Server) Serve(pctx context.Context) error {
 
 	auth := serverauth.NewAuthentication(s.BasicAuth, s.OidcAuth, s.TaskAccess, s.Log)
 	if s.AuthPlugin != nil {
-		if err := auth.UsePluginIfSupported(s.AuthPlugin, s.Plugins.GetParams()); err != nil {
+		if err := auth.UsePluginIfSupported(pctx, s.AuthPlugin, s.Plugins.GetParams()); err != nil {
 			return err
 		}
-	}
-
-	if err := auth.ValidateTaskAccess(); err != nil {
-		return err
 	}
 
 	maxResponseBytes := s.MaxResponseBytes

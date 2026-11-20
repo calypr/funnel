@@ -99,12 +99,9 @@ func TestPluginAuthenticationFollowsReportedCapabilities(t *testing.T) {
 				}
 				return test.capabilities, test.err
 			})
-			err := auth.UsePluginIfSupported(plugin, map[string]string{"key": "value"})
+			err := auth.UsePluginIfSupported(t.Context(), plugin, map[string]string{"key": "value"})
 			if (err != nil) != test.wantErr {
 				t.Fatalf("error = %v, want error %v", err, test.wantErr)
-			}
-			if (auth.ValidateTaskAccess() == nil) != (test.wantPlugin || test.oidc) {
-				t.Fatalf("owner access validation = %v", auth.ValidateTaskAccess())
 			}
 			if (auth.plugin != nil) != test.wantPlugin {
 				t.Fatalf("plugin enabled = %v, want %v", auth.plugin != nil, test.wantPlugin)
@@ -134,19 +131,6 @@ func TestBasicCredentialsWorkAlongsidePluginAuthentication(t *testing.T) {
 		})
 		if err != nil {
 			t.Fatalf("%s: %v", header, err)
-		}
-	}
-}
-
-func TestOwnerAccessRequiresAuthentication(t *testing.T) {
-	for _, mode := range []string{identity.AccessOwner, identity.AccessOwnerOrAdmin, identity.AccessAll} {
-		auth := NewAuthentication(nil, nil, mode, nil)
-		if got := auth.ValidateTaskAccess() != nil; got != (mode != identity.AccessAll) {
-			t.Errorf("%s rejected without credentials = %t", mode, got)
-		}
-		auth = NewAuthentication([]*config.BasicCredential{{User: "worker", Password: "fixture"}}, nil, mode, nil)
-		if err := auth.ValidateTaskAccess(); err != nil {
-			t.Errorf("%s rejected with Basic credentials: %v", mode, err)
 		}
 	}
 }

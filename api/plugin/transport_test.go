@@ -188,3 +188,48 @@ func rpcAuthorizer(t *testing.T, impl Authorize) Authorize {
 	}
 	return client.(Authorize)
 }
+
+type stalledAuthorizer struct {
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (a *stalledAuthorizer) PluginAction(map[string]string, map[string]*StringList, *config.Config, *tes.Task, Type) (*JobResponse, error) {
+	close(a.entered)
+	<-a.release
+	return &JobResponse{Code: 200}, nil
+}
+
+func TestAuthenticationCallDeadline(t *testing.T) {
+	for name, createClient := range map[string]func(*testing.T, Authorize) Authorize{
+		"grpc": grpcAuthorizer, "netrpc": rpcAuthorizer,
+	} {
+		t.Run(name, func(t *testing.T) {
+			impl := &stalledAuthorizer{entered: make(chan struct{}), release: make(chan struct{})}
+			defer close(impl.release)
+			client := createClient(t, impl).(interface {
+				PluginActionContext(context.Context, *Job) (*JobResponse, error)
+			})
+			ctx, cancel := context.WithTimeout(t.Context(), 300*time.Millisecond)
+			defer cancel()
+			result := make(chan error, 1)
+			go func() {
+				_, err := client.PluginActionContext(ctx, &Job{Type: Type_CAPABILITIES})
+				result <- err
+			}()
+			select {
+			case <-impl.entered:
+			case <-time.After(2 * time.Second):
+				t.Fatal("plugin did not receive capability request")
+			}
+			select {
+			case err := <-result:
+				if !errors.Is(err, context.DeadlineExceeded) {
+					t.Fatalf("plugin call returned %v, want deadline exceeded", err)
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatal("plugin call did not honor its deadline")
+			}
+		})
+	}
+}

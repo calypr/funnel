@@ -1,6 +1,8 @@
 package plugin
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/rpc"
 
@@ -21,15 +23,33 @@ type RPCServer struct {
 }
 
 func (m *RPCClient) PluginAction(params map[string]string, headers map[string]*StringList, config *funnelConfig.Config, task *tes.Task, actionType Type) (*JobResponse, error) {
-	var resp JobResponse
-	err := m.client.Call("Plugin.PluginAction", &Job{
+	ctx, cancel := context.WithTimeout(context.Background(), taskPluginTimeout)
+	defer cancel()
+	return m.PluginActionContext(ctx, &Job{
 		Params:  params,
 		Headers: headers,
 		Config:  config,
 		Task:    task,
 		Type:    actionType,
-	}, &resp)
-	return &resp, err
+	})
+}
+
+func (m *RPCClient) PluginActionContext(ctx context.Context, req *Job) (*JobResponse, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	var resp JobResponse
+	done := make(chan error, 1)
+	go func() {
+		done <- m.client.Call("Plugin.PluginAction", req, &resp)
+	}()
+	select {
+	case err := <-done:
+		return &resp, err
+	case <-ctx.Done():
+		// Essential: net/rpc cannot cancel one call. Closing the connection also releases a blocked transport write.
+		return nil, errors.Join(ctx.Err(), m.client.Close())
+	}
 }
 
 func (m *RPCServer) PluginAction(args *Job, resp *JobResponse) error {
