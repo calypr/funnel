@@ -21,9 +21,9 @@ import (
 	"github.com/calypr/funnel/api/config"
 	pluginapi "github.com/calypr/funnel/api/plugin"
 	"github.com/calypr/funnel/internal/compute/scheduler"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"github.com/calypr/funnel/internal/events"
 	"github.com/calypr/funnel/internal/logger"
-	taskpolicy "github.com/calypr/funnel/internal/task"
 	"github.com/calypr/funnel/internal/tesrpc"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 
@@ -93,7 +93,7 @@ func (s *Server) Serve(pctx context.Context) error {
 
 	maxResponseBytes := s.MaxResponseBytes
 	if maxResponseBytes == 0 {
-		maxResponseBytes = taskpolicy.DefaultResponseBytes
+		maxResponseBytes = appconfig.DefaultResponseBytes
 	}
 	if maxResponseBytes < 0 {
 		return fmt.Errorf("Server.MaxResponseBytes must be positive")

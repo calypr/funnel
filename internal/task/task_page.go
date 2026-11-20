@@ -4,13 +4,12 @@ import (
 	"context"
 
 	"github.com/calypr/funnel/api/tes"
+	appconfig "github.com/calypr/funnel/internal/config"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 )
-
-const DefaultResponseBytes = 4 * 1024 * 1024
 
 type taskPageBytesKey struct{}
 
@@ -27,7 +26,7 @@ type TaskPage struct {
 func NewTaskPage(ctx context.Context) *TaskPage {
 	limit, _ := ctx.Value(taskPageBytesKey{}).(int)
 	if limit <= 0 {
-		limit = DefaultResponseBytes
+		limit = appconfig.DefaultResponseBytes
 	}
 	return &TaskPage{limit: limit}
 }

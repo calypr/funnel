@@ -5,8 +5,46 @@ import (
 	"strings"
 	"testing"
 
+	"google.golang.org/protobuf/proto"
+
 	schema "github.com/calypr/funnel/api/config"
 )
+
+func TestServiceInfoConfigParsing(t *testing.T) {
+	conf := EmptyConfig()
+	raw := []byte(`
+Server:
+  ServiceName: Example TES
+  ServiceInfo:
+    Id: org.example.tes
+    Description: TES for example.org
+    Organization:
+      Name: Example Org
+      Url: https://example.org
+    ContactUrl: mailto:admin@example.org
+    DocumentationUrl: https://example.org/docs
+    Environment: prod
+    CreatedAt: 2026-01-01T00:00:00Z
+    Storage:
+      - s3://example-bucket
+`)
+	if err := Parse(raw, conf); err != nil {
+		t.Fatal("parsing service info:", err)
+	}
+	want := &schema.ServiceInfo{
+		Id:               "org.example.tes",
+		Description:      "TES for example.org",
+		Organization:     &schema.ServiceInfoOrganization{Name: "Example Org", Url: "https://example.org"},
+		ContactUrl:       "mailto:admin@example.org",
+		DocumentationUrl: "https://example.org/docs",
+		Environment:      "prod",
+		CreatedAt:        "2026-01-01T00:00:00Z",
+		Storage:          []string{"s3://example-bucket"},
+	}
+	if got := conf.Server.GetServiceInfo(); !proto.Equal(got, want) {
+		t.Fatalf("service info = %v, want %v", got, want)
+	}
+}
 
 func TestNodeResourceConfigParsing(t *testing.T) {
 	yaml := `

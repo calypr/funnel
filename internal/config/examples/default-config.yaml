@@ -28,6 +28,27 @@ Server:
   # Hostname of the Funnel server.
   HostName: localhost
 
+  # Name reported by GET /service-info. Empty keeps "Funnel".
+  ServiceName: Funnel
+
+  # Identity reported by GET /service-info. Service info is public and served
+  # without authentication, including the advertised storage locations.
+  # Missing or empty fields keep Funnel's built-in values; set both
+  # Organization fields or neither. Values are checked against the GA4GH
+  # service-info specification at startup. See docs/service-info.md.
+  # ServiceInfo:
+  #   Id: org.example.tes
+  #   Description: Task execution service of Example Org
+  #   Organization:
+  #     Name: Example Org
+  #     Url: https://example.org
+  #   ContactUrl: mailto:admin@example.org
+  #   DocumentationUrl: https://example.org/docs/tes
+  #   Environment: prod
+  #   CreatedAt: 2026-01-01T00:00:00Z
+  #   Storage:
+  #     - s3://example-bucket
+
   # Port used for HTTP communication and the web dashboard.
   HTTPPort: "8000"
 

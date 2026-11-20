@@ -23,10 +23,13 @@ func RPCAddress(c *schema.Server) string {
 	return rpc
 }
 
+// DefaultResponseBytes is the default gRPC response limit for Funnel servers and clients.
+const DefaultResponseBytes = 64 * 1024 * 1024
+
 // ResponseBytes resolves the server's bounded gRPC response limit.
 func ResponseBytes(s *schema.Server) int {
 	if s == nil || s.MaxResponseBytes == 0 {
-		return 4 * 1024 * 1024
+		return DefaultResponseBytes
 	}
 	return int(s.MaxResponseBytes)
 }

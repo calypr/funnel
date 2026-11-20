@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cache full, immutable ARM fixture images as portable OCI archives."""
+"""Cache fixture images as portable OCI archives."""
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
@@ -25,6 +25,8 @@ root = Path(os.environ.get("FUNNEL_CI_FIXTURE_CACHE_DIR", os.environ["FUNNEL_CI_
 
 
 def canonical(reference):
+    if "@" not in reference:
+        return reference
     repository, digest = reference.rsplit("@", 1)
     if repository.rfind(":") > repository.rfind("/"):
         repository = repository.rsplit(":", 1)[0]
@@ -35,23 +37,14 @@ def yaml(path):
     return json.loads(subprocess.check_output(["yq", "-o=json", str(path)]))
 
 
-images = {name: item for name, item in json.loads((fixture / "fixture-images.json").read_text())["images"].items()
-          if name != "quay.io/cdis/arborist:master"}
-services = [item["reference"] for item in images.values()]
-bootstrap = [
-    item["reference"] for name, item in images.items()
-    if "/minio:" in name or "/docker-bitnami-pgvector:" in name
-]
-services = [reference for reference in services if reference not in bootstrap]
-auth = [
-    item["reference"] for name, item in images.items()
-    if any("/" + service + ":" in name for service in ("arborist", "fence", "indexd"))
-]
-services = [reference for reference in services if reference not in auth]
+images = json.loads((fixture / "fixture-images.json").read_text())["images"]
+bootstrap = [images[name] for name in ("quay.io/cdis/minio", "quay.io/cdis/docker-bitnami-pgvector")]
+auth = [images[name] for name in ("quay.io/cdis/fence", "quay.io/cdis/indexd")]
+services = sorted(set(images.values()) - set(bootstrap + auth) - {images["quay.io/cdis/arborist"]})
 csi = yaml(fixture / ("csi-images-arm64.yaml" if architecture == "arm64" else "csi-images.yaml"))
 csi_images = [csi["image"], *(value["image"] for value in csi["sidecars"].values())]
 manifest = {
-    "format": 4,
+    "format": 5,
     "auth": sorted({canonical(reference) for reference in auth}),
     "bootstrap": sorted({canonical(reference) for reference in bootstrap}),
     "platform": platform,

@@ -938,9 +938,58 @@
         "MaxResponseBytes": {
           "type": "integer",
           "format": "int64"
+        },
+        "ServiceInfo": {
+          "$ref": "#/definitions/configServiceInfo",
+          "description": "Optional overrides for the public GA4GH service-info response."
         }
       },
       "description": "Server describes configuration for the server."
+    },
+    "configServiceInfo": {
+      "type": "object",
+      "properties": {
+        "Id": {
+          "type": "string"
+        },
+        "Description": {
+          "type": "string"
+        },
+        "Organization": {
+          "$ref": "#/definitions/configServiceInfoOrganization"
+        },
+        "ContactUrl": {
+          "type": "string"
+        },
+        "DocumentationUrl": {
+          "type": "string"
+        },
+        "Environment": {
+          "type": "string"
+        },
+        "CreatedAt": {
+          "type": "string"
+        },
+        "Storage": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "ServiceInfo overrides fields of the public GA4GH service-info response.\nEmpty fields keep Funnel's built-in values."
+    },
+    "configServiceInfoOrganization": {
+      "type": "object",
+      "properties": {
+        "Name": {
+          "type": "string"
+        },
+        "Url": {
+          "type": "string"
+        }
+      },
+      "description": "ServiceInfoOrganization describes the organization providing the service."
     },
     "configSwiftStorage": {
       "type": "object",
